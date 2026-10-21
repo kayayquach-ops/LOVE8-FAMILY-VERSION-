@@ -2,6 +2,8 @@
 
 **Stay close, wherever you are.** App kết nối gia đình sống xa nhau: ảnh mỗi ngày kiểu Locket, sổ ký ức bằng giọng kể của bố mẹ, lịch âm Việt Nam, và trợ lý AI "Thư" giúp nói những điều khó nói.
 
+**Bản demo trên web:** https://kayayquach-ops.github.io/LOVE8-FAMILY-VERSION-/ (mở bằng điện thoại cho giống app thật).
+
 Nhóm người dùng đầu tiên: người Việt sống ở Hàn Quốc (du học sinh, người đi làm) và bố mẹ ở Việt Nam.
 
 ## Cấu trúc thư mục
@@ -48,7 +50,7 @@ Xem trên trình duyệt: `npx expo start --web`.
 | Giọng nói → chữ | Nối Google Cloud Speech-to-Text (vi-VN) hoặc FPT.AI ở đường dẫn `/transcribe` trong `functions/src/index.ts` |
 | Đăng nhập, dữ liệu, ảnh | Firebase Auth (số điện thoại), Firestore, Storage. Hiện app lưu trên máy (`src/store/AppContext.tsx`) |
 | Widget | Cần bản build riêng (không chạy trong Expo Go): WidgetKit (iOS), App Widget (Android) |
-| Đưa lên mạng, cửa hàng | Xem [docs/deploy.md](docs/deploy.md): web demo qua Vercel, APK Android qua EAS, máy chủ AI qua Firebase |
+| Đưa lên mạng, cửa hàng | Xem [docs/deploy.md](docs/deploy.md): web demo qua GitHub Pages hoặc Vercel, APK Android qua EAS, máy chủ AI qua Firebase |
 
 **Không bao giờ đặt API key trong code app hay đẩy lên GitHub.**
 

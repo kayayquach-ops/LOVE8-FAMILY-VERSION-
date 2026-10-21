@@ -2,9 +2,17 @@
 
 Có 3 phần, làm độc lập với nhau.
 
-## 1. Bản web demo: có link mở được trên điện thoại (khoảng 5 phút)
+## 1. Bản web demo: có link mở được trên điện thoại
 
-Dùng **Vercel** (miễn phí, chạy được cả khi repo để Private).
+### Cách A: GitHub Pages (đang dùng)
+
+Link: **https://kayayquach-ops.github.io/LOVE8-FAMILY-VERSION-/**
+
+- Lần đầu: vào repo trên GitHub → **Settings → Pages** → *Source*: **Deploy from a branch** → nhánh **`gh-pages`**, thư mục **`/ (root)`** → **Save**. Khoảng 1–2 phút sau link chạy.
+- Cập nhật bản mới: `EXPO_BASE_URL=/LOVE8-FAMILY-VERSION- bash scripts/deploy-pages.sh`.
+- Gói GitHub miễn phí chỉ cho Pages khi repo để **Public**. Muốn để Private thì dùng cách B.
+
+### Cách B: Vercel (khoảng 5 phút, chạy được cả khi repo để Private)
 
 1. Vào https://vercel.com, đăng nhập bằng tài khoản GitHub.
 2. Bấm **Add New… → Project**, chọn repo `LOVE8-FAMILY-VERSION-`.
