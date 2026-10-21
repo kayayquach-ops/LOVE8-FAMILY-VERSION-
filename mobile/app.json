@@ -1,0 +1,62 @@
+{
+  "expo": {
+    "name": "Homeletter",
+    "slug": "homeletter",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.homeletter.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FDE8E6",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.homeletter.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "output": "single",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Homeletter cần micro để ghi lại câu chuyện của gia đình bạn."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Homeletter cần camera để bạn chụp ảnh gửi cả nhà.",
+          "microphonePermission": "Homeletter cần micro để quay video ngắn."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Homeletter cần truy cập ảnh để bạn chọn ảnh cũ cho sổ ký ức."
+        }
+      ],
+      "expo-notifications",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FFF5F4",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160
+        }
+      ]
+    ],
+    "scheme": "homeletter"
+  }
+}
