@@ -7,7 +7,7 @@ import { duration } from '@/lib/format';
 import { daysBetween } from '@/lib/lunar';
 import { member, others } from '@/lib/selectors';
 import { useApp } from '@/store/AppContext';
-import { colors, radius, shadow } from '@/theme';
+import { colors, radius } from '@/theme';
 
 const WHEN = [
   { label: '1 năm nữa', years: 1 },
@@ -35,12 +35,12 @@ export default function Capsules() {
   return (
     <Screen>
       <BackHeader title="Hộp thời gian" />
-      <T variant="small" color={colors.muted}>
+      <T variant="body" color={colors.inkSoft}>
         Ghi một lời nhắn bằng giọng nói hôm nay, hẹn mở vào ngày con cưới, ngày bố mẹ tròn 60 tuổi, hay Tết 10 năm sau.
       </T>
 
       {creating ? (
-        <View style={[styles.form, shadow.card]}>
+        <View style={styles.form}>
           <Field label="Tên hộp" value={title} onChangeText={setTitle} placeholder="Ví dụ: Gửi bố ngày con ra trường" />
           <T variant="small" weight="semibold">Gửi cho</T>
           <View style={styles.wrap}>
@@ -53,7 +53,10 @@ export default function Capsules() {
             {WHEN.map((w) => <Chip key={w.label} label={w.label} active={when.label === w.label} onPress={() => setWhen(w)} />)}
           </View>
           {voiceSec ? (
-            <T variant="small" weight="semibold" color={colors.green}>✓ Đã ghi lời nhắn {duration(voiceSec)}</T>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="checkmark" size={18} color={colors.green} />
+              <T variant="body" weight="semibold" color={colors.green}>Đã ghi lời nhắn {duration(voiceSec)}</T>
+            </View>
           ) : (
             <VoiceRecorder size={56} hint="Nói điều bạn muốn họ nghe vào ngày đó" onDone={({ seconds }) => setVoiceSec(seconds)} />
           )}
@@ -68,21 +71,18 @@ export default function Capsules() {
         const from = member(state, k.fromId);
         const left = daysBetween(today, new Date(k.openOn));
         return (
-          <View key={k.id} style={[styles.capsule, shadow.soft]}>
-            <View style={styles.lock}><Ionicons name="lock-closed" size={22} color={colors.white} /></View>
-            <View style={{ flex: 1, gap: 4 }}>
-              <T variant="body" weight="semibold">{k.title}</T>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Avatar name={from?.name ?? '?'} uri={from?.avatarUri} size={20} />
-                <T variant="caption" color={colors.muted}>
-                  {from?.roleLabel} → {k.toIds.map((id) => member(state, id)?.roleLabel).join(', ')}
-                  {k.voiceSec ? ` · ${duration(k.voiceSec)}` : ''}
-                </T>
-              </View>
+          <View key={k.id} style={styles.capsule}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="lock-closed-outline" size={18} color={colors.inkSoft} />
+              <T variant="small" color={colors.inkSoft}>Mở sau {Math.max(0, left)} ngày, vào {new Date(k.openOn).getDate()}/{new Date(k.openOn).getMonth() + 1}/{new Date(k.openOn).getFullYear()}</T>
             </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <T variant="caption" color={colors.muted}>Mở sau</T>
-              <T variant="small" weight="bold" color={colors.primaryDark}>{Math.max(0, left)} ngày</T>
+            <T variant="h2">{k.title}</T>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Avatar name={from?.name ?? '?'} uri={from?.avatarUri} size={26} />
+              <T variant="small" color={colors.inkSoft} style={{ flexShrink: 1 }}>
+                {from?.roleLabel} gửi {k.toIds.map((id) => member(state, id)?.roleLabel.toLowerCase()).join(', ')}
+                {k.voiceSec ? `, lời nhắn ${duration(k.voiceSec)}` : ''}
+              </T>
             </View>
           </View>
         );
@@ -92,8 +92,7 @@ export default function Capsules() {
 }
 
 const styles = StyleSheet.create({
-  form: { backgroundColor: colors.white, borderRadius: radius.xl, padding: 18, gap: 14, marginTop: 18 },
+  form: { backgroundColor: colors.tone, borderRadius: radius.lg, padding: 18, gap: 14, marginTop: 18 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  capsule: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.white, borderRadius: radius.lg, padding: 14, marginBottom: 10 },
-  lock: { width: 48, height: 48, borderRadius: 16, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  capsule: { gap: 8, backgroundColor: colors.tone, borderRadius: radius.lg, padding: 18, marginBottom: 10 },
 });

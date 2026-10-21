@@ -17,10 +17,10 @@ export default function ChapterScreen() {
 
   return (
     <Screen>
-      <BackHeader title={chapter?.title} />
+      <BackHeader title="Sổ ký ức" />
       <View style={styles.hero}>
-        <T variant="display">{chapter?.emoji}</T>
-        <T variant="small" color={colors.muted} center>{chapter?.description}</T>
+        <T variant="display">{chapter?.title}</T>
+        <T variant="body" color={colors.inkSoft}>{chapter?.description}</T>
       </View>
       <View style={{ gap: 14 }}>
         {stories.length === 0 && <Empty icon="book-outline" title="Chương này còn trống" text="Gửi một câu hỏi bên dưới, Thư sẽ hỏi giúp bạn." />}
@@ -28,9 +28,10 @@ export default function ChapterScreen() {
       </View>
       <SectionHeader title="Gợi ý câu hỏi" />
       {ideas.slice(0, 5).map((q) => (
-        <Pressable key={q} onPress={() => router.push({ pathname: '/ask', params: { text: q } })} style={styles.idea}>
-          <T variant="small" style={{ flex: 1 }}>{q.replace('*', '')}</T>
-          <Ionicons name="paper-plane-outline" size={16} color={colors.primary} />
+        <Pressable key={q} onPress={() => router.push({ pathname: '/ask', params: { text: q } })} accessibilityRole="button"
+          style={({ pressed }) => [styles.idea, pressed && { backgroundColor: colors.toneDeep }]}>
+          <T variant="body" style={{ flex: 1 }}>{q.replace('*', '')}</T>
+          <Ionicons name="paper-plane-outline" size={18} color={colors.inkSoft} />
         </Pressable>
       ))}
     </Screen>
@@ -38,7 +39,7 @@ export default function ChapterScreen() {
 }
 
 const styles = StyleSheet.create({
-  hero: { alignItems: 'center', gap: 6, paddingVertical: 18 },
+  hero: { gap: 6, paddingTop: 8, paddingBottom: 24 },
   idea: {
     flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.primaryTint,
     borderRadius: radius.md, padding: 14, marginBottom: 8,

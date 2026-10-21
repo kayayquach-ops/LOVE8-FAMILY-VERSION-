@@ -12,7 +12,7 @@ export default function Feed() {
   return (
     <Screen>
       <BackHeader title="Ảnh của cả nhà" />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 16 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }} contentContainerStyle={{ gap: 8, paddingBottom: 16, paddingHorizontal: 20 }}>
         <Chip label="Tất cả" active={who === 'all'} onPress={() => setWho('all')} />
         {state.family.members.map((m) => (
           <Chip key={m.id} label={m.id === state.meId ? 'Bạn' : m.roleLabel} active={who === m.id} onPress={() => setWho(m.id)} />

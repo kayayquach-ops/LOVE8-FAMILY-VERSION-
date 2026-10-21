@@ -3,11 +3,11 @@ import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { BackHeader, Button, Chip, Field, PhotoTile, Screen, Steps, T } from '@/components/ui';
+import { BackHeader, Button, Chip, Field, initials, Screen, Steps, T } from '@/components/ui';
 import type { Birthday } from '@/data/types';
 import { ROLES } from '@/lib/family';
 import { canChiYear, formatLunar, lunarToSolar, solarToLunar } from '@/lib/lunar';
-import { colors, radius, space } from '@/theme';
+import { colors, familyTones, radius, space } from '@/theme';
 
 export default function Profile() {
   const { phone } = useLocalSearchParams<{ phone: string }>();
@@ -79,9 +79,10 @@ export default function Profile() {
           </T>
           <View style={styles.segment}>
             {(['solar', 'lunar'] as const).map((c) => (
-              <Pressable key={c} onPress={() => setCalendar(c)} style={[styles.segItem, calendar === c && styles.segActive]}>
+              <Pressable key={c} onPress={() => setCalendar(c)} accessibilityRole="tab" accessibilityState={{ selected: calendar === c }}
+                style={[styles.segItem, calendar === c && styles.segActive]}>
                 <T variant="small" weight="semibold" color={calendar === c ? colors.white : colors.inkSoft}>
-                  {c === 'solar' ? '☀️ Dương lịch' : '🌙 Âm lịch'}
+                  {c === 'solar' ? 'Dương lịch' : 'Âm lịch'}
                 </T>
               </Pressable>
             ))}
@@ -93,8 +94,8 @@ export default function Profile() {
           </View>
           {conversion ? (
             <View style={styles.convert}>
-              <Ionicons name="moon" size={16} color={colors.primary} />
-              <T variant="small" weight="medium" style={{ flex: 1 }}>{conversion}</T>
+              <Ionicons name="moon-outline" size={18} color={colors.lunar} />
+              <T variant="body" weight="medium" color={colors.lunar} style={{ flex: 1 }}>{conversion}</T>
             </View>
           ) : null}
         </View>
@@ -106,23 +107,16 @@ export default function Profile() {
             {avatar ? (
               <Image source={{ uri: avatar }} style={styles.photo} />
             ) : (
-              <PhotoTile seed={name || 'me'} emoji="🙂" height={200} style={{ width: 180 }} />
+              <View style={styles.photoEmpty}>
+                <T serif weight="bold" color={colors.white} style={{ fontSize: 72, lineHeight: 80 }}>{initials(name || 'Bạn')}</T>
+              </View>
             )}
             <View style={styles.change}>
-              <Ionicons name="camera" size={14} color={colors.white} />
-              <T variant="caption" color={colors.white}>{avatar ? 'Đổi ảnh' : 'Chọn ảnh'}</T>
+              <Ionicons name="camera" size={16} color={colors.white} />
+              <T variant="small" weight="semibold" color={colors.white}>{avatar ? 'Đổi ảnh' : 'Chọn ảnh'}</T>
             </View>
           </Pressable>
-          <View style={styles.line} />
-          <View style={{ flexDirection: 'row', gap: 14, marginTop: -16 }}>
-            {['👵', '👨', '👩'].map((e) => (
-              <View key={e} style={{ alignItems: 'center' }}>
-                <View style={styles.peg} />
-                <View style={styles.polaroid}><T variant="h2">{e}</T></View>
-              </View>
-            ))}
-          </View>
-          <T variant="small" color={colors.muted} center>Bố mẹ sẽ thấy ảnh này mỗi khi bạn gửi tin.</T>
+          <T variant="body" color={colors.inkSoft} center>Bố mẹ sẽ thấy ảnh này mỗi khi bạn gửi tin. Chưa có ảnh thì app dùng chữ cái đầu tên bạn.</T>
         </View>
       )}
       <Button
@@ -137,22 +131,17 @@ export default function Profile() {
 
 const styles = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  segment: { flexDirection: 'row', backgroundColor: colors.field, borderRadius: radius.pill, padding: 4 },
-  segItem: { flex: 1, height: 42, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
-  segActive: { backgroundColor: colors.primary },
+  segment: { flexDirection: 'row', backgroundColor: colors.tone, borderRadius: radius.pill, padding: 4 },
+  segItem: { flex: 1, height: 44, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
+  segActive: { backgroundColor: colors.ink },
   convert: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.primaryTint,
-    padding: 12, borderRadius: radius.md,
+    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.lunarSoft,
+    padding: 14, borderRadius: radius.md,
   },
-  photo: { width: 180, height: 200, borderRadius: radius.lg },
+  photo: { width: 200, height: 200, borderRadius: 100 },
+  photoEmpty: { width: 200, height: 200, borderRadius: 100, backgroundColor: familyTones[0], alignItems: 'center', justifyContent: 'center' },
   change: {
-    position: 'absolute', bottom: 12, alignSelf: 'center', flexDirection: 'row', gap: 6, alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.45)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
-  },
-  line: { height: 1.5, width: '110%', backgroundColor: colors.ink, opacity: 0.6, marginTop: 8 },
-  peg: { width: 4, height: 18, backgroundColor: colors.ink, borderRadius: 2 },
-  polaroid: {
-    width: 70, height: 70, backgroundColor: colors.white, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: colors.line, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 6, elevation: 2,
+    position: 'absolute', bottom: 0, alignSelf: 'center', flexDirection: 'row', gap: 6, alignItems: 'center',
+    backgroundColor: colors.ink, paddingHorizontal: 16, minHeight: 40, borderRadius: 999,
   },
 });

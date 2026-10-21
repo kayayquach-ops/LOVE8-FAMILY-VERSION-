@@ -6,14 +6,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { VoiceRecorder } from '@/components/VoiceRecorder';
-import { Avatar, Chip, Pill, T } from '@/components/ui';
+import { Chip, IconButton, LogoMark, T, type IconName } from '@/components/ui';
 import type { ChatMessage, ChatMode, Member } from '@/data/types';
 import { duration } from '@/lib/format';
 import { isElder } from '@/lib/family';
 import { me, member, others } from '@/lib/selectors';
 import { AI_MODE, interviewReply, softenMessage, structureStory } from '@/services/ai';
 import { newId, useApp } from '@/store/AppContext';
-import { colors, fonts, radius, shadow } from '@/theme';
+import { colors, fonts, radius } from '@/theme';
 
 export default function Chat() {
   const { state, dispatch } = useApp();
@@ -66,7 +66,7 @@ export default function Chat() {
       story: {
         id, tellerId: state.meId, title: s.title, chapterId: s.chapterId, year: s.year, createdAt: new Date().toISOString(),
         durationSec: Math.max(30, Math.round(transcript.length / 12)), transcript, quote: s.quote, people: s.people,
-        places: s.places, emotion: s.emotion, emoji: s.emoji, photoEmojis: [s.emoji, '📷', '❤️'], privacy: 'family',
+        places: s.places, emotion: s.emotion, emoji: s.emoji, photoEmojis: [], privacy: 'family',
         reactions: {}, followUps: s.followUps, perspectives: [],
       },
     });
@@ -95,36 +95,35 @@ export default function Chat() {
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.white }}>
       <View style={styles.header}>
-        <Avatar name="Thư" emoji="🕊️" size={44} />
+        <LogoMark size={44} />
         <View style={{ flex: 1 }}>
-          <T variant="h3" weight="bold">Thư</T>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={styles.online} />
-            <T variant="caption" color={colors.muted}>Trợ lý của {state.family.name.toLowerCase()}</T>
-            {AI_MODE === 'demo' && <Pill label="Bản demo" bg={colors.amberSoft} color={colors.amber} />}
-          </View>
+          <T variant="h2">Thư</T>
+          <T variant="small" color={colors.muted}>
+            Trợ lý của {state.family.name.toLowerCase()}{AI_MODE === 'demo' ? ', đang trả lời theo kịch bản mẫu' : ''}
+          </T>
         </View>
-        <Pressable onPress={() => router.push('/call')} style={styles.callBtn}>
-          <Ionicons name="call" size={18} color={colors.white} />
-        </Pressable>
+        <IconButton icon="call-outline" label="Để Thư gọi điện hỏi chuyện" onPress={() => router.push('/call')} />
       </View>
 
       <View style={styles.segment}>
         {(['story', 'confide'] as const).map((m) => (
-          <Pressable key={m} onPress={() => setMode(m)} style={[styles.segItem, mode === m && styles.segActive]}>
+          <Pressable key={m} onPress={() => setMode(m)} accessibilityRole="tab" accessibilityState={{ selected: mode === m }}
+            style={[styles.segItem, mode === m && styles.segActive]}>
+            <Ionicons name={m === 'story' ? 'book-outline' : 'lock-closed-outline'} size={16} color={mode === m ? colors.white : colors.inkSoft} />
             <T variant="small" weight="semibold" color={mode === m ? colors.white : colors.inkSoft}>
-              {m === 'story' ? '📖 Kể chuyện' : '🔒 Tâm sự riêng'}
+              {m === 'story' ? 'Kể chuyện' : 'Tâm sự riêng'}
             </T>
           </Pressable>
         ))}
       </View>
 
       {mode === 'story' && waiting.length > 0 && (
-        <Pressable onPress={askPending} style={styles.banner}>
-          <T variant="small" weight="semibold" style={{ flex: 1 }}>
-            💬 {member(state, waiting[0].fromId)?.roleLabel} đang chờ bạn trả lời: “{waiting[0].text}”
-          </T>
-          <T variant="caption" weight="bold" color={colors.primary}>Trả lời</T>
+        <Pressable onPress={askPending} accessibilityRole="button" style={({ pressed }) => [styles.banner, pressed && { backgroundColor: colors.toneDeep }]}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <T variant="small" color={colors.inkSoft}>{member(state, waiting[0].fromId)?.roleLabel} đang chờ bạn trả lời</T>
+            <T variant="body" serif numberOfLines={2}>“{waiting[0].text}”</T>
+          </View>
+          <T variant="small" weight="semibold" color={colors.primary}>Trả lời</T>
         </Pressable>
       )}
 
@@ -150,14 +149,10 @@ export default function Chat() {
           <View style={[styles.composer, { marginBottom: 96 }]}>
             <TextInput
               value={text} onChangeText={setText} placeholder={mode === 'story' ? 'Kể cho Thư nghe...' : 'Điều bạn muốn nói mà ngại...'}
-              placeholderTextColor={colors.faint} style={styles.input} multiline
+              placeholderTextColor={colors.placeholder} style={styles.input} multiline accessibilityLabel="Lời nhắn cho Thư"
             />
-            <Pressable onPress={() => setVoice(true)} style={styles.iconBtn}>
-              <Ionicons name="mic" size={20} color={colors.ink} />
-            </Pressable>
-            <Pressable onPress={() => send(text)} style={[styles.iconBtn, { backgroundColor: colors.primary }]}>
-              <Ionicons name="send" size={17} color={colors.white} />
-            </Pressable>
+            <IconButton icon="mic-outline" size={48} label="Kể bằng giọng nói" onPress={() => setVoice(true)} />
+            <IconButton icon="arrow-up" size={48} color={colors.white} bg={colors.primary} label="Gửi" onPress={() => send(text)} />
           </View>
         )}
       </KeyboardAvoidingView>
@@ -195,59 +190,66 @@ function Bubble({ m, elders, recipient, setRecipient, onSave, onRelay }: {
             <T variant="small" color={mine ? colors.white : colors.ink}>Tin nhắn thoại {duration(m.voiceSec)}</T>
           </View>
         ) : (
-          <T variant="small" color={mine ? colors.white : colors.ink} style={{ lineHeight: 21 }}>{m.text}</T>
+          <T variant="body" color={mine ? colors.white : colors.ink} style={{ lineHeight: 23 }}>{m.text}</T>
         )}
       </View>
       {m.kind === 'save-story' && (
-        <Pressable onPress={onSave} style={[styles.cta, { backgroundColor: colors.black, alignSelf: 'flex-start' }]}>
-          <Ionicons name="book" size={14} color={colors.white} />
+        <Pressable onPress={onSave} style={[styles.cta, { backgroundColor: colors.ink, alignSelf: 'flex-start' }]}>
+          <Ionicons name="book-outline" size={16} color={colors.white} />
           <T variant="small" weight="semibold" color={colors.white}>Lưu thành trang ký ức</T>
         </Pressable>
       )}
       {m.kind === 'saved' && m.storyId && (
-        <Pressable onPress={() => router.push(`/story/${m.storyId}`)} style={[styles.cta, { backgroundColor: colors.primarySoft }]}>
-          <T variant="small" weight="semibold" color={colors.primaryDark}>Xem trang ký ức →</T>
+        <Pressable onPress={() => router.push(`/story/${m.storyId}`)} style={[styles.cta, { backgroundColor: colors.tone }]}>
+          <T variant="small" weight="semibold">Xem trang ký ức</T>
+          <Ionicons name="chevron-forward" size={15} color={colors.ink} />
         </Pressable>
       )}
       {m.kind === 'consent' && (
-        <View style={[styles.consent, shadow.soft]}>
-          <T variant="caption" color={colors.muted}>Chuyển cho</T>
+        <View style={styles.consent}>
+          <T variant="small" weight="semibold" color={colors.inkSoft}>Chuyển lời cho</T>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
             {elders.map((e) => <Chip key={e.id} label={e.roleLabel} active={recipient === e.id} onPress={() => setRecipient(e.id)} />)}
           </View>
-          <Pressable onPress={() => onRelay('verbatim')} style={styles.option}><T variant="small" weight="semibold">📨 Chuyển nguyên văn</T></Pressable>
-          <Pressable onPress={() => onRelay('soften')} style={styles.option}><T variant="small" weight="semibold">🌸 Nhờ Thư nói khéo giúp</T></Pressable>
-          <Pressable onPress={() => onRelay('keep')} style={styles.option}><T variant="small" weight="semibold">🔒 Chỉ giữ riêng cho mình</T></Pressable>
+          <Option icon="paper-plane-outline" label="Chuyển nguyên văn" onPress={() => onRelay('verbatim')} />
+          <Option icon="chatbubbles-outline" label="Nhờ Thư nói khéo giúp" onPress={() => onRelay('soften')} />
+          <Option icon="lock-closed-outline" label="Chỉ giữ riêng cho mình" onPress={() => onRelay('keep')} />
         </View>
       )}
     </View>
   );
 }
 
+function Option({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => [styles.option, pressed && { backgroundColor: colors.toneDeep }]}>
+      <Ionicons name={icon} size={19} color={colors.inkSoft} />
+      <T variant="body" weight="medium">{label}</T>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 10 },
-  online: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.green },
-  callBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  segment: { flexDirection: 'row', backgroundColor: colors.field, borderRadius: radius.pill, padding: 4, marginHorizontal: 20 },
-  segItem: { flex: 1, height: 38, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
-  segActive: { backgroundColor: colors.black },
+  segment: { flexDirection: 'row', backgroundColor: colors.tone, borderRadius: radius.pill, padding: 4, marginHorizontal: 20 },
+  segItem: { flex: 1, height: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
+  segActive: { backgroundColor: colors.ink },
   banner: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 20, marginTop: 12, padding: 12,
-    borderRadius: radius.md, backgroundColor: colors.primaryTint,
+    flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 20, marginTop: 12, padding: 14,
+    borderRadius: radius.lg, backgroundColor: colors.tone,
   },
-  bubble: { maxWidth: '82%', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 12 },
-  ai: { backgroundColor: colors.field, borderTopLeftRadius: 6, alignSelf: 'flex-start' },
-  me: { backgroundColor: colors.primary, borderTopRightRadius: 6 },
-  crisis: { backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary, alignSelf: 'stretch', maxWidth: '100%' },
+  bubble: { maxWidth: '84%', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 12 },
+  ai: { backgroundColor: colors.tone, borderTopLeftRadius: 6, alignSelf: 'flex-start' },
+  me: { backgroundColor: colors.ink, borderTopRightRadius: 6 },
+  crisis: { backgroundColor: colors.primarySoft, alignSelf: 'stretch', maxWidth: '100%' },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.faint },
-  cta: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999 },
-  consent: { backgroundColor: colors.white, borderRadius: 18, padding: 14, gap: 8, width: '86%' },
-  option: { borderWidth: 1, borderColor: colors.line, borderRadius: 14, padding: 12 },
+  cta: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, minHeight: 44, borderRadius: 999 },
+  consent: { backgroundColor: colors.tone, borderRadius: radius.lg, padding: 14, gap: 10, width: '88%' },
+  option: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.white, borderRadius: radius.md, paddingHorizontal: 14, minHeight: 48 },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 16, paddingTop: 8 },
   input: {
-    flex: 1, minHeight: 48, maxHeight: 120, borderRadius: 24, backgroundColor: colors.field, paddingHorizontal: 18,
-    paddingTop: 14, paddingBottom: 12, fontFamily: fonts.regular, fontSize: 14, color: colors.ink,
+    flex: 1, minHeight: 48, maxHeight: 120, borderRadius: 24, backgroundColor: colors.tone, paddingHorizontal: 18,
+    paddingTop: 13, paddingBottom: 12, fontFamily: fonts.regular, fontSize: 16, color: colors.ink,
   },
-  iconBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.field, alignItems: 'center', justifyContent: 'center' },
-  voicePanel: { backgroundColor: colors.primaryTint, margin: 16, marginBottom: 100, borderRadius: radius.xl, padding: 18 },
+  voicePanel: { backgroundColor: colors.tone, margin: 16, marginBottom: 100, borderRadius: radius.xl, padding: 18 },
 });

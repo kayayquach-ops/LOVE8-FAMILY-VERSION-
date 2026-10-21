@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -22,21 +23,22 @@ export default function Phone() {
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.white }}>
       <View style={{ flex: 1, paddingHorizontal: space.xl }}>
         <BackHeader />
-        <T variant="h2" center style={{ marginTop: 28 }}>Nhập số điện thoại</T>
-        <T variant="small" color={colors.muted} center style={{ marginTop: 6 }}>
+        <T variant="display" style={{ marginTop: 20 }}>Nhập số điện thoại</T>
+        <T variant="body" color={colors.inkSoft} style={{ marginTop: 8 }}>
           Bố mẹ cũng đăng nhập bằng số điện thoại, không cần nhớ mật khẩu.
         </T>
         <T variant="small" weight="semibold" style={{ marginTop: 28, marginBottom: 8 }}>Số điện thoại</T>
         <View style={styles.input}>
-          <Pressable onPress={() => setCountry((country + 1) % COUNTRIES.length)} style={styles.country}>
+          <Pressable onPress={() => setCountry((country + 1) % COUNTRIES.length)} accessibilityRole="button"
+            accessibilityLabel={`Mã quốc gia ${c.code}, bấm để đổi`} style={styles.country}>
             <T variant="body">{c.flag}</T>
-            <T variant="small" weight="semibold">{c.code}</T>
-            <T variant="caption" color={colors.muted}>▾</T>
+            <T variant="body" weight="semibold">{c.code}</T>
+            <Ionicons name="chevron-down" size={16} color={colors.muted} />
           </Pressable>
           <View style={styles.divider} />
-          <T variant="body" color={digits ? colors.ink : colors.faint}>{digits || '10 1234 5678'}</T>
+          <T variant="h3" weight="medium" color={digits ? colors.ink : colors.placeholder}>{digits || '10 1234 5678'}</T>
         </View>
-        <T variant="caption" color={colors.muted} style={{ marginTop: 8 }}>
+        <T variant="small" color={colors.muted} style={{ marginTop: 8 }}>
           Đang ở {c.name}? Bấm vào cờ để đổi quốc gia.
         </T>
         <View style={{ flex: 1 }} />
@@ -54,9 +56,9 @@ export default function Phone() {
 
 const styles = StyleSheet.create({
   input: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.field, borderRadius: radius.md,
-    height: 54, paddingHorizontal: 14, gap: 12,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.tone, borderRadius: radius.md,
+    height: 56, paddingHorizontal: 14, gap: 12,
   },
-  country: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  divider: { width: 1, height: 22, backgroundColor: colors.faint },
+  country: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 },
+  divider: { width: 1, height: 24, backgroundColor: colors.toneDeep },
 });

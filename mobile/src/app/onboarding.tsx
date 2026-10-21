@@ -1,26 +1,55 @@
-import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Button, Logo, PhotoTile, Screen, T, type IconName } from '@/components/ui';
+import { Button, Logo, PhotoTile, Screen, Steps, T } from '@/components/ui';
+import { lunarMonthName } from '@/lib/format';
+import { nextSolarForLunar } from '@/lib/lunar';
 import { useApp } from '@/store/AppContext';
-import { colors, radius } from '@/theme';
+import { colors, familyTones, radius } from '@/theme';
 
-const SLIDES: Array<{ emoji: string; seed: string; icon: IconName; title: string; bold: string; text: string }> = [
+// Mỗi trang giới thiệu cho xem đúng một mảnh giao diện thật của app, không dùng hình minh hoạ.
+const SLIDES: Array<{ title: string; text: string; preview: () => ReactNode }> = [
   {
-    emoji: '🍲', seed: 'slide-1', icon: 'camera',
-    bold: 'Ăn cơm chưa?', title: 'mỗi ngày một tấm ảnh',
+    title: 'Mỗi ngày một tấm ảnh cho bố mẹ',
     text: 'Bấm widget ngoài màn hình là chụp. Ảnh hiện ngay trên điện thoại của bố mẹ, không cần mở app.',
+    preview: () => (
+      <PhotoTile seed="slide-1" tone={familyTones[1]} height={300}>
+        <View style={styles.noteInner}>
+          <T variant="small" weight="medium" color="rgba(255,255,255,0.82)">Ăn cơm chưa?</T>
+          <T variant="h2" weight="regular" color={colors.white} style={{ fontSize: 26, lineHeight: 34, flex: 1 }}>
+            Mâm cơm tối nay: canh cua rau đay, cà pháo. Con ăn cơm chưa?
+          </T>
+          <T variant="small" weight="semibold" color={colors.white}>Mẹ, 1 giờ trước</T>
+        </View>
+      </PhotoTile>
+    ),
   },
   {
-    emoji: '📖', seed: 'slide-2', icon: 'book',
-    bold: 'Sổ ký ức', title: 'bằng chính giọng bố mẹ',
+    title: 'Sổ ký ức bằng chính giọng bố mẹ',
     text: 'Thư, trợ lý AI của gia đình, hỏi chuyện bố mẹ mỗi tuần. Mỗi câu chuyện thành một trang ký ức, cuối năm in thành sách.',
+    preview: () => (
+      <View style={styles.panel}>
+        <T serif weight="bold" style={{ fontSize: 64, lineHeight: 68, letterSpacing: -2 }}>1992</T>
+        <T variant="h3" weight="semibold">Ngày đầu đi làm ở nhà máy dệt</T>
+        <T variant="body" serif color={colors.inkSoft} style={{ fontSize: 18, lineHeight: 27 }}>“Mẹ ngồi chờ ở cổng mà tim đập thình thịch.”</T>
+        <T variant="small" color={colors.muted}>Mẹ kể, 6 phút 12 giây</T>
+      </View>
+    ),
   },
   {
-    emoji: '🌕', seed: 'slide-3', icon: 'calendar',
-    bold: 'Lịch âm', title: 'không bao giờ quên ngày giỗ',
+    title: 'Không bao giờ quên ngày giỗ',
     text: 'Sinh nhật âm, ngày giỗ, Tết, rằm. Tính theo lịch Việt Nam, nhắc trước để kịp gọi về và gửi quà.',
+    preview: () => {
+      const tet = nextSolarForLunar(1, 1, new Date());
+      return (
+        <View style={styles.panel}>
+          <T variant="h3" weight="semibold" color={colors.primary}>Tết Nguyên Đán</T>
+          <T serif weight="bold" color={colors.primary} style={{ fontSize: 120, lineHeight: 124, letterSpacing: -4 }}>{tet.getDate()}</T>
+          <T variant="body" weight="medium">Tháng {tet.getMonth() + 1}, {tet.getFullYear()}</T>
+          <T variant="body" weight="medium" color={colors.lunar}>Mùng 1 {lunarMonthName(1)}</T>
+        </View>
+      );
+    },
   },
 ];
 
@@ -38,41 +67,26 @@ export default function Onboarding() {
 
   return (
     <Screen scroll={false} edges={['top', 'bottom']}>
-      <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+      <View style={{ paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Logo small />
+        {!last && (
+          <Pressable onPress={() => setI(SLIDES.length - 1)} hitSlop={10} accessibilityRole="button" style={{ minHeight: 44, justifyContent: 'center' }}>
+            <T variant="small" color={colors.inkSoft} weight="semibold">Bỏ qua</T>
+          </Pressable>
+        )}
       </View>
-      <PhotoTile seed={slide.seed} emoji={slide.emoji} height={340} radiusSize={radius.xl} style={{ marginTop: 16 }}>
-        <View style={styles.badge}>
-          <Ionicons name={slide.icon} size={22} color={colors.primary} />
-        </View>
-      </PhotoTile>
+      <View style={{ marginTop: 12 }}>{slide.preview()}</View>
       <View style={{ flex: 1, justifyContent: 'center', gap: 12 }}>
-        <T variant="h1" weight="regular">
-          <T variant="h1" weight="bold">{slide.bold} </T>
-          {slide.title}
-        </T>
-        <T variant="body" color={colors.muted}>{slide.text}</T>
+        <T variant="display">{slide.title}</T>
+        <T variant="body" color={colors.inkSoft}>{slide.text}</T>
       </View>
-      <View style={styles.dots}>
-        {SLIDES.map((_, k) => (
-          <View key={k} style={[styles.dot, k === i && { width: 22, backgroundColor: colors.primary }]} />
-        ))}
-      </View>
-      <Button label={last ? 'Bắt đầu' : 'Tiếp tục'} onPress={next} />
-      {!last && (
-        <Pressable onPress={() => setI(SLIDES.length - 1)} style={{ alignSelf: 'center', marginTop: 14, padding: 4 }}>
-          <T variant="small" color={colors.muted} weight="semibold">Bỏ qua</T>
-        </Pressable>
-      )}
+      <Steps current={i + 1} total={SLIDES.length} />
+      <Button label={last ? 'Bắt đầu' : 'Tiếp tục'} onPress={next} style={{ marginBottom: 8 }} />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  badge: {
-    position: 'absolute', top: 16, right: 16, width: 46, height: 46, borderRadius: 16,
-    backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center',
-  },
-  dots: { flexDirection: 'row', gap: 6, justifyContent: 'center', marginBottom: 18 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.line },
+  noteInner: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, padding: 18, gap: 10 },
+  panel: { backgroundColor: colors.tone, borderRadius: radius.lg, padding: 22, gap: 8, height: 300, justifyContent: 'flex-end' },
 });

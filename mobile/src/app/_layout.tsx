@@ -1,6 +1,7 @@
 import {
   BeVietnamPro_400Regular, BeVietnamPro_500Medium, BeVietnamPro_600SemiBold, BeVietnamPro_700Bold, useFonts,
 } from '@expo-google-fonts/be-vietnam-pro';
+import { Literata_400Regular, Literata_600SemiBold, Literata_700Bold } from '@expo-google-fonts/literata';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -12,7 +13,10 @@ import { colors } from '@/theme';
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
-  const [loaded] = useFonts({ BeVietnamPro_400Regular, BeVietnamPro_500Medium, BeVietnamPro_600SemiBold, BeVietnamPro_700Bold });
+  const [loaded] = useFonts({
+    BeVietnamPro_400Regular, BeVietnamPro_500Medium, BeVietnamPro_600SemiBold, BeVietnamPro_700Bold,
+    Literata_400Regular, Literata_600SemiBold, Literata_700Bold,
+  });
 
   useEffect(() => {
     if (loaded) SplashScreen.hideAsync().catch(() => {});

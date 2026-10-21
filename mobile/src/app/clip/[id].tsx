@@ -3,7 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { PhotoTile, T } from '@/components/ui';
+import { memberTone, T } from '@/components/ui';
 import { member } from '@/lib/selectors';
 import { useApp } from '@/store/AppContext';
 import { colors } from '@/theme';
@@ -29,11 +29,11 @@ export default function Clip() {
 
   if (!story) return null;
   const teller = member(state, story.tellerId);
-  const photo = story.photoEmojis[i % story.photoEmojis.length];
+  // Chưa gắn ảnh cũ: clip là phụ đề chữ lớn trên nền màu của người kể, như một lá thư đọc thành tiếng.
+  const tone = memberTone(state.family.members, story.tellerId) ?? colors.ink;
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.black }}>
-      <PhotoTile key={i} seed={`${story.id}-${i % story.photoEmojis.length}`} emoji={photo} height={420} radiusSize={0} fill />
+    <View style={{ flex: 1, backgroundColor: tone }}>
       <SafeAreaView style={{ flex: 1, justifyContent: 'space-between' }}>
         <View style={{ paddingHorizontal: 16, gap: 12 }}>
           <View style={styles.bars}>
@@ -44,25 +44,24 @@ export default function Clip() {
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View>
               <T variant="h3" color={colors.white}>{story.title}</T>
-              <T variant="small" color={colors.white} style={{ opacity: 0.85 }}>Giọng kể: {teller?.roleLabel} · {story.year ?? ''}</T>
+              <T variant="small" color="rgba(255,255,255,0.85)">Giọng kể của {teller?.roleLabel.toLowerCase()}{story.year ? `, năm ${story.year}` : ''}</T>
             </View>
-            <Pressable onPress={() => router.back()} style={styles.round}>
+            <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Đóng" style={styles.round}>
               <Ionicons name="close" size={22} color={colors.white} />
             </Pressable>
           </View>
         </View>
-        <Pressable onPress={() => setPaused(!paused)} style={{ flex: 1 }} />
+        <Pressable onPress={() => setPaused(!paused)} accessibilityLabel={paused ? 'Phát tiếp' : 'Tạm dừng'} style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 24 }}>
+          <T variant="display" weight="regular" color={colors.white} style={{ fontSize: 34, lineHeight: 46 }}>{lines[i]}</T>
+        </Pressable>
         <View style={{ padding: 20, gap: 16 }}>
-          <View style={styles.subtitle}>
-            <T variant="h3" weight="semibold" color={colors.white} center>{lines[i]}</T>
-          </View>
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Pressable style={styles.action} onPress={() => setPaused(!paused)}>
+            <Pressable style={styles.action} accessibilityRole="button" onPress={() => setPaused(!paused)}>
               <Ionicons name={paused ? 'play' : 'pause'} size={18} color={colors.ink} />
               <T variant="small" weight="semibold">{paused ? 'Phát' : 'Tạm dừng'}</T>
             </Pressable>
-            <Pressable style={[styles.action, { backgroundColor: colors.primary }]}>
-              <Ionicons name="download" size={18} color={colors.white} />
+            <Pressable style={[styles.action, { backgroundColor: colors.ink }]} accessibilityRole="button">
+              <Ionicons name="download-outline" size={18} color={colors.white} />
               <T variant="small" weight="semibold" color={colors.white}>Lưu video gửi tặng</T>
             </Pressable>
           </View>
@@ -75,7 +74,6 @@ export default function Clip() {
 const styles = StyleSheet.create({
   bars: { flexDirection: 'row', gap: 4, paddingTop: 6 },
   bar: { flex: 1, height: 3, borderRadius: 2 },
-  round: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' },
-  subtitle: { backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 18, padding: 16 },
-  action: { flex: 1, height: 48, borderRadius: 999, backgroundColor: colors.white, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  round: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.25)', alignItems: 'center', justifyContent: 'center' },
+  action: { flex: 1, height: 52, borderRadius: 999, backgroundColor: colors.white, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
 });

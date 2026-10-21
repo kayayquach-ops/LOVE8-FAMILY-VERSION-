@@ -30,15 +30,13 @@ export default function FamilySetup() {
   return (
     <Screen edges={['top', 'bottom']}>
       <BackHeader />
-      <T variant="h1" weight="regular" style={{ marginTop: 12 }}>
-        <T variant="h1">Ngôi nhà </T>chung của cả nhà
-      </T>
-      <T variant="small" color={colors.muted} style={{ marginTop: 6 }}>
+      <T variant="display" style={{ marginTop: 12 }}>Ngôi nhà chung của cả nhà</T>
+      <T variant="body" color={colors.inkSoft} style={{ marginTop: 8 }}>
         Mỗi gia đình là một "nhà" riêng tư. Chỉ người được mời mới vào được.
       </T>
       <View style={styles.options}>
-        <Option active={mode === 'create'} icon="home" title="Tạo nhà mới" text="Mình mời bố mẹ, anh chị em vào" onPress={() => setMode('create')} />
-        <Option active={mode === 'join'} icon="key" title="Vào nhà có sẵn" text="Có người nhà đã gửi mã mời" onPress={() => setMode('join')} />
+        <Option active={mode === 'create'} icon="home-outline" title="Tạo nhà mới" text="Mình mời bố mẹ, anh chị em vào" onPress={() => setMode('create')} />
+        <Option active={mode === 'join'} icon="key-outline" title="Vào nhà có sẵn" text="Có người nhà đã gửi mã mời" onPress={() => setMode('join')} />
       </View>
       {mode === 'create' ? (
         <View style={{ gap: space.lg }}>
@@ -46,14 +44,14 @@ export default function FamilySetup() {
           <Card style={{ gap: 12 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View>
-                <T variant="caption" color={colors.muted}>MÃ MỜI</T>
+                <T variant="small" color={colors.muted}>Mã mời</T>
                 <T variant="h1" style={{ letterSpacing: 2 }}>{state.family.inviteCode}</T>
               </View>
               <View style={styles.qr}>
                 <Ionicons name="qr-code" size={46} color={colors.ink} />
               </View>
             </View>
-            <T variant="small" color={colors.muted}>
+            <T variant="small" color={colors.inkSoft}>
               Gửi qua Zalo hoặc KakaoTalk. Bố mẹ bấm link là vào thẳng, không cần tìm app.
             </T>
             <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -76,20 +74,21 @@ export default function FamilySetup() {
 }
 
 function Option({ active, icon, title, text, onPress }: {
-  active: boolean; icon: 'home' | 'key'; title: string; text: string; onPress: () => void;
+  active: boolean; icon: 'home-outline' | 'key-outline'; title: string; text: string; onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} style={[styles.option, active && { borderColor: colors.primary, backgroundColor: colors.primaryTint }]}>
-      <Ionicons name={icon} size={22} color={active ? colors.primary : colors.inkSoft} />
-      <T variant="body" weight="semibold">{title}</T>
-      <T variant="caption" color={colors.muted}>{text}</T>
+    <Pressable onPress={onPress} accessibilityRole="radio" accessibilityState={{ checked: active }}
+      style={[styles.option, active && { backgroundColor: colors.ink }]}>
+      <Ionicons name={icon} size={22} color={active ? colors.white : colors.inkSoft} />
+      <T variant="body" weight="semibold" color={active ? colors.white : colors.ink}>{title}</T>
+      <T variant="small" color={active ? 'rgba(255,255,255,0.82)' : colors.inkSoft}>{text}</T>
     </Pressable>
   );
 }
 
 function ShareBtn({ label, color, dark, onPress }: { label: string; color: string; dark?: boolean; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={[styles.share, { backgroundColor: color }]}>
+    <Pressable onPress={onPress} accessibilityRole="button" style={[styles.share, { backgroundColor: color }]}>
       <Ionicons name="paper-plane" size={15} color={dark ? colors.ink : colors.white} />
       <T variant="small" weight="semibold" color={dark ? colors.ink : colors.white}>Gửi qua {label}</T>
     </Pressable>
@@ -98,11 +97,9 @@ function ShareBtn({ label, color, dark, onPress }: { label: string; color: strin
 
 const styles = StyleSheet.create({
   options: { flexDirection: 'row', gap: 12, marginVertical: space.xl },
-  option: {
-    flex: 1, borderWidth: 1.5, borderColor: colors.line, borderRadius: radius.lg, padding: 14, gap: 6,
-  },
-  qr: { width: 64, height: 64, borderRadius: 14, backgroundColor: colors.field, alignItems: 'center', justifyContent: 'center' },
+  option: { flex: 1, backgroundColor: colors.tone, borderRadius: radius.lg, padding: 16, gap: 6 },
+  qr: { width: 64, height: 64, borderRadius: 8, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' },
   share: {
-    flex: 1, height: 42, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    flex: 1, height: 46, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
   },
 });

@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
-import { BackHeader, Button, Card, Empty, PhotoTile, Screen, SectionHeader, T } from '@/components/ui';
+import { BackHeader, Button, Card, Empty, Screen, SectionHeader, T } from '@/components/ui';
 import { member } from '@/lib/selectors';
 import { useApp } from '@/store/AppContext';
 import { colors, radius } from '@/theme';
@@ -15,34 +15,37 @@ export default function RecipeDetail() {
 
   return (
     <Screen>
-      <BackHeader title={r.title} />
-      <PhotoTile seed={r.id} emoji={r.emoji} height={220} />
+      <BackHeader title="Món của mẹ" />
+      <T variant="display" style={{ marginTop: 8 }}>{r.title}</T>
+      <T variant="body" color={colors.inkSoft} style={{ marginTop: 6 }}>
+        Công thức của {teller?.roleLabel.toLowerCase()}. Nấu {r.minutes} phút, đủ cho {r.serves} người.
+      </T>
       <View style={styles.tip}>
-        <T variant="caption" color={colors.primaryDark}>{teller?.roleLabel.toUpperCase()} DẶN</T>
-        <T variant="h3" weight="semibold" color={colors.primaryDark}>“{r.tip}”</T>
+        <T variant="small" weight="semibold" color={colors.inkSoft}>{teller?.roleLabel} dặn</T>
+        <T variant="h2" weight="regular" style={{ fontSize: 22, lineHeight: 30 }}>“{r.tip}”</T>
       </View>
 
       <SectionHeader title="Nguyên liệu" />
-      <Card style={{ gap: 8 }}>
-        {r.ingredients.map((i) => <T key={i} variant="body">• {i}</T>)}
-      </Card>
+      <View style={{ gap: 8 }}>
+        {r.ingredients.map((i) => <T key={i} variant="body">{i}</T>)}
+      </View>
 
       <SectionHeader title="Các bước" />
       {r.steps.map((s, k) => (
         <View key={k} style={styles.step}>
-          <View style={styles.num}><T variant="small" weight="bold" color={colors.white}>{k + 1}</T></View>
+          <T variant="h2" weight="bold" style={styles.num}>{k + 1}</T>
           <T variant="body" style={{ flex: 1 }}>{s}</T>
         </View>
       ))}
 
       <SectionHeader title="Ở Hàn mua gì thay?" />
-      <Card style={{ gap: 8, backgroundColor: colors.blueSoft }}>
-        {r.koreaSwaps.map((s) => <T key={s} variant="small">🇰🇷 {s}</T>)}
+      <Card style={{ gap: 10 }}>
+        {r.koreaSwaps.map((s) => <T key={s} variant="body">{s}</T>)}
       </Card>
 
       <Button
-        label={cooked ? 'Đã khoe với mẹ ✓' : 'Con nấu thử rồi, chụp khoe mẹ'}
-        icon="camera" style={{ marginTop: 20 }} disabled={cooked}
+        label={cooked ? 'Đã khoe với mẹ' : 'Con nấu thử rồi, chụp khoe mẹ'}
+        icon={cooked ? 'checkmark' : 'camera'} style={{ marginTop: 24 }} disabled={cooked}
         onPress={() => { dispatch({ type: 'cooked', recipeId: r.id }); router.push('/capture'); }}
       />
     </Screen>
@@ -50,7 +53,7 @@ export default function RecipeDetail() {
 }
 
 const styles = StyleSheet.create({
-  tip: { backgroundColor: colors.primaryTint, borderRadius: radius.lg, padding: 16, marginTop: 14, gap: 4 },
-  step: { flexDirection: 'row', gap: 12, alignItems: 'flex-start', marginBottom: 12 },
-  num: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  tip: { backgroundColor: colors.tone, borderRadius: radius.lg, padding: 18, marginTop: 20, gap: 6 },
+  step: { flexDirection: 'row', gap: 14, alignItems: 'flex-start', marginBottom: 14 },
+  num: { width: 24, fontSize: 20, lineHeight: 24 },
 });

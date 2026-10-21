@@ -17,17 +17,17 @@ export default function Privacy() {
   return (
     <Screen>
       <BackHeader title="Quyền riêng tư" />
-      <T variant="small" color={colors.muted}>Những điều Homeletter cam kết với gia đình bạn.</T>
+      <T variant="display" style={{ marginTop: 4 }}>Những điều Homeletter cam kết với gia đình bạn</T>
       <View style={{ gap: 10, marginTop: 16 }}>
         {RULES.map(([t, d]) => (
           <Card key={t} style={styles.card}>
             <T variant="body" weight="semibold">{t}</T>
-            <T variant="small" color={colors.muted}>{d}</T>
+            <T variant="small" color={colors.inkSoft}>{d}</T>
           </Card>
         ))}
       </View>
       <SectionHeader title="Dữ liệu của bạn" />
-      <T variant="small" color={colors.inkSoft}>
+      <T variant="body" color={colors.inkSoft}>
         Bạn có thể tải toàn bộ ảnh, ghi âm và sổ ký ức về máy, hoặc xoá tài khoản cùng mọi dữ liệu trong Cài đặt.
       </T>
     </Screen>

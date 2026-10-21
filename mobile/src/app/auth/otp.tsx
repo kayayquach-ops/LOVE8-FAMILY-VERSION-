@@ -15,21 +15,21 @@ export default function Otp() {
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.white }}>
       <View style={{ flex: 1, paddingHorizontal: space.xl }}>
         <BackHeader />
-        <T variant="h2" center style={{ marginTop: 28 }}>Nhập mã xác nhận</T>
-        <T variant="small" color={colors.muted} center style={{ marginTop: 6 }}>
+        <T variant="display" style={{ marginTop: 20 }}>Nhập mã xác nhận</T>
+        <T variant="body" color={colors.inkSoft} style={{ marginTop: 8 }}>
           Mã 6 số đã gửi tới {phone ?? 'số của bạn'}
         </T>
         <View style={styles.row}>
           {Array.from({ length: 6 }, (_, i) => (
             <View key={i} style={[styles.box, i === code.length && styles.boxActive]}>
-              <T variant="h2">{code[i] ?? ''}</T>
+              <T variant="h1" serif={false}>{code[i] ?? ''}</T>
             </View>
           ))}
         </View>
-        <T variant="small" color={colors.muted} center>
-          Chưa nhận được mã? <T variant="small" weight="semibold" color={colors.primary}>Gửi lại sau 0:42</T>
+        <T variant="small" color={colors.inkSoft}>
+          Chưa nhận được mã? Gửi lại sau 0:42.
         </T>
-        <T variant="caption" color={colors.faint} center style={{ marginTop: 6 }}>Bản demo: nhập 6 số bất kỳ</T>
+        <T variant="small" color={colors.muted} style={{ marginTop: 6 }}>Bản demo: nhập 6 số bất kỳ.</T>
         <View style={{ flex: 1 }} />
         <Button
           label="Xác nhận"
@@ -46,8 +46,8 @@ export default function Otp() {
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 32, marginBottom: 20 },
   box: {
-    width: 48, height: 56, borderRadius: radius.md, backgroundColor: colors.field,
+    width: 48, height: 60, borderRadius: radius.md, backgroundColor: colors.tone,
     alignItems: 'center', justifyContent: 'center',
   },
-  boxActive: { borderWidth: 1.5, borderColor: colors.primary, backgroundColor: colors.white },
+  boxActive: { borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.white },
 });

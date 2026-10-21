@@ -6,7 +6,7 @@ import { member, nudges, upcoming } from '@/lib/selectors';
 import { useApp } from '@/store/AppContext';
 import { colors, radius } from '@/theme';
 
-type Item = { key: string; avatar: string; uri?: string; emoji?: string; text: string; time: string; href: string; ts: number };
+type Item = { key: string; avatar: string; uri?: string; text: string; time: string; href: string; ts: number };
 
 export default function Notifications() {
   const { state } = useApp();
@@ -31,19 +31,19 @@ export default function Notifications() {
           <SectionHeader title="Cần để ý" />
           {soon.map((e) => (
             <Pressable key={e.event.id} onPress={() => router.push('/calendar')} style={[styles.row, styles.hot]}>
-              <Avatar name={e.event.title} emoji={e.event.kind === 'gio' ? '🕯️' : '🎂'} size={42} />
+              <Avatar name={e.event.title} icon={e.event.kind === 'gio' ? 'flower-outline' : 'gift-outline'} size={44} />
               <View style={{ flex: 1 }}>
-                <T variant="small" weight="semibold">{e.event.title}</T>
-                <T variant="caption" color={colors.muted}>{inDaysLabel(e.inDays)} · đặt quà hoặc hẹn giờ gọi về</T>
+                <T variant="body" weight="semibold">{e.event.title}</T>
+                <T variant="small" color={colors.muted}>{inDaysLabel(e.inDays)}. Đặt quà hoặc hẹn giờ gọi về.</T>
               </View>
             </Pressable>
           ))}
           {remind.map((n) => (
             <Pressable key={n.member.id} onPress={() => router.push(`/member/${n.member.id}`)} style={[styles.row, styles.hot]}>
-              <Avatar name={n.member.name} uri={n.member.avatarUri} size={42} />
+              <Avatar name={n.member.name} uri={n.member.avatarUri} size={44} />
               <View style={{ flex: 1 }}>
-                <T variant="small" weight="semibold">{n.days} ngày chưa gọi cho {n.member.roleLabel.toLowerCase()}</T>
-                <T variant="caption" color={colors.muted}>{n.starter}</T>
+                <T variant="body" weight="semibold">{n.days} ngày chưa gọi cho {n.member.roleLabel.toLowerCase()}</T>
+                <T variant="small" color={colors.muted}>{n.starter}</T>
               </View>
             </Pressable>
           ))}
@@ -52,10 +52,10 @@ export default function Notifications() {
       <SectionHeader title="Mới nhất" />
       {items.map((i) => (
         <Pressable key={i.key} onPress={() => router.push(i.href as never)} style={styles.row}>
-          <Avatar name={i.avatar} uri={i.uri} size={42} />
+          <Avatar name={i.avatar} uri={i.uri} size={44} />
           <View style={{ flex: 1 }}>
-            <T variant="small">{i.text}</T>
-            <T variant="caption" color={colors.muted}>{i.time}</T>
+            <T variant="body">{i.text}</T>
+            <T variant="small" color={colors.muted}>{i.time}</T>
           </View>
         </Pressable>
       ))}
@@ -65,5 +65,5 @@ export default function Notifications() {
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 4 },
-  hot: { backgroundColor: colors.primaryTint, borderRadius: radius.md, paddingHorizontal: 12, marginBottom: 8 },
+  hot: { backgroundColor: colors.tone, borderRadius: radius.lg, paddingHorizontal: 14, marginBottom: 8 },
 });

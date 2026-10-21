@@ -13,7 +13,7 @@ Nhóm người dùng đầu tiên: người Việt sống ở Hàn Quốc (du h�
 | `mobile/` | App điện thoại (Expo / React Native, chạy cả iPhone và Android) |
 | `functions/` | Máy chủ (Firebase Cloud Functions): giữ API key, gọi Claude |
 | `branding/` | Logo (SVG), bảng nhận diện, script xuất icon |
-| `docs/` | Tham khảo đối thủ, ghi chú sản phẩm |
+| `docs/` | Tham khảo đối thủ, thiết kế ([docs/design.md](docs/design.md)), hướng dẫn đưa lên mạng |
 | `founder/` | Phân tích mô hình kinh doanh (nhánh `founder-board-review`) |
 
 ## Chạy thử app trên điện thoại (không cần biết lập trình)

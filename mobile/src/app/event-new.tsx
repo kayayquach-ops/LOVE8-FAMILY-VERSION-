@@ -10,10 +10,10 @@ import { useApp } from '@/store/AppContext';
 import { colors, radius } from '@/theme';
 
 const KINDS: Array<{ kind: EventKind; label: string; lunar: boolean }> = [
-  { kind: 'gio', label: '🕯️ Ngày giỗ', lunar: true },
-  { kind: 'birthday', label: '🎂 Sinh nhật', lunar: false },
-  { kind: 'anniversary', label: '💍 Kỷ niệm', lunar: false },
-  { kind: 'custom', label: '🌕 Ngày khác', lunar: true },
+  { kind: 'gio', label: 'Ngày giỗ', lunar: true },
+  { kind: 'birthday', label: 'Sinh nhật', lunar: false },
+  { kind: 'anniversary', label: 'Kỷ niệm', lunar: false },
+  { kind: 'custom', label: 'Ngày khác', lunar: true },
 ];
 
 export default function NewEvent() {
@@ -33,7 +33,7 @@ export default function NewEvent() {
       <BackHeader title="Thêm ngày quan trọng" />
       <View style={styles.wrap}>
         {KINDS.map((k) => (
-          <Chip key={k.kind} label={k.label} icon={undefined} active={k.kind === kind.kind}
+          <Chip key={k.kind} label={k.label} active={k.kind === kind.kind}
             onPress={() => { setKind(k); setCalendar(k.lunar ? 'lunar' : 'solar'); }} />
         ))}
       </View>
@@ -41,8 +41,9 @@ export default function NewEvent() {
         <Field label="Tên" value={title} onChangeText={setTitle} placeholder={kind.kind === 'gio' ? 'Ví dụ: Giỗ cụ ngoại' : 'Ví dụ: Sinh nhật bà nội'} />
         <View style={styles.segment}>
           {(['lunar', 'solar'] as const).map((c) => (
-            <Pressable key={c} onPress={() => setCalendar(c)} style={[styles.segItem, calendar === c && styles.segActive]}>
-              <T variant="small" weight="semibold" color={calendar === c ? colors.white : colors.inkSoft}>{c === 'lunar' ? '🌙 Âm lịch' : '☀️ Dương lịch'}</T>
+            <Pressable key={c} onPress={() => setCalendar(c)} accessibilityRole="tab" accessibilityState={{ selected: calendar === c }}
+              style={[styles.segItem, calendar === c && styles.segActive]}>
+              <T variant="small" weight="semibold" color={calendar === c ? colors.white : colors.inkSoft}>{c === 'lunar' ? 'Âm lịch' : 'Dương lịch'}</T>
             </Pressable>
           ))}
         </View>
@@ -52,8 +53,8 @@ export default function NewEvent() {
         </View>
         {next && (
           <View style={styles.preview}>
-            <Ionicons name="calendar" size={18} color={colors.primary} />
-            <T variant="small" weight="medium" style={{ flex: 1 }}>
+            <Ionicons name="calendar-outline" size={20} color={colors.lunar} />
+            <T variant="small" weight="medium" color={colors.ink} style={{ flex: 1 }}>
               Lần tới rơi vào {shortDate(next)}/{next.getFullYear()} dương lịch. Lịch âm Việt Nam tính theo giờ Hà Nội, có thể lệch 1 ngày so với lịch âm Hàn.
             </T>
           </View>
@@ -76,8 +77,8 @@ export default function NewEvent() {
 
 const styles = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  segment: { flexDirection: 'row', backgroundColor: colors.field, borderRadius: radius.pill, padding: 4 },
-  segItem: { flex: 1, height: 42, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
-  segActive: { backgroundColor: colors.primary },
-  preview: { flexDirection: 'row', gap: 8, alignItems: 'center', backgroundColor: colors.primaryTint, borderRadius: radius.md, padding: 12 },
+  segment: { flexDirection: 'row', backgroundColor: colors.tone, borderRadius: radius.pill, padding: 4 },
+  segItem: { flex: 1, height: 44, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
+  segActive: { backgroundColor: colors.ink },
+  preview: { flexDirection: 'row', gap: 10, alignItems: 'center', backgroundColor: colors.lunarSoft, borderRadius: radius.md, padding: 14 },
 });

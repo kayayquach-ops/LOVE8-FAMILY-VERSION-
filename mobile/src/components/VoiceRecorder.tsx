@@ -71,22 +71,21 @@ export function VoiceRecorder({
       )}
       <Pressable
         onPress={recording ? stop : start}
-        style={[styles.button, { width: size, height: size, borderRadius: size / 2, backgroundColor: recording ? colors.black : colors.primary }]}
+        accessibilityRole="button"
+        accessibilityLabel={recording ? 'Dừng ghi âm' : 'Bắt đầu ghi âm'}
+        style={[styles.button, { width: size, height: size, borderRadius: size / 2, backgroundColor: recording ? colors.ink : colors.primary }]}
       >
         <Ionicons name={recording ? 'stop' : 'mic'} size={size * 0.42} color={colors.white} />
       </Pressable>
-      <T variant="caption" color={colors.muted}>{recording ? 'Bấm để dừng' : 'Bấm để bắt đầu kể'}</T>
+      <T variant="small" color={colors.muted}>{recording ? 'Bấm để dừng' : 'Bấm để bắt đầu kể'}</T>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  button: {
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: colors.primary, shadowOpacity: 0.35, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 6,
-  },
+  button: { alignItems: 'center', justifyContent: 'center' },
   live: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.primaryTint,
+    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.white,
     borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, width: '100%',
   },
   redDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },

@@ -22,6 +22,19 @@ export function weekday(d: Date): string {
   return WEEKDAYS[d.getDay()];
 }
 
+/** Giờ phút theo đồng hồ máy, ví dụ 17:20. */
+export function clock(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+}
+
+// Tên tháng âm lịch như trên tờ lịch bóc: tháng Giêng, tháng Một, tháng Chạp.
+const LUNAR_MONTHS = ['Giêng', 'Hai', 'Ba', 'Tư', 'Năm', 'Sáu', 'Bảy', 'Tám', 'Chín', 'Mười', 'Một', 'Chạp'];
+
+export function lunarMonthName(month: number, leap?: boolean): string {
+  return `tháng ${LUNAR_MONTHS[month - 1]}${leap ? ' nhuận' : ''}`;
+}
+
 export function duration(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.round(sec % 60);

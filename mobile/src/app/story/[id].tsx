@@ -1,20 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, Share, StyleSheet, TextInput, View } from 'react-native';
 import { BRAND } from '@/brand';
-import { Avatar, BackHeader, Button, Card, Chip, Empty, PhotoTile, Pill, Screen, SectionHeader, T, Waveform } from '@/components/ui';
+import { Avatar, BackHeader, Button, Chip, Empty, IconButton, Screen, SectionHeader, T, Waveform, type IconName } from '@/components/ui';
 import type { Privacy } from '@/data/types';
 import { duration, relativeTime } from '@/lib/format';
 import { member } from '@/lib/selectors';
 import { useApp } from '@/store/AppContext';
 import { colors, fonts, radius } from '@/theme';
 
-const PRIVACY: Array<{ key: Privacy; label: string }> = [
-  { key: 'private', label: '🔒 Chỉ mình tôi' },
-  { key: 'selected', label: '👥 Người được chọn' },
-  { key: 'family', label: '🏠 Cả nhà' },
-  { key: 'capsule', label: '⏳ Hẹn ngày mở' },
+const PRIVACY: Array<{ key: Privacy; label: string; icon: IconName }> = [
+  { key: 'private', label: 'Chỉ mình tôi', icon: 'lock-closed-outline' },
+  { key: 'selected', label: 'Người được chọn', icon: 'people-outline' },
+  { key: 'family', label: 'Cả nhà', icon: 'home-outline' },
+  { key: 'capsule', label: 'Hẹn ngày mở', icon: 'hourglass-outline' },
 ];
 
 export default function StoryDetail() {
@@ -57,66 +57,53 @@ export default function StoryDetail() {
   return (
     <Screen>
       <BackHeader title={chapter?.title} right={
-        <Pressable onPress={() => Share.share({ message: `“${story.quote}” – ${teller?.roleLabel} kể, trong Sổ ký ức trên app ${BRAND.name}` })}>
-          <Ionicons name="share-outline" size={22} color={colors.ink} />
-        </Pressable>
+        <IconButton icon="share-outline" label="Chia sẻ câu trích" bg={colors.white}
+          onPress={() => Share.share({ message: `“${story.quote}” – ${teller?.roleLabel} kể, trong Sổ ký ức trên app ${BRAND.name}` })} />
       } />
-      <PhotoTile seed={story.id} emoji={story.emoji} height={230}>
-        <View style={{ position: 'absolute', top: 14, left: 14, flexDirection: 'row', gap: 8 }}>
-          {story.year ? <Pill label={`${story.year}`} icon="calendar" /> : null}
-          <Pill label={story.emotion} icon="heart" bg={colors.white} color={colors.ink} />
-        </View>
-      </PhotoTile>
 
-      <Card style={styles.titleCard}>
-        <View style={{ flex: 1 }}>
-          <T variant="h2">{story.title}</T>
-          <T variant="small" color={colors.muted}>
-            {teller?.roleLabel} kể · {relativeTime(story.createdAt)}{asker ? ` · ${asker.roleLabel} hỏi` : ''}
-          </T>
-        </View>
-        <Pressable onPress={toggle} style={styles.play}>
-          <Ionicons name={playing ? 'pause' : 'play'} size={22} color={colors.white} />
-        </Pressable>
-      </Card>
+      {story.year ? <T serif weight="bold" style={styles.year}>{story.year}</T> : null}
+      <T variant="display" style={{ marginTop: story.year ? 0 : 12 }}>{story.title}</T>
+      <T variant="body" color={colors.inkSoft} style={{ marginTop: 8 }}>
+        {teller?.roleLabel} kể{asker ? ` khi ${asker.roleLabel.toLowerCase()} hỏi` : ''}, {relativeTime(story.createdAt)}.
+      </T>
 
       <View style={styles.player}>
-        <Avatar name={teller?.name ?? '?'} uri={teller?.avatarUri} size={34} />
-        <Waveform bars={30} progress={pos / story.durationSec} color={colors.faint} />
-        <T variant="caption" color={colors.muted}>{duration(pos)} / {duration(story.durationSec)}</T>
+        <Pressable onPress={toggle} accessibilityRole="button" accessibilityLabel={playing ? 'Dừng' : 'Nghe giọng kể'}
+          style={({ pressed }) => [styles.play, pressed && { backgroundColor: colors.primaryDark }]}>
+          <Ionicons name={playing ? 'pause' : 'play'} size={22} color={colors.white} />
+        </Pressable>
+        <Waveform bars={26} progress={pos / story.durationSec} />
+        <T variant="small" color={colors.muted}>{duration(playing || pos ? pos : story.durationSec)}</T>
       </View>
 
       {story.question && (
-        <T variant="small" color={colors.muted} style={{ marginTop: 18 }}>Câu hỏi: “{story.question}”</T>
+        <T variant="small" color={colors.muted} style={{ marginTop: 24 }}>{asker?.roleLabel ?? 'Câu'} hỏi: “{story.question}”</T>
       )}
-      <View style={styles.quote}>
-        <T variant="h3" weight="semibold" color={colors.primaryDark}>“{story.quote}”</T>
-      </View>
+      <T variant="h2" weight="regular" style={styles.quote}>“{story.quote}”</T>
 
-      <SectionHeader title="Lời kể" />
-      <T variant="body" color={colors.inkSoft} style={{ lineHeight: 26 }}>{story.transcript}</T>
-      <T variant="caption" color={colors.faint} style={{ marginTop: 8 }}>
+      <T variant="body" serif style={styles.transcript}>{story.transcript}</T>
+      <T variant="small" color={colors.muted} style={{ marginTop: 10 }}>
         Chép từ giọng kể gốc, chỉ sửa chính tả. Bấm nghe để kiểm chứng.
       </T>
 
       {(story.people.length > 0 || story.places.length > 0) && (
-        <View style={styles.tags}>
-          {story.people.map((p) => <Pill key={p} label={p} icon="person" bg={colors.field} color={colors.inkSoft} />)}
-          {story.places.map((p) => <Pill key={p} label={p} icon="location" bg={colors.field} color={colors.inkSoft} />)}
+        <View style={{ gap: 6, marginTop: 20 }}>
+          {story.people.length > 0 && <Fact icon="people-outline" text={`Người trong chuyện: ${story.people.join(', ')}`} />}
+          {story.places.length > 0 && <Fact icon="location-outline" text={`Nơi chốn: ${story.places.join(', ')}`} />}
+          <Fact icon="heart-outline" text={`Cảm xúc: ${story.emotion}`} />
         </View>
       )}
 
-      <SectionHeader title="Ảnh trong chuyện" action="Gắn ảnh cũ" />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-        {story.photoEmojis.map((e, i) => <PhotoTile key={i} seed={`${story.id}-${i}`} emoji={e} height={110} style={{ width: 110 }} />)}
-      </ScrollView>
-      <Button label="Tạo clip câu chuyện" icon="film" variant="dark" onPress={() => router.push(`/clip/${story.id}`)} style={{ marginTop: 16 }} />
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 24 }}>
+        <Button label="Gắn ảnh cũ" icon="image-outline" variant="ghost" style={{ flex: 1 }} />
+        <Button label="Làm clip" icon="film-outline" variant="dark" onPress={() => router.push(`/clip/${story.id}`)} style={{ flex: 1 }} />
+      </View>
 
       <SectionHeader title="Cả nhà nói gì" />
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
         {['❤️', '🥺', '😂', '🙏'].map((e) => (
-          <Pressable key={e} onPress={() => dispatch({ type: 'reactStory', storyId: story.id, emoji: e })}
-            style={[styles.react, story.reactions[state.meId] === e && { borderColor: colors.primary, backgroundColor: colors.primarySoft }]}>
+          <Pressable key={e} onPress={() => dispatch({ type: 'reactStory', storyId: story.id, emoji: e })} accessibilityRole="button"
+            style={[styles.react, story.reactions[state.meId] === e && { backgroundColor: colors.primarySoft }]}>
             <T variant="h3">{e}</T>
           </Pressable>
         ))}
@@ -128,13 +115,13 @@ export default function StoryDetail() {
             <Avatar name={a?.name ?? '?'} uri={a?.avatarUri} size={30} />
             <View style={{ flex: 1 }}>
               <T variant="small" weight="semibold">{a?.roleLabel} nhớ thêm</T>
-              <T variant="small" color={colors.inkSoft}>{p.text}</T>
+              <T variant="body" serif>{p.text}</T>
             </View>
           </View>
         );
       })}
       <View style={styles.inputRow}>
-        <TextInput value={note} onChangeText={setNote} placeholder="Bạn nhớ chuyện này khác đi?" placeholderTextColor={colors.faint} style={styles.input} />
+        <TextInput value={note} onChangeText={setNote} placeholder="Bạn nhớ chuyện này khác đi?" placeholderTextColor={colors.placeholder} style={styles.input} accessibilityLabel="Bạn nhớ chuyện này khác đi?" />
         <Pressable onPress={() => { if (note.trim()) { dispatch({ type: 'addPerspective', storyId: story.id, text: note.trim() }); setNote(''); } }} style={styles.send}>
           <Ionicons name="send" size={16} color={colors.white} />
         </Pressable>
@@ -144,11 +131,18 @@ export default function StoryDetail() {
         <>
           <SectionHeader title="Hỏi tiếp" />
           {story.followUps.map((f) => (
-            <Pressable key={f} disabled={asked.includes(f)} onPress={() => { dispatch({ type: 'addFollowUp', storyId: story.id, text: f }); setAsked([...asked, f]); }} style={styles.follow}>
-              <T variant="small" style={{ flex: 1 }}>{f}</T>
-              <T variant="caption" weight="semibold" color={asked.includes(f) ? colors.green : colors.primary}>
-                {asked.includes(f) ? 'Đã gửi ✓' : 'Nhờ Thư hỏi'}
-              </T>
+            <Pressable key={f} disabled={asked.includes(f)} accessibilityRole="button"
+              onPress={() => { dispatch({ type: 'addFollowUp', storyId: story.id, text: f }); setAsked([...asked, f]); }}
+              style={({ pressed }) => [styles.follow, pressed && { backgroundColor: colors.toneDeep }]}>
+              <T variant="body" style={{ flex: 1 }}>{f}</T>
+              {asked.includes(f) ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Ionicons name="checkmark" size={16} color={colors.green} />
+                  <T variant="small" weight="semibold" color={colors.green}>Đã gửi</T>
+                </View>
+              ) : (
+                <T variant="small" weight="semibold" color={colors.primary}>Nhờ Thư hỏi</T>
+              )}
             </Pressable>
           ))}
         </>
@@ -159,7 +153,7 @@ export default function StoryDetail() {
           <SectionHeader title="Ai được xem" />
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {PRIVACY.map((p) => (
-              <Chip key={p.key} label={p.label} icon={undefined} active={story.privacy === p.key} tone="dark" onPress={() => dispatch({ type: 'setPrivacy', storyId: story.id, privacy: p.key })} />
+              <Chip key={p.key} label={p.label} icon={p.icon} active={story.privacy === p.key} onPress={() => dispatch({ type: 'setPrivacy', storyId: story.id, privacy: p.key })} />
             ))}
           </View>
         </>
@@ -168,19 +162,28 @@ export default function StoryDetail() {
   );
 }
 
+function Fact({ icon, text }: { icon: IconName; text: string }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+      <Ionicons name={icon} size={18} color={colors.muted} style={{ marginTop: 2 }} />
+      <T variant="small" color={colors.inkSoft} style={{ flex: 1 }}>{text}</T>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  titleCard: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: -30, marginHorizontal: 10 },
+  year: { fontSize: 64, lineHeight: 68, letterSpacing: -2, marginTop: 8 },
   play: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   player: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.field, borderRadius: radius.pill,
-    paddingHorizontal: 12, paddingVertical: 10, marginTop: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.tone, borderRadius: radius.pill,
+    padding: 8, paddingRight: 18, marginTop: 20,
   },
-  quote: { borderLeftWidth: 4, borderLeftColor: colors.primary, paddingLeft: 14, marginTop: 14 },
-  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
-  react: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.field, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'transparent' },
-  perspective: { flexDirection: 'row', gap: 10, backgroundColor: colors.primaryTint, borderRadius: radius.md, padding: 12, marginBottom: 8 },
+  quote: { fontSize: 24, lineHeight: 33, marginTop: 10 },
+  transcript: { fontSize: 18, lineHeight: 30, marginTop: 20 },
+  react: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.tone, alignItems: 'center', justifyContent: 'center' },
+  perspective: { flexDirection: 'row', gap: 12, backgroundColor: colors.tone, borderRadius: radius.lg, padding: 14, marginBottom: 8 },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
-  input: { flex: 1, height: 46, borderRadius: radius.pill, backgroundColor: colors.field, paddingHorizontal: 16, fontFamily: fonts.regular, fontSize: 14, color: colors.ink },
-  send: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  follow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: colors.line, borderRadius: radius.md, padding: 14, marginBottom: 8 },
+  input: { flex: 1, height: 48, borderRadius: radius.pill, backgroundColor: colors.tone, paddingHorizontal: 18, fontFamily: fonts.regular, fontSize: 16, color: colors.ink },
+  send: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  follow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.tone, borderRadius: radius.md, padding: 14, minHeight: 52, marginBottom: 8 },
 });

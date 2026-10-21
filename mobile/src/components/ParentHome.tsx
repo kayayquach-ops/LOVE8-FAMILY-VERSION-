@@ -1,12 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { relativeTime } from '@/lib/format';
-import { formatLunar } from '@/lib/lunar';
+import { lunarMonthName, relativeTime } from '@/lib/format';
 import { lunarToday, me, member, others } from '@/lib/selectors';
 import { useApp } from '@/store/AppContext';
-import { colors, radius, shadow } from '@/theme';
-import { Avatar, PhotoTile, Screen, T, type IconName } from './ui';
+import { colors, radius } from '@/theme';
+import { Avatar, Button, memberTone, PhotoTile, Screen, T, type IconName } from './ui';
 
 // "Chế độ bố mẹ": ít nút, chữ to, ba việc chính. Dành cho người lớn tuổi ít dùng app.
 export default function ParentHome() {
@@ -20,60 +19,56 @@ export default function ParentHome() {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 10 }}>
         <Avatar name={self.name} uri={self.avatarUri} size={52} onPress={() => router.push('/family')} />
         <View style={{ flex: 1 }}>
-          <T variant="h2">Chào {self.roleLabel.toLowerCase()}!</T>
-          <T variant="small" color={colors.muted}>Hôm nay {formatLunar(lunarToday())}</T>
+          <T variant="h1">Chào {self.roleLabel.toLowerCase()}</T>
+          <T variant="body" color={colors.lunar}>Hôm nay ngày {lunarToday().day} {lunarMonthName(lunarToday().month, lunarToday().leap)}</T>
         </View>
       </View>
 
       {latest && (
-        <Pressable onPress={() => router.push(`/post/${latest.id}`)} style={{ marginTop: 20 }}>
-          <PhotoTile seed={latest.id} emoji={latest.emoji} uri={latest.photoUri} height={280}>
-            <View style={{ position: 'absolute', left: 16, right: 16, bottom: 16 }}>
-              <T variant="h3" color={colors.white}>{author?.roleLabel} gửi · {relativeTime(latest.createdAt)}</T>
-              <T variant="body" color={colors.white} numberOfLines={2}>{latest.caption}</T>
-            </View>
-          </PhotoTile>
-          <Pressable onPress={() => dispatch({ type: 'react', postId: latest.id, emoji: '❤️' })} style={styles.heart}>
-            <Ionicons name="heart" size={30} color={colors.white} />
+        <View style={{ marginTop: 24, gap: 12 }}>
+          <Pressable onPress={() => router.push(`/post/${latest.id}`)} accessibilityRole="button">
+            <PhotoTile seed={latest.id} tone={memberTone(state.family.members, latest.authorId)} uri={latest.photoUri} height={300}>
+              <View style={styles.noteInner}>
+                <T variant="h2" weight="regular" color={colors.white} numberOfLines={6} style={{ fontSize: 28, lineHeight: 37, flex: 1 }}>{latest.caption}</T>
+                <T variant="h3" color={colors.white}>{author?.roleLabel} gửi, {relativeTime(latest.createdAt)}</T>
+              </View>
+            </PhotoTile>
           </Pressable>
-        </Pressable>
+          <Button label={latest.reactions[state.meId] ? 'Đã thả tim' : 'Thả tim cho con'} icon="heart"
+            variant={latest.reactions[state.meId] ? 'soft' : 'dark'} onPress={() => dispatch({ type: 'react', postId: latest.id, emoji: '❤️' })} />
+        </View>
       )}
 
       <View style={{ gap: 14, marginTop: 28 }}>
-        <Big icon="camera" title="Gửi ảnh cho con" text="Chụp mâm cơm, khu vườn, bất cứ thứ gì" color={colors.primary} onPress={() => router.push('/capture')} />
-        <Big icon="mic" title="Kể chuyện cho con nghe" text="Thư sẽ hỏi, bố mẹ chỉ việc kể" color={colors.black} onPress={() => router.push({ pathname: '/call', params: { as: 'elder' } })} />
-        <Big icon="call" title={`Gọi cho ${others(state)[0]?.roleLabel.toLowerCase() ?? 'con'}`} text="Mở Zalo để gọi video" color={colors.green} onPress={() => router.push(`/member/${others(state)[0]?.id}`)} />
+        <Big icon="camera" title="Gửi ảnh cho con" text="Chụp mâm cơm, khu vườn, bất cứ thứ gì" primary onPress={() => router.push('/capture')} />
+        <Big icon="mic" title="Kể chuyện cho con nghe" text="Thư sẽ hỏi, bố mẹ chỉ việc kể" onPress={() => router.push({ pathname: '/call', params: { as: 'elder' } })} />
+        <Big icon="call" title={`Gọi cho ${others(state)[0]?.roleLabel.toLowerCase() ?? 'con'}`} text="Mở Zalo để gọi video" onPress={() => router.push(`/member/${others(state)[0]?.id}`)} />
       </View>
 
-      <Pressable onPress={() => dispatch({ type: 'updateSettings', patch: { parentMode: false } })} style={{ alignSelf: 'center', marginTop: 28 }}>
-        <T variant="small" color={colors.muted}>Tắt chế độ bố mẹ</T>
+      <Pressable onPress={() => dispatch({ type: 'updateSettings', patch: { parentMode: false } })} accessibilityRole="button"
+        style={{ alignSelf: 'center', marginTop: 28, minHeight: 44, justifyContent: 'center' }}>
+        <T variant="small" weight="semibold" color={colors.inkSoft}>Tắt chế độ bố mẹ</T>
       </Pressable>
     </Screen>
   );
 }
 
-function Big({ icon, title, text, color, onPress }: { icon: IconName; title: string; text: string; color: string; onPress: () => void }) {
+function Big({ icon, title, text, primary, onPress }: { icon: IconName; title: string; text: string; primary?: boolean; onPress: () => void }) {
+  const fg = primary ? colors.white : colors.ink;
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.big, shadow.soft, { opacity: pressed ? 0.85 : 1 }]}>
-      <View style={[styles.bigIcon, { backgroundColor: color }]}>
-        <Ionicons name={icon} size={30} color={colors.white} />
-      </View>
+    <Pressable onPress={onPress} accessibilityRole="button"
+      style={({ pressed }) => [styles.big, { backgroundColor: primary ? (pressed ? colors.primaryDark : colors.primary) : pressed ? colors.toneDeep : colors.tone }]}>
+      <Ionicons name={icon} size={32} color={fg} />
       <View style={{ flex: 1 }}>
-        <T variant="h3" weight="bold">{title}</T>
-        <T variant="small" color={colors.muted}>{text}</T>
+        <T variant="h3" weight="bold" color={fg}>{title}</T>
+        <T variant="small" color={primary ? 'rgba(255,255,255,0.88)' : colors.inkSoft}>{text}</T>
       </View>
-      <Ionicons name="chevron-forward" size={22} color={colors.faint} />
+      <Ionicons name="chevron-forward" size={22} color={primary ? colors.white : colors.muted} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  heart: {
-    position: 'absolute', right: 16, bottom: -22, width: 60, height: 60, borderRadius: 30, backgroundColor: colors.black,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: colors.white,
-  },
-  big: {
-    flexDirection: 'row', alignItems: 'center', gap: 16, backgroundColor: colors.white, borderRadius: radius.xl, padding: 18,
-  },
-  bigIcon: { width: 64, height: 64, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  noteInner: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, padding: 20, gap: 12 },
+  big: { flexDirection: 'row', alignItems: 'center', gap: 16, borderRadius: radius.lg, padding: 20, minHeight: 88 },
 });

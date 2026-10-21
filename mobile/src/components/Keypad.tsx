@@ -15,13 +15,13 @@ export function Keypad({ onKey, onDelete }: { onKey: (k: string) => void; onDele
     <View style={styles.wrap}>
       {KEYS.map(([k, sub]) => (
         <Key key={k} onPress={() => onKey(k)}>
-          <T variant="h2" weight="medium">{k}</T>
-          <T variant="caption" color={colors.muted} style={{ fontSize: 8, lineHeight: 10 }}>{sub}</T>
+          <T variant="h2" serif={false} weight="medium">{k}</T>
+          <T variant="caption" color={colors.muted} style={{ fontSize: 11, lineHeight: 13 }}>{sub}</T>
         </Key>
       ))}
       <View style={styles.key} />
       <Key onPress={() => onKey('0')}>
-        <T variant="h2" weight="medium">0</T>
+        <T variant="h2" serif={false} weight="medium">0</T>
       </Key>
       <Key onPress={onDelete} plain>
         <Ionicons name="backspace-outline" size={22} color={colors.ink} />
@@ -32,7 +32,7 @@ export function Keypad({ onKey, onDelete }: { onKey: (k: string) => void; onDele
 
 function Key({ children, onPress, plain }: { children: React.ReactNode; onPress: () => void; plain?: boolean }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.key, !plain && styles.keyFace, pressed && { backgroundColor: colors.line }]}>
+    <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => [styles.key, !plain && styles.keyFace, pressed && { backgroundColor: colors.toneDeep }]}>
       {children}
     </Pressable>
   );
@@ -40,7 +40,7 @@ function Key({ children, onPress, plain }: { children: React.ReactNode; onPress:
 
 const styles = StyleSheet.create({
   wrap: {
-    flexDirection: 'row', flexWrap: 'wrap', backgroundColor: '#F2F0F1', paddingHorizontal: 6, paddingTop: 8,
+    flexDirection: 'row', flexWrap: 'wrap', backgroundColor: colors.tone, paddingHorizontal: 6, paddingTop: 8,
     paddingBottom: 18, gap: 6, justifyContent: 'center',
   },
   key: { width: '31.5%', height: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },

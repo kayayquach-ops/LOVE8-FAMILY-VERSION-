@@ -9,9 +9,10 @@ const here = path.dirname(new URL(import.meta.url).pathname);
 const root = path.resolve(here, '..');
 const require = createRequire(path.join(root, 'mobile', 'package.json'));
 
-const CORAL = '#F2676A';
-const CORAL_DEEP = '#D9474B';
-const ROSE = '#FF9A8B';
+// Đỏ lịch: màu Chủ nhật và ngày Tết trên tờ lịch bóc. Nền phẳng, không gradient.
+const RED = '#C8321F';
+const RED_DEEP = '#A3261A';
+const INK = '#171C2E';
 
 // Trái tim chuẩn trong khung 100x100, đặt lại vị trí bằng transform.
 const HEART = 'M50 88 C22 68 6 52 6 33 C6 18 17 8 30 8 C39 8 46 13 50 21 C54 13 61 8 70 8 C83 8 94 18 94 33 C94 52 78 68 50 88 Z';
@@ -29,29 +30,26 @@ function mark({ body, ink, heart = ink }) {
 const svg = (w, h, inner, extra = '') =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${extra}${inner}</svg>`;
 
-const defs = `<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-  <stop offset="0" stop-color="${ROSE}"/><stop offset="0.55" stop-color="${CORAL}"/><stop offset="1" stop-color="${CORAL_DEEP}"/>
-</linearGradient></defs>`;
 
 const files = {
-  // Icon app: nền san hô, nhà trắng, nét thư và tim màu san hô.
-  'icon.svg': svg(1024, 1024, `<rect width="1024" height="1024" rx="230" fill="url(#bg)"/>
-    <g transform="translate(512 512) scale(0.86) translate(-512 -500)">${mark({ body: '#FFFFFF', ink: CORAL })}</g>`, defs),
-  // Logo dùng trên nền trắng: nhà san hô, nét thư trắng, tim đậm.
-  'mark.svg': svg(1024, 1024, mark({ body: CORAL, ink: '#FFFFFF', heart: CORAL_DEEP })),
+  // Icon app: nền đỏ lịch, nhà trắng, nét thư và tim màu đỏ.
+  'icon.svg': svg(1024, 1024, `<rect width="1024" height="1024" rx="230" fill="${RED}"/>
+    <g transform="translate(512 512) scale(0.86) translate(-512 -500)">${mark({ body: '#FFFFFF', ink: RED })}</g>`),
+  // Logo dùng trên nền trắng: nhà đỏ, nét thư trắng, tim đỏ đậm.
+  'mark.svg': svg(1024, 1024, mark({ body: RED, ink: '#FFFFFF', heart: RED_DEEP })),
   // Phiên bản một màu (thông báo Android, in ấn).
   'mark-mono.svg': svg(1024, 1024, `<mask id="m"><rect width="1024" height="1024" fill="black"/>${mark({ body: 'white', ink: 'black', heart: 'black' })}</mask>
     <rect width="1024" height="1024" fill="#FFFFFF" mask="url(#m)"/>`),
   // Lớp trước của icon thích ứng Android: chỉ phần mark, nằm trong vùng an toàn 66%.
-  'android-foreground.svg': svg(1024, 1024, `<g transform="translate(512 512) scale(0.6) translate(-512 -500)">${mark({ body: '#FFFFFF', ink: CORAL })}</g>`),
-  'android-background.svg': svg(1024, 1024, `<rect width="1024" height="1024" fill="url(#bg)"/>`, defs),
+  'android-foreground.svg': svg(1024, 1024, `<g transform="translate(512 512) scale(0.6) translate(-512 -500)">${mark({ body: '#FFFFFF', ink: RED })}</g>`),
+  'android-background.svg': svg(1024, 1024, `<rect width="1024" height="1024" fill="${RED}"/>`),
 };
 
 for (const [name, content] of Object.entries(files)) fs.writeFileSync(path.join(here, name), content);
 
-const fontPath = require.resolve('@expo-google-fonts/be-vietnam-pro/700Bold/BeVietnamPro_700Bold.ttf');
-const fontB64 = fs.readFileSync(fontPath).toString('base64');
-const fontCss = `@font-face{font-family:BVP;src:url(data:font/ttf;base64,${fontB64})}`;
+const b64 = (mod) => fs.readFileSync(require.resolve(mod)).toString('base64');
+const fontCss = `@font-face{font-family:BVP;src:url(data:font/ttf;base64,${b64('@expo-google-fonts/be-vietnam-pro/400Regular/BeVietnamPro_400Regular.ttf')})}
+@font-face{font-family:Literata;src:url(data:font/ttf;base64,${b64('@expo-google-fonts/literata/700Bold/Literata_700Bold.ttf')})}`;
 
 const { chromium } = require('playwright');
 const browser = await chromium.launch(process.argv[2] ? { executablePath: process.argv[2] } : {});
@@ -77,15 +75,15 @@ await render(img('icon.svg', 48, 48), path.join(assets, 'favicon.png'), 48, 48);
 // Bảng giới thiệu logo cho hồ sơ dự thi.
 const lockup = (color, sub) => `<div style="display:flex;align-items:center;gap:22px">
   ${img(color === '#fff' ? 'mark-mono.svg' : 'mark.svg', 120, 120)}
-  <div><div style="font-family:BVP;font-size:64px;color:${color};line-height:1">Homeletter</div>
-  <div style="font-family:BVP;font-size:20px;color:${sub};margin-top:10px;letter-spacing:.5px">Stay close, wherever you are</div></div></div>`;
-await render(`<div style="width:1600px;height:900px;background:#FFF5F4;font-family:BVP;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:28px;padding:40px;box-sizing:border-box">
-  <div style="background:#fff;border-radius:36px;display:flex;align-items:center;justify-content:center">${lockup('#1C1B1F', '#8E8A93')}</div>
-  <div style="background:${CORAL};border-radius:36px;display:flex;align-items:center;justify-content:center">${lockup('#fff', 'rgba(255,255,255,.85)')}</div>
-  <div style="background:#fff;border-radius:36px;display:flex;align-items:center;justify-content:center;gap:48px">
+  <div><div style="font-family:Literata;font-size:64px;color:${color};line-height:1;letter-spacing:-1px">Homeletter</div>
+  <div style="font-family:BVP;font-size:20px;color:${sub};margin-top:12px">Stay close, wherever you are</div></div></div>`;
+await render(`<div style="width:1600px;height:900px;background:#EEF0F4;font-family:BVP;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:28px;padding:40px;box-sizing:border-box">
+  <div style="background:#fff;border-radius:18px;display:flex;align-items:center;justify-content:center">${lockup(INK, '#5B6175')}</div>
+  <div style="background:${RED};border-radius:18px;display:flex;align-items:center;justify-content:center">${lockup('#fff', 'rgba(255,255,255,.88)')}</div>
+  <div style="background:#fff;border-radius:18px;display:flex;align-items:center;justify-content:center;gap:48px">
     ${img('icon.svg', 220, 220)}${img('icon.svg', 120, 120)}${img('icon.svg', 64, 64)}</div>
-  <div style="background:#1C1B1F;border-radius:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff">
-    <div style="display:flex;gap:18px">${['#FF9A8B', CORAL, CORAL_DEEP, '#1C1B1F', '#FFF5F4'].map((c) => `<div style="text-align:center"><div style="width:88px;height:88px;border-radius:24px;background:${c};border:2px solid rgba(255,255,255,.25)"></div><div style="font-size:15px;margin-top:8px">${c}</div></div>`).join('')}</div>
+  <div style="background:${INK};border-radius:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff">
+    <div style="display:flex;gap:18px">${['#FFFFFF', '#EEF0F4', INK, RED, '#2C4D9E'].map((c) => `<div style="text-align:center"><div style="width:88px;height:88px;border-radius:12px;background:${c};border:2px solid rgba(255,255,255,.3)"></div><div style="font-size:15px;margin-top:8px">${c}</div></div>`).join('')}</div>
     <div style="font-size:18px;opacity:.8;max-width:620px;text-align:center;line-height:1.5">Ngôi nhà có thân là một phong thư. Nắp thư khép lại bằng trái tim: lời thương gửi về nhà.</div>
   </div></div>`, path.join(here, 'logo-sheet.png'), 1600, 900, false);
 

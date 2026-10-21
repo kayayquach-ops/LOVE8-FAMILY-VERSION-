@@ -1,4 +1,4 @@
-import type { AppState, FamilyEvent, Member } from '@/data/types';
+import type { AppState, FamilyEvent, Member, Role } from '@/data/types';
 import { daysBetween, lunarOf, nextSolarAnniversary, nextSolarForLunar } from './lunar';
 
 export const member = (s: AppState, id: string): Member | undefined => s.family.members.find((m) => m.id === id);
@@ -21,17 +21,21 @@ export function daysSinceCall(s: AppState, memberId: string): number {
 
 export type Nudge = { member: Member; days: number; starter: string };
 
-const STARTERS = [
-  'Hỏi mẹ món canh mẹ hay nấu hồi con còn bé',
-  'Kể cho bố nghe một chuyện vui ở trường tuần này',
-  'Hỏi bà ngoại hôm nay bà ăn gì, ngủ có ngon không',
-  'Gửi em một bức ảnh nơi mình đang ở',
-  'Hỏi bố vườn nhà mình dạo này có cây gì mới',
-];
+// Câu mở lời gợi ý, chọn theo vai của người được gọi.
+const STARTERS: Partial<Record<Role, string>> = {
+  me: 'Hỏi mẹ món canh mẹ hay nấu hồi con còn bé',
+  bo: 'Hỏi bố vườn nhà mình dạo này có cây gì mới',
+  ong: 'Hỏi ông dạo này ông có hay đi tập thể dục buổi sáng không',
+  ba: 'Hỏi bà hôm nay bà ăn gì, ngủ có ngon không',
+  em: 'Gửi em một bức ảnh nơi mình đang ở',
+  anh: 'Kể cho anh nghe một chuyện vui ở trường tuần này',
+  chi: 'Kể cho chị nghe một chuyện vui ở trường tuần này',
+  con: 'Hỏi con tuần này ăn uống thế nào, có ngủ đủ không',
+};
 
 export function nudges(s: AppState): Nudge[] {
   return others(s)
-    .map((m, i) => ({ member: m, days: daysSinceCall(s, m.id), starter: STARTERS[i % STARTERS.length] }))
+    .map((m) => ({ member: m, days: daysSinceCall(s, m.id), starter: STARTERS[m.role] ?? 'Hỏi thăm hôm nay mọi người thế nào' }))
     .filter((n) => n.days >= s.settings.nudgeAfterDays)
     .sort((a, b) => b.days - a.days);
 }

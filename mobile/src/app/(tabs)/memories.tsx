@@ -3,10 +3,12 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { StoryCard } from '@/components/Feed';
-import { Avatar, Chip, IconButton, Screen, SectionHeader, T } from '@/components/ui';
+import { Chip, IconButton, ListRow, Screen, SectionHeader, T } from '@/components/ui';
+import type { Story } from '@/data/types';
+import { duration } from '@/lib/format';
 import { member, visibleStories } from '@/lib/selectors';
 import { useApp } from '@/store/AppContext';
-import { colors, fonts, radius, shadow } from '@/theme';
+import { colors, fonts, radius } from '@/theme';
 
 export default function Memories() {
   const { state } = useApp();
@@ -15,142 +17,113 @@ export default function Memories() {
   const all = visibleStories(state);
   const tellers = [...new Set(all.map((s) => s.tellerId))];
   const q = query.trim().toLowerCase();
-  const stories = all.filter(
-    (s) => (teller === 'all' || s.tellerId === teller) &&
-      (!q || s.title.toLowerCase().includes(q) || s.transcript.toLowerCase().includes(q)),
-  );
+  const found = all.filter((s) => s.title.toLowerCase().includes(q) || s.transcript.toLowerCase().includes(q) || String(s.year ?? '').includes(q));
   const minutes = Math.round(all.reduce((n, s) => n + s.durationSec, 0) / 60);
-  const years = [...new Set(all.map((s) => s.year).filter((y): y is number => !!y))].sort();
+  const latest = all[0];
+  // Dòng đời: xếp theo năm, chuyện không rõ năm (lời dặn) để cuối.
+  const timeline = all
+    .filter((s) => teller === 'all' || s.tellerId === teller)
+    .sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999));
 
   return (
     <Screen>
       <View style={styles.header}>
-        <IconButton icon="help-circle-outline" onPress={() => router.push('/ask')} />
-        <Avatar name={state.family.name} emoji="🏠" size={40} onPress={() => router.push('/family')} />
+        <T variant="display" style={{ flex: 1 }}>Sổ ký ức</T>
+        <IconButton icon="help-circle-outline" label="Nhờ Thư hỏi bố mẹ" onPress={() => router.push('/ask')} />
       </View>
-      <T variant="h1" weight="regular" style={{ marginTop: 12 }}>
-        <T variant="h1">Sổ ký ức</T> của {state.family.name.toLowerCase()}
+      <T variant="body" color={colors.inkSoft} style={{ marginTop: 6 }}>
+        {all.length} trang, {minutes} phút giọng kể của {tellers.length} người trong nhà.
       </T>
 
       <View style={styles.search}>
-        <Ionicons name="search" size={18} color={colors.muted} />
+        <Ionicons name="search" size={19} color={colors.muted} />
         <TextInput
-          value={query} onChangeText={setQuery} placeholder="Tìm: “nhà máy dệt”, “ngày cưới”..."
-          placeholderTextColor={colors.faint} style={styles.searchInput}
+          value={query} onChangeText={setQuery} placeholder="Tìm trong lời kể: nhà máy dệt, 1996..."
+          placeholderTextColor={colors.placeholder} style={styles.searchInput} accessibilityLabel="Tìm trong Sổ ký ức"
         />
+        {q ? (
+          <Pressable onPress={() => setQuery('')} hitSlop={10} accessibilityLabel="Xoá tìm kiếm">
+            <Ionicons name="close-circle" size={19} color={colors.muted} />
+          </Pressable>
+        ) : null}
       </View>
 
-      <View style={[styles.stats, shadow.soft]}>
-        <Stat n={all.length} label="trang" />
-        <Stat n={minutes} label="phút giọng kể" />
-        <Stat n={tellers.length} label="người kể" />
-      </View>
-
-      <View style={styles.actions}>
-        <Action icon="help-buoy" label="Hỏi bố mẹ" onPress={() => router.push('/ask')} />
-        <Action icon="film" label="Clip câu chuyện" onPress={() => all[0] && router.push(`/clip/${all[0].id}`)} />
-        <Action icon="book" label="Sách Tết" onPress={() => router.push('/book')} />
-        <Action icon="restaurant" label="Món của mẹ" onPress={() => router.push('/recipes')} />
-      </View>
-
-      <SectionHeader title="Theo chương" />
-      <View style={{ gap: 2 }}>
-        {state.chapters.map((c) => {
-          const inChapter = all.filter((s) => s.chapterId === c.id);
-          const people = [...new Set(inChapter.map((s) => s.tellerId))];
-          return (
-            <Pressable key={c.id} onPress={() => router.push(`/chapter/${c.id}`)} style={styles.chapter}>
-              <View style={styles.chapterThumb}><T variant="h1">{c.emoji}</T></View>
-              <View style={{ flex: 1, gap: 4 }}>
-                <T variant="body" weight="semibold">{c.title}</T>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <View style={{ flexDirection: 'row' }}>
-                    {people.slice(0, 3).map((pid, i) => {
-                      const m = member(state, pid);
-                      return (
-                        <View key={pid} style={{ marginLeft: i ? -8 : 0, borderWidth: 2, borderColor: colors.white, borderRadius: 14 }}>
-                          <Avatar name={m?.name ?? '?'} uri={m?.avatarUri} size={22} />
-                        </View>
-                      );
-                    })}
-                  </View>
-                  <T variant="caption" color={colors.muted}>
-                    {inChapter.length ? `${inChapter.length} trang` : 'Chưa có trang nào, gửi câu hỏi đầu tiên'}
-                  </T>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.faint} />
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {years.length > 0 && (
+      {q ? (
         <>
-          <SectionHeader title="Dòng đời" />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center', paddingRight: 20 }}>
-            {years.map((y, i) => (
-              <View key={y} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Pressable onPress={() => setQuery(String(y))} style={styles.year}>
-                  <T variant="small" weight="bold">{y}</T>
-                  <T variant="caption" color={colors.muted}>{all.filter((s) => s.year === y).map((s) => s.emoji).join(' ')}</T>
-                </Pressable>
-                {i < years.length - 1 && <View style={styles.yearLine} />}
-              </View>
+          <SectionHeader title={found.length ? `${found.length} trang có “${query.trim()}”` : 'Chưa có trang nào'} />
+          {found.map((s) => <StoryLine key={s.id} story={s} />)}
+        </>
+      ) : (
+        <>
+          {latest && (
+            <>
+              <SectionHeader title="Mới kể" />
+              <StoryCard story={latest} />
+            </>
+          )}
+
+          <SectionHeader title="Mục lục" />
+          {state.chapters.map((c) => {
+            const n = all.filter((s) => s.chapterId === c.id).length;
+            return (
+              <Pressable key={c.id} onPress={() => router.push(`/chapter/${c.id}`)} accessibilityRole="button"
+                style={({ pressed }) => [styles.chapter, pressed && { backgroundColor: colors.tone }]}>
+                <View style={{ flex: 1 }}>
+                  <T variant="h3" serif weight="semibold" style={{ fontSize: 19, lineHeight: 25 }}>{c.title}</T>
+                  <T variant="small" color={colors.muted} numberOfLines={1}>{c.description}</T>
+                </View>
+                <T variant="small" weight={n ? 'semibold' : 'regular'} color={n ? colors.ink : colors.muted}>
+                  {n ? `${n} trang` : 'Chưa có'}
+                </T>
+              </Pressable>
+            );
+          })}
+
+          <SectionHeader title="Theo dòng đời" />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }}
+            contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingBottom: 12 }}>
+            <Chip label="Cả nhà" active={teller === 'all'} onPress={() => setTeller('all')} />
+            {tellers.map((t) => (
+              <Chip key={t} label={member(state, t)?.roleLabel ?? t} active={teller === t} onPress={() => setTeller(t)} />
             ))}
           </ScrollView>
+          {timeline.map((s) => <StoryLine key={s.id} story={s} />)}
+
+          <SectionHeader title="Từ sổ ký ức" />
+          <ListRow icon="film-outline" label="Làm clip câu chuyện" onPress={() => latest && router.push(`/clip/${latest.id}`)} />
+          <ListRow icon="book-outline" label="In Sách Tết" onPress={() => router.push('/book')} />
+          <ListRow icon="restaurant-outline" label="Món của mẹ" onPress={() => router.push('/recipes')} />
+          <ListRow icon="help-circle-outline" label="Nhờ Thư hỏi bố mẹ" onPress={() => router.push('/ask')} />
         </>
       )}
-
-      <SectionHeader title="Tất cả câu chuyện" />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 14 }}>
-        <Chip label="Cả nhà" active={teller === 'all'} onPress={() => setTeller('all')} />
-        {tellers.map((t) => (
-          <Chip key={t} label={member(state, t)?.roleLabel ?? t} active={teller === t} onPress={() => setTeller(t)} />
-        ))}
-      </ScrollView>
-      <View style={styles.grid}>
-        {stories.map((s) => (
-          <View key={s.id} style={{ width: '48%' }}>
-            <StoryCard story={s} compact />
-          </View>
-        ))}
-      </View>
     </Screen>
   );
 }
 
-function Stat({ n, label }: { n: number; label: string }) {
+/** Một dòng trong dòng đời: năm bên trái, tên chuyện và người kể bên phải. */
+function StoryLine({ story }: { story: Story }) {
+  const { state } = useApp();
+  const teller = member(state, story.tellerId);
   return (
-    <View style={{ flex: 1, alignItems: 'center' }}>
-      <T variant="h2" color={colors.primary}>{n}</T>
-      <T variant="caption" color={colors.muted}>{label}</T>
-    </View>
-  );
-}
-
-function Action({ icon, label, onPress }: { icon: 'help-buoy' | 'film' | 'book' | 'restaurant'; label: string; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={{ alignItems: 'center', gap: 6, flex: 1 }}>
-      <View style={styles.actionIcon}><Ionicons name={icon} size={22} color={colors.primary} /></View>
-      <T variant="caption" center>{label}</T>
+    <Pressable onPress={() => router.push(`/story/${story.id}`)} accessibilityRole="button"
+      style={({ pressed }) => [styles.line, pressed && { backgroundColor: colors.tone }]}>
+      <T variant="h2" weight="bold" style={{ width: 64, fontSize: 20 }}>{story.year ?? '—'}</T>
+      <View style={{ flex: 1 }}>
+        <T variant="body" weight="semibold" numberOfLines={2}>{story.title}</T>
+        <T variant="small" color={colors.muted}>{teller?.roleLabel} kể, {duration(story.durationSec)}</T>
+      </View>
+      <Ionicons name="chevron-forward" size={17} color={colors.faint} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+  header: { flexDirection: 'row', alignItems: 'center', marginTop: 16 },
   search: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.field, borderRadius: radius.pill,
-    paddingHorizontal: 16, height: 48, marginTop: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.tone, borderRadius: radius.md,
+    paddingHorizontal: 16, height: 52, marginTop: 18,
   },
-  searchInput: { flex: 1, fontFamily: fonts.regular, fontSize: 14, color: colors.ink },
-  stats: { flexDirection: 'row', backgroundColor: colors.white, borderRadius: radius.lg, paddingVertical: 14, marginTop: 16 },
-  actions: { flexDirection: 'row', marginTop: 20 },
-  actionIcon: { width: 54, height: 54, borderRadius: 18, backgroundColor: colors.primaryTint, alignItems: 'center', justifyContent: 'center' },
-  chapter: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.line },
-  chapterThumb: { width: 60, height: 60, borderRadius: 18, backgroundColor: colors.primaryTint, alignItems: 'center', justifyContent: 'center' },
-  year: { alignItems: 'center', backgroundColor: colors.field, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16 },
-  yearLine: { width: 24, height: 2, backgroundColor: colors.primarySoft },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 14 },
+  searchInput: { flex: 1, fontFamily: fonts.regular, fontSize: 16, color: colors.ink, height: 52 },
+  chapter: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 12, paddingHorizontal: 4, borderRadius: radius.md },
+  line: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 4, borderRadius: radius.md },
 });

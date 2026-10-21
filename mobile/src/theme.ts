@@ -1,27 +1,33 @@
-// Hệ màu lấy cảm hứng từ bản thiết kế tham khảo: san hô ấm, thẻ trắng bo tròn,
-// chữ đậm màu gần đen, nút chính hình viên thuốc.
+// Hệ màu "lịch bóc và thư tay": nền giấy trắng, mặt nền thứ hai màu giấy pơ-luya, chữ màu mực bút bi,
+// một màu nhấn duy nhất là đỏ lịch (Chủ nhật, ngày Tết), xanh chỉ dành cho ngày âm lịch.
+// Xem docs/design.md. Các khối tách nhau bằng tông màu, không dùng viền hay bóng đổ.
 export const colors = {
-  primary: '#F2676A',
-  primaryDark: '#D9474B',
-  primarySoft: '#FDE3E1',
-  primaryTint: '#FFF5F4',
-  ink: '#1C1B1F',
-  inkSoft: '#3B3940',
-  muted: '#8E8A93',
-  faint: '#B9B5BD',
-  line: '#EFEAEA',
-  field: '#F5F3F3',
+  primary: '#C8321F',
+  primaryDark: '#A3261A',
+  primarySoft: '#F7E4E0',
+  primaryTint: '#EEF0F4',
+  ink: '#171C2E',
+  inkSoft: '#3D4357',
+  muted: '#5B6175',
+  placeholder: '#656B7F',
+  faint: '#8E94A6',
+  line: '#E3E6EC',
+  field: '#EEF0F4',
+  tone: '#EEF0F4',
+  toneDeep: '#E2E6ED',
   white: '#FFFFFF',
-  black: '#111014',
-  green: '#3DBE7A',
-  greenSoft: '#E3F6EC',
-  amber: '#F2A93B',
-  amberSoft: '#FDF1DC',
-  blue: '#4D8DF5',
-  blueSoft: '#E5EEFE',
-  purple: '#8A6CF0',
-  purpleSoft: '#EEE9FE',
-  overlay: 'rgba(17,16,20,0.55)',
+  black: '#171C2E',
+  lunar: '#2C4D9E',
+  lunarSoft: '#E6EBF5',
+  green: '#2F7A4B',
+  greenSoft: '#E3EFE7',
+  amber: '#8A5A10',
+  amberSoft: '#F5EBDA',
+  blue: '#2C4D9E',
+  blueSoft: '#E6EBF5',
+  purple: '#2E4874',
+  purpleSoft: '#E6EBF5',
+  overlay: 'rgba(23,28,46,0.62)',
 };
 
 export const fonts = {
@@ -29,36 +35,37 @@ export const fonts = {
   medium: 'BeVietnamPro_500Medium',
   semibold: 'BeVietnamPro_600SemiBold',
   bold: 'BeVietnamPro_700Bold',
+  // Literata: số trên tờ lịch, tiêu đề, lời kể trong Sổ ký ức.
+  serif: 'Literata_400Regular',
+  serifSemibold: 'Literata_600SemiBold',
+  serifBold: 'Literata_700Bold',
 };
 
-export const radius = { sm: 10, md: 16, lg: 22, xl: 28, pill: 999 };
+// Ảnh và tin bo nhẹ như ảnh in; khối nền bo 18; nút bo tròn hẳn.
+export const radius = { sm: 6, md: 12, lg: 18, xl: 24, pill: 999 };
 
-export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 28 };
+export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 32 };
 
+// Không có bóng cho vật đứng yên. Chỉ thứ thật sự nổi (bảng chọn, hộp thoại) mới dùng `float`.
 export const shadow = {
-  card: {
-    shadowColor: '#C9787A',
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
+  card: {},
+  soft: {},
+  float: {
+    shadowColor: '#171C2E',
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
-  },
-  soft: {
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    elevation: 6,
   },
 };
 
-// Bảng màu cho ảnh minh họa và avatar khi chưa có ảnh thật.
-export const swatches: Array<[string, string]> = [
-  ['#FFB8A8', '#F2676A'],
-  ['#FFE0A3', '#F2A93B'],
-  ['#BFE6CF', '#3DBE7A'],
-  ['#C7DBFF', '#4D8DF5'],
-  ['#DCD1FF', '#8A6CF0'],
-  ['#FFD1E3', '#E9578E'],
-  ['#C8EEF0', '#2AA9B3'],
+// Màu riêng của từng người trong nhà, lấy từ chất liệu Việt. Chữ trắng trên các màu này đạt tương phản 4.9:1 trở lên.
+export const familyTones = [
+  '#8E3A2C', // son
+  '#2E4874', // chàm
+  '#46663A', // lá chuối
+  '#9A6512', // nghệ
+  '#A2475E', // sen
+  '#3F6E68', // rêu
+  '#7A5236', // gốm
 ];
