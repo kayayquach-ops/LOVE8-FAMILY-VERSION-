@@ -47,11 +47,34 @@ export function inDaysLabel(n: number): string {
   return `Còn ${n} ngày`;
 }
 
+const OFFSETS: Record<string, number> = { VN: 7, KR: 9, JP: 9, TW: 8, US: -5 };
+
+const pad = (n: number) => n.toString().padStart(2, '0');
+
 /** Giờ ở nơi người thân đang sống (Hàn Quốc nhanh hơn Việt Nam 2 tiếng). */
 export function localTimeFor(country: string, ref = new Date()): string {
-  const offsets: Record<string, number> = { VN: 7, KR: 9, JP: 9, TW: 8, US: -5 };
-  const offset = offsets[country] ?? 7;
-  const utc = ref.getTime() + ref.getTimezoneOffset() * 60000;
-  const t = new Date(utc + offset * 3600000);
-  return `${t.getHours().toString().padStart(2, '0')}:${t.getMinutes().toString().padStart(2, '0')}`;
+  const t = new Date(ref.getTime() + (OFFSETS[country] ?? 7) * 3600_000);
+  return `${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}`;
+}
+
+/** 7 giờ sáng theo giờ nơi người nhận đang sống: lần tới (`next`) hoặc lần vừa qua (`last`). */
+export function morningAt(country: string, which: 'next' | 'last' = 'next', hour = 7, ref = new Date()): Date {
+  const off = (OFFSETS[country] ?? 7) * 3600_000;
+  const local = new Date(ref.getTime() + off);
+  let t = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), hour) - off;
+  if (which === 'next' && t <= ref.getTime()) t += 86400_000;
+  if (which === 'last' && t > ref.getTime()) t -= 86400_000;
+  return new Date(t);
+}
+
+/** Nhãn ngày cho dòng phân cách trong chat: Hôm nay, Hôm qua, hoặc thứ và ngày. */
+export function dayLabel(iso: string, ref = new Date()): string {
+  const d = new Date(iso);
+  const a = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const b = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate()).getTime();
+  const diff = Math.round((b - a) / 86400000);
+  if (diff === 0) return 'Hôm nay';
+  if (diff === 1) return 'Hôm qua';
+  if (diff === -1) return 'Ngày mai';
+  return `${WEEKDAYS[d.getDay()]}, ${shortDate(d)}`;
 }

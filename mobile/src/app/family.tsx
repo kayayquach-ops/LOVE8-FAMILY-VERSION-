@@ -4,7 +4,7 @@ import { Alert, Platform, Pressable, Share, StyleSheet, Switch, View } from 'rea
 import { Avatar, BackHeader, ListRow, Screen, SectionHeader, T } from '@/components/ui';
 import { inviteMessage } from '@/lib/family';
 import { localTimeFor } from '@/lib/format';
-import { me } from '@/lib/selectors';
+import { canUnderstand, me } from '@/lib/selectors';
 import { useApp } from '@/store/AppContext';
 import { colors, radius } from '@/theme';
 
@@ -38,14 +38,14 @@ export default function Family() {
       <View>
         <SectionHeader title={state.family.name} action="Mời thêm" onAction={() => Share.share({ message: inviteMessage(state.family.name, state.family.inviteCode) })} />
         {state.family.members.map((m) => (
-          <Pressable key={m.id} onPress={() => m.id !== state.meId && router.push(`/member/${m.id}`)} accessibilityRole="button"
+          <Pressable key={m.id} disabled={!canUnderstand(self, m)} onPress={() => router.push(`/member/${m.id}`)} accessibilityRole="button"
             style={({ pressed }) => [styles.member, pressed && { backgroundColor: colors.tone }]}>
             <Avatar name={m.name} uri={m.avatarUri} size={44} />
             <View style={{ flex: 1 }}>
               <T variant="body" weight="semibold">{m.id === state.meId ? `${m.roleLabel} (bạn)` : m.roleLabel}</T>
               <T variant="small" color={colors.muted}>{m.city}, bây giờ {localTimeFor(m.country)}</T>
             </View>
-            {m.id !== state.meId && <Ionicons name="chevron-forward" size={17} color={colors.faint} />}
+            {canUnderstand(self, m) && <Ionicons name="chevron-forward" size={17} color={colors.faint} />}
           </Pressable>
         ))}
         <View style={styles.code}>
@@ -53,17 +53,14 @@ export default function Family() {
           <T variant="h3" style={{ letterSpacing: 2 }}>{state.family.inviteCode}</T>
         </View>
 
-        <ListRow icon="videocam-outline" label="Gọi video cả nhà" onPress={() => router.push('/room')} />
+        <ListRow icon="swap-horizontal-outline" label="Đổi vai (bản demo)" value={self.roleLabel} onPress={() => router.push('/onboarding')} />
 
         <SectionHeader title="Cài đặt" />
-        <Toggle icon="accessibility-outline" label="Chế độ bố mẹ (chữ to, ít nút)" value={s.parentMode} onChange={(v) => { set({ parentMode: v }); if (v) router.replace('/home'); }} />
+        <Toggle icon="text-outline" label="Chữ to" value={s.parentMode} onChange={(v) => set({ parentMode: v })} />
         <Toggle icon="notifications-outline" label="Thông báo" value={s.notifications} onChange={(v) => set({ notifications: v })} />
-        <Toggle icon="call-outline" label="Thư gọi hỏi chuyện mỗi tuần" value={s.aiCalls} onChange={(v) => set({ aiCalls: v })} />
-        <ListRow icon="calendar-outline" label="Ngày Thư gọi" value={DAY_LABEL[s.aiCallDay]}
+        <Toggle icon="call-outline" label="Homeletter gọi hỏi chuyện mỗi tuần" value={s.aiCalls} onChange={(v) => set({ aiCalls: v })} />
+        <ListRow icon="calendar-outline" label="Ngày Homeletter gọi" value={DAY_LABEL[s.aiCallDay]}
           onPress={() => set({ aiCallDay: s.aiCallDay === 'sun' ? 'sat' : s.aiCallDay === 'sat' ? 'wed' : 'sun' })} />
-        <ListRow icon="alarm-outline" label="Nhắc khi chưa gọi về" value={`sau ${s.nudgeAfterDays} ngày`}
-          onPress={() => set({ nudgeAfterDays: s.nudgeAfterDays >= 7 ? 2 : s.nudgeAfterDays + 1 })} />
-        <ListRow icon="language-outline" label="Ngôn ngữ" value={s.language === 'vi' ? 'Tiếng Việt' : '한국어'} onPress={() => set({ language: s.language === 'vi' ? 'ko' : 'vi' })} />
         <ListRow icon="phone-portrait-outline" label="Widget màn hình chính" onPress={() => router.push('/widget')} />
         <ListRow icon="shield-checkmark-outline" label="Quyền riêng tư và dữ liệu" onPress={() => router.push('/privacy')} />
         <ListRow icon="refresh-outline" label="Đặt lại dữ liệu demo" onPress={reset} danger />
@@ -72,7 +69,7 @@ export default function Family() {
           style={({ pressed }) => [styles.premium, pressed && { backgroundColor: colors.toneDeep }]}>
           <View style={{ flex: 1, gap: 2 }}>
             <T variant="h2">{s.premium ? 'Bạn đang dùng Gói Gia đình' : 'Gói Gia đình'}</T>
-            <T variant="small" color={colors.inkSoft}>Không giới hạn câu chuyện và clip, Thư gọi hỏi chuyện mỗi tuần.</T>
+            <T variant="small" color={colors.inkSoft}>Homeletter gọi mỗi tuần, kho ảnh và giọng nói không giới hạn, video mọi dịp.</T>
           </View>
           <T variant="small" weight="semibold" color={colors.accentText}>{s.premium ? 'Quản lý' : 'Nâng cấp'}</T>
         </Pressable>
@@ -81,7 +78,7 @@ export default function Family() {
   );
 }
 
-function Toggle({ icon, label, value, onChange }: { icon: 'accessibility-outline' | 'notifications-outline' | 'call-outline'; label: string; value: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ icon, label, value, onChange }: { icon: 'text-outline' | 'notifications-outline' | 'call-outline'; label: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
     <View style={styles.toggle}>
       <Ionicons name={icon} size={22} color={colors.inkSoft} />

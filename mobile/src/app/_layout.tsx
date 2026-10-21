@@ -61,7 +61,7 @@ function Gate() {
       <Stack.Screen name="capture" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="call" options={{ presentation: 'fullScreenModal', animation: 'fade' }} />
       <Stack.Screen name="room" options={{ presentation: 'fullScreenModal', animation: 'fade' }} />
-      <Stack.Screen name="clip/[id]" options={{ presentation: 'fullScreenModal', animation: 'fade' }} />
+      <Stack.Screen name="film/[id]" options={{ presentation: 'fullScreenModal', animation: 'fade' }} />
     </Stack>
   );
 }

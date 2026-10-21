@@ -4,6 +4,6 @@ export const BRAND = {
   tagline: 'Stay close, wherever you are',
   taglineVi: 'Giữ sợi dây gia đình, dù xa đến đâu',
   scheme: 'homeletter',
-  /** Tên trợ lý AI ở bản tiếng Việt. Bản quốc tế có thể đặt tên khác theo ngôn ngữ. */
-  assistant: 'Thư',
+  /** Trợ lý AI dùng chung tên với app ở mọi ngôn ngữ. */
+  assistant: 'Homeletter',
 };

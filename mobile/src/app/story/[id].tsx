@@ -102,10 +102,6 @@ export default function StoryDetail() {
         </View>
       )}
 
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 24 }}>
-        <Button label="Gắn ảnh cũ" icon="image-outline" variant="ghost" style={{ flex: 1 }} />
-        <Button label="Làm clip" icon="film-outline" variant="dark" onPress={() => router.push(`/clip/${story.id}`)} style={{ flex: 1 }} />
-      </View>
 
       <SectionHeader title="Cả nhà nói gì" />
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
@@ -147,7 +143,7 @@ export default function StoryDetail() {
                   <T variant="small" weight="semibold" color={colors.green}>Đã gửi</T>
                 </View>
               ) : (
-                <T variant="small" weight="semibold" color={colors.accentText}>Nhờ Thư hỏi</T>
+                <T variant="small" weight="semibold" color={colors.accentText}>Nhờ Homeletter hỏi</T>
               )}
             </Pressable>
           ))}

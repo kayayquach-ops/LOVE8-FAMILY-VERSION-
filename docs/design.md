@@ -24,12 +24,17 @@ Lấy thêm vài ý từ một mẫu app nhóm bạn (friendlyhours), vẫn gi�
 - Thẻ tin: nhãn mờ (loại tin, lời nhắn thoại, số trả lời) và hàng nút ngay trong thẻ, nút "Thả tim" dài tô dải màu.
 - Màn mới "Gọi video cả nhà" (`/room`): lưới khuôn mặt từng người, góc trên có biểu tượng đang nói hoặc tắt mic, hàng nút tròn và nút cúp máy màu cam `#E8602A`. Bản demo chưa nối cuộc gọi thật.
 
-### Bố cục chính
+### Bố cục chính (bản đơn giản, tháng 10/2026)
 
-- **Trang chủ**: thẻ lịch hôm nay (tím) với ngày dương rất lớn, ngày âm, còn bao nhiêu ngày đến Tết; lưới thẻ so le "Cả nhà hôm nay"; dải thẻ tin mới với lời nhắn in to; nhắc gọi (thẻ gạch cam); ngày sắp tới; trang ký ức mới.
-- **Đăng nhập**: tiêu đề lớn trên đường cong chuyển màu, ô số điện thoại hình viên thuốc, nút viền chuyển màu, các nút vào nhanh hình tròn.
-- **Sổ ký ức**: thẻ màu cho câu chuyện mới nhất, mục lục thành lưới thẻ màu, dòng đời theo năm.
-- **Trang ký ức**: thẻ màu của người kể với năm in rất lớn và nút phát chuyển màu, lời kể bên dưới.
+Mục tiêu: dễ dùng nhất có thể. Bốn tab có cả biểu tượng và chữ, mỗi màn hình một việc chính, nút to, bố mẹ được chữ to hơn.
+
+- **Bắt đầu**: một câu hỏi "Bạn là ai trong nhà?" với bốn ô lớn (Mẹ, Bố, Con gái, Con trai), rồi một màn giải thích ba ý và nút "Vào nhà".
+- **Nhà**: mâm cơm chung (lưới ba cột, ô của mình là nút chụp viền chuyển màu, đếm chuỗi ngày), thẻ xanh "Hẹn nhau tuần này", lời nhắc gửi ảnh xưa, ảnh của cả nhà xếp dọc.
+- **Chat**: khung đầu xanh đậm có nhóm avatar và ngày sắp tới; tin thoại là viên thuốc có chữ chép lại; lời chào buổi sáng có nhãn giờ hẹn; ghi âm xong chọn "Hẹn 07:00 sáng mai" hoặc "Gửi ngay".
+- **Hiểu nhau**: chọn người ở dải avatar; thẻ màu "Hiểu mẹ hơn", thẻ cuộc gọi tới với hai chế độ "Hỏi khéo" và "Nhắn hộ", kế hoạch cuộc gọi kèm lý do, điều đã hiểu, đố vui.
+- **Lịch**: lịch tháng có ngày âm, ngày lễ chấm đỏ, dòng đời nhà mình dạng trục thời gian.
+- **Lời chào buổi sáng**: lớp phủ toàn màn hình trên thẻ màu của người gửi, tự phát khi mở app.
+- **Video**: ảnh xưa tông nâu `#8C6A4F` chuyển động chậm, năm in rất lớn, phụ đề Việt, Hàn, Anh.
 
 ## Phiên bản trước
 

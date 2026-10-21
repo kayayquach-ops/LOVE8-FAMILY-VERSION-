@@ -2,7 +2,7 @@ import { Ionicons } from '@/components/Icon';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
 import { Image, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,8 +16,12 @@ const TAGS = POST_TAGS;
 
 // Màn hình chụp nhanh: mở ra là camera, một chạm là chụp, chọn nhãn rồi gửi.
 // Widget ngoài màn hình chính sẽ mở thẳng màn hình này.
+// `kind=meal`: chụp bữa cơm cho mâm cơm chung. `kind=old`: gửi ảnh xưa, kèm năm chụp, vào kho nhà mình.
 export default function Capture() {
   const { state, dispatch } = useApp();
+  const { kind } = useLocalSearchParams<{ kind?: 'meal' | 'old' }>();
+  const old = kind === 'old';
+  const [year, setYear] = useState('');
   const [permission, requestPermission] = useCameraPermissions();
   const camera = useRef<CameraView>(null);
   const [facing, setFacing] = useState<'front' | 'back'>('back');
@@ -25,6 +29,8 @@ export default function Capture() {
   // Không có camera (web, máy ảo): gửi một mẩu thư chữ để thử luồng.
   const [note, setNote] = useState(false);
   const [tag, setTag] = useState(TAGS[0]);
+  const yearNum = Number(year);
+  const validYear = yearNum >= 1900 && yearNum <= new Date().getFullYear() ? yearNum : undefined;
   const [caption, setCaption] = useState('');
   const [voiceSec, setVoiceSec] = useState<number | undefined>();
   const [showVoice, setShowVoice] = useState(false);
@@ -45,10 +51,9 @@ export default function Capture() {
   }
 
   function send() {
-    dispatch({
-      type: 'addPost', caption: caption.trim() || tag.caption, tag: tag.tag, photoUri: photo,
-      voiceSec,
-    });
+    dispatch(old
+      ? { type: 'addPost', caption: caption.trim() || 'Ảnh ngày xưa của nhà mình', tag: 'xua', photoUri: photo, voiceSec, year: validYear }
+      : { type: 'addPost', caption: caption.trim() || tag.caption, tag: tag.tag, photoUri: photo, voiceSec });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     router.back();
   }
@@ -61,7 +66,7 @@ export default function Capture() {
         <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Đóng" style={styles.round}>
           <Ionicons name="close" size={22} color={colors.white} />
         </Pressable>
-        <T variant="h3" color={colors.white}>Gửi cả nhà</T>
+        <T variant="h3" color={colors.white}>{old ? 'Gửi ảnh xưa' : kind === 'meal' ? 'Bữa cơm của bạn' : 'Gửi cả nhà'}</T>
         <Pressable onPress={() => setFacing(facing === 'back' ? 'front' : 'back')} accessibilityRole="button" accessibilityLabel="Đổi camera" style={styles.round}>
           <Ionicons name="camera-reverse" size={20} color={colors.white} />
         </Pressable>
@@ -94,7 +99,7 @@ export default function Capture() {
             <TextInput
               value={caption}
               onChangeText={setCaption}
-              placeholder={tag.caption}
+              placeholder={old ? 'Ảnh này chụp ở đâu, có những ai?' : tag.caption}
               placeholderTextColor="rgba(255,255,255,0.75)"
               accessibilityLabel="Lời nhắn kèm ảnh"
               multiline={!photo}
@@ -104,6 +109,16 @@ export default function Capture() {
         )}
       </View>
 
+      {old ? (
+        <View style={{ paddingHorizontal: 20, paddingVertical: 12, gap: 6 }}>
+          <View style={styles.yearRow}>
+            <T variant="small" weight="semibold" color={colors.white}>Chụp năm nào?</T>
+            <TextInput value={year} onChangeText={setYear} placeholder="1999" placeholderTextColor="rgba(255,255,255,0.5)" keyboardType="number-pad"
+              maxLength={4} style={styles.year} accessibilityLabel="Năm chụp" />
+          </View>
+          <T variant="caption" weight="regular" color="rgba(255,255,255,0.7)">Homeletter sẽ hỏi chuyện về tấm ảnh này trong cuộc gọi tới, rồi xếp nó vào dòng đời nhà mình.</T>
+        </View>
+      ) : (
       <View style={{ paddingVertical: 14 }}>
         <View style={styles.tags}>
           {TAGS.map((t) => {
@@ -117,6 +132,7 @@ export default function Capture() {
           })}
         </View>
       </View>
+      )}
 
       {showVoice ? (
         <View style={styles.voicePanel}>
@@ -134,7 +150,7 @@ export default function Capture() {
               <T variant="small" weight="semibold" color={colors.white}>Chụp lại</T>
             </Pressable>
           </View>
-          <Button label="Gửi cho cả nhà" icon="paper-plane" onPress={send} />
+          <Button label={old ? 'Lưu vào kho nhà mình' : 'Gửi cho cả nhà'} icon="paper-plane" onPress={send} />
         </View>
       ) : (
         <View style={styles.shutterRow}>
@@ -174,6 +190,11 @@ const styles = StyleSheet.create({
   secondary: {
     flex: 1, height: 44, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.14)', flexDirection: 'row',
     alignItems: 'center', justifyContent: 'center', gap: 6,
+  },
+  yearRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  year: {
+    width: 84, height: 44, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.14)', color: colors.white, textAlign: 'center',
+    fontFamily: fonts.semibold, fontSize: 16,
   },
   voicePanel: { backgroundColor: colors.tone, marginHorizontal: 14, borderRadius: radius.lg, padding: 18, marginBottom: 14 },
 });

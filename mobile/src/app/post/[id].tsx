@@ -2,6 +2,7 @@ import { Ionicons } from '@/components/Icon';
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { SEPIA } from '@/components/Feed';
 import { VoiceRecorder } from '@/components/VoiceRecorder';
 import { Avatar, BackHeader, Empty, memberTone, PhotoTile, Screen, T, Waveform } from '@/components/ui';
 import { tagLabel } from '@/data/tags';
@@ -24,10 +25,10 @@ export default function PostDetail() {
   return (
     <Screen>
       <BackHeader title={author?.roleLabel} />
-      <PhotoTile seed={post.id} tone={memberTone(state.family.members, post.authorId)} uri={post.photoUri} height={post.photoUri ? 400 : 340}>
+      <PhotoTile seed={post.id} tone={post.tag === 'xua' ? SEPIA : memberTone(state.family.members, post.authorId)} uri={post.photoUri} height={post.photoUri ? 400 : 340}>
         {!post.photoUri && (
           <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, padding: 22, gap: 10 }}>
-            {tagLabel(post.tag) && <T variant="small" weight="medium" color="rgba(255,255,255,0.82)">{tagLabel(post.tag)}</T>}
+            {tagLabel(post.tag) && <T variant="small" weight="medium" color="rgba(255,255,255,0.82)">{tagLabel(post.tag)}{post.year ? `, ${post.year}` : ''}</T>}
             <T variant="display" weight="regular" color={colors.white} style={{ fontSize: 30, lineHeight: 40 }}>{post.caption}</T>
           </View>
         )}
@@ -62,7 +63,8 @@ export default function PostDetail() {
         </T>
       )}
 
-      <T variant="h2" style={{ marginTop: 32, marginBottom: 10 }}>Trả lời</T>
+      <T variant="h2" style={{ marginTop: 32 }}>Trả lời</T>
+      <T variant="small" color={colors.muted} style={{ marginTop: 4, marginBottom: 10 }}>Lời trả lời cũng hiện trong Chat của cả nhà.</T>
       {post.replies.map((r) => {
         const a = member(state, r.authorId);
         const mine = r.authorId === state.meId;

@@ -1,10 +1,10 @@
 // Máy chủ của Homeletter (Firebase Cloud Functions). API key của Claude chỉ nằm ở đây,
 // cất trong Secret Manager: firebase functions:secrets:set ANTHROPIC_API_KEY
-// App gọi các đường dẫn: /interview, /soften, /structure-story, /transcribe.
+// App gọi các đường dẫn: /gentle, /interview, /soften, /structure-story, /transcribe.
 import Anthropic from '@anthropic-ai/sdk';
 import { defineSecret } from 'firebase-functions/params';
 import { onRequest } from 'firebase-functions/v2/https';
-import { INTERVIEW_CONFIDE, INTERVIEW_STORY, SOFTEN, STORY_SCHEMA, STRUCTURE_STORY, TURN_SCHEMA } from './prompts.js';
+import { GENTLE, INTERVIEW_CONFIDE, INTERVIEW_STORY, SOFTEN, STORY_SCHEMA, STRUCTURE_STORY, TURN_SCHEMA } from './prompts.js';
 
 const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
 const MODEL = 'claude-opus-5-5';
@@ -78,6 +78,21 @@ async function soften(text: string, toName: string) {
   return { text: res.stop_reason === 'refusal' ? text : firstText(res.content).trim() };
 }
 
+/** Viết lại câu hỏi giấu kín thành câu Homeletter sẽ hỏi trong cuộc gọi: vòng qua kỷ niệm, không lộ người hỏi. */
+async function gentle(text: string, from: string, to: string, address: string) {
+  const res = await client().beta.messages.create({
+    model: MODEL,
+    max_tokens: 1000,
+    betas: [FALLBACK_BETA],
+    fallbacks: 'default',
+    output_config: { effort: 'low' },
+    system: GENTLE,
+    messages: [{ role: 'user', content: `Người muốn biết: ${from}\nNgười được hỏi: ${to} (Homeletter gọi là "${address}")\nĐiều muốn biết: ${text}` }],
+  });
+  if (res.stop_reason === 'refusal') throw new Error('refused');
+  return { text: firstText(res.content).trim() };
+}
+
 async function structureStory(transcript: string, tellerName: string) {
   const res = await client().beta.messages.create({
     model: MODEL,
@@ -99,6 +114,9 @@ export const api = onRequest({ secrets: [ANTHROPIC_API_KEY], cors: true, region:
   }
   try {
     switch (req.path) {
+      case '/gentle':
+        res.json(await gentle(String(req.body.text ?? ''), String(req.body.from ?? ''), String(req.body.to ?? ''), String(req.body.address ?? '')));
+        return;
       case '/interview':
         res.json(await interview(req.body as InterviewBody));
         return;

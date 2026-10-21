@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { BackHeader, memberTone, PhotoTile, Screen, SectionHeader, T } from '@/components/ui';
 import { relativeTime, weekday } from '@/lib/format';
-import { daysToTet, member, others, postedToday } from '@/lib/selectors';
+import { callName, daysToTet, mealToday, member, others, postedToday } from '@/lib/selectors';
 import { useApp } from '@/store/AppContext';
 import { colors } from '@/theme';
 
@@ -13,6 +13,9 @@ export default function WidgetPreview() {
   const { state } = useApp();
   const latest = state.posts.find((p) => p.authorId !== state.meId);
   const author = latest ? member(state, latest.authorId) : undefined;
+  const meals = Object.values(mealToday(state)).filter(Boolean).length;
+  const morning = state.messages.find((m) => m.deliverAt && m.voiceSec && m.to?.includes(state.meId));
+  const from = morning ? member(state, morning.authorId) : undefined;
 
   return (
     <Screen>
@@ -22,7 +25,7 @@ export default function WidgetPreview() {
         <T variant="small" color="rgba(255,255,255,0.85)" center>{weekday(new Date())}, {new Date().getDate()} tháng {new Date().getMonth() + 1}</T>
 
         <View style={styles.row}>
-          <Pressable onPress={() => router.push(latest ? `/post/${latest.id}` : '/feed')} style={styles.small}>
+          <Pressable onPress={() => router.push(latest ? `/post/${latest.id}` : '/home')} style={styles.small}>
             {latest && (
               <PhotoTile seed={latest.id} tone={memberTone(state.family.members, latest.authorId)} uri={latest.photoUri} height={150} radiusSize={20}>
                 <View style={{ position: 'absolute', left: 12, right: 12, top: 12, bottom: 12, justifyContent: 'space-between' }}>
@@ -32,8 +35,8 @@ export default function WidgetPreview() {
               </PhotoTile>
             )}
           </Pressable>
-          <Pressable onPress={() => router.push('/capture')} style={[styles.small, styles.white]}>
-            <T variant="caption" color={colors.muted}>Ăn cơm chưa?</T>
+          <Pressable onPress={() => router.push({ pathname: '/capture', params: { kind: 'meal' } })} style={[styles.small, styles.white]}>
+            <T variant="caption" color={colors.muted}>Mâm cơm tối nay {meals}/{state.family.members.length}</T>
             <View style={styles.shoot}><Ionicons name="camera" size={30} color={colors.white} /></View>
             <T variant="caption" weight="semibold" center>Chạm để chụp</T>
           </Pressable>
@@ -59,10 +62,25 @@ export default function WidgetPreview() {
         </View>
       </View>
 
+      <SectionHeader title="Màn hình khoá" />
+      <View style={styles.lock}>
+        <T variant="display" color={colors.white} center style={{ fontSize: 44, lineHeight: 52 }}>07:00</T>
+        <View style={styles.lockWidget}>
+          <Ionicons name="sunny" size={18} color={colors.white} />
+          <T variant="small" weight="semibold" color={colors.white} style={{ flex: 1 }}>
+            {from ? `${from.roleLabel} gửi lời chào buổi sáng` : 'Lời chào buổi sáng'}
+          </T>
+          <T variant="caption" color="rgba(255,255,255,0.8)">Chạm để nghe</T>
+        </View>
+      </View>
+      <T variant="small" color={colors.muted} style={{ marginTop: 8 }}>
+        Đúng giờ hẹn, điện thoại báo bằng chính giọng {from ? callName(from) : 'người gửi'} (tối đa 30 giây). Máy để im lặng thì chỉ hiện trên màn hình khoá.
+      </T>
+
       <SectionHeader title="Cách thêm widget" />
       <Step n={1} text="Giữ ngón tay lên màn hình chính đến khi các biểu tượng rung." />
       <Step n={2} text="Bấm dấu + (iPhone) hoặc chọn Tiện ích (Android), tìm “Homeletter”." />
-      <Step n={3} text="Chọn widget ảnh, widget chụp nhanh, hoặc widget “Nhà mình hôm nay”." />
+      <Step n={3} text="Chọn widget ảnh mới nhất, widget mâm cơm, hoặc widget “Nhà mình hôm nay”." />
       <T variant="small" color={colors.muted} style={{ marginTop: 8 }}>
         Chấm xanh nghĩa là người đó đã gửi ảnh hôm nay. App không chia sẻ vị trí của ai.
       </T>
@@ -87,5 +105,10 @@ const styles = StyleSheet.create({
   shoot: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   medium: { flexDirection: 'row', alignItems: 'center', borderRadius: 22, marginTop: 14, padding: 16 },
   dot: { width: 14, height: 14, borderRadius: 7 },
+  lock: { borderRadius: 32, padding: 18, paddingBottom: 22, backgroundColor: '#1E3A44', gap: 16 },
+  lockWidget: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 20,
+    paddingHorizontal: 14, paddingVertical: 12,
+  },
   vline: { width: 1, height: 44, backgroundColor: colors.line },
 });

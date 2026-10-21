@@ -16,5 +16,3 @@ export const CARD_LINES: ImageSourcePropType[] = [
   require('../../assets/art/lines-1.png'),
   require('../../assets/art/lines-2.png'),
 ];
-
-export const SIGNIN_CURVE: ImageSourcePropType = require('../../assets/art/curve.png');

@@ -10,6 +10,9 @@ export const POST_TAGS: Array<{ tag: PostTag; label: string; caption: string }> 
   { tag: 'khoe', label: 'Khoe nè', caption: 'Khoe cả nhà cái này' },
 ];
 
+/** Ảnh xưa không nằm trong hàng nhãn khi chụp: nó có lối gửi riêng, kèm năm chụp. */
+const OLD = { tag: 'xua' as const, label: 'Ảnh xưa', caption: 'Ảnh ngày xưa của nhà mình' };
+
 export function tagLabel(tag?: PostTag): string | undefined {
-  return POST_TAGS.find((t) => t.tag === tag)?.label;
+  return [...POST_TAGS, OLD].find((t) => t.tag === tag)?.label;
 }

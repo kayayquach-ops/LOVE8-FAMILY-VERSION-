@@ -1,10 +1,10 @@
-# Homeletter (Thư Nhà)
+# Homeletter
 
-**Stay close, wherever you are.** App kết nối gia đình sống xa nhau: ảnh mỗi ngày kiểu Locket, sổ ký ức bằng giọng kể của bố mẹ, lịch âm Việt Nam, và trợ lý AI "Thư" giúp nói những điều khó nói.
+**Giúp gia đình hiểu nhau, rồi kéo mọi người lại gần nhau**, dù ở xa, khác thế hệ hay khác ngôn ngữ. Ảnh mỗi ngày kiểu Locket, chat chung của cả nhà, và trợ lý AI Homeletter gọi điện hỏi chuyện từng người để con hiểu bố mẹ hơn, bố mẹ hiểu con hơn.
 
 **Bản demo trên web:** https://kayayquach-ops.github.io/LOVE8-FAMILY-VERSION-/ (mở bằng điện thoại cho giống app thật).
 
-Nhóm người dùng đầu tiên: người Việt sống ở Hàn Quốc (du học sinh, người đi làm) và bố mẹ ở Việt Nam.
+App làm cho mọi gia đình, nhiều ngôn ngữ (ra mắt với tiếng Việt, Hàn, Anh). Thị trường thử đầu tiên: Hàn Quốc, nơi có đủ gia đình đa văn hoá, du học sinh và người lao động nước ngoài, gia đình "bố ngỗng", người già sống một mình.
 
 ## Cấu trúc thư mục
 
@@ -27,20 +27,23 @@ Nhóm người dùng đầu tiên: người Việt sống ở Hàn Quốc (du h�
    ```
 4. Quét mã QR hiện trên màn hình bằng camera (iPhone) hoặc bằng Expo Go (Android).
 
-App chạy ngay bằng **dữ liệu mẫu** (gia đình chị Lan ở Seoul). Muốn xoá dữ liệu mẫu: vào avatar → *Đặt lại dữ liệu demo*.
+App chạy ngay bằng **dữ liệu mẫu** (gia đình chị Lan ở Seoul). Mở app sẽ hỏi "Bạn là ai trong nhà?": chọn Mẹ, Bố, Con gái hoặc Con trai để xem app theo từng vai. Đổi vai hoặc xoá dữ liệu mẫu: bấm avatar → *Đổi vai* / *Đặt lại dữ liệu demo*.
 
 Xem trên trình duyệt: `npx expo start --web`.
 
 ## Tính năng trong bản này
 
-| Nhóm | Màn hình |
+| Tab | Có gì |
 |---|---|
-| Bắt đầu | Màn hình chào, giới thiệu 3 bước, đăng nhập số điện thoại + mã OTP, hồ sơ 3 bước (ngày sinh âm/dương), tạo nhà hoặc vào nhà bằng mã mời |
-| Mỗi ngày | Trang chủ (dải avatar cả nhà, bộ đếm ngày xa nhà và ngày đến Tết, giờ ở nhà), chụp nhanh với nhãn "Ăn cơm chưa?", ảnh của cả nhà, trả lời bằng chữ hoặc giọng nói, nhắc nhẹ khi lâu chưa gọi về |
-| Sổ ký ức | Theo chương, theo dòng đời, tìm kiếm, trang ký ức có giọng kể gốc, "nhớ khác đi" của người thân, hỏi tiếp, quyền riêng tư từng trang, clip câu chuyện, sách in dịp Tết |
-| Thư (AI) | Kể chuyện, tâm sự riêng (luôn hỏi trước khi chuyển lời, có "nói khéo giúp"), cuộc gọi AI, câu hỏi người thân gửi, xử lý tình huống khẩn cấp |
-| Lịch | Lịch tháng có ngày âm, sinh nhật âm, ngày giỗ, Tết, rằm; thêm ngày mới |
-| Khác | Món của mẹ (kèm nguyên liệu thay thế ở Hàn), hộp thời gian, gia đình và cài đặt, chế độ bố mẹ (chữ to), gói Gia đình, xem trước widget, quyền riêng tư |
+| Bắt đầu | Một câu hỏi duy nhất: bạn là bố/mẹ hay con. App đổi lời theo vai ("Hiểu con mình hơn" / "Hiểu bố mẹ mình hơn"), bố mẹ được chữ to |
+| Nhà | Mâm cơm chung (mỗi tối ai cũng chụp bữa cơm, ghép thành một mâm, đếm chuỗi ngày), "Hẹn nhau tuần này" (một việc nhỏ cho hai người), nhắc gửi ảnh xưa theo dịp, ảnh của cả nhà, widget |
+| Chat | Chat chung, trả lời ảnh, tin thoại có chữ chép lại. **Lời chào buổi sáng**: ghi âm, hẹn 7:00 sáng mai theo giờ người nhận; đến giờ, người nhận mở app là tự phát. Thư tuần và video của Homeletter cũng gửi vào đây |
+| Hiểu nhau | Mỗi người khác thế hệ một trang: lịch cuộc gọi của Homeletter, **lời gửi gắm** (nói rõ tên) và **câu hỏi giấu kín** (hỏi khéo, không nói ai hỏi), xem trước Homeletter sẽ hỏi gì và vì sao, điều đã hiểu về người đó (thích, lo, tự hào, mong, kỷ niệm), đố vui "Bạn hiểu mẹ đến đâu?" |
+| Lịch | Lịch tháng có ngày âm, ngày lễ trong năm (mỗi ngày kèm một việc gắn kết), sinh nhật từng người, ngày cưới bố mẹ, cột mốc (vào học, đi du học, tốt nghiệp), dòng đời nhà mình |
+| Cuộc gọi | Homeletter (luôn nói rõ là AI) gọi qua app: mở đầu bằng giọng thật của người nhà, hỏi dựa trên ảnh vừa gửi, lời gửi gắm, câu hỏi giấu kín, chuyện còn dở, chủ đề chưa ai hỏi. Cuối cuộc gọi người kể duyệt chia sẻ, rồi Homeletter nối máy cho người nhà nói chuyện trực tiếp |
+| Kho nhà mình | Homeletter tuần này (đoạn giọng thật hay nhất, tóm tắt, điều mới hiểu, gợi ý việc nên làm, trả lời bằng giọng nói), video ghép từ ảnh xưa và giọng thật có phụ đề Việt, Hàn, Anh, xem cùng cả nhà qua gọi video |
+
+Quy tắc: con dưới 18 tuổi không nhận câu hỏi giấu kín; hồ sơ "hiểu về" chỉ mở cho người khác thế hệ; video chỉ ghép từ ảnh thật và giọng thật, không tạo giọng giả. Xem thêm [docs/product.md](docs/product.md).
 
 ## Nối dịch vụ thật
 

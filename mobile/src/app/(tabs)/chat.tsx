@@ -1,291 +1,258 @@
-import { Ionicons } from '@/components/Icon';
-import { router } from 'expo-router';
-import { useRef, useState } from 'react';
-import {
-  KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance,
-} from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FilmCard, LetterCard } from '@/components/Feed';
+import { Ionicons } from '@/components/Icon';
+import { VoicePill } from '@/components/Voice';
 import { VoiceRecorder } from '@/components/VoiceRecorder';
-import { AvatarStack, Chip, GradientButton, HeaderBlock, IconButton, LogoMark, T, Tap, Waveform, type IconName } from '@/components/ui';
-import type { ChatMessage, ChatMode, Member } from '@/data/types';
-import { clock, duration } from '@/lib/format';
-import { isElder } from '@/lib/family';
-import { me, member, others } from '@/lib/selectors';
-import { AI_MODE, interviewReply, softenMessage, structureStory } from '@/services/ai';
-import { newId, useApp } from '@/store/AppContext';
+import {
+  Avatar, AvatarStack, Button, Chip, GradientButton, HeaderBlock, IconButton, LogoMark, memberTone, PhotoTile, T, Tap,
+} from '@/components/ui';
+import type { FamilyMessage } from '@/data/types';
+import { clock, dayLabel, inDaysLabel, localTimeFor, morningAt } from '@/lib/format';
+import { callName, isScheduled, member, others, shownAt, upcoming, visibleMessages } from '@/lib/selectors';
+import { onlineNow } from '@/services/ai';
+import { useApp } from '@/store/AppContext';
 import { colors, fonts, radius } from '@/theme';
 
+/** Lời chào buổi sáng dài tối đa 30 giây: iPhone chỉ cho âm báo dài chừng đó. */
+const MORNING_MAX_SEC = 30;
+
+const COUNTRY = { VN: 'Việt Nam', KR: 'Hàn Quốc', JP: 'Nhật Bản', TW: 'Đài Loan', US: 'Mỹ', OTHER: 'nơi đó' } as const;
+
+// Chat chung của cả nhà. Thư tuần và video của Homeletter cũng gửi vào đây.
+// Ghi âm xong có thể gửi ngay, hoặc hẹn 7 giờ sáng mai theo giờ người nhận: họ mở app là nghe.
 export default function Chat() {
   const { state, dispatch } = useApp();
-  const [mode, setMode] = useState<ChatMode>('story');
-  const [text, setText] = useState('');
-  const [typing, setTyping] = useState(false);
-  const [voice, setVoice] = useState(false);
-  const scroll = useRef<ScrollViewInstance>(null);
-  const self = me(state);
-  const elders = others(state).filter((m) => isElder(m.role));
-  const [recipient, setRecipient] = useState<string>(elders[0]?.id ?? others(state)[0]?.id);
-  const messages = state.chats[mode];
-  const waiting = state.questions.filter((q) => q.toId === state.meId && q.status !== 'answered');
+  const params = useLocalSearchParams<{ voice?: string; to?: string; reply?: string }>();
   const insets = useSafeAreaInsets();
+  const scroll = useRef<ScrollViewInstance>(null);
+  const [text, setText] = useState('');
+  const [mode, setMode] = useState<'type' | 'record' | 'draft'>('type');
+  const [draftSec, setDraftSec] = useState(0);
+  const [to, setTo] = useState<string | undefined>();
+  const [replyTo, setReplyTo] = useState<string | undefined>();
 
-  const add = (m: Omit<ChatMessage, 'id' | 'createdAt'>, md: ChatMode = mode) => dispatch({ type: 'addChat', mode: md, message: m });
+  useEffect(() => {
+    if (!params.voice) return;
+    setMode('record');
+    setTo(params.to);
+    setReplyTo(params.reply);
+  }, [params.voice, params.to, params.reply]);
 
-  async function send(body: string, voiceSec?: number) {
-    if (!body.trim() && !voiceSec) return;
-    const mine: ChatMessage = { id: newId('m'), from: 'me', text: body.trim(), createdAt: new Date().toISOString(), voiceSec };
-    add(mine);
+  const messages = visibleMessages(state);
+  const online = onlineNow(state);
+  const next = upcoming(state).find((u) => u.inDays <= 30 && u.event.kind !== 'holiday') ?? upcoming(state)[0];
+  const target = to ? member(state, to) : undefined;
+  const morning = target ? morningAt(target.country, 'next') : undefined;
+
+  function sendText() {
+    if (!text.trim()) return;
+    dispatch({ type: 'sendMessage', message: { text: text.trim() } });
     setText('');
-    setTyping(true);
-    setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 50);
-    const reply = await interviewReply({
-      mode, history: [...messages, mine], speakerName: self.name, speakerRole: self.roleLabel,
-      familyNames: state.family.members.map((m) => m.roleLabel),
-    });
-    setTyping(false);
-    add({ from: 'ai', text: reply.text, kind: reply.kind ?? 'text' });
-    setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 50);
   }
 
-  function myRecentText(kinds: Array<ChatMessage['kind']>): string {
-    const out: string[] = [];
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (m.from === 'ai' && m.kind && kinds.includes(m.kind) && out.length) break;
-      if (m.from === 'me' && m.text) out.unshift(m.text);
-    }
-    return out.join(' ');
-  }
-
-  async function saveStory() {
-    const transcript = myRecentText(['saved', 'relayed']);
-    setTyping(true);
-    const s = await structureStory(transcript || 'Một câu chuyện không lời.', self.name);
-    const id = newId('s');
+  function sendVoice(schedule: boolean) {
     dispatch({
-      type: 'addStory',
-      story: {
-        id, tellerId: state.meId, title: s.title, chapterId: s.chapterId, year: s.year, createdAt: new Date().toISOString(),
-        durationSec: Math.max(30, Math.round(transcript.length / 12)), transcript, quote: s.quote, people: s.people,
-        places: s.places, emotion: s.emotion, emoji: s.emoji, photoEmojis: [], privacy: 'family',
-        reactions: {}, followUps: s.followUps, perspectives: [],
+      type: 'sendMessage',
+      message: {
+        voiceSec: draftSec, to: to ? [to] : undefined, replyToLetterId: replyTo,
+        deliverAt: schedule && morning ? morning.toISOString() : undefined,
       },
     });
-    const pending = waiting[0];
-    if (pending) dispatch({ type: 'questionStatus', id: pending.id, status: 'answered', storyId: id });
-    setTyping(false);
-    add({ from: 'ai', kind: 'saved', storyId: id, text: `Đã lưu trang “${s.title}” vào chương ${state.chapters.find((c) => c.id === s.chapterId)?.title}. Cả nhà sẽ nhận được thông báo.` });
-  }
-
-  async function relay(how: 'verbatim' | 'soften' | 'keep') {
-    const to = member(state, recipient);
-    if (how === 'keep') return add({ from: 'ai', kind: 'saved', text: 'Thư giữ riêng chuyện này cho bạn. Khi nào sẵn sàng, bạn có thể quay lại đây.' });
-    const body = myRecentText(['consent', 'relayed', 'saved']);
-    const final = how === 'soften' ? await softenMessage(body, to?.roleLabel ?? 'Mẹ') : body;
-    add({ from: 'ai', kind: 'relayed', text: `Thư sẽ chuyển tới ${to?.roleLabel.toLowerCase()} trong cuộc gọi tối nay:\n\n“${final}”` });
-  }
-
-  function askPending() {
-    const q = waiting[0];
-    if (!q) return;
-    dispatch({ type: 'questionStatus', id: q.id, status: 'asked' });
-    setMode('story');
-    add({ from: 'ai', text: `${member(state, q.fromId)?.roleLabel} muốn hỏi bạn: “${q.text}” Bạn kể cho ${member(state, q.fromId)?.roleLabel.toLowerCase()} nghe nhé?` }, 'story');
+    setMode('type');
+    setReplyTo(undefined);
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      {/* Khung đầu như màn chat nhóm của mẫu tham khảo: tên ở giữa, nhóm avatar và trạng thái bên dưới. */}
-      <HeaderBlock style={{ paddingTop: insets.top + 8 }}>
+      <HeaderBlock style={{ paddingTop: insets.top + 8, paddingBottom: 16 }}>
         <View style={styles.header}>
-          <LogoMark size={48} />
-          <T variant="h1" center style={{ flex: 1 }}>Thư</T>
-          <IconButton icon="call-outline" size={48} light label="Để Thư gọi điện hỏi chuyện" onPress={() => router.push('/call')} />
-        </View>
-        <View style={styles.headerInfo}>
           <AvatarStack people={state.family.members} max={3} size={40} borderColor={colors.deep} />
-          <View style={{ alignItems: 'flex-end', gap: 2 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ flex: 1 }}>
+            <T variant="h2">{state.family.name}</T>
+            <View style={styles.rowSmall}>
               <View style={styles.online} />
-              <T variant="body" weight="medium">Đang trực</T>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-              <Ionicons name="people-outline" size={15} color={colors.muted} />
-              <T variant="small" color={colors.muted}>{state.family.members.length} người trong nhà</T>
+              <T variant="small" color={colors.inkSoft}>{online.length} đang online</T>
             </View>
           </View>
+          <IconButton icon="videocam" size={48} light label="Gọi video cả nhà" onPress={() => router.push('/room')} />
         </View>
+        {next && (
+          <Tap onPress={() => router.push('/calendar')} label="Mở lịch" scaleTo={0.98}>
+            <View style={styles.next}>
+              <Ionicons name="calendar-outline" size={16} color={colors.lunar} />
+              <T variant="small" weight="medium" style={{ flex: 1 }} numberOfLines={1}>{next.event.title}</T>
+              <T variant="small" weight="semibold" color={colors.accentText}>{inDaysLabel(next.inDays)}</T>
+            </View>
+          </Tap>
+        )}
       </HeaderBlock>
-      {AI_MODE === 'demo' && (
-        <T variant="caption" weight="regular" color={colors.muted} center style={{ marginTop: 8 }}>Bản demo: Thư trả lời theo kịch bản mẫu</T>
-      )}
-
-      <View style={styles.segment}>
-        {(['story', 'confide'] as const).map((m) => (
-          <Pressable key={m} onPress={() => setMode(m)} accessibilityRole="tab" accessibilityState={{ selected: mode === m }}
-            style={[styles.segItem, mode === m && styles.segActive]}>
-            <Ionicons name={m === 'story' ? 'book-outline' : 'lock-closed-outline'} size={16} color={mode === m ? colors.black : colors.inkSoft} />
-            <T variant="small" weight="semibold" color={mode === m ? colors.black : colors.inkSoft}>
-              {m === 'story' ? 'Kể chuyện' : 'Tâm sự riêng'}
-            </T>
-          </Pressable>
-        ))}
-      </View>
-
-      {mode === 'story' && waiting.length > 0 && (
-        <Pressable onPress={askPending} accessibilityRole="button" style={({ pressed }) => [styles.banner, pressed && { backgroundColor: colors.toneDeep }]}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <T variant="small" color={colors.inkSoft}>{member(state, waiting[0].fromId)?.roleLabel} đang chờ bạn trả lời</T>
-            <T variant="h3" numberOfLines={2}>“{waiting[0].text}”</T>
-          </View>
-          <T variant="small" weight="semibold" color={colors.accentText}>Trả lời</T>
-        </Pressable>
-      )}
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView ref={scroll} contentContainerStyle={{ padding: 16, paddingBottom: 30, gap: 10 }} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}>
-          {messages.map((m) => (
-            <Bubble key={m.id} m={m} elders={elders} recipient={recipient} setRecipient={setRecipient}
-              onSave={saveStory} onRelay={relay} />
-          ))}
-          {typing && (
-            <View style={[styles.bubble, styles.ai, { flexDirection: 'row', gap: 4 }]}>
-              {[0, 1, 2].map((k) => <View key={k} style={styles.dot} />)}
-            </View>
-          )}
+        <ScrollView ref={scroll} contentContainerStyle={{ padding: 16, paddingBottom: 24, gap: 14 }}
+          onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}>
+          {messages.map((m, i) => {
+            const day = dayLabel(shownAt(m));
+            const newDay = i === 0 || dayLabel(shownAt(messages[i - 1])) !== day;
+            return (
+              <Fragment key={m.id}>
+                {newDay && <T variant="caption" color={colors.muted} center style={{ marginTop: 6 }}>{day}</T>}
+                <Message m={m} />
+              </Fragment>
+            );
+          })}
         </ScrollView>
 
-        {voice ? (
-          <View style={styles.voicePanel}>
-            <VoiceRecorder size={58} hint="Kể bằng giọng nói, Thư sẽ chép lại"
-              onDone={({ seconds }) => { setVoice(false); send(AI_MODE === 'demo' ? `(Tin nhắn thoại ${duration(seconds)})` : '', seconds); }} />
-          </View>
-        ) : (
-          <View style={[styles.composer, { marginBottom: 96 }]}>
-            <View style={styles.inputWrap}>
-              <Tap onPress={() => setVoice(true)} label="Kể bằng giọng nói" scaleTo={0.85}>
-                <Ionicons name="mic-outline" size={22} color={colors.muted} />
-              </Tap>
-              <TextInput
-                value={text} onChangeText={setText} placeholder={mode === 'story' ? 'Kể cho Thư nghe...' : 'Điều bạn muốn nói mà ngại...'}
-                placeholderTextColor={colors.placeholder} style={styles.input} multiline accessibilityLabel="Lời nhắn cho Thư"
-              />
+        <View style={{ marginBottom: Math.max(insets.bottom, 12) + 80 }}>
+          {mode === 'record' && (
+            <View style={styles.panel}>
+              {target && <T variant="small" weight="semibold" center>Ghi âm gửi {callName(target)}</T>}
+              <VoiceRecorder size={64} hint={`Nói tự nhiên thôi. Muốn hẹn gửi sáng mai thì dưới ${MORNING_MAX_SEC} giây.`}
+                onDone={({ seconds }) => { setDraftSec(seconds); setMode('draft'); }} />
+              <Button label="Huỷ" variant="ghost" onPress={() => setMode('type')} />
             </View>
-            <GradientButton icon="arrow-up" size={52} label="Gửi" onPress={() => send(text)} />
-          </View>
-        )}
+          )}
+          {mode === 'draft' && (
+            <View style={styles.panel}>
+              <VoicePill sec={draftSec} />
+              <T variant="small" weight="semibold" color={colors.muted}>Gửi cho</T>
+              <View style={styles.chips}>
+                <Chip label="Cả nhà" active={!to} onPress={() => setTo(undefined)} />
+                {others(state).map((o) => <Chip key={o.id} label={o.roleLabel} active={to === o.id} onPress={() => setTo(o.id)} />)}
+              </View>
+              {target && morning && draftSec <= MORNING_MAX_SEC ? (
+                <Button label={`Hẹn ${localTimeFor(target.country, morning)} sáng mai`} icon="sunny" onPress={() => sendVoice(true)} />
+              ) : null}
+              <T variant="caption" weight="regular" color={colors.muted}>
+                {!target
+                  ? 'Chọn một người để hẹn gửi lời chào buổi sáng.'
+                  : draftSec > MORNING_MAX_SEC
+                    ? `Lời chào buổi sáng tối đa ${MORNING_MAX_SEC} giây. Đoạn này vẫn gửi ngay được.`
+                    : `7 giờ sáng giờ ${COUNTRY[target.country]}: ${callName(target)} mở máy là nghe ngay.`}
+              </T>
+              <Button label="Gửi ngay" icon="paper-plane" variant="dark" onPress={() => sendVoice(false)} />
+              <Button label="Ghi lại" variant="ghost" onPress={() => setMode('record')} />
+            </View>
+          )}
+          {mode === 'type' && (
+            <View style={styles.composer}>
+              <IconButton icon="camera" size={50} label="Chụp ảnh gửi cả nhà" onPress={() => router.push('/capture')} />
+              <View style={styles.inputWrap}>
+                <TextInput value={text} onChangeText={setText} placeholder="Nhắn cả nhà..." placeholderTextColor={colors.placeholder}
+                  style={styles.input} multiline accessibilityLabel="Tin nhắn" />
+              </View>
+              {text.trim() ? (
+                <GradientButton icon="arrow-up" size={50} label="Gửi" onPress={sendText} />
+              ) : (
+                <GradientButton icon="mic" size={50} label="Ghi âm" onPress={() => setMode('record')} />
+              )}
+            </View>
+          )}
+        </View>
       </KeyboardAvoidingView>
     </View>
   );
 }
 
-function Bubble({ m, elders, recipient, setRecipient, onSave, onRelay }: {
-  m: ChatMessage; elders: Member[]; recipient: string; setRecipient: (id: string) => void;
-  onSave: () => void; onRelay: (how: 'verbatim' | 'soften' | 'keep') => void;
-}) {
-  const mine = m.from === 'me';
-  if (m.kind === 'crisis') {
+function Message({ m }: { m: FamilyMessage }) {
+  const { state, dispatch } = useApp();
+  if (m.authorId === 'ai') {
+    const letter = m.letterId ? state.letters.find((l) => l.id === m.letterId) : undefined;
+    const film = m.filmId ? state.films.find((f) => f.id === m.filmId) : undefined;
+    if (!letter && !film) return null;
     return (
-      <View style={[styles.bubble, styles.crisis]}>
-        <T variant="small" weight="medium" color={colors.accentText}>{m.text}</T>
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-          <Pressable onPress={() => Linking.openURL('tel:109')} style={[styles.cta, { backgroundColor: colors.primaryDark }]}>
-            <Ionicons name="call" size={14} color={colors.white} />
-            <T variant="small" weight="semibold" color={colors.white}>Gọi 109</T>
-          </Pressable>
-          <Pressable onPress={() => router.push('/family')} style={[styles.cta, { backgroundColor: colors.white }]}>
-            <T variant="small" weight="semibold" color={colors.black}>Báo người thân</T>
-          </Pressable>
+      <View style={{ gap: 8 }}>
+        <View style={styles.rowSmall}>
+          <LogoMark size={26} />
+          <T variant="small" weight="semibold">Homeletter</T>
+          <T variant="caption" weight="regular" color={colors.muted}>{letter ? 'gửi thư tuần' : 'làm video từ kho nhà mình'}, {clock(m.createdAt)}</T>
         </View>
+        {letter && <LetterCard letter={letter} compact />}
+        {film && <FilmCard film={film} />}
       </View>
     );
   }
-  // Tin nhắn thoại là viên thuốc xanh đậm có nút phát, như mẫu tham khảo.
-  const bubble = m.voiceSec ? (
-    <View style={[styles.bubble, styles.voice]}>
-      <View style={styles.playDot}><Ionicons name="play" size={14} color={colors.black} /></View>
-      <Waveform bars={20} color="rgba(255,255,255,0.75)" />
-      <T variant="small" weight="medium">{duration(m.voiceSec)}</T>
-    </View>
-  ) : (
-    <View style={[styles.bubble, mine ? styles.me : styles.ai]}>
-      <T variant="body" color={mine ? colors.black : colors.ink} style={{ lineHeight: 23 }}>{m.text}</T>
-    </View>
-  );
-  return (
-    <View style={{ alignItems: mine ? 'flex-end' : 'flex-start', gap: 6 }}>
-      {mine ? bubble : (
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, maxWidth: '92%' }}>
-          <LogoMark size={30} />
-          {bubble}
-        </View>
-      )}
-      <T variant="caption" weight="regular" color={colors.muted} style={{ fontSize: 12, marginHorizontal: mine ? 6 : 44 }}>{clock(m.createdAt)}</T>
-      {m.kind === 'save-story' && (
-        <Pressable onPress={onSave} style={[styles.cta, { backgroundColor: colors.white, alignSelf: 'flex-start' }]}>
-          <Ionicons name="book-outline" size={16} color={colors.black} />
-          <T variant="small" weight="semibold" color={colors.black}>Lưu thành trang ký ức</T>
-        </Pressable>
-      )}
-      {m.kind === 'saved' && m.storyId && (
-        <Pressable onPress={() => router.push(`/story/${m.storyId}`)} style={[styles.cta, { backgroundColor: colors.tone }]}>
-          <T variant="small" weight="semibold">Xem trang ký ức</T>
-          <Ionicons name="chevron-forward" size={15} color={colors.ink} />
-        </Pressable>
-      )}
-      {m.kind === 'consent' && (
-        <View style={styles.consent}>
-          <T variant="small" weight="semibold" color={colors.inkSoft}>Chuyển lời cho</T>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            {elders.map((e) => <Chip key={e.id} label={e.roleLabel} active={recipient === e.id} onPress={() => setRecipient(e.id)} />)}
-          </View>
-          <Option icon="paper-plane-outline" label="Chuyển nguyên văn" onPress={() => onRelay('verbatim')} />
-          <Option icon="chatbubbles-outline" label="Nhờ Thư nói khéo giúp" onPress={() => onRelay('soften')} />
-          <Option icon="lock-closed-outline" label="Chỉ giữ riêng cho mình" onPress={() => onRelay('keep')} />
-        </View>
-      )}
-    </View>
-  );
-}
 
-function Option({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
+  const author = member(state, m.authorId);
+  const mine = m.authorId === state.meId;
+  const scheduled = isScheduled(m);
+  const post = m.postId ? state.posts.find((p) => p.id === m.postId) : undefined;
+  const letter = m.replyToLetterId ? state.letters.find((l) => l.id === m.replyToLetterId) : undefined;
+  const toNames = m.to?.map((id) => (id === state.meId ? 'bạn' : callName(member(state, id)))).join(', ');
+  const fg = mine ? colors.black : colors.ink;
+
+  const labels: Array<{ icon: 'sunny' | 'time-outline' | 'lock-closed' | 'mail-open-outline'; text: string }> = [];
+  if (scheduled && m.deliverAt) {
+    const r = member(state, m.to?.[0] ?? '');
+    labels.push({ icon: 'time-outline', text: `Hẹn ${r ? localTimeFor(r.country, new Date(m.deliverAt)) : clock(m.deliverAt)} sáng mai: ${toNames} mở máy là nghe` });
+  } else if (m.deliverAt) labels.push({ icon: 'sunny', text: `Lời chào buổi sáng gửi ${toNames}` });
+  else if (m.to) labels.push({ icon: 'lock-closed', text: `Gửi riêng ${toNames}` });
+  if (letter) labels.push({ icon: 'mail-open-outline', text: `Trả lời thư “${letter.title}”` });
+
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => [styles.option, pressed && { backgroundColor: colors.toneDeep }]}>
-      <Ionicons name={icon} size={19} color={colors.inkSoft} />
-      <T variant="body" weight="medium">{label}</T>
-    </Pressable>
+    <View style={{ flexDirection: 'row', gap: 8, justifyContent: mine ? 'flex-end' : 'flex-start' }}>
+      {!mine && <Avatar name={author?.name ?? '?'} uri={author?.avatarUri} size={34} />}
+      <View style={{ maxWidth: '82%', gap: 6, alignItems: mine ? 'flex-end' : 'flex-start' }}>
+        {!mine && <T variant="small" weight="semibold" color={colors.inkSoft}>{author?.roleLabel}</T>}
+        {labels.map((l) => (
+          <View key={l.text} style={styles.rowSmall}>
+            <Ionicons name={l.icon} size={14} color={colors.accentText} />
+            <T variant="caption" weight="medium" color={colors.accentText} style={{ flexShrink: 1 }}>{l.text}</T>
+          </View>
+        ))}
+        {post && (
+          <Tap onPress={() => router.push(`/post/${post.id}`)} label="Xem ảnh" scaleTo={0.96}>
+            <View style={styles.quote}>
+              <PhotoTile seed={post.id} tone={memberTone(state.family.members, post.authorId)} uri={post.photoUri} height={52} radiusSize={12} style={{ width: 52 }} scrim={false} />
+              <T variant="caption" weight="regular" color={colors.inkSoft} numberOfLines={2} style={{ flex: 1 }}>
+                Trả lời ảnh của {post.authorId === state.meId ? 'bạn' : callName(member(state, post.authorId))}: {post.caption}
+              </T>
+            </View>
+          </Tap>
+        )}
+        {m.voiceSec ? (
+          <View style={{ gap: 6, alignItems: mine ? 'flex-end' : 'flex-start', opacity: scheduled ? 0.75 : 1 }}>
+            <VoicePill sec={m.voiceSec} />
+            {m.text ? <T variant="small" color={colors.inkSoft} style={{ paddingHorizontal: 6 }}>{m.text}</T> : null}
+          </View>
+        ) : m.text ? (
+          <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
+            <T variant="body" color={fg} style={{ lineHeight: 23 }}>{m.text}</T>
+          </View>
+        ) : null}
+        <View style={styles.rowSmall}>
+          <T variant="caption" weight="regular" color={colors.muted} style={{ fontSize: 12 }}>{clock(shownAt(m))}</T>
+          {scheduled && mine && (
+            <Tap onPress={() => dispatch({ type: 'cancelMessage', id: m.id })} label="Huỷ hẹn" scaleTo={0.9}>
+              <T variant="caption" weight="semibold" color={colors.holiday}>Huỷ hẹn</T>
+            </Tap>
+          )}
+        </View>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 6 },
-  headerInfo: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 18 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16 },
+  rowSmall: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   online: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.online },
-  voice: { flexDirection: 'row', alignItems: 'center', gap: 10, width: 230, backgroundColor: colors.deep, borderRadius: radius.pill, paddingVertical: 8, paddingLeft: 8 },
-  playDot: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' },
-  inputWrap: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 52, borderRadius: radius.pill, backgroundColor: colors.tone,
-    paddingLeft: 16,
+  next: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 14, paddingHorizontal: 14, height: 40,
+    borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.3)',
   },
-  segment: { flexDirection: 'row', backgroundColor: colors.tone, borderRadius: radius.pill, padding: 4, marginHorizontal: 16, marginTop: 12 },
-  segItem: { flex: 1, height: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
-  segActive: { backgroundColor: colors.white },
-  banner: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 20, marginTop: 12, padding: 14,
-    borderRadius: radius.lg, backgroundColor: colors.tone,
-  },
-  bubble: { maxWidth: '84%', borderRadius: 22, paddingHorizontal: 16, paddingVertical: 12 },
-  ai: { backgroundColor: colors.tone, borderTopLeftRadius: 6, alignSelf: 'flex-start', flexShrink: 1 },
-  me: { backgroundColor: colors.white, borderTopRightRadius: 6 },
-  crisis: { backgroundColor: colors.primarySoft, alignSelf: 'stretch', maxWidth: '100%' },
-  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.faint },
-  cta: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, minHeight: 44, borderRadius: 999 },
-  consent: { backgroundColor: colors.tone, borderRadius: radius.lg, padding: 14, gap: 10, width: '88%' },
-  option: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.toneDeep, borderRadius: radius.pill, paddingHorizontal: 16, minHeight: 48 },
+  bubble: { borderRadius: 22, paddingHorizontal: 16, paddingVertical: 11 },
+  mine: { backgroundColor: colors.white, borderTopRightRadius: 6 },
+  theirs: { backgroundColor: colors.tone, borderTopLeftRadius: 6 },
+  quote: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.tone, borderRadius: 16, padding: 6, paddingRight: 12, width: 250 },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 16, paddingTop: 8 },
+  inputWrap: { flex: 1, minHeight: 50, borderRadius: radius.pill, backgroundColor: colors.tone, justifyContent: 'center' },
   input: {
-    flex: 1, minHeight: 48, maxHeight: 120, paddingHorizontal: 10,
-    paddingTop: 13, paddingBottom: 12, fontFamily: fonts.regular, fontSize: 16, color: colors.ink,
+    minHeight: 50, maxHeight: 120, paddingHorizontal: 18, paddingTop: 14, paddingBottom: 12,
+    fontFamily: fonts.regular, fontSize: 16, color: colors.ink,
   },
-  voicePanel: { backgroundColor: colors.tone, margin: 16, marginBottom: 100, borderRadius: radius.xl, padding: 18 },
+  panel: { backgroundColor: colors.tone, marginHorizontal: 16, borderRadius: radius.xl, padding: 18, gap: 12 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 });

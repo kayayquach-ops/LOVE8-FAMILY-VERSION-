@@ -1,138 +1,215 @@
-import { Ionicons } from '@/components/Icon';
 import * as Haptics from 'expo-haptics';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, LogoMark, T, Waveform } from '@/components/ui';
+import { Ionicons } from '@/components/Icon';
+import { VoicePill } from '@/components/Voice';
+import { Avatar, Button, FadeIn, LogoMark, T, Tap, Waveform, type IconName } from '@/components/ui';
 import { duration } from '@/lib/format';
-import { isElder } from '@/lib/family';
-import { me, member } from '@/lib/selectors';
-import { nextQuestion } from '@/services/ai';
+import { aiAddress, callName, isElder, me, member } from '@/lib/selectors';
+import { onlineNow, planCall } from '@/services/ai';
 import { useApp } from '@/store/AppContext';
-import { colors } from '@/theme';
+import { colors, radius } from '@/theme';
 
-type Phase = 'ringing' | 'talking' | 'ended';
+type Phase = 'ringing' | 'opener' | 'talking' | 'consent' | 'handoff' | 'done';
 
-// Cuộc gọi của Thư qua app (gọi qua internet nên gần như miễn phí, không tốn cước quốc tế).
-// Trên điện thoại thật, cuộc gọi hiện lên như cuộc gọi thường nhờ CallKit (iOS) / ConnectionService (Android).
+// Homeletter gọi mình qua app (gọi qua internet, không tốn cước quốc tế). Homeletter luôn nói rõ mình là AI.
+// Câu hỏi giấu kín của người nhà được hỏi khéo, không nói ai hỏi. Cuối cuộc gọi: duyệt chia sẻ, rồi nối máy cho người thật.
 export default function Call() {
-  const { as } = useLocalSearchParams<{ as?: string }>();
   const { state, dispatch } = useApp();
   const self = me(state);
-  const elder = as === 'elder' || isElder(self.role);
+  const elder = isElder(self);
+  const plan = useMemo(() => planCall(state, state.meId), []);
+  const opener = plan.find((s) => s.kind === 'opener');
+  const steps = plan.filter((s) => s.kind !== 'opener' && s.kind !== 'handoff');
+  const openerBy = member(state, opener?.fromId ?? '');
+  const partner = member(state, plan.find((s) => s.kind === 'handoff')?.fromId ?? '') ?? onlineNow(state)[0];
   const [phase, setPhase] = useState<Phase>('ringing');
   const [sec, setSec] = useState(0);
   const [qi, setQi] = useState(0);
-  const [muted, setMuted] = useState(false);
-
-  const pending = state.questions.filter((q) => q.toId === state.meId && q.status !== 'answered');
-  const questions = useMemo(() => {
-    const fromFamily = pending.map((q) => `${member(state, q.fromId)?.roleLabel} muốn hỏi: ${q.text}`);
-    const opener = elder
-      ? `Cháu chào ${self.roleLabel.toLowerCase()} ạ! Tuần này ${self.roleLabel.toLowerCase()} khoẻ không ạ?`
-      : `Chào ${self.name.split(' ').pop()}! Tuần này ở ${self.city} thế nào?`;
-    return [opener, ...fromFamily, nextQuestion(state.stories.length).text, 'Cảm ơn nhé! Thư sẽ chép lại và gửi cho cả nhà.'];
-  }, []);
+  const [shared, setShared] = useState('');
 
   useEffect(() => {
     if (phase === 'ringing') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       return;
     }
-    if (phase !== 'talking') return;
+    if (phase !== 'opener' && phase !== 'talking') return;
     const t = setInterval(() => setSec((s) => s + 1), 1000);
     return () => clearInterval(t);
   }, [phase]);
 
-  function end() {
-    pending.forEach((q) => dispatch({ type: 'questionStatus', id: q.id, status: 'asked' }));
-    setPhase('ended');
+  function finishTalk() {
+    dispatch({ type: 'askedAll', toId: state.meId });
+    setPhase('consent');
   }
 
-  if (phase === 'ended') {
+  function consent(choice: string) {
+    setShared(choice);
+    setPhase(partner ? 'handoff' : 'done');
+  }
+
+  const step = steps[qi];
+  const header = (
+    <View style={{ alignItems: 'center', gap: 8, marginTop: 36 }}>
+      <View style={styles.mark}><LogoMark size={64} /></View>
+      <T variant="display" color={colors.white}>Homeletter</T>
+      <T variant="body" color="rgba(255,255,255,0.8)" center>
+        {phase === 'ringing' ? `Trợ lý AI của ${state.family.name.toLowerCase()} đang gọi` : `Đang nói chuyện, ${duration(sec)}`}
+      </T>
+    </View>
+  );
+
+  if (phase === 'consent') {
+    const options = elder
+      ? [{ key: 'clip', icon: 'checkmark-circle' as IconName, label: 'Ừ, gửi các con' }, { key: 'keep', icon: 'lock-closed' as IconName, label: 'Thôi, giữ riêng' }]
+      : [
+          { key: 'clip', icon: 'mic' as IconName, label: 'Gửi đoạn hay nhất và tóm tắt' },
+          { key: 'summary', icon: 'document-text' as IconName, label: 'Chỉ gửi tóm tắt' },
+          { key: 'softened', icon: 'chatbubbles' as IconName, label: 'Nhờ Homeletter nói khéo lại' },
+          { key: 'keep', icon: 'lock-closed' as IconName, label: 'Giữ riêng cho mình' },
+        ];
+    return (
+      <SafeAreaView style={[styles.wrap, { padding: 20 }]}>
+        <FadeIn style={{ marginTop: 24, gap: 12 }}>
+          <T variant="display" color={colors.white}>{elder ? `Homeletter gửi các con nhé, ${aiAddress(self)}?` : 'Bạn muốn chia sẻ thế nào?'}</T>
+          <T variant="body" color={colors.inkSoft}>
+            {elder
+              ? 'Homeletter vừa đọc lại tóm tắt. Chỉ cần nói "ừ" là gửi, hoặc bấm nút dưới đây.'
+              : 'Không có gì được gửi đi nếu bạn chưa đồng ý. Bạn xem lại được và xoá bất cứ lúc nào.'}
+          </T>
+        </FadeIn>
+        <View style={{ gap: 10, marginTop: 24 }}>
+          {options.map((o) => (
+            <Tap key={o.key} onPress={() => consent(o.key)} label={o.label} scaleTo={0.97}>
+              <View style={[styles.option, elder && { minHeight: 72 }]}>
+                <Ionicons name={o.icon} size={elder ? 26 : 22} color={colors.ink} />
+                <T variant={elder ? 'h2' : 'body'} weight="semibold" style={{ flex: 1 }}>{o.label}</T>
+              </View>
+            </Tap>
+          ))}
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (phase === 'handoff' && partner) {
+    return (
+      <SafeAreaView style={[styles.wrap, { padding: 20, justifyContent: 'center', gap: 16 }]}>
+        <FadeIn style={{ alignItems: 'center', gap: 14 }}>
+          <View>
+            <Avatar name={partner.name} uri={partner.avatarUri} size={112} />
+            <View style={styles.onlineDot} />
+          </View>
+          <T variant="display" color={colors.white} center>{partner.roleLabel} đang online</T>
+          <T variant="body" color={colors.inkSoft} center>Nói chuyện với {callName(partner)} luôn nhé? Homeletter nối máy, rồi để hai người nói với nhau.</T>
+        </FadeIn>
+        <Button label={`Nối máy với ${callName(partner)}`} icon="call" variant="dark" style={{ marginTop: 16 }}
+          onPress={() => router.replace({ pathname: '/room', params: { with: partner.id } })} />
+        <Button label="Để sau" variant="ghost" onPress={() => setPhase('done')} />
+      </SafeAreaView>
+    );
+  }
+
+  if (phase === 'done') {
     return (
       <SafeAreaView style={[styles.wrap, { justifyContent: 'center', padding: 28, gap: 16 }]}>
-        <View style={styles.doneIcon}><Ionicons name="checkmark" size={40} color={colors.white} /></View>
-        <T variant="h2" color={colors.white} center>Cuộc gọi {duration(sec)}</T>
-        <T variant="body" color={colors.white} center style={{ opacity: 0.85 }}>
-          Thư đang chép lại lời kể. Trang ký ức mới sẽ hiện trong sổ sau vài phút, {elder ? 'và con cháu sẽ được thông báo.' : 'và bố mẹ sẽ được thông báo.'}
+        <View style={styles.doneIcon}><Ionicons name="checkmark" size={40} color={colors.black} /></View>
+        <T variant="h1" color={colors.white} center>Cảm ơn {elder ? aiAddress(self) : 'bạn'}</T>
+        <T variant="body" color={colors.inkSoft} center>
+          {shared === 'keep'
+            ? 'Homeletter giữ riêng cuộc trò chuyện này. Không ai khác nghe được.'
+            : `Homeletter tuần này sẽ tới ${elder ? 'các con' : 'bố mẹ'} vào tối Chủ nhật. Bạn xem lại được trong mục "Những gì bạn đã kể".`}
         </T>
-        <Button label="Về trang chủ" onPress={() => router.back()} style={{ marginTop: 20, alignSelf: 'stretch' }} />
+        <Button label="Xong" onPress={() => router.back()} style={{ marginTop: 20, alignSelf: 'stretch' }} />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.wrap}>
-      <View style={{ alignItems: 'center', marginTop: 48, gap: 10 }}>
-        <View style={styles.mark}>
-          <LogoMark size={64} />
-        </View>
-        <T variant="display" color={colors.white}>Thư</T>
-        <T variant="body" color="rgba(255,255,255,0.8)">
-          {phase === 'ringing' ? `Trợ lý của ${state.family.name.toLowerCase()} đang gọi` : `Đang nói chuyện, ${duration(sec)}`}
-        </T>
-      </View>
+      {header}
 
-      {phase === 'talking' && (
-        <View style={styles.caption}>
-          <T variant="small" color="rgba(255,255,255,0.75)">Thư đang hỏi</T>
-          <T variant="h2" weight="regular" color={colors.white} style={{ fontSize: 22, lineHeight: 30 }}>{questions[qi]}</T>
-          <View style={{ height: 30, marginTop: 8 }}>
-            <Waveform bars={34} color={muted ? 'rgba(255,255,255,0.25)' : colors.white} />
+      {phase === 'opener' && opener && openerBy && (
+        <FadeIn style={styles.caption}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Avatar name={openerBy.name} uri={openerBy.avatarUri} size={40} />
+            <T variant="small" color={colors.inkSoft} style={{ flex: 1 }}>Lời mở đầu, giọng thật của {callName(openerBy)}</T>
           </View>
-          {qi < questions.length - 1 ? (
-            <Pressable onPress={() => setQi(qi + 1)} accessibilityRole="button" style={styles.next}>
-              <T variant="small" weight="semibold" color={colors.black}>Kể xong, hỏi tiếp</T>
-              <Ionicons name="chevron-forward" size={15} color={colors.black} />
-            </Pressable>
-          ) : null}
-        </View>
+          <VoicePill sec={6} autoPlay onEnd={() => setPhase('talking')} />
+          <T variant="h3" weight="regular" color={colors.white}>“{opener.text}”</T>
+          <Next label="Nghe Homeletter nói" onPress={() => setPhase('talking')} />
+        </FadeIn>
+      )}
+
+      {phase === 'talking' && step && (
+        <FadeIn key={qi} style={styles.caption}>
+          <T variant="small" color={colors.inkSoft}>
+            {step.kind === 'message' ? 'Homeletter chuyển lời' : 'Homeletter đang hỏi'}, {qi + 1}/{steps.length}
+          </T>
+          <T variant="h2" weight="regular" color={colors.white} style={{ fontSize: 22, lineHeight: 30 }}>{step.text}</T>
+          <View style={{ height: 30, marginTop: 6 }}><Waveform bars={34} color={colors.white} /></View>
+          <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+            <Next label={qi < steps.length - 1 ? 'Kể xong, tiếp' : 'Kết thúc'} onPress={() => (qi < steps.length - 1 ? setQi(qi + 1) : finishTalk())} />
+            {step.kind !== 'message' && qi < steps.length - 1 && (
+              <Pressable onPress={() => setQi(qi + 1)} accessibilityRole="button" style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 }}>
+                <T variant="small" weight="semibold" color={colors.inkSoft}>Bỏ qua câu này</T>
+              </Pressable>
+            )}
+          </View>
+        </FadeIn>
       )}
 
       <View style={{ flex: 1 }} />
       {phase === 'ringing' ? (
         <View style={styles.row}>
-          <Round icon="close" bg={colors.primaryDark} label="Để sau" onPress={() => router.back()} />
-          <Round icon="call" bg={colors.green} label="Nghe máy" onPress={() => setPhase('talking')} />
+          <Round icon="close" bg={colors.endCall} label="Để sau" onPress={() => router.back()} />
+          <Round icon="call" bg={colors.green} label="Nghe máy" onPress={() => setPhase(opener ? 'opener' : 'talking')} />
         </View>
       ) : (
         <View style={styles.row}>
-          <Round icon={muted ? 'mic-off' : 'mic'} bg="rgba(255,255,255,0.18)" label={muted ? 'Bật mic' : 'Tắt mic'} onPress={() => setMuted(!muted)} />
-          <Round icon="call" bg={colors.primaryDark} label="Kết thúc" rotate onPress={end} />
-          <Round icon="volume-high" bg="rgba(255,255,255,0.18)" label="Loa" onPress={() => {}} />
+          <Round icon="call" bg={colors.endCall} label="Kết thúc" rotate onPress={finishTalk} />
         </View>
       )}
       <T variant="caption" color="rgba(255,255,255,0.7)" center style={{ marginBottom: 16, paddingHorizontal: 24 }}>
-        Cuộc gọi được ghi lại để làm sổ ký ức. Người kể luôn được xem lại trước khi chia sẻ.
+        Homeletter là trợ lý AI. Cuộc gọi được ghi âm để làm thư cho người nhà; bạn duyệt trước khi gửi đi.
       </T>
     </SafeAreaView>
   );
 }
 
-function Round({ icon, bg, label, onPress, rotate }: {
-  icon: 'close' | 'call' | 'mic' | 'mic-off' | 'volume-high'; bg: string; label: string; onPress: () => void; rotate?: boolean;
-}) {
+function Next({ label, onPress }: { label: string; onPress: () => void }) {
   return (
-    <View style={{ alignItems: 'center', gap: 8 }}>
-      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={[styles.round, { backgroundColor: bg }]}>
+    <Pressable onPress={onPress} accessibilityRole="button" style={styles.next}>
+      <T variant="small" weight="semibold" color={colors.black}>{label}</T>
+      <Ionicons name="chevron-forward" size={15} color={colors.black} />
+    </Pressable>
+  );
+}
+
+function Round({ icon, bg, label, onPress, rotate }: { icon: IconName; bg: string; label: string; onPress: () => void; rotate?: boolean }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={{ alignItems: 'center', gap: 8 }}>
+      <View style={[styles.round, { backgroundColor: bg }]}>
         <Ionicons name={icon} size={30} color={colors.white} style={rotate ? { transform: [{ rotate: '135deg' }] } : undefined} />
-      </Pressable>
+      </View>
       <T variant="small" color={colors.white}>{label}</T>
-    </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: colors.bg },
   mark: { width: 112, height: 112, borderRadius: 56, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  caption: { margin: 24, padding: 18, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', gap: 8 },
+  caption: { margin: 20, padding: 18, borderRadius: radius.lg, backgroundColor: colors.tone, gap: 12 },
   next: {
     alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.white,
-    borderRadius: 999, paddingHorizontal: 16, minHeight: 44, marginTop: 10,
+    borderRadius: 999, paddingHorizontal: 16, minHeight: 44,
   },
   row: { flexDirection: 'row', justifyContent: 'space-evenly', marginBottom: 24 },
   round: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
+  option: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 60, borderRadius: radius.lg, paddingHorizontal: 18, backgroundColor: colors.tone },
+  onlineDot: { position: 'absolute', right: 6, bottom: 6, width: 22, height: 22, borderRadius: 11, backgroundColor: colors.online, borderWidth: 3, borderColor: colors.bg },
   doneIcon: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
 });

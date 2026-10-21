@@ -7,13 +7,12 @@ import { useApp } from '@/store/AppContext';
 import { colors, radius } from '@/theme';
 
 const ROWS: Array<[string, string, string]> = [
-  ['Ảnh mỗi ngày, widget, lịch âm', 'Có', 'Có'],
-  ['Trang ký ức mỗi tháng', '2', 'Không giới hạn'],
-  ['Thư gọi hỏi chuyện bố mẹ', '—', 'Mỗi tuần'],
-  ['Tâm sự riêng, nhờ Thư nói khéo', '3 lần/tháng', 'Không giới hạn'],
-  ['Clip câu chuyện có giọng kể', '—', 'Có'],
-  ['Hộp thời gian', '1 hộp', 'Không giới hạn'],
-  ['Giảm giá sách in dịp Tết', '—', '20%'],
+  ['Ảnh mỗi ngày, mâm cơm chung, widget', 'Có', 'Có'],
+  ['Chat, lời chào buổi sáng, lịch', 'Có', 'Có'],
+  ['Homeletter gọi hỏi chuyện', '2 lần/tháng', 'Mỗi tuần'],
+  ['Kho ảnh và giọng nói', '1 năm gần nhất', 'Không giới hạn'],
+  ['Video theo dịp, phụ đề nhiều thứ tiếng', 'Video tuần', 'Mọi dịp'],
+  ['Giảm giá sách giọng nói in dịp Tết', '—', '20%'],
 ];
 
 // Giá ở đây là giả định để khảo sát. Khi phát hành, thanh toán qua App Store / Google Play (RevenueCat).
@@ -55,7 +54,7 @@ export default function Premium() {
         onPress={() => { dispatch({ type: 'updateSettings', patch: { premium: true } }); router.back(); }}
       />
       <T variant="small" color={colors.muted} center style={{ marginTop: 10 }}>
-        Bản demo: không trừ tiền. Hoặc tặng bố mẹ "Hộp quà Tết": 1 năm Gói Gia đình kèm sách in.
+        Bản demo: không trừ tiền. Hoặc tặng bố mẹ "Hộp quà Tết": 1 năm Gói Gia đình kèm sách giọng nói in.
       </T>
     </Screen>
   );
