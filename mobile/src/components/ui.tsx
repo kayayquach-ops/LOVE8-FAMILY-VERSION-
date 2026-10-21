@@ -134,8 +134,29 @@ export function Tap({
   );
 }
 
+// Bản web: hiệu ứng hiện dần chạy bằng CSS của trình duyệt, không tốn công của mã app (máy yếu đỡ giật).
+const REDUCE_MOTION_WEB =
+  !NATIVE && typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+// react-native-web chỉ nhận animationKeyframes trong StyleSheet.create (thành class CSS), không nhận style viết tại chỗ.
+const fadeCss = StyleSheet.create({
+  fade: {
+    animationKeyframes: [{ from: { opacity: 0, transform: 'translateY(18px)' }, to: { opacity: 1, transform: 'translateY(0px)' } }],
+    animationDuration: '460ms',
+    animationFillMode: 'both',
+    animationTimingFunction: 'cubic-bezier(0.33, 1, 0.68, 1)',
+  } as unknown as ViewStyle,
+});
+
 /** Hiện dần và trượt lên khi xuất hiện; `delay` để các thẻ lần lượt hiện ra. Tắt khi máy bật giảm chuyển động. */
 export function FadeIn({ children, delay = 0, style }: { children: ReactNode; delay?: number; style?: StyleProp<ViewStyle> }) {
+  if (!NATIVE) {
+    if (REDUCE_MOTION_WEB) return <View style={style}>{children}</View>;
+    return <View style={[style, fadeCss.fade, delay ? ({ animationDelay: `${delay}ms` } as ViewStyle) : null]}>{children}</View>;
+  }
+  return <NativeFadeIn delay={delay} style={style}>{children}</NativeFadeIn>;
+}
+
+function NativeFadeIn({ children, delay = 0, style }: { children: ReactNode; delay?: number; style?: StyleProp<ViewStyle> }) {
   const v = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     let alive = true;

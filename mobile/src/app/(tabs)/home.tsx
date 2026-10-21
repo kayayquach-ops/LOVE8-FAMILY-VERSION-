@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { MealTable, MissionCard, OldPhotoPrompt, PostCard } from '@/components/Feed';
-import { Avatar, AvatarStack, FadeIn, IconButton, Screen, SectionHeader, T, Tap } from '@/components/ui';
+import { Avatar, AvatarStack, Button, FadeIn, IconButton, Screen, SectionHeader, T, Tap } from '@/components/ui';
 import { isElder, me, missionFor } from '@/lib/selectors';
 import { useApp } from '@/store/AppContext';
 import { colors } from '@/theme';
@@ -11,7 +12,9 @@ export default function Home() {
   const { state } = useApp();
   const self = me(state);
   const mission = missionFor(state);
-  const feed = state.posts.slice(0, 8);
+  // Vẽ trước 4 ảnh cho trang mở nhanh; bấm "Xem thêm" mới vẽ tiếp.
+  const [count, setCount] = useState(4);
+  const feed = state.posts.slice(0, count);
 
   return (
     <Screen>
@@ -37,6 +40,9 @@ export default function Home() {
       <View style={{ gap: 12 }}>
         {feed.map((p, i) => <FadeIn key={p.id} delay={Math.min(i, 3) * 70}><PostCard post={p} /></FadeIn>)}
       </View>
+      {state.posts.length > count && (
+        <Button label="Xem thêm ảnh" variant="ghost" style={{ marginTop: 12 }} onPress={() => setCount(count + 6)} />
+      )}
     </Screen>
   );
 }

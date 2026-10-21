@@ -16,6 +16,9 @@ site="$(mktemp -d)/site"
 cd "$root/mobile"
 EXPO_BASE_URL="$base" npx expo export --platform web --output-dir "$site"
 
+# Tải trước font và mã của màn hình đầu, để điện thoại không phải tải nối đuôi nhau.
+node "$root/scripts/preload-web.mjs" "$site"
+
 # GitHub Pages trả 404.html cho đường dẫn không có file (như /home); app tự mở đúng màn hình từ đó.
 cp "$site/index.html" "$site/404.html"
 # Không cho GitHub chạy Jekyll, nếu không thư mục _expo sẽ bị bỏ qua.

@@ -101,7 +101,7 @@ export function MealTable() {
             <FadeIn key={m.id} delay={i * 60} style={styles.cell}>
               {post ? (
                 <Tap onPress={() => router.push(`/post/${post.id}`)} label={`Bữa cơm của ${m.roleLabel}`} scaleTo={0.95}>
-                  <PhotoTile seed={post.id} tone={memberTone(state.family.members, m.id)} uri={post.photoUri} style={styles.plate} radiusSize={22}>
+                  <PhotoTile seed={post.id} tone={memberTone(state.family.members, m.id)} uri={post.photoUri} style={styles.plate} radiusSize={22} autoHeight>
                     <View style={styles.plateInner}>
                       <Avatar name={m.name} uri={m.avatarUri} size={30} />
                       <T variant="caption" weight="medium" color={colors.white} numberOfLines={3}>{post.caption}</T>
