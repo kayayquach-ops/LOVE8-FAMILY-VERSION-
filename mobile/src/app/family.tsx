@@ -72,7 +72,7 @@ export default function Family() {
             <T variant="h2">{s.premium ? 'Bạn đang dùng Gói Gia đình' : 'Gói Gia đình'}</T>
             <T variant="small" color={colors.inkSoft}>Không giới hạn câu chuyện và clip, Thư gọi hỏi chuyện mỗi tuần.</T>
           </View>
-          <T variant="small" weight="semibold" color={colors.primary}>{s.premium ? 'Quản lý' : 'Nâng cấp'}</T>
+          <T variant="small" weight="semibold" color={colors.accentText}>{s.premium ? 'Quản lý' : 'Nâng cấp'}</T>
         </Pressable>
       </View>
     </Screen>

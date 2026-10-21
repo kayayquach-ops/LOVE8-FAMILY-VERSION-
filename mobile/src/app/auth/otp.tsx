@@ -12,7 +12,7 @@ export default function Otp() {
   const [code, setCode] = useState('');
 
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.white }}>
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={{ flex: 1, paddingHorizontal: space.xl }}>
         <BackHeader />
         <T variant="display" style={{ marginTop: 20 }}>Nhập mã xác nhận</T>
@@ -49,5 +49,5 @@ const styles = StyleSheet.create({
     width: 48, height: 60, borderRadius: radius.md, backgroundColor: colors.tone,
     alignItems: 'center', justifyContent: 'center',
   },
-  boxActive: { borderWidth: 2, borderColor: colors.ink, backgroundColor: colors.white },
+  boxActive: { borderWidth: 2, borderColor: colors.accentText, backgroundColor: colors.toneDeep },
 });

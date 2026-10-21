@@ -63,7 +63,7 @@ export function VoiceRecorder({
       {recording ? (
         <View style={styles.live}>
           <View style={styles.redDot} />
-          <Waveform bars={22} color={colors.primary} />
+          <Waveform bars={22} color={colors.accentText} />
           <T variant="small" weight="semibold">{duration(seconds)}</T>
         </View>
       ) : (
@@ -73,7 +73,7 @@ export function VoiceRecorder({
         onPress={recording ? stop : start}
         accessibilityRole="button"
         accessibilityLabel={recording ? 'Dừng ghi âm' : 'Bắt đầu ghi âm'}
-        style={[styles.button, { width: size, height: size, borderRadius: size / 2, backgroundColor: recording ? colors.ink : colors.primary }]}
+        style={[styles.button, { width: size, height: size, borderRadius: size / 2, backgroundColor: recording ? colors.toneDeep : colors.primary }]}
       >
         <Ionicons name={recording ? 'stop' : 'mic'} size={size * 0.42} color={colors.white} />
       </Pressable>
@@ -85,7 +85,7 @@ export function VoiceRecorder({
 const styles = StyleSheet.create({
   button: { alignItems: 'center', justifyContent: 'center' },
   live: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.white,
+    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.toneDeep,
     borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, width: '100%',
   },
   redDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },

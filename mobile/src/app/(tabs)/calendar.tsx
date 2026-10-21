@@ -1,13 +1,14 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { EventRow } from '@/components/Feed';
-import { Button, IconButton, Screen, SectionHeader, T } from '@/components/ui';
+import { Button, FadeIn, IconButton, PhotoTile, Screen, SectionHeader, T } from '@/components/ui';
 import { inDaysLabel, lunarMonthName, weekday } from '@/lib/format';
 import { canChiYear, daysBetween, lunarOf } from '@/lib/lunar';
 import { nextOccurrence, upcoming } from '@/lib/selectors';
 import { useApp } from '@/store/AppContext';
-import { colors, radius } from '@/theme';
+import { colors, familyTones, gradient, radius } from '@/theme';
 
 const WEEK = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 
@@ -62,7 +63,7 @@ export default function CalendarTab() {
 
       <View style={[styles.row, { marginTop: 20 }]}>
         {WEEK.map((w) => (
-          <T key={w} variant="caption" weight="semibold" color={w === 'CN' ? colors.primary : colors.muted} style={styles.cellText} center>{w}</T>
+          <T key={w} variant="caption" weight="semibold" color={w === 'CN' ? colors.holiday : colors.muted} style={styles.cellText} center>{w}</T>
         ))}
       </View>
       <View style={styles.grid}>
@@ -73,7 +74,7 @@ export default function CalendarTab() {
           const isSel = d.toDateString() === selected.toDateString();
           const has = eventDays.has(d.toDateString());
           const sunday = d.getDay() === 0;
-          const fg = isToday ? colors.white : sunday ? colors.primary : colors.ink;
+          const fg = isToday ? colors.white : sunday ? colors.holiday : colors.ink;
           return (
             <Pressable
               key={i}
@@ -83,7 +84,8 @@ export default function CalendarTab() {
               accessibilityLabel={`${d.getDate()} tháng ${d.getMonth() + 1}, ${l.day} tháng ${l.month} âm lịch${has ? ', có sự kiện' : ''}`}
               style={styles.cell}
             >
-              <View style={[styles.cellInner, isSel && !isToday && { backgroundColor: colors.tone }, isToday && { backgroundColor: colors.primary }]}>
+              <View style={[styles.cellInner, isSel && !isToday && { backgroundColor: colors.toneDeep }]}>
+                {isToday && <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[StyleSheet.absoluteFill, { borderRadius: 22 }]} />}
                 <T variant="body" weight="semibold" color={fg} style={{ lineHeight: 20 }}>{d.getDate()}</T>
                 <T variant="caption" weight="regular" style={{ fontSize: 12, lineHeight: 14 }} color={isToday ? colors.white : colors.lunar}>
                   {l.day === 1 ? `1/${l.month}` : l.day}
@@ -95,21 +97,25 @@ export default function CalendarTab() {
         })}
       </View>
 
-      <View style={styles.dayPanel}>
-        <T serif weight="bold" color={selected.getDay() === 0 ? colors.primary : colors.ink} style={styles.dayNum}>{selected.getDate()}</T>
-        <View style={{ flex: 1, gap: 4 }}>
-          <T variant="body" weight="semibold">
-            {weekday(selected)}, {selected.getDate()} tháng {selected.getMonth() + 1}
-          </T>
-          <T variant="small" weight="medium" color={colors.lunar}>
-            Ngày {sl.day} {lunarMonthName(sl.month, sl.leap)}, năm {canChiYear(sl.year)}
-          </T>
-          {until > 0 && <T variant="small" color={colors.muted}>{inDaysLabel(until)}</T>}
-          {sl.day === 1 && <T variant="small" weight="semibold" color={colors.primary}>Mùng một, nhắc cả nhà thắp hương</T>}
-          {sl.day === 15 && <T variant="small" weight="semibold" color={colors.primary}>Ngày rằm</T>}
-          {selectedEvents.map((t) => <T key={t} variant="small" weight="semibold">{t}</T>)}
-        </View>
-      </View>
+      <FadeIn key={selected.toDateString()} style={{ marginTop: 20 }}>
+        <PhotoTile seed={selected.toDateString()} tone={familyTones[4]} autoHeight>
+          <View style={styles.dayPanel}>
+            <T variant="display" color={colors.white} style={styles.dayNum}>{selected.getDate()}</T>
+            <View style={{ flex: 1, gap: 4 }}>
+              <T variant="h3" color={colors.white}>
+                {weekday(selected)}, {selected.getDate()} tháng {selected.getMonth() + 1}
+              </T>
+              <T variant="small" weight="medium" color={colors.white}>
+                Ngày {sl.day} {lunarMonthName(sl.month, sl.leap)}, năm {canChiYear(sl.year)}
+              </T>
+              {until > 0 && <T variant="small" color="rgba(255,255,255,0.88)">{inDaysLabel(until)}</T>}
+              {sl.day === 1 && <T variant="small" weight="semibold" color={colors.white}>Mùng một, nhắc cả nhà thắp hương</T>}
+              {sl.day === 15 && <T variant="small" weight="semibold" color={colors.white}>Ngày rằm</T>}
+              {selectedEvents.map((t) => <T key={t} variant="small" weight="semibold" color={colors.white}>{t}</T>)}
+            </View>
+          </View>
+        </PhotoTile>
+      </FadeIn>
 
       <SectionHeader title="Ngày của nhà mình" action="Thêm ngày" onAction={() => router.push('/event-new')} />
       {list.map((e) => <EventRow key={e.event.id} item={e} />)}
@@ -124,10 +130,10 @@ const styles = StyleSheet.create({
   cellText: { width: `${100 / 7}%` },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: `${100 / 7}%`, height: 60, padding: 2 },
-  cellInner: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
+  cellInner: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 22, overflow: 'hidden' },
   dot: { width: 5, height: 5, borderRadius: 3, marginTop: 2 },
   dayPanel: {
-    flexDirection: 'row', gap: 16, alignItems: 'center', marginTop: 20, backgroundColor: colors.tone,
+    flexDirection: 'row', gap: 16, alignItems: 'center',
     borderRadius: radius.lg, padding: 18,
   },
   dayNum: { fontSize: 56, lineHeight: 60, minWidth: 64 },

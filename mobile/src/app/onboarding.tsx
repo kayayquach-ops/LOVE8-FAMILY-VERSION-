@@ -43,8 +43,8 @@ const SLIDES: Array<{ title: string; text: string; preview: () => ReactNode }> =
       const tet = nextSolarForLunar(1, 1, new Date());
       return (
         <View style={styles.panel}>
-          <T variant="h3" weight="semibold" color={colors.primary}>Tết Nguyên Đán</T>
-          <T serif weight="bold" color={colors.primary} style={{ fontSize: 120, lineHeight: 124, letterSpacing: -4 }}>{tet.getDate()}</T>
+          <T variant="h3" weight="semibold" color={colors.accentText}>Tết Nguyên Đán</T>
+          <T serif weight="bold" color={colors.accentText} style={{ fontSize: 120, lineHeight: 124, letterSpacing: -4 }}>{tet.getDate()}</T>
           <T variant="body" weight="medium">Tháng {tet.getMonth() + 1}, {tet.getFullYear()}</T>
           <T variant="body" weight="medium" color={colors.lunar}>Mùng 1 {lunarMonthName(1)}</T>
         </View>

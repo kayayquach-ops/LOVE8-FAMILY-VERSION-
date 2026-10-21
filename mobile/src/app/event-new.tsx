@@ -43,7 +43,7 @@ export default function NewEvent() {
           {(['lunar', 'solar'] as const).map((c) => (
             <Pressable key={c} onPress={() => setCalendar(c)} accessibilityRole="tab" accessibilityState={{ selected: calendar === c }}
               style={[styles.segItem, calendar === c && styles.segActive]}>
-              <T variant="small" weight="semibold" color={calendar === c ? colors.white : colors.inkSoft}>{c === 'lunar' ? 'Âm lịch' : 'Dương lịch'}</T>
+              <T variant="small" weight="semibold" color={calendar === c ? colors.black : colors.inkSoft}>{c === 'lunar' ? 'Âm lịch' : 'Dương lịch'}</T>
             </Pressable>
           ))}
         </View>
@@ -79,6 +79,6 @@ const styles = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   segment: { flexDirection: 'row', backgroundColor: colors.tone, borderRadius: radius.pill, padding: 4 },
   segItem: { flex: 1, height: 44, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
-  segActive: { backgroundColor: colors.ink },
+  segActive: { backgroundColor: colors.white },
   preview: { flexDirection: 'row', gap: 10, alignItems: 'center', backgroundColor: colors.lunarSoft, borderRadius: radius.md, padding: 14 },
 });

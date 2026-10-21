@@ -84,8 +84,8 @@ export default function Call() {
           </View>
           {qi < questions.length - 1 ? (
             <Pressable onPress={() => setQi(qi + 1)} accessibilityRole="button" style={styles.next}>
-              <T variant="small" weight="semibold" color={colors.ink}>Kể xong, hỏi tiếp</T>
-              <Ionicons name="chevron-forward" size={15} color={colors.ink} />
+              <T variant="small" weight="semibold" color={colors.black}>Kể xong, hỏi tiếp</T>
+              <Ionicons name="chevron-forward" size={15} color={colors.black} />
             </Pressable>
           ) : null}
         </View>
@@ -125,7 +125,7 @@ function Round({ icon, bg, label, onPress, rotate }: {
 }
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: colors.ink },
+  wrap: { flex: 1, backgroundColor: colors.bg },
   mark: { width: 112, height: 112, borderRadius: 56, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   caption: { margin: 24, padding: 18, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', gap: 8 },
   next: {

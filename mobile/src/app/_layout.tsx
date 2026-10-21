@@ -44,7 +44,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AppProvider>
-        <StatusBar style="dark" />
+        <StatusBar style="light" />
         <Gate />
       </AppProvider>
     </SafeAreaProvider>
@@ -55,7 +55,7 @@ function Gate() {
   const { ready } = useApp();
   if (!ready) return null;
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.white }, animation: 'slide_from_right' }}>
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg }, animation: 'slide_from_right' }}>
       <Stack.Screen name="index" options={{ animation: 'fade' }} />
       <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
       <Stack.Screen name="capture" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />

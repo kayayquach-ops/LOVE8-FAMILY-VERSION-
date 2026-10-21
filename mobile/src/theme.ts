@@ -1,71 +1,89 @@
-// Hệ màu "lịch bóc và thư tay": nền giấy trắng, mặt nền thứ hai màu giấy pơ-luya, chữ màu mực bút bi,
-// một màu nhấn duy nhất là đỏ lịch (Chủ nhật, ngày Tết), xanh chỉ dành cho ngày âm lịch.
-// Xem docs/design.md. Các khối tách nhau bằng tông màu, không dùng viền hay bóng đổ.
+// Giao diện tối theo tham khảo "MAD – Social Dares" (Nixtio): nền đen, thẻ bo tròn lớn màu đất và pastel
+// có nét lượn mờ, avatar tròn, chữ đậm khít; điểm nhấn là dải chuyển màu tím, hồng, cam.
 export const colors = {
-  primary: '#C8321F',
-  primaryDark: '#A3261A',
-  primarySoft: '#F7E4E0',
-  primaryTint: '#EEF0F4',
-  ink: '#171C2E',
-  inkSoft: '#3D4357',
-  muted: '#5B6175',
-  placeholder: '#656B7F',
-  faint: '#8E94A6',
-  line: '#E3E6EC',
-  field: '#EEF0F4',
-  tone: '#EEF0F4',
-  toneDeep: '#E2E6ED',
+  bg: '#000000',
+  // Mặt nền thứ hai và các mức sáng dần cho trạng thái bấm.
+  tone: '#141416',
+  toneDeep: '#222226',
+  field: '#141416',
+  primaryTint: '#141416',
+  line: '#26262B',
+  // Chữ trên nền tối.
+  ink: '#FFFFFF',
+  inkSoft: '#D4D4D8',
+  muted: '#A1A1AA',
+  placeholder: '#8B8B94',
+  faint: '#5A5A63',
+  // Màu chữ và icon đặt trên thẻ màu hoặc nút tô màu.
   white: '#FFFFFF',
-  black: '#171C2E',
-  lunar: '#2C4D9E',
-  lunarSoft: '#E6EBF5',
-  green: '#2F7A4B',
-  greenSoft: '#E3EFE7',
-  amber: '#8A5A10',
-  amberSoft: '#F5EBDA',
-  blue: '#2C4D9E',
-  blueSoft: '#E6EBF5',
-  purple: '#2E4874',
-  purpleSoft: '#E6EBF5',
-  overlay: 'rgba(23,28,46,0.62)',
+  black: '#000000',
+  // Màu nhấn: hồng đậm cho nút tô màu, hồng sáng cho chữ nhấn trên nền đen.
+  primary: '#D9366E',
+  primaryDark: '#B52A5B',
+  primarySoft: '#3A1424',
+  accentText: '#FF8FB1',
+  // Chủ nhật, ngày Tết, ngày giỗ trên lịch.
+  holiday: '#FF7A6B',
+  // Ngày âm lịch.
+  lunar: '#C4B5FD',
+  lunarSoft: '#1E1A2E',
+  green: '#5EE0A0',
+  greenSoft: '#11251B',
+  amber: '#F5C451',
+  amberSoft: '#2A2210',
+  blue: '#9DB8FF',
+  blueSoft: '#161C2E',
+  purple: '#C4B5FD',
+  purpleSoft: '#1E1A2E',
+  overlay: 'rgba(0,0,0,0.6)',
 };
 
+// Dải chuyển màu dùng cho viền nút chính, nút "+" và vòng thông báo.
+export const gradient = ['#8F20B3', '#E0306E', '#F28A3C'] as const;
+
+// Một họ chữ: Be Vietnam Pro (do người Việt thiết kế cho tiếng Việt).
+// Các tên "serif" giữ lại để mã cũ vẫn chạy, nay trỏ về cùng họ chữ.
 export const fonts = {
   regular: 'BeVietnamPro_400Regular',
   medium: 'BeVietnamPro_500Medium',
   semibold: 'BeVietnamPro_600SemiBold',
   bold: 'BeVietnamPro_700Bold',
-  // Literata: số trên tờ lịch, tiêu đề, lời kể trong Sổ ký ức.
-  serif: 'Literata_400Regular',
-  serifSemibold: 'Literata_600SemiBold',
-  serifBold: 'Literata_700Bold',
+  serif: 'BeVietnamPro_400Regular',
+  serifSemibold: 'BeVietnamPro_600SemiBold',
+  serifBold: 'BeVietnamPro_700Bold',
 };
 
-// Ảnh và tin bo nhẹ như ảnh in; khối nền bo 18; nút bo tròn hẳn.
-export const radius = { sm: 6, md: 12, lg: 18, xl: 24, pill: 999 };
+export const radius = { sm: 14, md: 20, lg: 28, xl: 32, pill: 999 };
 
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 32 };
 
-// Không có bóng cho vật đứng yên. Chỉ thứ thật sự nổi (bảng chọn, hộp thoại) mới dùng `float`.
 export const shadow = {
   card: {},
   soft: {},
   float: {
-    shadowColor: '#171C2E',
-    shadowOpacity: 0.14,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    shadowColor: '#000000',
+    shadowOpacity: 0.5,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
   },
 };
 
-// Màu riêng của từng người trong nhà, lấy từ chất liệu Việt. Chữ trắng trên các màu này đạt tương phản 4.9:1 trở lên.
+// Màu thẻ của từng người trong nhà, lấy theo bảng màu tham khảo nhưng đậm hơn một chút để chữ trắng đọc rõ.
 export const familyTones = [
-  '#8E3A2C', // son
-  '#2E4874', // chàm
-  '#46663A', // lá chuối
-  '#9A6512', // nghệ
-  '#A2475E', // sen
-  '#3F6E68', // rêu
-  '#7A5236', // gốm
+  '#A8775A', // đất nung
+  '#B9788D', // hồng phấn
+  '#5E8C78', // xanh lá xám
+  '#A38842', // vàng mù tạt
+  '#8A5DA6', // tím oải hương
+  '#A44A3B', // gạch cam
+  '#4F7A8C', // xanh mòng két
 ];
+
+/** Làm sáng (amount > 0) hoặc tối (amount < 0) một mã màu, dùng để tạo dải màu trong thẻ. */
+export function shade(hex: string, amount: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const ch = (v: number) => Math.max(0, Math.min(255, Math.round(amount > 0 ? v + (255 - v) * amount : v * (1 + amount))));
+  const r = ch((n >> 16) & 255), g = ch((n >> 8) & 255), b = ch(n & 255);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+}

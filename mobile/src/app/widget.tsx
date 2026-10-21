@@ -33,7 +33,7 @@ export default function WidgetPreview() {
             )}
           </Pressable>
           <Pressable onPress={() => router.push('/capture')} style={[styles.small, styles.white]}>
-            <T variant="caption" color={colors.inkSoft}>Ăn cơm chưa?</T>
+            <T variant="caption" color={colors.muted}>Ăn cơm chưa?</T>
             <View style={styles.shoot}><Ionicons name="camera" size={30} color={colors.white} /></View>
             <T variant="caption" weight="semibold" center>Chạm để chụp</T>
           </Pressable>
@@ -53,8 +53,8 @@ export default function WidgetPreview() {
           </View>
           <View style={styles.vline} />
           <View style={{ alignItems: 'center', paddingLeft: 12 }}>
-            <T variant="h1" color={colors.primary}>{daysToTet()}</T>
-            <T variant="caption" color={colors.inkSoft}>ngày nữa Tết</T>
+            <T variant="h1" color={colors.accentText}>{daysToTet()}</T>
+            <T variant="caption" color={colors.muted}>ngày nữa Tết</T>
           </View>
         </View>
       </View>
@@ -80,10 +80,10 @@ function Step({ n, text }: { n: number; text: string }) {
 }
 
 const styles = StyleSheet.create({
-  phone: { borderRadius: 36, padding: 18, paddingBottom: 24, borderWidth: 6, borderColor: colors.ink, backgroundColor: '#2E4874' },
+  phone: { borderRadius: 40, padding: 18, paddingBottom: 24, borderWidth: 6, borderColor: '#2A2A2E', backgroundColor: '#8A5DA6' },
   row: { flexDirection: 'row', gap: 14, marginTop: 26 },
   small: { flex: 1, height: 150, borderRadius: 22, overflow: 'hidden' },
-  white: { backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 12 },
+  white: { backgroundColor: 'rgba(0,0,0,0.78)', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 12 },
   shoot: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   medium: { flexDirection: 'row', alignItems: 'center', borderRadius: 22, marginTop: 14, padding: 16 },
   dot: { width: 14, height: 14, borderRadius: 7 },

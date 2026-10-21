@@ -57,10 +57,10 @@ export default function Clip() {
         <View style={{ padding: 20, gap: 16 }}>
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <Pressable style={styles.action} accessibilityRole="button" onPress={() => setPaused(!paused)}>
-              <Ionicons name={paused ? 'play' : 'pause'} size={18} color={colors.ink} />
-              <T variant="small" weight="semibold">{paused ? 'Phát' : 'Tạm dừng'}</T>
+              <Ionicons name={paused ? 'play' : 'pause'} size={18} color={colors.black} />
+              <T variant="small" weight="semibold" color={colors.black}>{paused ? 'Phát' : 'Tạm dừng'}</T>
             </Pressable>
-            <Pressable style={[styles.action, { backgroundColor: colors.ink }]} accessibilityRole="button">
+            <Pressable style={[styles.action, { backgroundColor: colors.black }]} accessibilityRole="button">
               <Ionicons name="download-outline" size={18} color={colors.white} />
               <T variant="small" weight="semibold" color={colors.white}>Lưu video gửi tặng</T>
             </Pressable>

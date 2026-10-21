@@ -81,7 +81,7 @@ export default function Profile() {
             {(['solar', 'lunar'] as const).map((c) => (
               <Pressable key={c} onPress={() => setCalendar(c)} accessibilityRole="tab" accessibilityState={{ selected: calendar === c }}
                 style={[styles.segItem, calendar === c && styles.segActive]}>
-                <T variant="small" weight="semibold" color={calendar === c ? colors.white : colors.inkSoft}>
+                <T variant="small" weight="semibold" color={calendar === c ? colors.black : colors.inkSoft}>
                   {c === 'solar' ? 'Dương lịch' : 'Âm lịch'}
                 </T>
               </Pressable>
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   segment: { flexDirection: 'row', backgroundColor: colors.tone, borderRadius: radius.pill, padding: 4 },
   segItem: { flex: 1, height: 44, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
-  segActive: { backgroundColor: colors.ink },
+  segActive: { backgroundColor: colors.white },
   convert: {
     flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.lunarSoft,
     padding: 14, borderRadius: radius.md,
@@ -142,6 +142,6 @@ const styles = StyleSheet.create({
   photoEmpty: { width: 200, height: 200, borderRadius: 100, backgroundColor: familyTones[0], alignItems: 'center', justifyContent: 'center' },
   change: {
     position: 'absolute', bottom: 0, alignSelf: 'center', flexDirection: 'row', gap: 6, alignItems: 'center',
-    backgroundColor: colors.ink, paddingHorizontal: 16, minHeight: 40, borderRadius: 999,
+    backgroundColor: colors.toneDeep, paddingHorizontal: 16, minHeight: 40, borderRadius: 999,
   },
 });

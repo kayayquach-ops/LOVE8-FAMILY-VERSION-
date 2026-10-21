@@ -14,5 +14,5 @@ export default function Start() {
     else router.replace('/home');
   }, [state.onboarded, state.signedIn]);
 
-  return <View style={{ flex: 1, backgroundColor: colors.white }} />;
+  return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
 }

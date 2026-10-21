@@ -74,7 +74,7 @@ export default function MemberScreen() {
         <>
           <SectionHeader title="Ảnh gần đây" />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }} contentContainerStyle={{ gap: 12, paddingHorizontal: 20 }}>
-            {posts.map((p) => <PostCard key={p.id} post={p} width={220} />)}
+            {posts.map((p) => <PostCard key={p.id} post={p} width={250} />)}
           </ScrollView>
         </>
       )}

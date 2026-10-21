@@ -1,14 +1,19 @@
-import { Ionicons } from '@/components/Icon';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import type { ComponentProps, ReactNode } from 'react';
+import { useEffect, useRef, type ComponentProps, type ReactNode } from 'react';
 import {
+  AccessibilityInfo,
+  Animated,
+  Easing,
   Image,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  type AccessibilityRole,
   type StyleProp,
   type TextInputProps,
   type TextStyle,
@@ -16,35 +21,31 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BRAND } from '@/brand';
+import { CARD_LINES, DEMO_AVATARS } from '@/data/avatars';
 import { useApp } from '@/store/AppContext';
-import { colors, familyTones, fonts, radius, space } from '@/theme';
+import { colors, familyTones, fonts, gradient, radius, shade, space } from '@/theme';
+import { Ionicons } from './Icon';
 
 export type IconName = ComponentProps<typeof Ionicons>['name'];
 
+const NATIVE = Platform.OS !== 'web';
+
 type Variant = 'display' | 'h1' | 'h2' | 'h3' | 'body' | 'small' | 'caption';
 type Weight = 'regular' | 'medium' | 'semibold' | 'bold';
-const sizes: Record<Variant, number> = { display: 32, h1: 26, h2: 21, h3: 17, body: 16, small: 14, caption: 13 };
+const sizes: Record<Variant, number> = { display: 34, h1: 28, h2: 22, h3: 18, body: 16, small: 14, caption: 13 };
 const defaultWeight: Record<Variant, Weight> = {
-  display: 'bold', h1: 'bold', h2: 'semibold', h3: 'semibold', body: 'regular', small: 'regular', caption: 'medium',
+  display: 'semibold', h1: 'semibold', h2: 'semibold', h3: 'semibold', body: 'regular', small: 'regular', caption: 'medium',
 };
-// Tiêu đề dùng Literata, phần còn lại dùng Be Vietnam Pro.
-const serifByDefault: Record<Variant, boolean> = {
-  display: true, h1: true, h2: true, h3: false, body: false, small: false, caption: false,
-};
-
-function fontFor(weight: Weight, serif: boolean): string {
-  if (!serif) return fonts[weight];
-  if (weight === 'bold') return fonts.serifBold;
-  if (weight === 'semibold') return fonts.serifSemibold;
-  return fonts.serif;
-}
+// Chữ tiêu đề khít lại như bản tham khảo.
+const tracking: Record<Variant, number> = { display: -1.2, h1: -0.8, h2: -0.4, h3: -0.2, body: 0, small: 0, caption: 0 };
 
 export function T({
-  children, variant = 'body', weight, serif, color = colors.ink, style, numberOfLines, center,
+  children, variant = 'body', weight, color = colors.ink, style, numberOfLines, center,
 }: {
   children: ReactNode;
   variant?: Variant;
   weight?: Weight;
+  /** Giữ để tương thích, app nay chỉ dùng một họ chữ. */
   serif?: boolean;
   color?: string;
   style?: StyleProp<TextStyle>;
@@ -55,15 +56,16 @@ export function T({
   // Chế độ bố mẹ phóng to chữ cho dễ đọc.
   const scale = state.settings.parentMode ? 1.18 : 1;
   const size = sizes[variant] * scale;
-  const isSerif = serif ?? serifByDefault[variant];
+  const heading = size >= 20;
   return (
     <Text
       numberOfLines={numberOfLines}
       style={[
         {
-          fontFamily: fontFor(weight ?? defaultWeight[variant], isSerif),
+          fontFamily: fonts[weight ?? defaultWeight[variant]],
           fontSize: size,
-          lineHeight: size * (isSerif && size >= 20 ? 1.22 : 1.45),
+          lineHeight: size * (heading ? 1.14 : 1.45),
+          letterSpacing: tracking[variant],
           color,
         },
         center && { textAlign: 'center' },
@@ -76,7 +78,7 @@ export function T({
 }
 
 export function Screen({
-  children, scroll = true, padded = true, bg = colors.white, edges = ['top'], contentStyle,
+  children, scroll = true, padded = true, bg = colors.bg, edges = ['top'], contentStyle,
 }: {
   children: ReactNode;
   scroll?: boolean;
@@ -85,11 +87,11 @@ export function Screen({
   edges?: Array<'top' | 'bottom'>;
   contentStyle?: StyleProp<ViewStyle>;
 }) {
-  const inner = [padded && { paddingHorizontal: space.xl }, contentStyle];
+  const inner = [padded && { paddingHorizontal: space.lg }, contentStyle];
   return (
     <SafeAreaView edges={edges} style={{ flex: 1, backgroundColor: bg }}>
       {scroll ? (
-        <ScrollView contentContainerStyle={[{ paddingBottom: 120 }, inner]} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={[{ paddingBottom: 150 }, inner]} showsVerticalScrollIndicator={false}>
           {children}
         </ScrollView>
       ) : (
@@ -99,34 +101,120 @@ export function Screen({
   );
 }
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+/** Vùng bấm có độ nảy nhẹ khi chạm, để mỗi lần bấm đều có phản hồi. */
+export function Tap({
+  children, onPress, style, disabled, label, role = 'button', scaleTo = 0.96, selected,
+}: {
+  children: ReactNode;
+  onPress?: () => void;
+  style?: StyleProp<ViewStyle>;
+  disabled?: boolean;
+  label?: string;
+  role?: AccessibilityRole;
+  scaleTo?: number;
+  selected?: boolean;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const to = (v: number) => Animated.spring(scale, { toValue: v, useNativeDriver: NATIVE, speed: 40, bounciness: 7 }).start();
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      onPressIn={() => to(scaleTo)}
+      onPressOut={() => to(1)}
+      disabled={disabled}
+      accessibilityRole={role}
+      accessibilityLabel={label}
+      accessibilityState={{ disabled, selected }}
+      style={[style, { transform: [{ scale }] }]}
+    >
+      {children}
+    </AnimatedPressable>
+  );
+}
+
+/** Hiện dần và trượt lên khi xuất hiện; `delay` để các thẻ lần lượt hiện ra. Tắt khi máy bật giảm chuyển động. */
+export function FadeIn({ children, delay = 0, style }: { children: ReactNode; delay?: number; style?: StyleProp<ViewStyle> }) {
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    let alive = true;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .catch(() => false)
+      .then((reduce) => {
+        if (!alive) return;
+        if (reduce) return v.setValue(1);
+        Animated.timing(v, { toValue: 1, duration: 460, delay, easing: Easing.out(Easing.cubic), useNativeDriver: NATIVE }).start();
+      });
+    return () => { alive = false; };
+  }, []);
+  const translateY = v.interpolate({ inputRange: [0, 1], outputRange: [18, 0] });
+  return <Animated.View style={[style, { opacity: v, transform: [{ translateY }] }]}>{children}</Animated.View>;
+}
+
+/** Viền chuyển màu tím, hồng, cam bao quanh một nút tròn hoặc viên thuốc. */
+export function GradientRing({ children, size, width = 2, style }: { children: ReactNode; size?: number; width?: number; style?: StyleProp<ViewStyle> }) {
+  return (
+    <LinearGradient
+      colors={gradient}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[{ padding: width, borderRadius: radius.pill }, size ? { width: size, height: size } : null, style]}
+    >
+      {children}
+    </LinearGradient>
+  );
+}
+
+function Badge({ count }: { count: number | true }) {
+  return (
+    <GradientRing width={1.5} style={styles.badge}>
+      <View style={styles.badgeInner}>
+        {count !== true && <Text style={styles.badgeText}>{count > 9 ? '9+' : count}</Text>}
+      </View>
+    </GradientRing>
+  );
+}
+
 export function IconButton({
-  icon, onPress, color = colors.ink, bg = colors.tone, size = 44, badge, label,
+  icon, onPress, color, bg, size = 44, badge, label, light,
 }: {
   icon: IconName;
   onPress?: () => void;
   color?: string;
   bg?: string;
   size?: number;
-  badge?: boolean;
+  /** Chấm báo, hoặc con số trong vòng chuyển màu. */
+  badge?: boolean | number;
   /** Tên đọc cho trình đọc màn hình. */
   label?: string;
+  /** Nút tròn trắng như logo trong bản tham khảo. */
+  light?: boolean;
 }) {
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      hitSlop={4}
-      style={({ pressed }) => [
-        {
-          width: size, height: size, borderRadius: size / 2, backgroundColor: pressed ? colors.toneDeep : bg,
-          alignItems: 'center', justifyContent: 'center',
-        },
-      ]}
-    >
-      <Ionicons name={icon} size={Math.round(size * 0.48)} color={color} />
-      {badge && <View style={styles.badgeDot} />}
-    </Pressable>
+    <Tap onPress={onPress} label={label} scaleTo={0.9}>
+      <View
+        style={{
+          width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center',
+          backgroundColor: bg ?? (light ? colors.white : colors.tone),
+        }}
+      >
+        <Ionicons name={icon} size={Math.round(size * 0.46)} color={color ?? (light ? colors.black : colors.ink)} />
+      </View>
+      {badge ? <Badge count={badge === true ? true : badge} /> : null}
+    </Tap>
+  );
+}
+
+/** Nút tròn tô dải màu tím, hồng, cam: gửi tin, phát giọng kể. */
+export function GradientButton({ icon, onPress, size = 48, label }: { icon: IconName; onPress?: () => void; size?: number; label: string }) {
+  return (
+    <Tap onPress={onPress} label={label} scaleTo={0.88}>
+      <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        style={{ width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name={icon} size={Math.round(size * 0.44)} color={colors.white} />
+      </LinearGradient>
+    </Tap>
   );
 }
 
@@ -135,7 +223,7 @@ export function BackHeader({ title, right }: { title?: string; right?: ReactNode
     <View style={styles.backHeader}>
       <IconButton icon="chevron-back" label="Quay lại" onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} />
       <View style={{ flex: 1, alignItems: 'center' }}>
-        {title ? <T variant="h3" weight="semibold" numberOfLines={1}>{title}</T> : <Logo small />}
+        {title ? <T variant="h3" numberOfLines={1}>{title}</T> : <Logo small />}
       </View>
       <View style={{ width: 44, alignItems: 'flex-end' }}>{right}</View>
     </View>
@@ -144,19 +232,23 @@ export function BackHeader({ title, right }: { title?: string; right?: ReactNode
 
 const LOGO_MARK = require('../../assets/logo-mark.png');
 
-// Logo: ngôi nhà có thân là phong thư, khép lại bằng trái tim (xem thư mục branding/).
-export function Logo({ small }: { small?: boolean }) {
-  const s = small ? 26 : 72;
+/** Logo trong vòng tròn trắng, như nút logo của bản tham khảo. */
+export function LogoMark({ size = 44 }: { size?: number }) {
   return (
-    <View style={{ flexDirection: small ? 'row' : 'column', alignItems: 'center', gap: small ? 6 : 14 }}>
-      <Image source={LOGO_MARK} style={{ width: s, height: s }} />
-      <T variant={small ? 'h3' : 'display'} serif weight="bold">{BRAND.name}</T>
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' }}>
+      <Image source={LOGO_MARK} style={{ width: size * 0.62, height: size * 0.62 }} accessibilityIgnoresInvertColors />
     </View>
   );
 }
 
-export function LogoMark({ size = 40 }: { size?: number }) {
-  return <Image source={LOGO_MARK} style={{ width: size, height: size }} accessibilityIgnoresInvertColors />;
+// Logo: ngôi nhà có thân là phong thư, khép lại bằng trái tim (xem thư mục branding/).
+export function Logo({ small }: { small?: boolean }) {
+  return (
+    <View style={{ flexDirection: small ? 'row' : 'column', alignItems: 'center', gap: small ? 8 : 14 }}>
+      <LogoMark size={small ? 30 : 76} />
+      <T variant={small ? 'h3' : 'display'}>{BRAND.name}</T>
+    </View>
+  );
 }
 
 export function Button({
@@ -164,43 +256,39 @@ export function Button({
 }: {
   label: string;
   onPress?: () => void;
+  /** primary: viền chuyển màu; dark: nền trắng chữ đen; ghost và soft: nền xám tối. */
   variant?: 'primary' | 'dark' | 'ghost' | 'soft';
   icon?: IconName;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
-  const bg = { primary: colors.primary, dark: colors.ink, ghost: colors.tone, soft: colors.tone }[variant];
-  const pressedBg = { primary: colors.primaryDark, dark: '#2A3149', ghost: colors.toneDeep, soft: colors.toneDeep }[variant];
-  const fg = { primary: colors.white, dark: colors.white, ghost: colors.ink, soft: colors.ink }[variant];
-  return (
-    <Pressable
-      disabled={disabled}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      style={({ pressed }) => [
-        styles.button,
-        { backgroundColor: pressed ? pressedBg : bg, opacity: disabled ? 0.45 : 1 },
-        style,
-      ]}
-    >
+  const fg = variant === 'dark' ? colors.black : colors.ink;
+  const content = (
+    <>
       {icon && <Ionicons name={icon} size={19} color={fg} />}
       <T variant="body" weight="semibold" color={fg}>{label}</T>
-    </Pressable>
+    </>
+  );
+  return (
+    <Tap onPress={onPress} disabled={disabled} style={[{ opacity: disabled ? 0.45 : 1 }, style]}>
+      {variant === 'primary' ? (
+        <GradientRing>
+          <View style={[styles.button, { height: 50, backgroundColor: colors.bg }]}>{content}</View>
+        </GradientRing>
+      ) : (
+        <View style={[styles.button, { backgroundColor: variant === 'dark' ? colors.white : colors.tone }]}>{content}</View>
+      )}
+    </Tap>
   );
 }
 
-/** Khối nền thứ hai: tách khỏi nền bằng tông màu, không viền, không bóng. */
+/** Khối nền thứ hai: xám rất tối trên nền đen, bo tròn lớn. */
 export function Card({ children, style, onPress }: { children: ReactNode; style?: StyleProp<ViewStyle>; onPress?: () => void }) {
   if (onPress) {
     return (
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        style={({ pressed }) => [styles.card, pressed && { backgroundColor: colors.toneDeep }, style]}
-      >
-        {children}
-      </Pressable>
+      <Tap onPress={onPress} scaleTo={0.98}>
+        <View style={[styles.card, style]}>{children}</View>
+      </Tap>
     );
   }
   return <View style={[styles.card, style]}>{children}</View>;
@@ -213,22 +301,17 @@ export function Chip({
   active?: boolean;
   onPress?: () => void;
   icon?: IconName;
-  /** Giữ để tương thích, mọi chip đang chọn đều màu mực. */
+  /** Giữ để tương thích. */
   tone?: 'primary' | 'dark';
 }) {
+  const fg = active ? colors.black : colors.inkSoft;
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected: !!active }}
-      style={({ pressed }) => [
-        styles.chip,
-        { backgroundColor: active ? colors.ink : pressed ? colors.toneDeep : colors.tone },
-      ]}
-    >
-      {icon && <Ionicons name={icon} size={16} color={active ? colors.white : colors.inkSoft} />}
-      <T variant="small" weight="medium" color={active ? colors.white : colors.inkSoft}>{label}</T>
-    </Pressable>
+    <Tap onPress={onPress} selected={!!active} scaleTo={0.94}>
+      <View style={[styles.chip, { backgroundColor: active ? colors.white : colors.tone }]}>
+        {icon && <Ionicons name={icon} size={16} color={fg} />}
+        <T variant="small" weight="medium" color={fg}>{label}</T>
+      </View>
+    </Tap>
   );
 }
 
@@ -238,8 +321,8 @@ export function SectionHeader({ title, action, onAction }: { title: string; acti
       <T variant="h2" style={{ flexShrink: 1 }}>{title}</T>
       {action && (
         <Pressable onPress={onAction} hitSlop={10} accessibilityRole="link" style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-          <T variant="small" weight="medium" color={colors.inkSoft}>{action}</T>
-          <Ionicons name="chevron-forward" size={15} color={colors.inkSoft} />
+          <T variant="small" weight="medium" color={colors.muted}>{action}</T>
+          <Ionicons name="chevron-forward" size={15} color={colors.muted} />
         </Pressable>
       )}
     </View>
@@ -249,12 +332,12 @@ export function SectionHeader({ title, action, onAction }: { title: string; acti
 export function Field({ label, ...props }: TextInputProps & { label?: string }) {
   return (
     <View style={{ gap: 8 }}>
-      {label && <T variant="small" weight="semibold">{label}</T>}
+      {label && <T variant="small" weight="medium" color={colors.muted}>{label}</T>}
       <TextInput
         placeholderTextColor={colors.placeholder}
         accessibilityLabel={label}
         {...props}
-        style={[styles.field, props.multiline && { minHeight: 104, textAlignVertical: 'top', paddingTop: 14 }, props.style]}
+        style={[styles.field, props.multiline && { minHeight: 110, textAlignVertical: 'top', paddingTop: 16, borderRadius: radius.md }, props.style]}
       />
     </View>
   );
@@ -265,28 +348,34 @@ export function initials(name: string): string {
   return (parts[parts.length - 1]?.[0] ?? '?').toUpperCase();
 }
 
-/** Màu riêng của một người: theo thứ tự trong nhà để không ai trùng màu. */
+/** Màu thẻ của một người: theo thứ tự trong nhà để không ai trùng màu. */
 export function memberTone(members: Array<{ id: string }>, id: string): string | undefined {
   const i = members.findIndex((m) => m.id === id);
   return i >= 0 ? familyTones[i % familyTones.length] : undefined;
 }
 
-/** Màu cố định theo chuỗi bất kỳ, dùng khi không gắn với người nào trong nhà. */
-export function toneFor(seed: string): string {
+function hash(seed: string): number {
   let h = 0;
   for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return familyTones[h % familyTones.length];
+  return h;
+}
+
+/** Màu cố định theo chuỗi bất kỳ, dùng khi không gắn với người nào trong nhà. */
+export function toneFor(seed: string): string {
+  return familyTones[hash(seed) % familyTones.length];
 }
 
 export function Avatar({
-  name, uri, icon, size = 44, ring, ringColor = colors.primary, onPress, tone,
+  name, uri, icon, size = 44, ring, onPress, tone,
 }: {
   name: string;
   uri?: string;
-  /** Avatar không phải người (cả nhà, sự kiện): một icon trên nền pơ-luya. */
+  /** Avatar không phải người (cả nhà, sự kiện): một icon trên nền xám tối. */
   icon?: IconName;
   size?: number;
+  /** Viền chuyển màu, như người vừa có tin mới. */
   ring?: boolean;
+  /** Giữ để tương thích. */
   ringColor?: string;
   onPress?: () => void;
   tone?: string;
@@ -295,33 +384,35 @@ export function Avatar({
   const round = { width: size, height: size, borderRadius: size / 2 };
   const known = state.family.members.findIndex((m) => m.name === name);
   const fill = tone ?? (known >= 0 ? familyTones[known % familyTones.length] : toneFor(name));
-  const content = uri ? (
-    <Image source={{ uri }} style={round} />
+  const demo = DEMO_AVATARS[name];
+  const content = uri || demo ? (
+    <Image source={uri ? { uri } : demo} style={round} accessibilityIgnoresInvertColors />
   ) : icon ? (
     <View style={[round, { backgroundColor: colors.tone, alignItems: 'center', justifyContent: 'center' }]}>
       <Ionicons name={icon} size={size * 0.46} color={colors.ink} />
     </View>
   ) : (
-    <View style={[round, { backgroundColor: fill, alignItems: 'center', justifyContent: 'center' }]}>
-      <Text style={{ fontFamily: fonts.serifBold, fontSize: size * 0.44, lineHeight: size * 0.56, color: colors.white }}>{initials(name)}</Text>
-    </View>
+    <LinearGradient colors={[shade(fill, 0.25), fill]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+      style={[round, { alignItems: 'center', justifyContent: 'center' }]}>
+      <Text style={{ fontFamily: fonts.semibold, fontSize: size * 0.42, lineHeight: size * 0.56, color: colors.white }}>{initials(name)}</Text>
+    </LinearGradient>
   );
   const wrapped = ring ? (
-    <View style={{ padding: 2.5, borderRadius: size, borderWidth: 2.5, borderColor: ringColor }}>{content}</View>
+    <GradientRing width={2.5}>
+      <View style={{ padding: 2, borderRadius: size, backgroundColor: colors.bg }}>{content}</View>
+    </GradientRing>
   ) : (
     content
   );
-  return onPress ? (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={name} hitSlop={6}>{wrapped}</Pressable>
-  ) : wrapped;
+  return onPress ? <Tap onPress={onPress} label={name} scaleTo={0.92}>{wrapped}</Tap> : wrapped;
 }
 
 /**
- * Khung ảnh. Có ảnh thật thì hiện ảnh (kèm lớp tối nhẹ ở dưới để chữ đọc được);
- * chưa có ảnh thì là một mảng màu phẳng của người gửi, nội dung đặt ở `children`.
+ * Thẻ màu: dải màu của người gửi, nét lượn mờ, và lớp tối nhẹ ở dưới để chữ trắng đọc rõ.
+ * Có ảnh thật thì hiện ảnh thay cho dải màu. Nội dung đặt ở `children`.
  */
 export function PhotoTile({
-  uri, seed, tone, height = 160, radiusSize = radius.sm, children, style, fill,
+  uri, seed, tone, height = 160, radiusSize = radius.lg, children, style, fill, scrim = true, autoHeight,
 }: {
   uri?: string;
   seed: string;
@@ -332,21 +423,22 @@ export function PhotoTile({
   style?: StyleProp<ViewStyle>;
   /** Phủ kín khung cha (dùng cho màn hình toàn màn hình). */
   fill?: boolean;
+  scrim?: boolean;
+  /** Cao theo nội dung bên trong thay vì `height`. */
+  autoHeight?: boolean;
 }) {
+  const base = tone ?? toneFor(seed);
   return (
-    <View
-      style={[
-        fill ? StyleSheet.absoluteFill : { height },
-        { borderRadius: radiusSize, overflow: 'hidden', backgroundColor: tone ?? toneFor(seed) },
-        style,
-      ]}
-    >
-      {uri && (
+    <View style={[fill ? StyleSheet.absoluteFill : autoHeight ? null : { height }, { borderRadius: radiusSize, overflow: 'hidden', backgroundColor: base }, style]}>
+      {uri ? (
+        <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      ) : (
         <>
-          <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-          <View style={[StyleSheet.absoluteFill, { top: '50%', backgroundColor: 'rgba(23,28,46,0.38)' }]} />
+          <LinearGradient colors={[shade(base, -0.2), base, shade(base, 0.14)]} start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }} style={StyleSheet.absoluteFill} />
+          <Image source={CARD_LINES[hash(seed) % CARD_LINES.length]} style={StyleSheet.absoluteFill} resizeMode="cover" />
         </>
       )}
+      {scrim && <LinearGradient colors={['transparent', uri ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.26)']} style={[StyleSheet.absoluteFill, { top: '40%' }]} />}
       {children}
     </View>
   );
@@ -357,7 +449,7 @@ export function Steps({ current, total = 3 }: { current: number; total?: number 
   return (
     <View style={styles.steps} accessibilityRole="progressbar" accessibilityValue={{ min: 1, max: total, now: current }}>
       {Array.from({ length: total }, (_, i) => (
-        <View key={i} style={[styles.stepSeg, { backgroundColor: i < current ? colors.ink : colors.toneDeep }]} />
+        <View key={i} style={[styles.stepSeg, { backgroundColor: i < current ? colors.white : colors.toneDeep }]} />
       ))}
     </View>
   );
@@ -368,15 +460,13 @@ export function Waveform({ bars = 28, color = colors.faint, progress = 0 }: { ba
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, flex: 1 }}>
       {Array.from({ length: bars }, (_, i) => {
         const h = 6 + Math.abs(Math.sin(i * 1.7) * 14) + (i % 3) * 2;
-        return (
-          <View key={i} style={{ width: 3, height: h, borderRadius: 2, backgroundColor: i / bars < progress ? colors.primary : color }} />
-        );
+        return <View key={i} style={{ width: 3, height: h, borderRadius: 2, backgroundColor: i / bars < progress ? colors.accentText : color }} />;
       })}
     </View>
   );
 }
 
-/** Nhãn nhỏ đặt trên ảnh hoặc trong danh sách: chữ và icon, nền phẳng, bo nhẹ. */
+/** Nhãn nhỏ: chữ và icon trên nền xám tối, bo tròn. */
 export function Pill({ label, icon, bg = colors.tone, color = colors.inkSoft }: { label: string; icon?: IconName; bg?: string; color?: string }) {
   return (
     <View style={[styles.pill, { backgroundColor: bg }]}>
@@ -395,18 +485,16 @@ export function ListRow({
   onPress?: () => void;
   danger?: boolean;
 }) {
-  const color = danger ? colors.primaryDark : colors.ink;
+  const color = danger ? colors.holiday : colors.ink;
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      style={({ pressed }) => [styles.listRow, pressed && { backgroundColor: colors.tone }]}
-    >
-      <Ionicons name={icon} size={22} color={danger ? colors.primaryDark : colors.inkSoft} />
-      <T variant="body" weight="medium" style={{ flex: 1 }} color={color}>{label}</T>
-      {value && <T variant="small" color={colors.muted}>{value}</T>}
-      <Ionicons name="chevron-forward" size={17} color={colors.faint} />
-    </Pressable>
+    <Tap onPress={onPress} scaleTo={0.98}>
+      <View style={styles.listRow}>
+        <View style={styles.listIcon}><Ionicons name={icon} size={20} color={color} /></View>
+        <T variant="body" weight="medium" style={{ flex: 1 }} color={color}>{label}</T>
+        {value && <T variant="small" color={colors.muted}>{value}</T>}
+        <Ionicons name="chevron-forward" size={17} color={colors.faint} />
+      </View>
+    </Tap>
   );
 }
 
@@ -421,35 +509,27 @@ export function Empty({ icon, title, text }: { icon: IconName; title: string; te
 }
 
 const styles = StyleSheet.create({
-  badgeDot: {
-    position: 'absolute', top: 9, right: 10, width: 9, height: 9, borderRadius: 5,
-    backgroundColor: colors.primary, borderWidth: 1.5, borderColor: colors.tone,
-  },
+  badge: { position: 'absolute', top: -4, right: -4, width: 20, height: 20 },
+  badgeInner: { flex: 1, borderRadius: 10, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
+  badgeText: { fontFamily: fonts.semibold, fontSize: 10, lineHeight: 12, color: colors.white },
   backHeader: { flexDirection: 'row', alignItems: 'center', paddingVertical: space.md },
   button: {
-    height: 52, borderRadius: radius.pill, flexDirection: 'row', alignItems: 'center',
+    height: 54, borderRadius: radius.pill, flexDirection: 'row', alignItems: 'center',
     justifyContent: 'center', gap: 8, paddingHorizontal: space.xl,
   },
-  card: { backgroundColor: colors.tone, borderRadius: radius.lg, padding: space.lg },
-  chip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, height: 40,
-    borderRadius: radius.pill,
-  },
+  card: { backgroundColor: colors.tone, borderRadius: radius.lg, padding: space.xl },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, height: 40, borderRadius: radius.pill },
   sectionHeader: {
-    flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12,
-    marginTop: 36, marginBottom: 14,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+    marginTop: 32, marginBottom: 14,
   },
   field: {
-    backgroundColor: colors.tone, borderRadius: radius.md, height: 52, paddingHorizontal: space.lg,
+    backgroundColor: colors.tone, borderRadius: radius.pill, height: 54, paddingHorizontal: space.xl,
     fontFamily: fonts.regular, fontSize: 16, color: colors.ink,
   },
   steps: { flexDirection: 'row', gap: 6, marginVertical: space.xl },
   stepSeg: { flex: 1, height: 4, borderRadius: 2 },
-  pill: {
-    flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 4,
-    borderRadius: 6, alignSelf: 'flex-start',
-  },
-  listRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 56, paddingHorizontal: 4, borderRadius: radius.md,
-  },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.pill, alignSelf: 'flex-start' },
+  listRow: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 60 },
+  listIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.tone, alignItems: 'center', justifyContent: 'center' },
 });

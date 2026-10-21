@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { VoiceRecorder } from '@/components/VoiceRecorder';
-import { Chip, IconButton, LogoMark, T, type IconName } from '@/components/ui';
+import { Chip, GradientButton, IconButton, LogoMark, T, type IconName } from '@/components/ui';
 import type { ChatMessage, ChatMode, Member } from '@/data/types';
 import { duration } from '@/lib/format';
 import { isElder } from '@/lib/family';
@@ -93,7 +93,7 @@ export default function Chat() {
   }
 
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.white }}>
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={styles.header}>
         <LogoMark size={44} />
         <View style={{ flex: 1 }}>
@@ -109,8 +109,8 @@ export default function Chat() {
         {(['story', 'confide'] as const).map((m) => (
           <Pressable key={m} onPress={() => setMode(m)} accessibilityRole="tab" accessibilityState={{ selected: mode === m }}
             style={[styles.segItem, mode === m && styles.segActive]}>
-            <Ionicons name={m === 'story' ? 'book-outline' : 'lock-closed-outline'} size={16} color={mode === m ? colors.white : colors.inkSoft} />
-            <T variant="small" weight="semibold" color={mode === m ? colors.white : colors.inkSoft}>
+            <Ionicons name={m === 'story' ? 'book-outline' : 'lock-closed-outline'} size={16} color={mode === m ? colors.black : colors.inkSoft} />
+            <T variant="small" weight="semibold" color={mode === m ? colors.black : colors.inkSoft}>
               {m === 'story' ? 'Kể chuyện' : 'Tâm sự riêng'}
             </T>
           </Pressable>
@@ -121,9 +121,9 @@ export default function Chat() {
         <Pressable onPress={askPending} accessibilityRole="button" style={({ pressed }) => [styles.banner, pressed && { backgroundColor: colors.toneDeep }]}>
           <View style={{ flex: 1, gap: 2 }}>
             <T variant="small" color={colors.inkSoft}>{member(state, waiting[0].fromId)?.roleLabel} đang chờ bạn trả lời</T>
-            <T variant="body" serif numberOfLines={2}>“{waiting[0].text}”</T>
+            <T variant="h3" numberOfLines={2}>“{waiting[0].text}”</T>
           </View>
-          <T variant="small" weight="semibold" color={colors.primary}>Trả lời</T>
+          <T variant="small" weight="semibold" color={colors.accentText}>Trả lời</T>
         </Pressable>
       )}
 
@@ -152,7 +152,7 @@ export default function Chat() {
               placeholderTextColor={colors.placeholder} style={styles.input} multiline accessibilityLabel="Lời nhắn cho Thư"
             />
             <IconButton icon="mic-outline" size={48} label="Kể bằng giọng nói" onPress={() => setVoice(true)} />
-            <IconButton icon="arrow-up" size={48} color={colors.white} bg={colors.primary} label="Gửi" onPress={() => send(text)} />
+            <GradientButton icon="arrow-up" label="Gửi" onPress={() => send(text)} />
           </View>
         )}
       </KeyboardAvoidingView>
@@ -168,14 +168,14 @@ function Bubble({ m, elders, recipient, setRecipient, onSave, onRelay }: {
   if (m.kind === 'crisis') {
     return (
       <View style={[styles.bubble, styles.crisis]}>
-        <T variant="small" weight="medium" color={colors.primaryDark}>{m.text}</T>
+        <T variant="small" weight="medium" color={colors.accentText}>{m.text}</T>
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
           <Pressable onPress={() => Linking.openURL('tel:109')} style={[styles.cta, { backgroundColor: colors.primaryDark }]}>
             <Ionicons name="call" size={14} color={colors.white} />
             <T variant="small" weight="semibold" color={colors.white}>Gọi 109</T>
           </Pressable>
           <Pressable onPress={() => router.push('/family')} style={[styles.cta, { backgroundColor: colors.white }]}>
-            <T variant="small" weight="semibold">Báo người thân</T>
+            <T variant="small" weight="semibold" color={colors.black}>Báo người thân</T>
           </Pressable>
         </View>
       </View>
@@ -186,17 +186,17 @@ function Bubble({ m, elders, recipient, setRecipient, onSave, onRelay }: {
       <View style={[styles.bubble, mine ? styles.me : styles.ai]}>
         {m.voiceSec ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Ionicons name="mic" size={14} color={mine ? colors.white : colors.ink} />
-            <T variant="small" color={mine ? colors.white : colors.ink}>Tin nhắn thoại {duration(m.voiceSec)}</T>
+            <Ionicons name="mic" size={14} color={mine ? colors.black : colors.ink} />
+            <T variant="small" color={mine ? colors.black : colors.ink}>Tin nhắn thoại {duration(m.voiceSec)}</T>
           </View>
         ) : (
-          <T variant="body" color={mine ? colors.white : colors.ink} style={{ lineHeight: 23 }}>{m.text}</T>
+          <T variant="body" color={mine ? colors.black : colors.ink} style={{ lineHeight: 23 }}>{m.text}</T>
         )}
       </View>
       {m.kind === 'save-story' && (
-        <Pressable onPress={onSave} style={[styles.cta, { backgroundColor: colors.ink, alignSelf: 'flex-start' }]}>
-          <Ionicons name="book-outline" size={16} color={colors.white} />
-          <T variant="small" weight="semibold" color={colors.white}>Lưu thành trang ký ức</T>
+        <Pressable onPress={onSave} style={[styles.cta, { backgroundColor: colors.white, alignSelf: 'flex-start' }]}>
+          <Ionicons name="book-outline" size={16} color={colors.black} />
+          <T variant="small" weight="semibold" color={colors.black}>Lưu thành trang ký ức</T>
         </Pressable>
       )}
       {m.kind === 'saved' && m.storyId && (
@@ -233,19 +233,19 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 10 },
   segment: { flexDirection: 'row', backgroundColor: colors.tone, borderRadius: radius.pill, padding: 4, marginHorizontal: 20 },
   segItem: { flex: 1, height: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
-  segActive: { backgroundColor: colors.ink },
+  segActive: { backgroundColor: colors.white },
   banner: {
     flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 20, marginTop: 12, padding: 14,
     borderRadius: radius.lg, backgroundColor: colors.tone,
   },
   bubble: { maxWidth: '84%', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 12 },
   ai: { backgroundColor: colors.tone, borderTopLeftRadius: 6, alignSelf: 'flex-start' },
-  me: { backgroundColor: colors.ink, borderTopRightRadius: 6 },
+  me: { backgroundColor: colors.white, borderTopRightRadius: 6 },
   crisis: { backgroundColor: colors.primarySoft, alignSelf: 'stretch', maxWidth: '100%' },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.faint },
   cta: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, minHeight: 44, borderRadius: 999 },
   consent: { backgroundColor: colors.tone, borderRadius: radius.lg, padding: 14, gap: 10, width: '88%' },
-  option: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.white, borderRadius: radius.md, paddingHorizontal: 14, minHeight: 48 },
+  option: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.toneDeep, borderRadius: radius.pill, paddingHorizontal: 16, minHeight: 48 },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 16, paddingTop: 8 },
   input: {
     flex: 1, minHeight: 48, maxHeight: 120, borderRadius: 24, backgroundColor: colors.tone, paddingHorizontal: 18,

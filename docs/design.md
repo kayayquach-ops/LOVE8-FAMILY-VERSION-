@@ -1,80 +1,29 @@
 # Thiết kế Homeletter
 
-Bản thiết kế này làm lại giao diện theo 3 bộ skill thiết kế trên GitHub:
+## Phiên bản hiện tại: theo tham khảo MAD (Social Dares) của Nixtio
 
-- [anthropics/skills · frontend-design](https://github.com/anthropics/skills/tree/main/skills/frontend-design): chọn hướng thẩm mỹ riêng cho đúng chủ đề, tránh các "mặc định" của giao diện do AI tạo.
-- [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill): bộ luật "chống AI slop" (không gradient, không emoji làm icon, không thẻ giống hệt nhau, không nhãn chữ hoa nhỏ...).
-- [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill): luật cho app di động (độ tương phản 4.5:1, vùng chạm 44pt, một bộ icon, danh sách kiểm tra trước khi giao).
+Nhóm chọn phong cách của bản thiết kế [MAD – Social Dares Mobile App UI](https://dribbble.com/shots/26700967-Social-Dares-Mobile-App-UI) (Nixtio): nền đen, thẻ màu bo tròn lớn, avatar tròn, chữ đậm khít, điểm nhấn là dải chuyển màu tím, hồng, cam. Chỉ lấy phong cách; nội dung và tính năng vẫn là của Homeletter.
 
-## Bản cũ sai ở đâu
-
-![Trước và sau](design-before-after.png)
-
-| Dấu hiệu "AI slop" | Ở đâu trong bản cũ |
+| Thành phần | Cách làm |
 |---|---|
-| Emoji thay icon và thay ảnh | Ảnh bài đăng là gradient + 🍲, chương ký ức 🪁🚲💌, sự kiện 🎂🕯️💍, lối tắt 🍲⏳📕❓, Thư là 🕊️ |
-| Dải số lớn trên nền gradient | "604 ngày xa nhà · 108 ngày nữa là Tết · 15:15" trên dải san hô |
-| Icon trong ô vuông tô màu | Hàng lối tắt ở Sổ ký ức, icon trong danh sách cài đặt |
-| Thẻ giống hệt nhau, cùng bóng mờ | Gần như mọi khối đều là thẻ trắng bo 22px có bóng hồng |
-| Chuỗi thông tin nối bằng dấu chấm giữa | "Seoul · Thứ Tư, 21/10/2026 · 12/9 âm lịch" |
-| Nhãn viên thuốc khắp nơi | "1 giờ trước", "Bản demo", "Còn 28 ngày" |
-| Chữ quá nhỏ | Nhiều nhãn 9 đến 11px, khó đọc với bố mẹ |
-| Đánh số bước 01 / 02 / 03 | Màn hình tạo hồ sơ |
+| Nền | Đen `#000000`, mặt nền thứ hai `#141416`, khi bấm `#222226` |
+| Thẻ màu | Mỗi người trong nhà một màu, lấy mẫu từ bản tham khảo rồi đậm hơn chút để chữ trắng đọc rõ: đất nung `#A8775A`, hồng phấn `#B9788D`, xanh lá xám `#5E8C78`, vàng mù tạt `#A38842`, tím oải hương `#8A5DA6`, gạch cam `#A44A3B`. Thẻ có dải màu nhẹ, nét lượn mờ, lớp tối nhẹ ở dưới chữ |
+| Dải chuyển màu | `#8F20B3` → `#E0306E` → `#F28A3C`: viền nút chính, nút "+", vòng số thông báo, ngày hôm nay trên lịch, nút gửi và nút phát |
+| Chữ | Be Vietnam Pro, tiêu đề đậm vừa (600) và khít (giãn chữ âm). Chữ nhấn trên nền đen `#FF8FB1`, ngày âm lịch `#C4B5FD`, Chủ nhật và ngày giỗ `#FF7A6B` |
+| Avatar | Avataaars (Pablo Stanley), sinh bằng `branding/build-art.mjs`. Người dùng thật sẽ dùng ảnh của mình |
+| Thanh menu | Viên thuốc nổi: nút "+" viền chuyển màu để chụp gửi cả nhà, các tab bằng chữ, avatar của mình ở cuối |
+| Cột nút nổi | Ở trang chủ, bên phải: gọi người lâu chưa gọi (kèm số), để Thư gọi hỏi chuyện, ngày sắp tới |
+| Chuyển động | Thẻ và nút nảy nhẹ khi chạm; thẻ trượt lên lần lượt khi mở màn hình. Tắt khi máy bật "giảm chuyển động" |
 
-## Ý tưởng
+### Bố cục chính
 
-> Trong Homeletter, **tờ lịch bóc treo tường** của mọi nhà Việt trở thành **trang chủ mỗi ngày**, còn **lá thư tay** là hình dạng của mọi lời nhắn.
+- **Trang chủ**: thẻ lịch hôm nay (tím) với ngày dương rất lớn, ngày âm, còn bao nhiêu ngày đến Tết; lưới thẻ so le "Cả nhà hôm nay"; dải thẻ tin mới với lời nhắn in to; nhắc gọi (thẻ gạch cam); ngày sắp tới; trang ký ức mới.
+- **Đăng nhập**: tiêu đề lớn trên đường cong chuyển màu, ô số điện thoại hình viên thuốc, nút viền chuyển màu, các nút vào nhanh hình tròn.
+- **Sổ ký ức**: thẻ màu cho câu chuyện mới nhất, mục lục thành lưới thẻ màu, dòng đời theo năm.
+- **Trang ký ức**: thẻ màu của người kể với năm in rất lớn và nút phát chuyển màu, lời kể bên dưới.
 
-Thử thay bằng đối thủ (Locket, Zalo, FamilyAlbum): câu này không còn đúng. Lịch bóc gắn với âm lịch, ngày giỗ, đếm ngày đến Tết, đúng những gì chỉ app này có.
+## Phiên bản trước
 
-## Màu
+Bản trước dùng nền trắng, chữ có chân Literata và ý tưởng tờ lịch bóc; nhóm thấy "cứng" nên chuyển sang phong cách trên. Những luật vẫn giữ: không dùng emoji thay icon, chữ nhỏ nhất 13px, vùng chạm từ 44pt, chữ trên nền đạt độ tương phản tối thiểu (chữ trắng trên các thẻ màu từ 3,4:1, dùng cho chữ lớn; chữ nhỏ có lớp tối phía sau).
 
-| Tên | Mã | Dùng cho |
-|---|---|---|
-| Giấy | `#FFFFFF` | Nền |
-| Pơ-luya | `#EEF0F4` | Mặt nền thứ hai (tách khối bằng tông màu, không dùng viền hay bóng) |
-| Mực | `#171C2E` | Chữ chính (mực bút bi viết thư) |
-| Mực nhạt | `#5B6175` | Chữ phụ |
-| Đỏ lịch | `#C8321F` | Nút chính, Chủ nhật, ngày lễ, Tết. Chỉ một màu nhấn |
-| Xanh âm lịch | `#2C4D9E` | Ngày âm lịch, chỉ dùng cho âm lịch |
-
-Màu riêng của từng người trong nhà (avatar, nền tin không ảnh), lấy từ chất liệu Việt: son `#8E3A2C`, chàm `#2E4874`, lá chuối `#46663A`, nghệ `#9A6512`, sen `#A2475E`, rêu `#3F6E68`, gốm `#7A5236`. Chữ trắng trên các màu này đều đạt từ 4.95:1 trở lên.
-
-## Chữ
-
-- **Literata** (chữ có chân, làm cho sách đọc lâu): số ngày lớn, tiêu đề màn hình, tên câu chuyện, lời trích, lời kể.
-- **Be Vietnam Pro** (do người Việt thiết kế cho tiếng Việt): nút, danh sách, chat, nhãn.
-- Cỡ chữ: 13, 15, 17 (thân bài), 22, 30, 120 (số trên tờ lịch). Không có chữ dưới 12px. Chế độ bố mẹ phóng to 1,18 lần.
-- Viết hoa đầu câu, không dùng nhãn chữ hoa nhỏ giãn chữ.
-
-## Hình khối
-
-- Nút: bo tròn hẳn (viên thuốc), cao 52.
-- Khối nền thứ hai: bo 18. Ảnh và tin: bo 6, giống ảnh in.
-- Không bóng đổ cho vật đứng yên, không gradient, không kính mờ.
-- Một bộ icon: Ionicons nét mảnh, cỡ 22. Emoji chỉ xuất hiện khi chính người dùng gửi (thả tim, cảm xúc).
-
-## Ảnh
-
-Bản demo **không dùng ảnh mạng, không dùng emoji thay ảnh**. Tin chưa có ảnh hiện thành "mẩu thư": lời nhắn in to bằng Literata trên nền màu của người gửi. Khi nhóm có ảnh thật (bữa cơm, Seoul, quê nhà), đặt vào `mobile/assets/demo/` và gắn `photo` cho bài đăng trong `src/data/seed.ts`.
-
-## Bố cục chính
-
-```
-Trang chủ                         Sổ ký ức
-┌──────────────────────────┐      ┌──────────────────────────┐
-│ (L)        [chuông][widget]      │ Sổ ký ức                  │
-│ Thứ Tư, tháng Mười       │      │ 6 trang, 34 phút giọng kể │
-│ 21              ← 120px  │      │ [ Tìm trong lời kể      ] │
-│ 12 tháng Chín, Bính Ngọ  │      │ Mới kể                    │
-│ ┌ Pơ-luya ─────────────┐ │      │ 1975        ← Literata 56 │
-│ │ Ở nhà 16:40  Seoul 18:40│      │ Gánh hàng ở chợ Rồng      │
-│ │ Còn 108 ngày nữa là Tết│      │ “Bát nước chè xanh...”    │
-│ └──────────────────────┘ │      │ ▶ Bà ngoại kể, 8:32       │
-│ Cả nhà hôm nay           │      │ Mục lục                   │
-│ (H) Mẹ    gửi lúc 17:20  │      │ Tuổi thơ          chưa có │
-│ (M) Bố    gửi lúc 13:40  │      │ Tuổi trẻ           1 trang│
-│ Tin mới  [mẩu thư] [ảnh] │      │ Theo năm 1975 1985 1992.. │
-│ Sắp tới  18 thg 11 ...   │      │ Tất cả câu chuyện         │
-└──────────────────────────┘      └──────────────────────────┘
-```
+![Trước và sau lần làm lại đầu tiên](design-before-after.png)

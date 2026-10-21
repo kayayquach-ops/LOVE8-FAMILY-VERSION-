@@ -111,7 +111,7 @@ export default function Capture() {
             return (
               <Pressable key={t.tag} onPress={() => setTag(t)} accessibilityRole="button" accessibilityState={{ selected: on }}
                 style={[styles.tag, { backgroundColor: on ? colors.white : 'rgba(255,255,255,0.12)' }]}>
-                <T variant="small" weight="medium" color={on ? colors.ink : colors.white}>{t.label}</T>
+                <T variant="small" weight="medium" color={on ? colors.black : colors.white}>{t.label}</T>
               </Pressable>
             );
           })}
@@ -156,12 +156,12 @@ export default function Capture() {
 const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 10 },
   round: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' },
-  viewfinder: { flex: 1, marginHorizontal: 14, borderRadius: radius.xl, overflow: 'hidden', backgroundColor: '#262C40' },
+  viewfinder: { flex: 1, marginHorizontal: 14, borderRadius: radius.xl, overflow: 'hidden', backgroundColor: colors.tone },
   noCam: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 30 },
   allow: { backgroundColor: colors.primary, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999 },
   captionWrap: { position: 'absolute', left: 16, right: 16, bottom: 18, alignItems: 'center' },
   caption: {
-    backgroundColor: 'rgba(23,28,46,0.5)', color: colors.white, fontFamily: fonts.semibold, fontSize: 16,
+    backgroundColor: 'rgba(0,0,0,0.5)', color: colors.white, fontFamily: fonts.semibold, fontSize: 16,
     paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999, textAlign: 'center', minWidth: 200,
   },
   noteWrap: { position: 'absolute', top: 24, left: 22, right: 22, bottom: 24 },
@@ -175,5 +175,5 @@ const styles = StyleSheet.create({
     flex: 1, height: 44, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.14)', flexDirection: 'row',
     alignItems: 'center', justifyContent: 'center', gap: 6,
   },
-  voicePanel: { backgroundColor: colors.white, marginHorizontal: 14, borderRadius: radius.lg, padding: 18, marginBottom: 14 },
+  voicePanel: { backgroundColor: colors.tone, marginHorizontal: 14, borderRadius: radius.lg, padding: 18, marginBottom: 14 },
 });

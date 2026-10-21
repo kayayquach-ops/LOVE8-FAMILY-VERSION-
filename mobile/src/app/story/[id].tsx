@@ -3,7 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, Share, StyleSheet, TextInput, View } from 'react-native';
 import { BRAND } from '@/brand';
-import { Avatar, BackHeader, Button, Chip, Empty, IconButton, Screen, SectionHeader, T, Waveform, type IconName } from '@/components/ui';
+import { Avatar, BackHeader, Button, Chip, Empty, FadeIn, GradientButton, IconButton, memberTone, PhotoTile, Screen, SectionHeader, T, Waveform, type IconName } from '@/components/ui';
 import type { Privacy } from '@/data/types';
 import { duration, relativeTime } from '@/lib/format';
 import { member } from '@/lib/selectors';
@@ -57,31 +57,39 @@ export default function StoryDetail() {
   return (
     <Screen>
       <BackHeader title={chapter?.title} right={
-        <IconButton icon="share-outline" label="Chia sẻ câu trích" bg={colors.white}
+        <IconButton icon="share-outline" label="Chia sẻ câu trích"
           onPress={() => Share.share({ message: `“${story.quote}” – ${teller?.roleLabel} kể, trong Sổ ký ức trên app ${BRAND.name}` })} />
       } />
 
-      {story.year ? <T serif weight="bold" style={styles.year}>{story.year}</T> : null}
-      <T variant="display" style={{ marginTop: story.year ? 0 : 12 }}>{story.title}</T>
-      <T variant="body" color={colors.inkSoft} style={{ marginTop: 8 }}>
-        {teller?.roleLabel} kể{asker ? ` khi ${asker.roleLabel.toLowerCase()} hỏi` : ''}, {relativeTime(story.createdAt)}.
-      </T>
-
-      <View style={styles.player}>
-        <Pressable onPress={toggle} accessibilityRole="button" accessibilityLabel={playing ? 'Dừng' : 'Nghe giọng kể'}
-          style={({ pressed }) => [styles.play, pressed && { backgroundColor: colors.primaryDark }]}>
-          <Ionicons name={playing ? 'pause' : 'play'} size={22} color={colors.white} />
-        </Pressable>
-        <Waveform bars={26} progress={pos / story.durationSec} />
-        <T variant="small" color={colors.muted}>{duration(playing || pos ? pos : story.durationSec)}</T>
-      </View>
+      <FadeIn>
+        <PhotoTile seed={story.id} tone={memberTone(state.family.members, story.tellerId)} autoHeight>
+          <View style={{ padding: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Avatar name={teller?.name ?? '?'} uri={teller?.avatarUri} size={48} />
+              <View style={{ flex: 1 }}>
+                <T variant="body" weight="semibold" color={colors.white}>{teller?.roleLabel} kể</T>
+                <T variant="caption" weight="regular" color="rgba(255,255,255,0.88)">
+                  {asker ? `Khi ${asker.roleLabel.toLowerCase()} hỏi, ` : ''}{relativeTime(story.createdAt)}
+                </T>
+              </View>
+            </View>
+            {story.year ? <T variant="display" color={colors.white} style={styles.year}>{story.year}</T> : <View style={{ height: 28 }} />}
+            <T variant="display" color={colors.white}>{story.title}</T>
+            <View style={styles.player}>
+              <GradientButton icon={playing ? 'pause' : 'play'} size={50} label={playing ? 'Dừng' : 'Nghe giọng kể'} onPress={toggle} />
+              <Waveform bars={24} progress={pos / story.durationSec} color="rgba(255,255,255,0.55)" />
+              <T variant="small" color={colors.white}>{duration(playing || pos ? pos : story.durationSec)}</T>
+            </View>
+          </View>
+        </PhotoTile>
+      </FadeIn>
 
       {story.question && (
         <T variant="small" color={colors.muted} style={{ marginTop: 24 }}>{asker?.roleLabel ?? 'Câu'} hỏi: “{story.question}”</T>
       )}
-      <T variant="h2" weight="regular" style={styles.quote}>“{story.quote}”</T>
+      <T variant="h1" style={styles.quote}>“{story.quote}”</T>
 
-      <T variant="body" serif style={styles.transcript}>{story.transcript}</T>
+      <T variant="body" color={colors.inkSoft} style={styles.transcript}>{story.transcript}</T>
       <T variant="small" color={colors.muted} style={{ marginTop: 10 }}>
         Chép từ giọng kể gốc, chỉ sửa chính tả. Bấm nghe để kiểm chứng.
       </T>
@@ -122,9 +130,7 @@ export default function StoryDetail() {
       })}
       <View style={styles.inputRow}>
         <TextInput value={note} onChangeText={setNote} placeholder="Bạn nhớ chuyện này khác đi?" placeholderTextColor={colors.placeholder} style={styles.input} accessibilityLabel="Bạn nhớ chuyện này khác đi?" />
-        <Pressable onPress={() => { if (note.trim()) { dispatch({ type: 'addPerspective', storyId: story.id, text: note.trim() }); setNote(''); } }} style={styles.send}>
-          <Ionicons name="send" size={16} color={colors.white} />
-        </Pressable>
+        <GradientButton icon="arrow-up" label="Gửi" onPress={() => { if (note.trim()) { dispatch({ type: 'addPerspective', storyId: story.id, text: note.trim() }); setNote(''); } }} />
       </View>
 
       {story.followUps.length > 0 && (
@@ -141,7 +147,7 @@ export default function StoryDetail() {
                   <T variant="small" weight="semibold" color={colors.green}>Đã gửi</T>
                 </View>
               ) : (
-                <T variant="small" weight="semibold" color={colors.primary}>Nhờ Thư hỏi</T>
+                <T variant="small" weight="semibold" color={colors.accentText}>Nhờ Thư hỏi</T>
               )}
             </Pressable>
           ))}
@@ -172,18 +178,16 @@ function Fact({ icon, text }: { icon: IconName; text: string }) {
 }
 
 const styles = StyleSheet.create({
-  year: { fontSize: 64, lineHeight: 68, letterSpacing: -2, marginTop: 8 },
-  play: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  year: { fontSize: 72, lineHeight: 76, letterSpacing: -3, marginTop: 26 },
   player: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.tone, borderRadius: radius.pill,
-    padding: 8, paddingRight: 18, marginTop: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: radius.pill,
+    padding: 6, paddingRight: 18, marginTop: 22,
   },
-  quote: { fontSize: 24, lineHeight: 33, marginTop: 10 },
-  transcript: { fontSize: 18, lineHeight: 30, marginTop: 20 },
+  quote: { marginTop: 10 },
+  transcript: { fontSize: 17, lineHeight: 28, marginTop: 18 },
   react: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.tone, alignItems: 'center', justifyContent: 'center' },
   perspective: { flexDirection: 'row', gap: 12, backgroundColor: colors.tone, borderRadius: radius.lg, padding: 14, marginBottom: 8 },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
   input: { flex: 1, height: 48, borderRadius: radius.pill, backgroundColor: colors.tone, paddingHorizontal: 18, fontFamily: fonts.regular, fontSize: 16, color: colors.ink },
-  send: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   follow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.tone, borderRadius: radius.md, padding: 14, minHeight: 52, marginBottom: 8 },
 });

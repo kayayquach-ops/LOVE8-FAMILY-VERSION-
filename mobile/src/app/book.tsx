@@ -51,7 +51,7 @@ export default function Book() {
             <T variant="h1" style={{ marginTop: 6 }}>{sample.title}</T>
             <T variant="body" serif color={colors.inkSoft} style={{ marginTop: 12, lineHeight: 27 }} numberOfLines={6}>{sample.transcript}</T>
             <View style={styles.qrRow}>
-              <View style={styles.qr}><Ionicons name="qr-code" size={44} color={colors.ink} /></View>
+              <View style={styles.qr}><Ionicons name="qr-code" size={44} color={colors.black} /></View>
               <T variant="small" color={colors.muted} style={{ flex: 1 }}>
                 Quét mã để nghe {member(state, sample.tellerId)?.roleLabel.toLowerCase()} kể bằng chính giọng của mình.
               </T>
@@ -82,7 +82,7 @@ function Option({ title, price, note, highlight }: { title: string; price: strin
 }
 
 const styles = StyleSheet.create({
-  cover: { height: 280, borderRadius: radius.sm, backgroundColor: colors.primary, padding: 24, marginTop: 8 },
+  cover: { height: 280, borderRadius: radius.lg, backgroundColor: '#A44A3B', padding: 24, marginTop: 8 },
   page: { backgroundColor: colors.tone, borderRadius: radius.sm, padding: 22 },
   qrRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16 },
   qr: { width: 64, height: 64, borderRadius: 10, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.line },

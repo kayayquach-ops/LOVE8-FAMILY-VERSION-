@@ -1,14 +1,14 @@
-import { Ionicons } from '@/components/Icon';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { StoryCard } from '@/components/Feed';
-import { Chip, IconButton, ListRow, Screen, SectionHeader, T } from '@/components/ui';
+import { Ionicons } from '@/components/Icon';
+import { Chip, FadeIn, IconButton, ListRow, PhotoTile, Screen, SectionHeader, T, Tap } from '@/components/ui';
 import type { Story } from '@/data/types';
 import { duration } from '@/lib/format';
 import { member, visibleStories } from '@/lib/selectors';
 import { useApp } from '@/store/AppContext';
-import { colors, fonts, radius } from '@/theme';
+import { colors, familyTones, fonts, radius } from '@/theme';
 
 export default function Memories() {
   const { state } = useApp();
@@ -31,7 +31,7 @@ export default function Memories() {
         <T variant="display" style={{ flex: 1 }}>Sổ ký ức</T>
         <IconButton icon="help-circle-outline" label="Nhờ Thư hỏi bố mẹ" onPress={() => router.push('/ask')} />
       </View>
-      <T variant="body" color={colors.inkSoft} style={{ marginTop: 6 }}>
+      <T variant="body" color={colors.muted} style={{ marginTop: 4 }}>
         {all.length} trang, {minutes} phút giọng kể của {tellers.length} người trong nhà.
       </T>
 
@@ -56,38 +56,41 @@ export default function Memories() {
       ) : (
         <>
           {latest && (
-            <>
-              <SectionHeader title="Mới kể" />
+            <FadeIn style={{ marginTop: 18 }}>
               <StoryCard story={latest} />
-            </>
+            </FadeIn>
           )}
 
           <SectionHeader title="Mục lục" />
-          {state.chapters.map((c) => {
-            const n = all.filter((s) => s.chapterId === c.id).length;
-            return (
-              <Pressable key={c.id} onPress={() => router.push(`/chapter/${c.id}`)} accessibilityRole="button"
-                style={({ pressed }) => [styles.chapter, pressed && { backgroundColor: colors.tone }]}>
-                <View style={{ flex: 1 }}>
-                  <T variant="h3" serif weight="semibold" style={{ fontSize: 19, lineHeight: 25 }}>{c.title}</T>
-                  <T variant="small" color={colors.muted} numberOfLines={1}>{c.description}</T>
-                </View>
-                <T variant="small" weight={n ? 'semibold' : 'regular'} color={n ? colors.ink : colors.muted}>
-                  {n ? `${n} trang` : 'Chưa có'}
-                </T>
-              </Pressable>
-            );
-          })}
+          <View style={styles.grid}>
+            {state.chapters.map((c, i) => {
+              const n = all.filter((s) => s.chapterId === c.id).length;
+              return (
+                <FadeIn key={c.id} delay={i * 50} style={{ width: '48.5%' }}>
+                  <Tap onPress={() => router.push(`/chapter/${c.id}`)} label={c.title} scaleTo={0.96}>
+                    <PhotoTile seed={c.id} tone={n ? familyTones[(i + 1) % familyTones.length] : colors.toneDeep} height={i % 3 === 0 ? 132 : 112}>
+                      <View style={styles.chapterInner}>
+                        <T variant="caption" weight="regular" color="rgba(255,255,255,0.85)">{n ? `${n} trang` : 'Chưa có trang'}</T>
+                        <T variant="h3" color={colors.white} numberOfLines={2}>{c.title}</T>
+                      </View>
+                    </PhotoTile>
+                  </Tap>
+                </FadeIn>
+              );
+            })}
+          </View>
 
           <SectionHeader title="Theo dòng đời" />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }}
-            contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingBottom: 12 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }}
+            contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingBottom: 12 }}>
             <Chip label="Cả nhà" active={teller === 'all'} onPress={() => setTeller('all')} />
             {tellers.map((t) => (
               <Chip key={t} label={member(state, t)?.roleLabel ?? t} active={teller === t} onPress={() => setTeller(t)} />
             ))}
           </ScrollView>
-          {timeline.map((s) => <StoryLine key={s.id} story={s} />)}
+          <View style={{ gap: 8 }}>
+            {timeline.map((s) => <StoryLine key={s.id} story={s} />)}
+          </View>
 
           <SectionHeader title="Từ sổ ký ức" />
           <ListRow icon="film-outline" label="Làm clip câu chuyện" onPress={() => latest && router.push(`/clip/${latest.id}`)} />
@@ -105,25 +108,27 @@ function StoryLine({ story }: { story: Story }) {
   const { state } = useApp();
   const teller = member(state, story.tellerId);
   return (
-    <Pressable onPress={() => router.push(`/story/${story.id}`)} accessibilityRole="button"
-      style={({ pressed }) => [styles.line, pressed && { backgroundColor: colors.tone }]}>
-      <T variant="h2" weight="bold" style={{ width: 64, fontSize: 20 }}>{story.year ?? '—'}</T>
-      <View style={{ flex: 1 }}>
-        <T variant="body" weight="semibold" numberOfLines={2}>{story.title}</T>
-        <T variant="small" color={colors.muted}>{teller?.roleLabel} kể, {duration(story.durationSec)}</T>
+    <Tap onPress={() => router.push(`/story/${story.id}`)} label={story.title} scaleTo={0.98}>
+      <View style={styles.line}>
+        <T variant="h2" style={{ width: 66 }}>{story.year ?? '—'}</T>
+        <View style={{ flex: 1 }}>
+          <T variant="body" weight="semibold" numberOfLines={2}>{story.title}</T>
+          <T variant="small" color={colors.muted}>{teller?.roleLabel} kể, {duration(story.durationSec)}</T>
+        </View>
+        <Ionicons name="chevron-forward" size={17} color={colors.faint} />
       </View>
-      <Ionicons name="chevron-forward" size={17} color={colors.faint} />
-    </Pressable>
+    </Tap>
   );
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', marginTop: 16 },
+  header: { flexDirection: 'row', alignItems: 'center', marginTop: 12 },
   search: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.tone, borderRadius: radius.md,
-    paddingHorizontal: 16, height: 52, marginTop: 18,
+    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.tone, borderRadius: radius.pill,
+    paddingHorizontal: 18, height: 54, marginTop: 16,
   },
-  searchInput: { flex: 1, fontFamily: fonts.regular, fontSize: 16, color: colors.ink, height: 52 },
-  chapter: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 12, paddingHorizontal: 4, borderRadius: radius.md },
-  line: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 4, borderRadius: radius.md },
+  searchInput: { flex: 1, fontFamily: fonts.regular, fontSize: 16, color: colors.ink, height: 54 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 },
+  chapterInner: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, padding: 14, justifyContent: 'space-between' },
+  line: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.tone, borderRadius: radius.md, paddingVertical: 14, paddingHorizontal: 16 },
 });

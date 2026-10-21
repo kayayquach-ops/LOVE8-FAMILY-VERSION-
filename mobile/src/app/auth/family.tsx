@@ -48,7 +48,7 @@ export default function FamilySetup() {
                 <T variant="h1" style={{ letterSpacing: 2 }}>{state.family.inviteCode}</T>
               </View>
               <View style={styles.qr}>
-                <Ionicons name="qr-code" size={46} color={colors.ink} />
+                <Ionicons name="qr-code" size={46} color={colors.black} />
               </View>
             </View>
             <T variant="small" color={colors.inkSoft}>
@@ -78,10 +78,10 @@ function Option({ active, icon, title, text, onPress }: {
 }) {
   return (
     <Pressable onPress={onPress} accessibilityRole="radio" accessibilityState={{ checked: active }}
-      style={[styles.option, active && { backgroundColor: colors.ink }]}>
-      <Ionicons name={icon} size={22} color={active ? colors.white : colors.inkSoft} />
-      <T variant="body" weight="semibold" color={active ? colors.white : colors.ink}>{title}</T>
-      <T variant="small" color={active ? 'rgba(255,255,255,0.82)' : colors.inkSoft}>{text}</T>
+      style={[styles.option, active && { backgroundColor: colors.white }]}>
+      <Ionicons name={icon} size={22} color={active ? colors.black : colors.inkSoft} />
+      <T variant="body" weight="semibold" color={active ? colors.black : colors.ink}>{title}</T>
+      <T variant="small" color={active ? '#3F3F46' : colors.inkSoft}>{text}</T>
     </Pressable>
   );
 }
@@ -89,8 +89,8 @@ function Option({ active, icon, title, text, onPress }: {
 function ShareBtn({ label, color, dark, onPress }: { label: string; color: string; dark?: boolean; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} accessibilityRole="button" style={[styles.share, { backgroundColor: color }]}>
-      <Ionicons name="paper-plane" size={15} color={dark ? colors.ink : colors.white} />
-      <T variant="small" weight="semibold" color={dark ? colors.ink : colors.white}>Gửi qua {label}</T>
+      <Ionicons name="paper-plane" size={15} color={dark ? colors.black : colors.white} />
+      <T variant="small" weight="semibold" color={dark ? colors.black : colors.white}>Gửi qua {label}</T>
     </Pressable>
   );
 }

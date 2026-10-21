@@ -69,15 +69,15 @@ export default function PostDetail() {
         return (
           <View key={r.id} style={[styles.bubbleRow, mine && { flexDirection: 'row-reverse' }]}>
             <Avatar name={a?.name ?? '?'} uri={a?.avatarUri} size={28} />
-            <View style={[styles.bubble, mine && { backgroundColor: colors.ink }]}>
+            <View style={[styles.bubble, mine && { backgroundColor: colors.white }]}>
               {r.voiceSec ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, width: 170 }}>
-                  <Ionicons name="play" size={14} color={mine ? colors.white : colors.ink} />
-                  <Waveform bars={16} color={mine ? colors.white : colors.ink} />
-                  <T variant="caption" color={mine ? colors.white : colors.muted}>{duration(r.voiceSec)}</T>
+                  <Ionicons name="play" size={14} color={mine ? colors.black : colors.ink} />
+                  <Waveform bars={16} color={mine ? colors.black : colors.ink} />
+                  <T variant="caption" color={mine ? colors.black : colors.muted}>{duration(r.voiceSec)}</T>
                 </View>
               ) : (
-                <T variant="body" color={mine ? colors.white : colors.ink}>{r.text}</T>
+                <T variant="body" color={mine ? colors.black : colors.ink}>{r.text}</T>
               )}
             </View>
           </View>

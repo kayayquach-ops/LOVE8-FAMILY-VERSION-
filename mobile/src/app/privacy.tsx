@@ -30,6 +30,10 @@ export default function Privacy() {
       <T variant="body" color={colors.inkSoft}>
         Bạn có thể tải toàn bộ ảnh, ghi âm và sổ ký ức về máy, hoặc xoá tài khoản cùng mọi dữ liệu trong Cài đặt.
       </T>
+      <SectionHeader title="Ghi công" />
+      <T variant="small" color={colors.muted}>
+        Avatar của gia đình mẫu: Avataaars của Pablo Stanley, dùng tự do cho cả mục đích thương mại. Giao diện lấy cảm hứng từ bản thiết kế MAD (Social Dares) của Nixtio. Chữ: Be Vietnam Pro (SIL Open Font License). Icon: Ionicons (MIT).
+      </T>
     </Screen>
   );
 }

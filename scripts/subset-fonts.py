@@ -6,7 +6,7 @@ Chạy lại mỗi khi dùng thêm icon Ionicons mới trong mobile/src (typeche
     python3 scripts/subset-fonts.py
 
 Kết quả:
-    mobile/assets/fonts/*.ttf              font chữ đã cắt (Be Vietnam Pro, Literata) cho iOS và Android
+    mobile/assets/fonts/*.ttf              font chữ Be Vietnam Pro đã cắt cho iOS và Android
     mobile/assets/fonts/*.woff2            cùng font đó, định dạng WOFF2 nhẹ hơn cho bản web
     mobile/assets/fonts/Ionicons-subset.ttf
     mobile/src/components/ionicons.json    danh sách icon được giữ (tên -> mã ký tự)
@@ -35,9 +35,6 @@ TEXT_FONTS = {
     'BeVietnamPro-Medium.ttf': '@expo-google-fonts/be-vietnam-pro/500Medium/BeVietnamPro_500Medium.ttf',
     'BeVietnamPro-SemiBold.ttf': '@expo-google-fonts/be-vietnam-pro/600SemiBold/BeVietnamPro_600SemiBold.ttf',
     'BeVietnamPro-Bold.ttf': '@expo-google-fonts/be-vietnam-pro/700Bold/BeVietnamPro_700Bold.ttf',
-    'Literata-Regular.ttf': '@expo-google-fonts/literata/400Regular/Literata_400Regular.ttf',
-    'Literata-SemiBold.ttf': '@expo-google-fonts/literata/600SemiBold/Literata_600SemiBold.ttf',
-    'Literata-Bold.ttf': '@expo-google-fonts/literata/700Bold/Literata_700Bold.ttf',
 }
 
 ICON_FONT = '@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'
