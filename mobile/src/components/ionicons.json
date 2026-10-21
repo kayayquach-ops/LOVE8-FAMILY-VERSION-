@@ -29,6 +29,7 @@
   "film-outline": 62207,
   "flower-outline": 62243,
   "gift-outline": 62264,
+  "headset": 62311,
   "heart": 62314,
   "heart-outline": 62327,
   "help-circle-outline": 62334,
@@ -57,10 +58,12 @@
   "pause": 62611,
   "people": 62623,
   "people-outline": 62627,
+  "person-add-outline": 62631,
   "person-circle-outline": 62634,
   "person-outline": 62636,
   "phone-portrait-outline": 62645,
   "play": 62662,
+  "pulse": 62710,
   "qr-code": 62716,
   "radio": 62719,
   "radio-button-off": 62720,
@@ -77,5 +80,7 @@
   "time-outline": 62942,
   "today": 62947,
   "videocam": 62989,
+  "videocam-off": 62990,
+  "videocam-outline": 62993,
   "volume-high": 62995
 }

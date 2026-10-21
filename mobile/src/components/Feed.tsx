@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { StyleSheet, View } from 'react-native';
 import { tagLabel } from '@/data/tags';
 import type { Member, Post, Story } from '@/data/types';
@@ -6,7 +7,7 @@ import { clock, duration, inDaysLabel, relativeTime } from '@/lib/format';
 import { lunarOf } from '@/lib/lunar';
 import { isToday, member, type Nudge, type UpcomingEvent } from '@/lib/selectors';
 import { useApp } from '@/store/AppContext';
-import { colors, radius } from '@/theme';
+import { colors, gradient, radius } from '@/theme';
 import { Ionicons } from './Icon';
 import { Avatar, FadeIn, memberTone, PhotoTile, T, Tap } from './ui';
 
@@ -100,12 +101,13 @@ export function PostCard({ post, width }: { post: Post; width?: number }) {
   const { state, dispatch } = useApp();
   const author = member(state, post.authorId);
   const mine = post.reactions[state.meId];
-  const h = width ? Math.round(width * 1.08) : 360;
-  const label = tagLabel(post.tag);
   const small = !!width && width < 280;
+  const h = width ? Math.round(width * (small ? 1.38 : 1.32)) : 440;
+  const label = tagLabel(post.tag);
+  const loved = mine === '❤️';
   return (
     <View style={{ width }}>
-      <Tap onPress={() => router.push(`/post/${post.id}`)} label={`Tin của ${author?.roleLabel}`} scaleTo={0.97}>
+      <Tap onPress={() => router.push(`/post/${post.id}`)} label={`Tin của ${author?.roleLabel}`} scaleTo={0.98}>
         <PhotoTile seed={post.id} tone={memberTone(state.family.members, post.authorId)} uri={post.photoUri} height={h}>
           <View style={styles.postInner}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -114,37 +116,47 @@ export function PostCard({ post, width }: { post: Post; width?: number }) {
                 <T variant="small" weight="semibold" color={colors.white}>{author?.roleLabel}</T>
                 <T variant="caption" weight="regular" color="rgba(255,255,255,0.85)">{relativeTime(post.createdAt)}</T>
               </View>
-              {post.voiceSec ? (
-                <View style={styles.voice}>
-                  <Ionicons name="mic" size={13} color={colors.white} />
-                  <T variant="caption" color={colors.white}>{duration(post.voiceSec)}</T>
-                </View>
-              ) : null}
             </View>
             <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-              <T variant="display" color={colors.white} numberOfLines={small ? 4 : 6}
+              <T variant="display" color={colors.white} numberOfLines={small ? 4 : 5}
                 style={{ fontSize: small ? 22 : 30, lineHeight: small ? 25 : 33, letterSpacing: small ? -0.6 : -1.2 }}>
                 {post.caption}
               </T>
-              {label && <T variant="caption" weight="regular" color="rgba(255,255,255,0.85)" style={{ marginTop: 10 }}>{label}</T>}
+            </View>
+            {/* Nhãn mờ và hàng nút ngay trong thẻ, như thẻ "Chasing sunsets" của mẫu friendlyhours. */}
+            <View style={styles.chips}>
+              {label && <Glass text={label} />}
+              {post.voiceSec ? <Glass text={`Lời nhắn ${duration(post.voiceSec)}`} icon="mic" /> : null}
+              {post.replies.length ? <Glass text={`${post.replies.length} trả lời`} /> : null}
+            </View>
+            <View style={styles.actions}>
+              <Tap onPress={() => router.push(`/post/${post.id}`)} label="Trả lời" scaleTo={0.85}>
+                <View style={styles.round}><Ionicons name="chatbubble-outline" size={19} color={colors.black} /></View>
+              </Tap>
+              {QUICK.slice(1, 3).map((e) => (
+                <Tap key={e} onPress={() => dispatch({ type: 'react', postId: post.id, emoji: e })} selected={mine === e} label={`Thả ${e}`} scaleTo={0.85}>
+                  <View style={[styles.round, mine === e && styles.roundOn]}><T variant="body">{e}</T></View>
+                </Tap>
+              ))}
+              <Tap onPress={() => dispatch({ type: 'react', postId: post.id, emoji: '❤️' })} selected={loved} label="Thả tim" scaleTo={0.94} style={{ flex: 1 }}>
+                <LinearGradient colors={loved ? ['#FFFFFF', '#FFFFFF'] : gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.love}>
+                  <Ionicons name="heart" size={20} color={loved ? colors.primary : colors.white} />
+                  {!small && <T variant="small" weight="semibold" color={loved ? colors.black : colors.white}>{loved ? 'Đã thả tim' : 'Thả tim'}</T>}
+                </LinearGradient>
+              </Tap>
             </View>
           </View>
         </PhotoTile>
       </Tap>
-      <View style={styles.reactions}>
-        {QUICK.map((e) => (
-          <Tap key={e} onPress={() => dispatch({ type: 'react', postId: post.id, emoji: e })} selected={mine === e} label={`Thả ${e}`} scaleTo={0.85}>
-            <View style={[styles.react, mine === e && styles.reactOn]}>
-              <T variant="body">{e}</T>
-            </View>
-          </Tap>
-        ))}
-        <View style={{ flex: 1 }} />
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <Ionicons name="chatbubble-outline" size={16} color={colors.muted} />
-          <T variant="small" color={colors.muted}>{post.replies.length}</T>
-        </View>
-      </View>
+    </View>
+  );
+}
+
+function Glass({ text, icon }: { text: string; icon?: 'mic' }) {
+  return (
+    <View style={styles.glass}>
+      {icon && <Ionicons name={icon} size={12} color={colors.white} />}
+      <T variant="caption" weight="medium" color={colors.white}>{text}</T>
     </View>
   );
 }
@@ -244,9 +256,15 @@ const styles = StyleSheet.create({
   },
   postInner: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, padding: 18 },
   voice: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0,0,0,0.28)', borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 5 },
-  reactions: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 10 },
-  react: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.tone },
-  reactOn: { backgroundColor: colors.primarySoft, borderWidth: 1.5, borderColor: colors.accentText },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 14 },
+  glass: {
+    flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
+  round: { width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' },
+  roundOn: { borderWidth: 2.5, borderColor: colors.white, backgroundColor: 'rgba(255,255,255,0.6)' },
+  love: { height: 46, borderRadius: radius.pill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   small: { height: 46, borderRadius: radius.pill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   eventRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 9 },
   dateBlock: { width: 54, height: 54, borderRadius: 27, backgroundColor: colors.tone, alignItems: 'center', justifyContent: 'center' },

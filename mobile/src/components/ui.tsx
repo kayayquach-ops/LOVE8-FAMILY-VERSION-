@@ -407,6 +407,44 @@ export function Avatar({
   return onPress ? <Tap onPress={onPress} label={name} scaleTo={0.92}>{wrapped}</Tap> : wrapped;
 }
 
+/** Nhóm avatar xếp chồng; từ người thứ `max + 1` gộp thành ô "+n". */
+export function AvatarStack({
+  people, max = 3, size = 44, borderColor = colors.bg,
+}: {
+  people: Array<{ name: string; avatarUri?: string }>;
+  max?: number;
+  size?: number;
+  borderColor?: string;
+}) {
+  const shown = people.slice(0, max);
+  const rest = people.length - shown.length;
+  const overlap = { marginLeft: -size * 0.28, borderRadius: size, borderWidth: 2, borderColor };
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }} accessibilityLabel={`${people.length} người`}>
+      {shown.map((p, i) => (
+        <View key={p.name} style={[overlap, i === 0 && { marginLeft: 0 }]}>
+          <Avatar name={p.name} uri={p.avatarUri} size={size} />
+        </View>
+      ))}
+      {rest > 0 && (
+        <View style={[overlap, styles.more, { width: size + 4, height: size + 4 }]}>
+          <Text style={[styles.moreText, { fontSize: size * 0.32 }]}>+{rest}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+/** Khung đầu màn hình màu xanh đậm có nét lượn mờ, bo tròn hai góc dưới. */
+export function HeaderBlock({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  return (
+    <View style={[styles.headerBlock, style]}>
+      <Image source={CARD_LINES[1]} style={[StyleSheet.absoluteFill, { opacity: 0.55 }]} resizeMode="cover" />
+      {children}
+    </View>
+  );
+}
+
 /**
  * Thẻ màu: dải màu của người gửi, nét lượn mờ, và lớp tối nhẹ ở dưới để chữ trắng đọc rõ.
  * Có ảnh thật thì hiện ảnh thay cho dải màu. Nội dung đặt ở `children`.
@@ -510,6 +548,9 @@ export function Empty({ icon, title, text }: { icon: IconName; title: string; te
 
 const styles = StyleSheet.create({
   badge: { position: 'absolute', top: -4, right: -4, width: 20, height: 20 },
+  more: { backgroundColor: '#2A2A30', alignItems: 'center', justifyContent: 'center' },
+  moreText: { fontFamily: fonts.semibold, color: colors.white },
+  headerBlock: { backgroundColor: colors.deep, borderBottomLeftRadius: 32, borderBottomRightRadius: 32, overflow: 'hidden' },
   badgeInner: { flex: 1, borderRadius: 10, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
   badgeText: { fontFamily: fonts.semibold, fontSize: 10, lineHeight: 12, color: colors.white },
   backHeader: { flexDirection: 'row', alignItems: 'center', paddingVertical: space.md },

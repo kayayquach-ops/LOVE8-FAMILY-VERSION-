@@ -3,10 +3,11 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EventRow, FamilyGrid, NudgeCard, PostCard, StoryCard } from '@/components/Feed';
 import ParentHome from '@/components/ParentHome';
-import { FadeIn, IconButton, ListRow, LogoMark, PhotoTile, Screen, SectionHeader, T, Tap } from '@/components/ui';
+import { Ionicons } from '@/components/Icon';
+import { AvatarStack, FadeIn, IconButton, ListRow, LogoMark, PhotoTile, Screen, SectionHeader, T, Tap } from '@/components/ui';
 import { localTimeFor, lunarMonthName, weekday } from '@/lib/format';
 import { canChiYear } from '@/lib/lunar';
-import { daysAway, daysToTet, lunarToday, me, member, nudges, upcoming, visibleStories } from '@/lib/selectors';
+import { daysAway, daysToTet, lunarToday, me, member, nudges, postedToday, upcoming, visibleStories } from '@/lib/selectors';
 import { useApp } from '@/store/AppContext';
 import { colors, familyTones } from '@/theme';
 
@@ -26,6 +27,7 @@ export default function Home() {
   const events = upcoming(state).slice(0, 3);
   const latestStory = visibleStories(state)[0];
   const waiting = state.questions.filter((q) => q.toId === state.meId && q.status !== 'answered');
+  const sentToday = state.family.members.filter((m) => postedToday(state, m.id)).length;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -38,8 +40,22 @@ export default function Home() {
           <IconButton icon="notifications-outline" label="Thông báo" badge={allNudges.length || undefined} onPress={() => router.push('/notifications')} />
         </View>
 
+        {/* Nhóm avatar xếp chồng và tên nhà, như dòng nhóm của mẫu friendlyhours. */}
+        <Tap onPress={() => router.push('/family')} label="Mở gia đình" scaleTo={0.98} style={{ marginTop: 18 }}>
+          <View style={styles.familyBar}>
+            <AvatarStack people={state.family.members} max={3} size={46} />
+            <View style={{ alignItems: 'flex-end', flex: 1 }}>
+              <T variant="h3">{state.family.name}</T>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <Ionicons name="people-outline" size={15} color={colors.muted} />
+                <T variant="small" color={colors.muted} numberOfLines={1}>{sentToday}/{state.family.members.length} người đã gửi hôm nay</T>
+              </View>
+            </View>
+          </View>
+        </Tap>
+
         {/* Tờ lịch hôm nay: thẻ lớn đầu trang như thẻ nổi bật của bản tham khảo. */}
-        <FadeIn style={{ marginTop: 16 }}>
+        <FadeIn style={{ marginTop: 14 }}>
           <Tap onPress={() => router.push('/calendar')} label="Mở lịch" scaleTo={0.98}>
             <PhotoTile seed="today" tone={familyTones[4]} height={252}>
               <View style={styles.leaf}>
@@ -118,21 +134,22 @@ export default function Home() {
   );
 }
 
-/** Cột nút tròn nổi bên phải, như bản tham khảo: gọi người lâu chưa gọi, để Thư gọi hỏi chuyện, ngày sắp tới. */
+/** Cột nút tròn nổi bên phải, như bản tham khảo: gọi người lâu chưa gọi, gọi video cả nhà, để Thư gọi hỏi chuyện. */
 function ActionStack({ nudgeCount, nudgeMember }: { nudgeCount: number; nudgeMember?: string }) {
   const insets = useSafeAreaInsets();
   return (
     <View pointerEvents="box-none" style={[styles.stack, { bottom: Math.max(insets.bottom, 12) + 76 }]}>
       <IconButton icon="call-outline" size={40} label="Gọi người lâu chưa gọi" bg={colors.bg} badge={nudgeCount || undefined}
         onPress={() => router.push(nudgeMember ? `/member/${nudgeMember}` : '/family')} />
+      <IconButton icon="videocam-outline" size={40} label="Gọi video cả nhà" bg={colors.bg} onPress={() => router.push('/room')} />
       <IconButton icon="mic-outline" size={40} label="Để Thư gọi hỏi chuyện" bg={colors.bg} onPress={() => router.push('/call')} />
-      <IconButton icon="gift-outline" size={40} label="Ngày sắp tới" bg={colors.bg} onPress={() => router.push('/calendar')} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  familyBar: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   leaf: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, padding: 20, justifyContent: 'space-between' },
   leafTop: { flexDirection: 'row', justifyContent: 'space-between' },
   bigDay: { fontSize: 104, lineHeight: 104, letterSpacing: -6, marginLeft: -4 },

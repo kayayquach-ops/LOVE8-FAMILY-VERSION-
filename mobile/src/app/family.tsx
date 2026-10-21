@@ -53,6 +53,8 @@ export default function Family() {
           <T variant="h3" style={{ letterSpacing: 2 }}>{state.family.inviteCode}</T>
         </View>
 
+        <ListRow icon="videocam-outline" label="Gọi video cả nhà" onPress={() => router.push('/room')} />
+
         <SectionHeader title="Cài đặt" />
         <Toggle icon="accessibility-outline" label="Chế độ bố mẹ (chữ to, ít nút)" value={s.parentMode} onChange={(v) => { set({ parentMode: v }); if (v) router.replace('/home'); }} />
         <Toggle icon="notifications-outline" label="Thông báo" value={s.notifications} onChange={(v) => set({ notifications: v })} />

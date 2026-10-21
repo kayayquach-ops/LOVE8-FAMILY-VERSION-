@@ -159,6 +159,11 @@ export function createSeedState(): AppState {
           id: 'c1', from: 'ai', createdAt: hoursAgo(0.5), kind: 'text',
           text: 'Chào Lan! Tuần này bà ngoại vừa kể chuyện gánh hàng ở chợ Rồng. Lan có muốn kể cho bố mẹ nghe một chuyện của Lan ở Seoul không? Ví dụ: lần đầu Lan tự nấu một món Việt ở bên đó?',
         },
+        { id: 'c3', from: 'me', createdAt: hoursAgo(0.4), kind: 'text', text: '', voiceSec: 139 },
+        {
+          id: 'c4', from: 'ai', createdAt: hoursAgo(0.38), kind: 'save-story',
+          text: 'Thư nghe rồi nè. Lần đầu Lan nấu canh chua ở Seoul mà không có me, phải vắt chanh thay, cả phòng ký túc xá khen ngon. Lan muốn lưu chuyện này vào Sổ ký ức để bố mẹ nghe không?',
+        },
       ],
       confide: [
         {

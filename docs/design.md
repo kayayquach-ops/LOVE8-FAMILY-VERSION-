@@ -15,6 +15,15 @@ Nhóm chọn phong cách của bản thiết kế [MAD – Social Dares Mobile A
 | Cột nút nổi | Ở trang chủ, bên phải: gọi người lâu chưa gọi (kèm số), để Thư gọi hỏi chuyện, ngày sắp tới |
 | Chuyển động | Thẻ và nút nảy nhẹ khi chạm; thẻ trượt lên lần lượt khi mở màn hình. Tắt khi máy bật "giảm chuyển động" |
 
+### Tham khảo thêm: mẫu friendlyhours
+
+Lấy thêm vài ý từ một mẫu app nhóm bạn (friendlyhours), vẫn giữ phong cách MAD:
+
+- Nhóm avatar xếp chồng có ô "+n" kèm tên nhà và số người (trang chủ, màn chat).
+- Màn chat với Thư: khung đầu xanh đậm `#06252E` có nét lượn, bo hai góc dưới; chấm xanh "Đang trực" `#22E06B`; giờ dưới mỗi tin; tin nhắn thoại là viên thuốc có nút phát; ô nhập có nút micro.
+- Thẻ tin: nhãn mờ (loại tin, lời nhắn thoại, số trả lời) và hàng nút ngay trong thẻ, nút "Thả tim" dài tô dải màu.
+- Màn mới "Gọi video cả nhà" (`/room`): lưới khuôn mặt từng người, góc trên có biểu tượng đang nói hoặc tắt mic, hàng nút tròn và nút cúp máy màu cam `#E8602A`. Bản demo chưa nối cuộc gọi thật.
+
 ### Bố cục chính
 
 - **Trang chủ**: thẻ lịch hôm nay (tím) với ngày dương rất lớn, ngày âm, còn bao nhiêu ngày đến Tết; lưới thẻ so le "Cả nhà hôm nay"; dải thẻ tin mới với lời nhắn in to; nhắc gọi (thẻ gạch cam); ngày sắp tới; trang ký ức mới.

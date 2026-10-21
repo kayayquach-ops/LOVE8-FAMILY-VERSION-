@@ -4,11 +4,11 @@ import { useRef, useState } from 'react';
 import {
   KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type ScrollViewInstance,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VoiceRecorder } from '@/components/VoiceRecorder';
-import { Chip, GradientButton, IconButton, LogoMark, T, type IconName } from '@/components/ui';
+import { AvatarStack, Chip, GradientButton, HeaderBlock, IconButton, LogoMark, T, Tap, Waveform, type IconName } from '@/components/ui';
 import type { ChatMessage, ChatMode, Member } from '@/data/types';
-import { duration } from '@/lib/format';
+import { clock, duration } from '@/lib/format';
 import { isElder } from '@/lib/family';
 import { me, member, others } from '@/lib/selectors';
 import { AI_MODE, interviewReply, softenMessage, structureStory } from '@/services/ai';
@@ -27,6 +27,7 @@ export default function Chat() {
   const [recipient, setRecipient] = useState<string>(elders[0]?.id ?? others(state)[0]?.id);
   const messages = state.chats[mode];
   const waiting = state.questions.filter((q) => q.toId === state.meId && q.status !== 'answered');
+  const insets = useSafeAreaInsets();
 
   const add = (m: Omit<ChatMessage, 'id' | 'createdAt'>, md: ChatMode = mode) => dispatch({ type: 'addChat', mode: md, message: m });
 
@@ -93,17 +94,31 @@ export default function Chat() {
   }
 
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
-      <View style={styles.header}>
-        <LogoMark size={44} />
-        <View style={{ flex: 1 }}>
-          <T variant="h2">Thư</T>
-          <T variant="small" color={colors.muted}>
-            Trợ lý của {state.family.name.toLowerCase()}{AI_MODE === 'demo' ? ', đang trả lời theo kịch bản mẫu' : ''}
-          </T>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      {/* Khung đầu như màn chat nhóm của mẫu tham khảo: tên ở giữa, nhóm avatar và trạng thái bên dưới. */}
+      <HeaderBlock style={{ paddingTop: insets.top + 8 }}>
+        <View style={styles.header}>
+          <LogoMark size={48} />
+          <T variant="h1" center style={{ flex: 1 }}>Thư</T>
+          <IconButton icon="call-outline" size={48} light label="Để Thư gọi điện hỏi chuyện" onPress={() => router.push('/call')} />
         </View>
-        <IconButton icon="call-outline" label="Để Thư gọi điện hỏi chuyện" onPress={() => router.push('/call')} />
-      </View>
+        <View style={styles.headerInfo}>
+          <AvatarStack people={state.family.members} max={3} size={40} borderColor={colors.deep} />
+          <View style={{ alignItems: 'flex-end', gap: 2 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={styles.online} />
+              <T variant="body" weight="medium">Đang trực</T>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              <Ionicons name="people-outline" size={15} color={colors.muted} />
+              <T variant="small" color={colors.muted}>{state.family.members.length} người trong nhà</T>
+            </View>
+          </View>
+        </View>
+      </HeaderBlock>
+      {AI_MODE === 'demo' && (
+        <T variant="caption" weight="regular" color={colors.muted} center style={{ marginTop: 8 }}>Bản demo: Thư trả lời theo kịch bản mẫu</T>
+      )}
 
       <View style={styles.segment}>
         {(['story', 'confide'] as const).map((m) => (
@@ -147,16 +162,20 @@ export default function Chat() {
           </View>
         ) : (
           <View style={[styles.composer, { marginBottom: 96 }]}>
-            <TextInput
-              value={text} onChangeText={setText} placeholder={mode === 'story' ? 'Kể cho Thư nghe...' : 'Điều bạn muốn nói mà ngại...'}
-              placeholderTextColor={colors.placeholder} style={styles.input} multiline accessibilityLabel="Lời nhắn cho Thư"
-            />
-            <IconButton icon="mic-outline" size={48} label="Kể bằng giọng nói" onPress={() => setVoice(true)} />
-            <GradientButton icon="arrow-up" label="Gửi" onPress={() => send(text)} />
+            <View style={styles.inputWrap}>
+              <Tap onPress={() => setVoice(true)} label="Kể bằng giọng nói" scaleTo={0.85}>
+                <Ionicons name="mic-outline" size={22} color={colors.muted} />
+              </Tap>
+              <TextInput
+                value={text} onChangeText={setText} placeholder={mode === 'story' ? 'Kể cho Thư nghe...' : 'Điều bạn muốn nói mà ngại...'}
+                placeholderTextColor={colors.placeholder} style={styles.input} multiline accessibilityLabel="Lời nhắn cho Thư"
+              />
+            </View>
+            <GradientButton icon="arrow-up" size={52} label="Gửi" onPress={() => send(text)} />
           </View>
         )}
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -181,18 +200,27 @@ function Bubble({ m, elders, recipient, setRecipient, onSave, onRelay }: {
       </View>
     );
   }
+  // Tin nhắn thoại là viên thuốc xanh đậm có nút phát, như mẫu tham khảo.
+  const bubble = m.voiceSec ? (
+    <View style={[styles.bubble, styles.voice]}>
+      <View style={styles.playDot}><Ionicons name="play" size={14} color={colors.black} /></View>
+      <Waveform bars={20} color="rgba(255,255,255,0.75)" />
+      <T variant="small" weight="medium">{duration(m.voiceSec)}</T>
+    </View>
+  ) : (
+    <View style={[styles.bubble, mine ? styles.me : styles.ai]}>
+      <T variant="body" color={mine ? colors.black : colors.ink} style={{ lineHeight: 23 }}>{m.text}</T>
+    </View>
+  );
   return (
-    <View style={{ alignItems: mine ? 'flex-end' : 'flex-start', gap: 8 }}>
-      <View style={[styles.bubble, mine ? styles.me : styles.ai]}>
-        {m.voiceSec ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Ionicons name="mic" size={14} color={mine ? colors.black : colors.ink} />
-            <T variant="small" color={mine ? colors.black : colors.ink}>Tin nhắn thoại {duration(m.voiceSec)}</T>
-          </View>
-        ) : (
-          <T variant="body" color={mine ? colors.black : colors.ink} style={{ lineHeight: 23 }}>{m.text}</T>
-        )}
-      </View>
+    <View style={{ alignItems: mine ? 'flex-end' : 'flex-start', gap: 6 }}>
+      {mine ? bubble : (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, maxWidth: '92%' }}>
+          <LogoMark size={30} />
+          {bubble}
+        </View>
+      )}
+      <T variant="caption" weight="regular" color={colors.muted} style={{ fontSize: 12, marginHorizontal: mine ? 6 : 44 }}>{clock(m.createdAt)}</T>
       {m.kind === 'save-story' && (
         <Pressable onPress={onSave} style={[styles.cta, { backgroundColor: colors.white, alignSelf: 'flex-start' }]}>
           <Ionicons name="book-outline" size={16} color={colors.black} />
@@ -230,16 +258,24 @@ function Option({ icon, label, onPress }: { icon: IconName; label: string; onPre
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 10 },
-  segment: { flexDirection: 'row', backgroundColor: colors.tone, borderRadius: radius.pill, padding: 4, marginHorizontal: 20 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 6 },
+  headerInfo: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 18 },
+  online: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.online },
+  voice: { flexDirection: 'row', alignItems: 'center', gap: 10, width: 230, backgroundColor: colors.deep, borderRadius: radius.pill, paddingVertical: 8, paddingLeft: 8 },
+  playDot: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' },
+  inputWrap: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 52, borderRadius: radius.pill, backgroundColor: colors.tone,
+    paddingLeft: 16,
+  },
+  segment: { flexDirection: 'row', backgroundColor: colors.tone, borderRadius: radius.pill, padding: 4, marginHorizontal: 16, marginTop: 12 },
   segItem: { flex: 1, height: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
   segActive: { backgroundColor: colors.white },
   banner: {
     flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 20, marginTop: 12, padding: 14,
     borderRadius: radius.lg, backgroundColor: colors.tone,
   },
-  bubble: { maxWidth: '84%', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 12 },
-  ai: { backgroundColor: colors.tone, borderTopLeftRadius: 6, alignSelf: 'flex-start' },
+  bubble: { maxWidth: '84%', borderRadius: 22, paddingHorizontal: 16, paddingVertical: 12 },
+  ai: { backgroundColor: colors.tone, borderTopLeftRadius: 6, alignSelf: 'flex-start', flexShrink: 1 },
   me: { backgroundColor: colors.white, borderTopRightRadius: 6 },
   crisis: { backgroundColor: colors.primarySoft, alignSelf: 'stretch', maxWidth: '100%' },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.faint },
@@ -248,7 +284,7 @@ const styles = StyleSheet.create({
   option: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.toneDeep, borderRadius: radius.pill, paddingHorizontal: 16, minHeight: 48 },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 16, paddingTop: 8 },
   input: {
-    flex: 1, minHeight: 48, maxHeight: 120, borderRadius: 24, backgroundColor: colors.tone, paddingHorizontal: 18,
+    flex: 1, minHeight: 48, maxHeight: 120, paddingHorizontal: 10,
     paddingTop: 13, paddingBottom: 12, fontFamily: fonts.regular, fontSize: 16, color: colors.ink,
   },
   voicePanel: { backgroundColor: colors.tone, margin: 16, marginBottom: 100, borderRadius: radius.xl, padding: 18 },

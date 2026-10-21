@@ -36,6 +36,10 @@ export const colors = {
   purple: '#C4B5FD',
   purpleSoft: '#1E1A2E',
   overlay: 'rgba(0,0,0,0.6)',
+  // Khung đầu màn hình xanh đậm có nét lượn, chấm "đang trực", nút cúp máy (tham khảo thêm mẫu friendlyhours).
+  deep: '#06252E',
+  online: '#22E06B',
+  endCall: '#E8602A',
 };
 
 // Dải chuyển màu dùng cho viền nút chính, nút "+" và vòng thông báo.
