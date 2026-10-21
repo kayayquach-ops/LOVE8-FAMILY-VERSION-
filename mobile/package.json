@@ -39,7 +39,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "test:lunar": "node src/lib/lunar.test.ts",
-    "export:web": "expo export --platform web"
+    "export:web": "expo export --platform web",
+    "fonts": "python3 ../scripts/subset-fonts.py"
   },
   "private": true
 }

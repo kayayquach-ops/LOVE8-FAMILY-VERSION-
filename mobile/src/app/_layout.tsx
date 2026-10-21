@@ -1,28 +1,46 @@
-import {
-  BeVietnamPro_400Regular, BeVietnamPro_500Medium, BeVietnamPro_600SemiBold, BeVietnamPro_700Bold, useFonts,
-} from '@expo-google-fonts/be-vietnam-pro';
-import { Literata_400Regular, Literata_600SemiBold, Literata_700Bold } from '@expo-google-fonts/literata';
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Ionicons } from '@/components/Icon';
+import { TEXT_FONTS } from '@/lib/fonts';
 import { AppProvider, useApp } from '@/store/AppContext';
 import { colors } from '@/theme';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
+const FONTS = { ...TEXT_FONTS, ...Ionicons.font };
+
+// Mạng chậm thì không bắt người dùng nhìn màn hình trắng: quá thời gian này app hiện bằng font dự phòng.
+const FONT_WAIT_MS = 2500;
+
 export default function RootLayout() {
-  const [loaded] = useFonts({
-    BeVietnamPro_400Regular, BeVietnamPro_500Medium, BeVietnamPro_600SemiBold, BeVietnamPro_700Bold,
-    Literata_400Regular, Literata_600SemiBold, Literata_700Bold,
-  });
+  const [loaded, error] = useFonts(FONTS);
+  const [waited, setWaited] = useState(false);
+  const ready = loaded || !!error || waited;
 
   useEffect(() => {
-    if (loaded) SplashScreen.hideAsync().catch(() => {});
-  }, [loaded]);
+    const t = setTimeout(() => setWaited(true), FONT_WAIT_MS);
+    return () => clearTimeout(t);
+  }, []);
 
-  if (!loaded) return null;
+  useEffect(() => {
+    if (!ready) return;
+    SplashScreen.hideAsync().catch(() => {});
+    // Bản web: gỡ màn hình chờ trong public/index.html.
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const boot = document.getElementById('boot');
+      if (boot) {
+        boot.style.opacity = '0';
+        setTimeout(() => boot.remove(), 250);
+      }
+    }
+  }, [ready]);
+
+  if (!ready) return null;
   return (
     <SafeAreaProvider>
       <AppProvider>

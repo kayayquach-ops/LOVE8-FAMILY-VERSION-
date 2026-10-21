@@ -62,6 +62,10 @@ npm run typecheck      # kiểm tra kiểu dữ liệu
 npm run test:lunar     # kiểm tra lịch âm (Tết 2024–2027, Tết 1985 lệch múi giờ, tháng nhuận)
 ```
 
+## Font và icon
+
+Font chữ và icon đã được cắt gọn để bản web mở nhanh (chỉ giữ chữ Latin, tiếng Việt và những icon đang dùng). Dùng thêm icon Ionicons mới thì chạy `npm run fonts` trong `mobile/` (cần `pip install fonttools brotli`); nếu quên, `npm run typecheck` sẽ báo tên icon không hợp lệ.
+
 ## Logo
 
 Ngôi nhà có thân là một phong thư, nắp thư khép lại bằng trái tim. Chạy lại: `node branding/build-logo.mjs` (cần Playwright).
