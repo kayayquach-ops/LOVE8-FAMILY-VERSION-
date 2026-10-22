@@ -5,12 +5,15 @@ import { Image, Share, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@/components/Icon';
 import { Button, FadeIn, Screen, T, Tap } from '@/components/ui';
 import { inviteMessage } from '@/lib/family';
+import { tapSound } from '@/lib/tap';
 import { useApp } from '@/store/AppContext';
 import { colors, fonts, radius } from '@/theme';
 
 type Who = 'bo' | 'me' | 'con';
 type Step = 'who' | 'kid' | 'birthday' | 'photo' | 'age' | 'seen' | 'q1' | 'q2' | 'story';
 const STEPS: Step[] = ['who', 'kid', 'birthday', 'photo', 'age', 'seen', 'q1', 'q2', 'story'];
+
+const BG = require('../../assets/art/paper-waves.jpg');
 
 const ART = {
   room: require('../../assets/art/story-room.png'),
@@ -45,7 +48,7 @@ export default function Onboarding() {
   const self = who === 'bo' ? 'Bố' : who === 'me' ? 'Mẹ' : 'Bạn';
   const child = kid === 'Con gái' ? 'con gái' : kid === 'Con trai' ? 'con trai' : 'các con';
   const idx = STEPS.indexOf(step);
-  const next = () => setStep(STEPS[idx + 1]);
+  const next = () => { tapSound(); setStep(STEPS[idx + 1]); };
   const back = () => (step === 'story' && page > 0 ? setPage(page - 1) : idx > 0 && setStep(STEPS[idx - 1]));
   const answer = (k: string, v: string) => setAnswers({ ...answers, [k]: v });
 
@@ -77,7 +80,9 @@ export default function Onboarding() {
   };
 
   return (
-    <Screen edges={['top', 'bottom']} scroll={false}>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <Image source={BG} style={[StyleSheet.absoluteFill, { width: "100%", height: "100%" }]} resizeMode="cover" accessibilityIgnoresInvertColors />
+    <Screen edges={['top', 'bottom']} scroll={false} bg="transparent">
       <View style={styles.top}>
         {idx > 0 ? (
           <Tap onPress={back} label="Quay lại" scaleTo={0.9}>
@@ -89,14 +94,11 @@ export default function Onboarding() {
       </View>
 
       {step === 'who' && (
-        <FadeIn key="who" style={{ flex: 1 }}>
-          <OldLetter />
-          <View style={{ gap: 10, marginTop: 26 }}>
-            {([['bo', 'Tôi là bố'], ['me', 'Tôi là mẹ'], ['con', 'Tôi là con của bố mẹ']] as const).map(([k, label]) => (
-              <Option key={k} label={label} on={who === k} onPress={() => { setWho(k); setKid(''); next(); }} />
-            ))}
-          </View>
-        </FadeIn>
+        <Ask key="who" title="Bạn là ai trong nhà?">
+          {([['bo', 'Là bố'], ['me', 'Là mẹ'], ['con', 'Là con']] as const).map(([k, label]) => (
+            <Option key={k} label={label} on={who === k} onPress={() => { setWho(k); setKid(''); next(); }} />
+          ))}
+        </Ask>
       )}
 
       {step === 'kid' && (
@@ -172,7 +174,7 @@ export default function Onboarding() {
           <View style={{ gap: 14, marginTop: 8 }}>
             {STORY[page].lines.map((l, i) => (
               <T key={l} variant={i === 0 ? 'h2' : 'body'} weight={i === 0 ? 'medium' : 'regular'} color={i === 0 ? colors.ink : colors.inkSoft}
-                style={i === 0 ? { lineHeight: 32 } : { fontSize: 17, lineHeight: 28 }}>{l}</T>
+                style={i === 0 ? styles.storyLead : styles.storyLine}>{l}</T>
             ))}
           </View>
           <View style={{ flex: 1 }} />
@@ -188,23 +190,6 @@ export default function Onboarding() {
         </FadeIn>
       )}
     </Screen>
-  );
-}
-
-/** Câu hỏi đầu tiên viết trên một lá thư cũ: giấy ngả màu, dòng kẻ mờ, tem và dấu bưu điện ở góc. */
-function OldLetter() {
-  return (
-    <View style={styles.letterWrap}>
-      <View style={styles.letter}>
-        {Array.from({ length: 7 }, (_, i) => <View key={i} style={[styles.rule, { top: 92 + i * 34 }]} />)}
-        <View style={styles.stamp}>
-          <View style={styles.stampInner}><Ionicons name="home-outline" size={20} color={colors.primary} /></View>
-        </View>
-        <View style={styles.postmark}><T variant="caption" weight="medium" color="rgba(154,90,68,0.55)" style={{ fontSize: 9, lineHeight: 11 }}>HOMELETTER</T></View>
-        <T variant="small" color="#8A7E68" style={{ fontStyle: 'italic' }}>Gửi người đang mở lá thư này,</T>
-        <T variant="h1" weight="medium" color="#3A3328" style={{ marginTop: 34, lineHeight: 36 }}>Bạn là ai trong nhà?</T>
-        <T variant="body" color="#7A6F5C" style={{ marginTop: 14, lineHeight: 26 }}>Có người đang nhớ bạn. Cho Homeletter biết bạn là ai, để lá thư tìm đúng đường về.</T>
-      </View>
     </View>
   );
 }
@@ -213,17 +198,14 @@ function OldLetter() {
 function Ask({ title, sub, echo, footer, children }: { title: string; sub?: string; echo?: string; footer?: React.ReactNode; children: React.ReactNode }) {
   return (
     <FadeIn style={{ flex: 1 }}>
-      <View style={{ marginTop: 36, gap: 10 }}>
-        <T variant="h1" weight="medium" style={{ lineHeight: 36 }}>{title}</T>
-        {sub && <T variant="body" color={colors.muted}>{sub}</T>}
+      <View style={{ flex: 1, justifyContent: 'center' }}>
+        <T variant="h1" center style={styles.question}>{title}</T>
+        {sub && <T variant="body" center style={styles.sub}>{sub}</T>}
+        <View style={{ gap: 12, marginTop: 36 }}>{children}</View>
+        <View style={{ minHeight: 84, justifyContent: 'center' }}>
+          {echo && <FadeIn key={echo}><T variant="body" center style={styles.echo}>{echo}</T></FadeIn>}
+        </View>
       </View>
-      <View style={{ gap: 10, marginTop: 28 }}>{children}</View>
-      {echo && (
-        <FadeIn key={echo} style={{ marginTop: 24 }}>
-          <T variant="body" color={colors.accentText} style={{ fontSize: 17, lineHeight: 27 }}>{echo}</T>
-        </FadeIn>
-      )}
-      <View style={{ flex: 1 }} />
       {footer}
     </FadeIn>
   );
@@ -231,10 +213,9 @@ function Ask({ title, sub, echo, footer, children }: { title: string; sub?: stri
 
 function Option({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
   return (
-    <Tap onPress={onPress} label={label} selected={on} scaleTo={0.98}>
-      <View style={[styles.option, on && { borderColor: colors.ink, backgroundColor: colors.white }]}>
-        <T variant="body" weight="medium" style={{ flex: 1, fontSize: 17 }}>{label}</T>
-        {on && <Ionicons name="checkmark" size={20} color={colors.ink} />}
+    <Tap onPress={() => { tapSound(); onPress(); }} label={label} selected={on} scaleTo={0.97}>
+      <View style={[styles.option, on && styles.optionOn]}>
+        <T variant="body" center color={on ? colors.white : colors.ink} style={styles.optionText}>{label}</T>
       </View>
     </Tap>
   );
@@ -260,11 +241,16 @@ const styles = StyleSheet.create({
   back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   track: { flex: 1, height: 3, borderRadius: 2, backgroundColor: colors.toneDeep, overflow: 'hidden' },
   fill: { height: 3, backgroundColor: colors.ink },
+  question: { fontFamily: 'Literata_400Regular', fontSize: 30, lineHeight: 42, letterSpacing: -0.3, color: '#2B2723' },
+  sub: { fontFamily: 'Literata_400Italic', fontSize: 17, lineHeight: 27, color: colors.muted, marginTop: 12 },
+  echo: { fontFamily: 'Literata_400Italic', fontSize: 18, lineHeight: 28, color: colors.accentText, paddingHorizontal: 8 },
   option: {
-    flexDirection: 'row', alignItems: 'center', minHeight: 60, paddingHorizontal: 20, borderRadius: radius.md,
-    borderWidth: 1, borderColor: colors.line, backgroundColor: colors.bg,
+    alignSelf: 'center', width: '82%', maxWidth: 360, minHeight: 56, justifyContent: 'center', paddingHorizontal: 20,
+    borderRadius: radius.pill, borderWidth: 1, borderColor: 'rgba(43,39,35,0.14)', backgroundColor: 'rgba(255,255,255,0.55)',
   },
-  dateRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  optionOn: { backgroundColor: '#2B2723', borderColor: '#2B2723' },
+  optionText: { fontFamily: 'Literata_400Regular', fontSize: 18, lineHeight: 26 },
+  dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14 },
   num: {
     width: 110, height: 72, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.white,
     textAlign: 'center', fontFamily: fonts.medium, fontSize: 28, color: colors.ink,
@@ -272,13 +258,6 @@ const styles = StyleSheet.create({
   photo: { width: 168, height: 168, borderRadius: 84 },
   photoEmpty: { borderWidth: 1, borderColor: colors.line, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white },
   art: { width: '100%', height: 260, marginTop: 20 },
-  letterWrap: { marginTop: 28, transform: [{ rotate: '-1.2deg' }] },
-  letter: {
-    backgroundColor: '#F4EDDD', borderRadius: 6, borderWidth: 1, borderColor: '#E4D8BF', padding: 22, paddingBottom: 30, overflow: 'hidden',
-    shadowColor: '#5A4A2E', shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3,
-  },
-  rule: { position: 'absolute', left: 22, right: 22, height: 1, backgroundColor: 'rgba(138,126,104,0.16)' },
-  stamp: { position: 'absolute', top: 16, right: 16, width: 50, height: 58, padding: 3, borderWidth: 1.5, borderColor: '#D9C9A8', borderStyle: 'dashed', backgroundColor: '#FBF7EE', transform: [{ rotate: '4deg' }] },
-  stampInner: { flex: 1, borderWidth: 1, borderColor: 'rgba(154,90,68,0.35)', alignItems: 'center', justifyContent: 'center' },
-  postmark: { position: 'absolute', top: 12, right: 44, width: 56, height: 56, borderRadius: 28, borderWidth: 1.5, borderColor: 'rgba(154,90,68,0.35)', alignItems: 'center', justifyContent: 'center', transform: [{ rotate: '-14deg' }] },
+  storyLead: { fontFamily: 'Literata_400Regular', fontSize: 25, lineHeight: 36, color: '#2B2723' },
+  storyLine: { fontFamily: 'Literata_400Italic', fontSize: 17, lineHeight: 28, color: colors.inkSoft },
 });
