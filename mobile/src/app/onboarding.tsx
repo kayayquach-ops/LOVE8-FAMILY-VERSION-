@@ -1,19 +1,19 @@
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Image, Share, StyleSheet, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Image, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@/components/Icon';
+import { Mesh } from '@/components/Mesh';
 import { Button, FadeIn, Screen, T, Tap } from '@/components/ui';
 import { inviteMessage } from '@/lib/family';
-import { tapSound } from '@/lib/tap';
+import { keySound, tapSound } from '@/lib/tap';
 import { useApp } from '@/store/AppContext';
 import { colors, fonts, radius } from '@/theme';
 
 type Who = 'bo' | 'me' | 'con';
-type Step = 'who' | 'kid' | 'birthday' | 'photo' | 'age' | 'seen' | 'q1' | 'q2' | 'story';
-const STEPS: Step[] = ['who', 'kid', 'birthday', 'photo', 'age', 'seen', 'q1', 'q2', 'story'];
-
-const BG = require('../../assets/art/paper-waves.jpg');
+type Step = 'hello' | 'who' | 'kid' | 'birthday' | 'photo' | 'age' | 'seen' | 'q1' | 'q2' | 'story';
+const HELLO_W = 320;
+const STEPS: Step[] = ['hello', 'who', 'kid', 'birthday', 'photo', 'age', 'seen', 'q1', 'q2', 'story'];
 
 const ART = {
   room: require('../../assets/art/story-room.png'),
@@ -33,7 +33,7 @@ const STORY: Array<{ art: keyof typeof ART; lines: string[] }> = [
 // Vào app như một cuộc trò chuyện ngắn: bạn là ai, sinh ngày nào, lâu chưa gặp nhau, rồi nghe kể vì sao có Homeletter.
 export default function Onboarding() {
   const { state, dispatch } = useApp();
-  const [step, setStep] = useState<Step>('who');
+  const [step, setStep] = useState<Step>('hello');
   const [who, setWho] = useState<Who | null>(null);
   const [kid, setKid] = useState('');
   const [day, setDay] = useState('');
@@ -81,8 +81,9 @@ export default function Onboarding() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-    <Image source={BG} style={[StyleSheet.absoluteFill, { width: "100%", height: "100%" }]} resizeMode="cover" accessibilityIgnoresInvertColors />
+    <Mesh vivid={step === 'hello'} />
     <Screen edges={['top', 'bottom']} scroll={false} bg="transparent">
+      {step === 'hello' ? <Hello onStart={next} /> : <>
       <View style={styles.top}>
         {idx > 0 ? (
           <Tap onPress={back} label="Quay lại" scaleTo={0.9}>
@@ -94,7 +95,7 @@ export default function Onboarding() {
       </View>
 
       {step === 'who' && (
-        <Ask key="who" title="Bạn là ai trong nhà?">
+        <Ask key="who" title="Bạn là ai trong gia đình?">
           {([['bo', 'Là bố'], ['me', 'Là mẹ'], ['con', 'Là con']] as const).map(([k, label]) => (
             <Option key={k} label={label} on={who === k} onPress={() => { setWho(k); setKid(''); next(); }} />
           ))}
@@ -189,25 +190,69 @@ export default function Onboarding() {
           )}
         </FadeIn>
       )}
+      </>}
     </Screen>
     </View>
   );
 }
 
+/** Màn chào: chữ "xin chào" viết tay hiện dần từ trái sang phải, rồi một dòng nhỏ mời chạm. */
+function Hello({ onStart }: { onStart: () => void }) {
+  // Chạy bằng hẹn giờ thay vì khung hình, để chữ vẫn hiện đủ cả khi máy yếu hoặc tab chạy nền.
+  const [p, setP] = useState(0);
+  useEffect(() => {
+    if (p >= 1) return;
+    const t = setTimeout(() => setP(Math.min(1, p + 0.025)), p === 0 ? 500 : 40);
+    return () => clearTimeout(t);
+  }, [p]);
+  const eased = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+  return (
+    <Pressable onPress={onStart} accessibilityRole="button" accessibilityLabel="Xin chào. Chạm để bắt đầu" style={{ flex: 1 }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        {/* Khung cố định, mở dần từ trái sang để chữ như đang được viết ra. */}
+        <View style={{ width: HELLO_W }}>
+          <View style={{ width: HELLO_W * eased, overflow: 'hidden' }}>
+            <Text style={[styles.hello, { width: HELLO_W }]} numberOfLines={1}>xin chào</Text>
+          </View>
+        </View>
+      </View>
+      <View style={{ alignItems: 'center', paddingBottom: 28, minHeight: 52 }}>
+        {p >= 1 && <FadeIn><T variant="body" style={styles.hint}>Chạm để bắt đầu</T></FadeIn>}
+      </View>
+    </Pressable>
+  );
+}
+
 /** Một câu hỏi: chữ to, nhiều khoảng trắng, các lựa chọn bên dưới, lời đáp nhẹ khi đã chọn. */
 function Ask({ title, sub, echo, footer, children }: { title: string; sub?: string; echo?: string; footer?: React.ReactNode; children: React.ReactNode }) {
+  // Câu hỏi hiện từng chữ như đang gõ, gõ xong thì các đáp án mới hiện lên.
+  const [n, setN] = useState(0);
+  const typed = n >= title.length;
+  useEffect(() => {
+    if (typed) return;
+    const t = setTimeout(() => {
+      setN(n + 1);
+      if (title[n] !== ' ' && n % 2 === 0) keySound();
+    }, n === 0 ? 350 : 55);
+    return () => clearTimeout(t);
+  }, [n, typed]);
   return (
-    <FadeIn style={{ flex: 1 }}>
+    <View style={{ flex: 1 }}>
       <View style={{ flex: 1, justifyContent: 'center' }}>
-        <T variant="h1" center style={styles.question}>{title}</T>
-        {sub && <T variant="body" center style={styles.sub}>{sub}</T>}
-        <View style={{ gap: 12, marginTop: 36 }}>{children}</View>
+        <View>
+          <T variant="h1" center style={[styles.question, { opacity: 0 }]}>{title}</T>
+          <T variant="h1" center style={[styles.question, StyleSheet.absoluteFill]}>{title.slice(0, n)}</T>
+        </View>
+        {typed && sub && <FadeIn><T variant="body" center style={styles.sub}>{sub}</T></FadeIn>}
+        <View style={{ gap: 12, marginTop: 36, minHeight: 60 }}>
+          {typed && (Array.isArray(children) ? children : [children]).map((c, i) => <FadeIn key={i} delay={120 + i * 110}>{c}</FadeIn>)}
+        </View>
         <View style={{ minHeight: 84, justifyContent: 'center' }}>
           {echo && <FadeIn key={echo}><T variant="body" center style={styles.echo}>{echo}</T></FadeIn>}
         </View>
       </View>
-      {footer}
-    </FadeIn>
+      {typed && footer}
+    </View>
   );
 }
 
@@ -241,6 +286,8 @@ const styles = StyleSheet.create({
   back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   track: { flex: 1, height: 3, borderRadius: 2, backgroundColor: colors.toneDeep, overflow: 'hidden' },
   fill: { height: 3, backgroundColor: colors.ink },
+  hello: { textAlign: 'center', fontFamily: 'Literata_400Italic', fontSize: 64, lineHeight: 84, letterSpacing: -1, color: '#4A3B2E' },
+  hint: { fontFamily: 'Literata_400Italic', fontSize: 16, color: '#7A6754' },
   question: { fontFamily: 'Literata_400Regular', fontSize: 30, lineHeight: 42, letterSpacing: -0.3, color: '#2B2723' },
   sub: { fontFamily: 'Literata_400Italic', fontSize: 17, lineHeight: 27, color: colors.muted, marginTop: 12 },
   echo: { fontFamily: 'Literata_400Italic', fontSize: 18, lineHeight: 28, color: colors.accentText, paddingHorizontal: 8 },

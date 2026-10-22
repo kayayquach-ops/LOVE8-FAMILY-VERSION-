@@ -17,3 +17,17 @@ export function tapSound() {
     // Máy không phát được tiếng thì vẫn chạy bình thường.
   }
 }
+
+// Tiếng gõ phím rất nhẹ cho chữ hiện dần từng ký tự. Không rung, để khỏi mệt tay.
+let key: AudioPlayer | null = null;
+
+export function keySound() {
+  try {
+    if (!key) {
+      key = createAudioPlayer(require('../../assets/key.wav'));
+      key.volume = 0.35;
+    }
+    key.seekTo(0);
+    key.play();
+  } catch {}
+}
