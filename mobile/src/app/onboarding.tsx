@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -11,9 +12,10 @@ import { useApp } from '@/store/AppContext';
 import { colors, fonts, radius } from '@/theme';
 
 type Who = 'bo' | 'me' | 'con';
-type Step = 'hello' | 'who' | 'kid' | 'birthday' | 'photo' | 'age' | 'seen' | 'q1' | 'q2' | 'story';
+type Step = 'hello' | 'who' | 'kid' | 'birthday' | 'photo' | 'age' | 'seen' | 'hug' | 'q1' | 'love' | 'q2' | 'story';
 const HELLO_W = 320;
-const STEPS: Step[] = ['hello', 'who', 'kid', 'birthday', 'photo', 'age', 'seen', 'q1', 'q2', 'story'];
+// Ngày sinh, ảnh, tuổi để sau trong mục Gia đình; lúc mới vào chỉ trò chuyện.
+const STEPS: Step[] = ['hello', 'who', 'kid', 'seen', 'hug', 'q1', 'love', 'q2', 'story'];
 
 const ART = {
   room: require('../../assets/art/story-room.png'),
@@ -46,11 +48,13 @@ export default function Onboarding() {
   const parent = who === 'bo' || who === 'me';
   // Cách xưng trong câu hỏi: bố mẹ thì "Bố"/"Mẹ", con thì "bạn".
   const self = who === 'bo' ? 'Bố' : who === 'me' ? 'Mẹ' : 'Bạn';
-  const child = kid === 'Con gái' ? 'con gái' : kid === 'Con trai' ? 'con trai' : 'các con';
+  const child = 'con';
   const idx = STEPS.indexOf(step);
   const next = () => { tapSound(); setStep(STEPS[idx + 1]); };
   const back = () => (step === 'story' && page > 0 ? setPage(page - 1) : idx > 0 && setStep(STEPS[idx - 1]));
   const answer = (k: string, v: string) => setAnswers({ ...answers, [k]: v });
+  // Chọn xong thì để lời đáp hiện một lúc rồi tự sang câu sau, khỏi phải bấm Tiếp.
+  const choose = (k: string, v: string) => { answer(k, v); setTimeout(next, 2200); };
 
   const d = Number(day), m = Number(month);
   const validDate = d >= 1 && d <= 31 && m >= 1 && m <= 12;
@@ -76,7 +80,16 @@ export default function Onboarding() {
     'Mới tuần trước': 'Vậy là vòng tay vẫn còn ấm.',
     'Vài tháng rồi': 'Vài tháng, đủ để nhà có thêm bao chuyện chưa kể.',
     'Hơn một năm': parent ? 'Hơn một năm. Chắc con cũng đang đếm ngày về.' : 'Hơn một năm. Chắc ở nhà đã đếm qua mấy cái Tết.',
-    'Lâu đến mức không nhớ nữa': 'Không sao. Mình bắt đầu lại từ hôm nay.',
+    'Ở cùng nhà mà ít nói chuyện': 'Gần mà xa. Mình bắt đầu lại từ một câu hỏi nhỏ nhé.',
+  };
+  const loveEcho: Record<string, string> = parent ? {
+    'Nói thường xuyên': 'Con may mắn lắm đấy.',
+    'Thỉnh thoảng': 'Thỉnh thoảng thôi cũng đủ ấm cả tuần.',
+    'Chưa nói thành lời bao giờ': 'Bố mẹ nhiều khi thương mà không nói. Con vẫn biết mà.',
+  } : {
+    'Nói thường xuyên': 'Bố mẹ chắc vui lắm mỗi lần nghe.',
+    'Thỉnh thoảng': 'Lần tới, nói thêm một lần nữa nhé.',
+    'Chưa nói thành lời bao giờ': 'Không sao. Có những câu cần thời gian. Homeletter sẽ giúp bạn.',
   };
 
   return (
@@ -103,8 +116,8 @@ export default function Onboarding() {
       )}
 
       {step === 'kid' && (
-        <Ask key="kid" title={parent ? `${self} đang nhớ con trai hay con gái?` : 'Bạn là con trai hay con gái của bố mẹ?'}>
-          {(parent ? ['Con trai', 'Con gái', 'Cả hai đứa'] : ['Con trai', 'Con gái']).map((k) => (
+        <Ask key="kid" title={parent ? `Con của ${self.toLowerCase()} là trai hay gái?` : 'Bạn là con trai hay con gái của bố mẹ?'}>
+          {(parent ? ['Con trai', 'Con gái', 'Cả trai lẫn gái'] : ['Con trai', 'Con gái']).map((k) => (
             <Option key={k} label={k} on={kid === k} onPress={() => { setKid(k); next(); }} />
           ))}
         </Ask>
@@ -142,18 +155,31 @@ export default function Onboarding() {
       )}
 
       {step === 'seen' && (
-        <Ask key="seen" title={parent ? `Lần cuối ${self.toLowerCase()} được ôm ${child} là khi nào?` : 'Lần cuối bạn được ôm bố mẹ là khi nào?'}
-          echo={answers.seen ? seenEcho[answers.seen] : undefined}
-          footer={answers.seen ? <Button label="Tiếp" onPress={next} /> : undefined}>
-          {Object.keys(seenEcho).map((k) => <Option key={k} label={k} on={answers.seen === k} onPress={() => answer('seen', k)} />)}
+        <Ask key="seen" title={parent ? `Bao lâu rồi ${self.toLowerCase()} chưa gặp con?` : 'Bao lâu rồi bạn chưa về nhà?'}
+          echo={answers.seen ? seenEcho[answers.seen] : undefined}>
+          {Object.keys(seenEcho).map((k) => <Option key={k} label={k} on={answers.seen === k} onPress={() => !answers.seen && choose('seen', k)} />)}
+        </Ask>
+      )}
+
+      {step === 'hug' && (
+        <Ask key="hug" title={parent ? 'Nhớ con thì ôm một cái.' : 'Nhớ bố mẹ thì ôm một cái.'} sub="Giữ ngón tay vào vòng tròn"
+          echo={answers.hug ? (parent ? 'Con sẽ biết là có người đang ôm mình từ xa.' : 'Ở nhà sẽ biết là bạn đang nhớ.') : undefined}>
+          <Hold onDone={() => choose('hug', 'yes')} />
+        </Ask>
+      )}
+
+      {step === 'love' && (
+        <Ask key="love" title={parent ? `${self} đã bao giờ nói “${self.toLowerCase()} thương con” chưa?` : 'Bạn đã bao giờ nói “con thương bố mẹ” chưa?'}
+          echo={answers.love ? loveEcho[answers.love] : undefined}>
+          {Object.keys(loveEcho).map((k) => <Option key={k} label={k} on={answers.love === k} onPress={() => !answers.love && choose('love', k)} />)}
         </Ask>
       )}
 
       {step === 'q1' && (
-        <Ask key="q1" title={parent ? `Hồi bé, ${child} thích ăn món gì nhất?` : 'Món gì ở nhà mà bạn nhớ nhất?'}
+        <Ask key="q1" title={parent ? `${self} còn nhớ con thích ăn món gì không?` : 'Món gì ở nhà mà bạn nhớ nhất?'}
           echo={(answers.food ?? '').trim().length > 1 ? (parent ? 'Món ấy, chắc đến giờ con vẫn nhớ vị.' : 'Lần tới gọi về, thử hỏi mẹ cách nấu món ấy nhé.') : undefined}
           footer={<><Button label="Tiếp" disabled={!(answers.food ?? '').trim()} onPress={next} /><Skip onPress={next} /></>}>
-          <Write value={answers.food ?? ''} onChange={(v) => answer('food', v)} placeholder={parent ? 'Ví dụ: trứng rán mẹ làm' : 'Ví dụ: canh chua của mẹ'} />
+          <Write value={answers.food ?? ''} onChange={(v) => answer('food', v)} placeholder={parent ? 'Ví dụ: trứng rán, canh chua' : 'Ví dụ: canh chua của mẹ'} />
         </Ask>
       )}
 
@@ -269,6 +295,32 @@ function Num({ value, onChange, placeholder, max }: { value: string; onChange: (
   );
 }
 
+/** Giữ ngón tay để "ôm": vòng tròn đầy dần trong khoảng 1,6 giây, rung nhẹ theo từng nhịp. */
+function Hold({ onDone }: { onDone: () => void }) {
+  const [p, setP] = useState(0);
+  const [holding, setHolding] = useState(false);
+  useEffect(() => {
+    if (p >= 1) return;
+    if (!holding) { if (p > 0) { const t = setTimeout(() => setP(Math.max(0, p - 0.08)), 30); return () => clearTimeout(t); } return; }
+    const t = setTimeout(() => {
+      const np = Math.min(1, p + 0.02);
+      if (Math.floor(np * 4) > Math.floor(p * 4)) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      setP(np);
+      if (np >= 1) { tapSound(); onDone(); }
+    }, 32);
+    return () => clearTimeout(t);
+  }, [p, holding]);
+  return (
+    <Pressable onPressIn={() => setHolding(true)} onPressOut={() => setHolding(false)} accessibilityRole="button" accessibilityLabel="Giữ để ôm"
+      style={{ alignSelf: 'center' }}>
+      <View style={styles.hold}>
+        <View style={[styles.holdFill, { transform: [{ scale: 0.25 + p * 0.75 }], opacity: 0.25 + p * 0.75 }]} />
+        <Ionicons name={p >= 1 ? 'heart' : 'heart-outline'} size={40} color={p >= 1 ? colors.white : colors.primary} />
+      </View>
+    </Pressable>
+  );
+}
+
 function Write({ value, onChange, placeholder, multiline }: { value: string; onChange: (v: string) => void; placeholder: string; multiline?: boolean }) {
   return (
     <TextInput value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor={colors.placeholder} multiline={multiline}
@@ -298,6 +350,8 @@ const styles = StyleSheet.create({
     alignSelf: 'center', width: '82%', maxWidth: 360, minHeight: 56, justifyContent: 'center', paddingHorizontal: 20,
     borderRadius: radius.pill, borderWidth: 1, borderColor: 'rgba(43,39,35,0.14)', backgroundColor: 'rgba(255,255,255,0.55)',
   },
+  hold: { width: 160, height: 160, borderRadius: 80, borderWidth: 1, borderColor: 'rgba(154,90,68,0.35)', backgroundColor: 'rgba(255,255,255,0.5)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  holdFill: { position: 'absolute', width: 160, height: 160, borderRadius: 80, backgroundColor: colors.primary },
   write: {
     alignSelf: 'center', width: '86%', maxWidth: 380, minHeight: 56, borderRadius: radius.lg, borderWidth: 1, borderColor: 'rgba(43,39,35,0.14)',
     backgroundColor: 'rgba(255,255,255,0.6)', paddingHorizontal: 20, paddingVertical: 16, fontFamily: fonts.regular, fontSize: 17, lineHeight: 26, color: colors.ink, textAlign: 'center',
