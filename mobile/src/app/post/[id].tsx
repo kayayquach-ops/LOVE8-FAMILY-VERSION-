@@ -24,9 +24,10 @@ export default function PostViewer() {
   const [index, setIndex] = useState(start);
   const [text, setText] = useState('');
   const [voice, setVoice] = useState(false);
-  const [pageH, setPageH] = useState(height - BAR - 60);
+  // Đo khung xong mới vẽ danh sách, để mỗi trang khớp đúng một ảnh.
+  const [pageH, setPageH] = useState(0);
   const post = state.posts[index];
-  const side = Math.min(width - 32, pageH - 120, 520);
+  const side = Math.min(width - 32, (pageH || height - BAR - 60) - 170, 520);
   const posts = useMemo(() => state.posts, [state.posts]);
 
   if (!post) return null;
@@ -51,7 +52,7 @@ export default function PostViewer() {
       </View>
 
       <View style={{ flex: 1 }} onLayout={(e) => setPageH(e.nativeEvent.layout.height)}>
-        <FlatList
+        {pageH > 0 && <FlatList
           data={posts}
           keyExtractor={(p) => p.id}
           pagingEnabled
@@ -60,7 +61,7 @@ export default function PostViewer() {
           getItemLayout={(_, i) => ({ length: pageH, offset: pageH * i, index: i })}
           onMomentumScrollEnd={(e) => setIndex(Math.round(e.nativeEvent.contentOffset.y / pageH))}
           renderItem={({ item }) => <Page post={item} side={side} height={pageH} />}
-        />
+        />}
       </View>
 
       <View style={styles.bar}>
