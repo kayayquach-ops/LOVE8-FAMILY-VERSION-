@@ -1,6 +1,22 @@
 # Thiết kế Homeletter
 
-## Phiên bản hiện tại: theo tham khảo MAD (Social Dares) của Nixtio
+## Phiên bản hiện tại: tối giản, như một lá thư (tháng 10/2026)
+
+Bỏ phong cách nền đen và dải tím hồng cam. App giờ sáng, yên, gần gũi với bố mẹ.
+
+| Thành phần | Cách làm |
+|---|---|
+| Nền | Trắng ngà `#FAF9F6` như giấy viết thư, mặt nền thứ hai xám ấm `#F0EEE9` |
+| Chữ | Mực đen ấm `#1F1D1A`, chữ phụ `#76726A`. Vẫn một họ chữ Be Vietnam Pro |
+| Màu nhấn | Một màu duy nhất, nâu đỏ như mực dấu thư `#9A5A44`. Nút chính tô mực đen, chữ trắng |
+| Thẻ của từng người | Tông trầm như ảnh phim cũ, nét lượn mờ chỉ còn 35% |
+| Bắt đầu | Câu hỏi đầu tiên viết trên một lá thư cũ (giấy ngả màu, dòng kẻ, tem, dấu bưu điện). Sau đó hỏi từng câu một: vai trong nhà, con trai hay con gái, ngày sinh, ảnh, tuổi, lần cuối được ôm nhau, món nhớ nhất, câu chưa nói. Chọn xong có một lời đáp nhẹ. Cuối cùng kể chuyện vì sao có Homeletter qua năm trang có tranh nét mực (`branding/story/*.svg`) |
+| Chụp gửi cả nhà | Kiểu Locket: khung vuông, một nút chụp, viết một dòng lên ảnh, gửi. Bỏ hàng nhãn |
+| Xem ảnh | Trang Nhà là lưới ảnh vuông hai cột. Bấm vào là xem từng ảnh, vuốt lên xem ảnh tiếp, thả cảm xúc và trả lời ngay ở dưới |
+
+Luật giữ nguyên: không dùng emoji thay icon, chữ nhỏ nhất 13px, vùng chạm từ 44pt, chữ trắng chỉ đặt trên thẻ màu, ảnh hoặc nút mực đen.
+
+## Phiên bản trước: theo tham khảo MAD (Social Dares) của Nixtio
 
 Nhóm chọn phong cách của bản thiết kế [MAD – Social Dares Mobile App UI](https://dribbble.com/shots/26700967-Social-Dares-Mobile-App-UI) (Nixtio): nền đen, thẻ màu bo tròn lớn, avatar tròn, chữ đậm khít, điểm nhấn là dải chuyển màu tím, hồng, cam. Chỉ lấy phong cách; nội dung và tính năng vẫn là của Homeletter.
 

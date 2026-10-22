@@ -173,7 +173,7 @@ function NativeFadeIn({ children, delay = 0, style }: { children: ReactNode; del
   return <Animated.View style={[style, { opacity: v, transform: [{ translateY }] }]}>{children}</Animated.View>;
 }
 
-/** Viền chuyển màu tím, hồng, cam bao quanh một nút tròn hoặc viên thuốc. */
+/** Viền màu nhấn bao quanh một nút tròn hoặc viên thuốc. */
 export function GradientRing({ children, size, width = 2, style }: { children: ReactNode; size?: number; width?: number; style?: StyleProp<ViewStyle> }) {
   return (
     <LinearGradient
@@ -218,6 +218,7 @@ export function IconButton({
         style={{
           width: size, height: size, borderRadius: size / 2, alignItems: 'center', justifyContent: 'center',
           backgroundColor: bg ?? (light ? colors.white : colors.tone),
+          borderWidth: light ? 1 : 0, borderColor: colors.line,
         }}
       >
         <Ionicons name={icon} size={Math.round(size * 0.46)} color={color ?? (light ? colors.black : colors.ink)} />
@@ -227,7 +228,7 @@ export function IconButton({
   );
 }
 
-/** Nút tròn tô dải màu tím, hồng, cam: gửi tin, phát giọng kể. */
+/** Nút tròn tô màu nhấn: gửi tin, phát giọng kể. */
 export function GradientButton({ icon, onPress, size = 48, label }: { icon: IconName; onPress?: () => void; size?: number; label: string }) {
   return (
     <Tap onPress={onPress} label={label} scaleTo={0.88}>
@@ -256,7 +257,7 @@ const LOGO_MARK = require('../../assets/logo-mark.png');
 /** Logo trong vòng tròn trắng, như nút logo của bản tham khảo. */
 export function LogoMark({ size = 44 }: { size?: number }) {
   return (
-    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' }}>
       <Image source={LOGO_MARK} style={{ width: size * 0.62, height: size * 0.62 }} accessibilityIgnoresInvertColors />
     </View>
   );
@@ -277,13 +278,14 @@ export function Button({
 }: {
   label: string;
   onPress?: () => void;
-  /** primary: viền chuyển màu; dark: nền trắng chữ đen; ghost và soft: nền xám tối. */
+  /** primary và dark: nền mực đen chữ trắng; ghost và soft: nền xám nhạt. */
   variant?: 'primary' | 'dark' | 'ghost' | 'soft';
   icon?: IconName;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
-  const fg = variant === 'dark' ? colors.black : colors.ink;
+  const solid = variant === 'primary' || variant === 'dark';
+  const fg = solid ? colors.white : colors.ink;
   const content = (
     <>
       {icon && <Ionicons name={icon} size={19} color={fg} />}
@@ -292,18 +294,12 @@ export function Button({
   );
   return (
     <Tap onPress={onPress} disabled={disabled} style={[{ opacity: disabled ? 0.45 : 1 }, style]}>
-      {variant === 'primary' ? (
-        <GradientRing>
-          <View style={[styles.button, { height: 50, backgroundColor: colors.bg }]}>{content}</View>
-        </GradientRing>
-      ) : (
-        <View style={[styles.button, { backgroundColor: variant === 'dark' ? colors.white : colors.tone }]}>{content}</View>
-      )}
+      <View style={[styles.button, { backgroundColor: solid ? colors.ink : colors.tone }]}>{content}</View>
     </Tap>
   );
 }
 
-/** Khối nền thứ hai: xám rất tối trên nền đen, bo tròn lớn. */
+/** Khối nền thứ hai: xám nhạt trên nền trắng ngà, bo tròn lớn. */
 export function Card({ children, style, onPress }: { children: ReactNode; style?: StyleProp<ViewStyle>; onPress?: () => void }) {
   if (onPress) {
     return (
@@ -325,10 +321,10 @@ export function Chip({
   /** Giữ để tương thích. */
   tone?: 'primary' | 'dark';
 }) {
-  const fg = active ? colors.black : colors.inkSoft;
+  const fg = active ? colors.white : colors.inkSoft;
   return (
     <Tap onPress={onPress} selected={!!active} scaleTo={0.94}>
-      <View style={[styles.chip, { backgroundColor: active ? colors.white : colors.tone }]}>
+      <View style={[styles.chip, { backgroundColor: active ? colors.ink : colors.tone }]}>
         {icon && <Ionicons name={icon} size={16} color={fg} />}
         <T variant="small" weight="medium" color={fg}>{label}</T>
       </View>
@@ -456,11 +452,11 @@ export function AvatarStack({
   );
 }
 
-/** Khung đầu màn hình màu xanh đậm có nét lượn mờ, bo tròn hai góc dưới. */
+/** Khung đầu màn hình màu xám than có nét lượn mờ, bo tròn hai góc dưới. */
 export function HeaderBlock({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   return (
     <View style={[styles.headerBlock, style]}>
-      <Image source={CARD_LINES[1]} style={[StyleSheet.absoluteFill, { opacity: 0.55 }]} resizeMode="cover" />
+      <Image source={CARD_LINES[1]} style={[StyleSheet.absoluteFill, { opacity: 0.25 }]} resizeMode="cover" />
       {children}
     </View>
   );
@@ -493,8 +489,8 @@ export function PhotoTile({
         <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
       ) : (
         <>
-          <LinearGradient colors={[shade(base, -0.2), base, shade(base, 0.14)]} start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }} style={StyleSheet.absoluteFill} />
-          <Image source={CARD_LINES[hash(seed) % CARD_LINES.length]} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <LinearGradient colors={[shade(base, -0.08), base, shade(base, 0.06)]} start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }} style={StyleSheet.absoluteFill} />
+          <Image source={CARD_LINES[hash(seed) % CARD_LINES.length]} style={[StyleSheet.absoluteFill, { opacity: 0.35 }]} resizeMode="cover" />
         </>
       )}
       {scrim && <LinearGradient colors={['transparent', uri ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.26)']} style={[StyleSheet.absoluteFill, { top: '40%' }]} />}
@@ -508,7 +504,7 @@ export function Steps({ current, total = 3 }: { current: number; total?: number 
   return (
     <View style={styles.steps} accessibilityRole="progressbar" accessibilityValue={{ min: 1, max: total, now: current }}>
       {Array.from({ length: total }, (_, i) => (
-        <View key={i} style={[styles.stepSeg, { backgroundColor: i < current ? colors.white : colors.toneDeep }]} />
+        <View key={i} style={[styles.stepSeg, { backgroundColor: i < current ? colors.ink : colors.toneDeep }]} />
       ))}
     </View>
   );
@@ -569,11 +565,11 @@ export function Empty({ icon, title, text }: { icon: IconName; title: string; te
 
 const styles = StyleSheet.create({
   badge: { position: 'absolute', top: -4, right: -4, width: 20, height: 20 },
-  more: { backgroundColor: '#2A2A30', alignItems: 'center', justifyContent: 'center' },
-  moreText: { fontFamily: fonts.semibold, color: colors.white },
+  more: { backgroundColor: colors.toneDeep, alignItems: 'center', justifyContent: 'center' },
+  moreText: { fontFamily: fonts.semibold, color: colors.ink },
   headerBlock: { backgroundColor: colors.deep, borderBottomLeftRadius: 32, borderBottomRightRadius: 32, overflow: 'hidden' },
   badgeInner: { flex: 1, borderRadius: 10, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
-  badgeText: { fontFamily: fonts.semibold, fontSize: 10, lineHeight: 12, color: colors.white },
+  badgeText: { fontFamily: fonts.semibold, fontSize: 10, lineHeight: 12, color: colors.ink },
   backHeader: { flexDirection: 'row', alignItems: 'center', paddingVertical: space.md },
   button: {
     height: 54, borderRadius: radius.pill, flexDirection: 'row', alignItems: 'center',

@@ -12,7 +12,7 @@ import { colors, radius } from '@/theme';
 
 // Phòng gọi video: cả nhà, hoặc hai người khi Homeletter nối máy (`with`), hoặc cả nhà cùng xem một video (`film`).
 // Lưới khuôn mặt từng người, biểu tượng đang nói hoặc tắt mic ở góc, hàng nút tròn và nút cúp máy màu cam.
-// Bản demo: chưa nối cuộc gọi thật (sau này dùng WebRTC, ví dụ Agora hoặc LiveKit).
+// Chưa nối cuộc gọi thật (sau này dùng WebRTC, ví dụ Agora hoặc LiveKit).
 export default function Room() {
   const { state } = useApp();
   const params = useLocalSearchParams<{ with?: string; film?: string }>();
@@ -41,10 +41,10 @@ export default function Room() {
         <View style={styles.header}>
           <IconButton icon="chevron-back" size={48} light label="Rời phòng" onPress={() => router.back()} />
           <View style={{ flex: 1, alignItems: 'center' }}>
-            <T variant="h2">{partner ? `Gọi ${callName(partner)}` : 'Gọi cả nhà'}</T>
-            <T variant="small" color={colors.muted}>{duration(sec)}, {people.length} người</T>
+            <T variant="h2" color={colors.white}>{partner ? `Gọi ${callName(partner)}` : 'Gọi cả nhà'}</T>
+            <T variant="small" color="rgba(255,255,255,0.8)">{duration(sec)}, {people.length} người</T>
           </View>
-          <IconButton icon="chatbubbles-outline" size={48} light badge={2} label="Mở tin nhắn" onPress={() => router.push('/chat')} />
+          <IconButton icon="chatbubbles-outline" size={48} light label="Mở tin nhắn" onPress={() => router.push('/chat')} />
         </View>
       </HeaderBlock>
 
@@ -52,10 +52,10 @@ export default function Room() {
         <View style={styles.film}>
           <Ionicons name="film" size={20} color={colors.white} />
           <View style={{ flex: 1 }}>
-            <T variant="small" color={colors.inkSoft}>Cả nhà đang cùng xem</T>
-            <T variant="body" weight="semibold" numberOfLines={1}>{film.title}</T>
+            <T variant="small" color={colors.white}>Cả nhà đang cùng xem</T>
+            <T variant="body" weight="semibold" color={colors.white} numberOfLines={1}>{film.title}</T>
           </View>
-          <T variant="small" color={colors.inkSoft}>{duration(Math.min(sec, film.durationSec))}</T>
+          <T variant="small" color={colors.white}>{duration(Math.min(sec, film.durationSec))}</T>
         </View>
       )}
       <View style={styles.grid}>
@@ -68,7 +68,7 @@ export default function Room() {
               <PhotoTile seed={`room-${m.id}`} tone={memberTone(state.family.members, m.id)} fill radiusSize={26}>
                 <View style={styles.tileInner}>
                   <View style={[styles.state, m.id === talking && !off && { backgroundColor: colors.white }]}>
-                    <Ionicons name={icon} size={16} color={m.id === talking && !off ? colors.black : colors.white} />
+                    <Ionicons name={icon} size={16} color={m.id === talking && !off ? colors.ink : colors.white} />
                   </View>
                   <View style={{ alignItems: 'center' }}>
                     {isMe && !cam ? (
@@ -104,9 +104,6 @@ export default function Room() {
           </View>
         </Tap>
       </View>
-      <T variant="caption" weight="regular" color={colors.muted} center style={{ position: 'absolute', left: 0, right: 0, bottom: Math.max(insets.bottom, 14) - 10 }}>
-        Bản demo: chưa nối cuộc gọi thật
-      </T>
     </View>
   );
 }
@@ -114,8 +111,8 @@ export default function Room() {
 function Control({ icon, label, on, onPress }: { icon: IconName; label: string; on: boolean; onPress: () => void }) {
   return (
     <Tap onPress={onPress} label={label} selected={on} scaleTo={0.88}>
-      <View style={[styles.control, { backgroundColor: on ? colors.toneDeep : colors.white }]}>
-        <Ionicons name={icon} size={26} color={on ? colors.white : colors.black} />
+      <View style={[styles.control, { backgroundColor: on ? colors.toneDeep : colors.ink }]}>
+        <Ionicons name={icon} size={26} color={on ? colors.ink : colors.white} />
       </View>
     </Tap>
   );
@@ -125,7 +122,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16 },
   film: {
     flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 8, marginTop: 8, padding: 14,
-    borderRadius: radius.lg, backgroundColor: '#8C6A4F',
+    borderRadius: radius.lg, backgroundColor: colors.primary,
   },
   grid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', padding: 8, gap: 8 },
   cell: { width: '48.6%', flexGrow: 1, height: '31.5%' },

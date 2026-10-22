@@ -1,123 +1,150 @@
 import { Ionicons } from '@/components/Icon';
-import { useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useMemo, useState } from 'react';
+import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { SEPIA } from '@/components/Feed';
 import { VoiceRecorder } from '@/components/VoiceRecorder';
-import { Avatar, BackHeader, Empty, memberTone, PhotoTile, Screen, T, Waveform } from '@/components/ui';
-import { tagLabel } from '@/data/tags';
+import { Avatar, memberTone, PhotoTile, T } from '@/components/ui';
+import type { Post } from '@/data/types';
 import { duration, relativeTime } from '@/lib/format';
-import { member } from '@/lib/selectors';
+import { callName, member } from '@/lib/selectors';
 import { useApp } from '@/store/AppContext';
 import { colors, fonts, radius } from '@/theme';
 
-const EMOJIS = ['❤️', '🥺', '😍', '😂', '👏', '💪'];
+const EMOJIS = ['❤️', '🥺', '😂', '🙏'];
+const BAR = 132;
 
-export default function PostDetail() {
+// Xem ảnh cả nhà kiểu Locket: mỗi trang một ảnh vuông, vuốt lên xem ảnh tiếp, trả lời ngay ở dưới.
+export default function PostViewer() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { state, dispatch } = useApp();
-  const post = state.posts.find((p) => p.id === id);
+  const { width, height } = useWindowDimensions();
+  const start = Math.max(0, state.posts.findIndex((p) => p.id === id));
+  const [index, setIndex] = useState(start);
   const [text, setText] = useState('');
   const [voice, setVoice] = useState(false);
-  if (!post) return <Screen><BackHeader /><Empty icon="image-outline" title="Không tìm thấy ảnh" /></Screen>;
+  const [pageH, setPageH] = useState(height - BAR - 60);
+  const post = state.posts[index];
+  const side = Math.min(width - 32, pageH - 120, 520);
+  const posts = useMemo(() => state.posts, [state.posts]);
+
+  if (!post) return null;
   const author = member(state, post.authorId);
+  const mine = post.authorId === state.meId;
+
+  function reply() {
+    if (!text.trim()) return;
+    dispatch({ type: 'reply', postId: post.id, text: text.trim() });
+    setText('');
+  }
 
   return (
-    <Screen>
-      <BackHeader title={author?.roleLabel} />
-      <PhotoTile seed={post.id} tone={post.tag === 'xua' ? SEPIA : memberTone(state.family.members, post.authorId)} uri={post.photoUri} height={post.photoUri ? 400 : 340}>
-        {!post.photoUri && (
-          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, padding: 22, gap: 10 }}>
-            {tagLabel(post.tag) && <T variant="small" weight="medium" color="rgba(255,255,255,0.82)">{tagLabel(post.tag)}{post.year ? `, ${post.year}` : ''}</T>}
-            <T variant="display" weight="regular" color={colors.white} style={{ fontSize: 30, lineHeight: 40 }}>{post.caption}</T>
-          </View>
-        )}
-      </PhotoTile>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16 }}>
-        <Avatar name={author?.name ?? '?'} uri={author?.avatarUri} size={44} />
-        <View style={{ flex: 1 }}>
-          <T variant="body" weight="semibold">{author?.name}</T>
-          <T variant="small" color={colors.muted}>Gửi từ {author?.city}, {relativeTime(post.createdAt)}</T>
-        </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.top}>
+        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))} accessibilityRole="button" accessibilityLabel="Đóng" style={styles.round}>
+          <Ionicons name="chevron-down" size={22} color={colors.ink} />
+        </Pressable>
+        <T variant="small" color={colors.muted}>{index + 1} / {posts.length}</T>
+        <View style={{ width: 44 }} />
       </View>
-      {post.photoUri && <T variant="h3" weight="medium" style={{ marginTop: 12 }}>{post.caption}</T>}
-      {post.voiceSec ? (
-        <View style={styles.voice}>
-          <Ionicons name="play" size={18} color={colors.ink} />
-          <Waveform />
-          <T variant="small" color={colors.muted}>{duration(post.voiceSec)}</T>
-        </View>
-      ) : null}
 
-      <View style={styles.emojis}>
-        {EMOJIS.map((e) => (
-          <Pressable key={e} onPress={() => dispatch({ type: 'react', postId: post.id, emoji: e })}
-            accessibilityRole="button" style={[styles.emoji, post.reactions[state.meId] === e && { backgroundColor: colors.primarySoft }]}>
-            <T variant="h3">{e}</T>
-          </Pressable>
-        ))}
+      <View style={{ flex: 1 }} onLayout={(e) => setPageH(e.nativeEvent.layout.height)}>
+        <FlatList
+          data={posts}
+          keyExtractor={(p) => p.id}
+          pagingEnabled
+          showsVerticalScrollIndicator={false}
+          initialScrollIndex={start}
+          getItemLayout={(_, i) => ({ length: pageH, offset: pageH * i, index: i })}
+          onMomentumScrollEnd={(e) => setIndex(Math.round(e.nativeEvent.contentOffset.y / pageH))}
+          renderItem={({ item }) => <Page post={item} side={side} height={pageH} />}
+        />
       </View>
-      {Object.keys(post.reactions).length > 0 && (
-        <T variant="small" color={colors.muted} style={{ marginTop: 8 }}>
-          {Object.entries(post.reactions).map(([mid, e]) => `${member(state, mid)?.roleLabel ?? ''} ${e}`).join(', ')}
-        </T>
-      )}
 
-      <T variant="h2" style={{ marginTop: 32 }}>Trả lời</T>
-      <T variant="small" color={colors.muted} style={{ marginTop: 4, marginBottom: 10 }}>Lời trả lời cũng hiện trong Chat của cả nhà.</T>
-      {post.replies.map((r) => {
-        const a = member(state, r.authorId);
-        const mine = r.authorId === state.meId;
-        return (
-          <View key={r.id} style={[styles.bubbleRow, mine && { flexDirection: 'row-reverse' }]}>
-            <Avatar name={a?.name ?? '?'} uri={a?.avatarUri} size={28} />
-            <View style={[styles.bubble, mine && { backgroundColor: colors.white }]}>
-              {r.voiceSec ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, width: 170 }}>
-                  <Ionicons name="play" size={14} color={mine ? colors.black : colors.ink} />
-                  <Waveform bars={16} color={mine ? colors.black : colors.ink} />
-                  <T variant="caption" color={mine ? colors.black : colors.muted}>{duration(r.voiceSec)}</T>
-                </View>
+      <View style={styles.bar}>
+        {voice ? (
+          <VoiceRecorder size={52} hint={`Nói với ${callName(author)}`} onDone={({ seconds }) => { dispatch({ type: 'reply', postId: post.id, voiceSec: seconds }); setVoice(false); }} />
+        ) : (
+          <>
+            <View style={styles.emojis}>
+              {EMOJIS.map((e) => (
+                <Pressable key={e} onPress={() => dispatch({ type: 'react', postId: post.id, emoji: e })} accessibilityRole="button" accessibilityLabel={`Thả ${e}`}
+                  style={[styles.emoji, post.reactions[state.meId] === e && { backgroundColor: colors.primarySoft }]}>
+                  <T variant="h3">{e}</T>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.inputRow}>
+              <TextInput value={text} onChangeText={setText} onSubmitEditing={reply} returnKeyType="send"
+                placeholder={mine ? 'Viết thêm vài lời...' : `Trả lời ${callName(author)}...`} placeholderTextColor={colors.placeholder}
+                style={styles.input} accessibilityLabel="Trả lời" />
+              {text.trim() ? (
+                <Pressable onPress={reply} accessibilityRole="button" accessibilityLabel="Gửi" style={[styles.send, { backgroundColor: colors.ink }]}>
+                  <Ionicons name="arrow-up" size={20} color={colors.white} />
+                </Pressable>
               ) : (
-                <T variant="body" color={mine ? colors.black : colors.ink}>{r.text}</T>
+                <Pressable onPress={() => setVoice(true)} accessibilityRole="button" accessibilityLabel="Trả lời bằng giọng nói" style={styles.send}>
+                  <Ionicons name="mic" size={20} color={colors.ink} />
+                </Pressable>
               )}
             </View>
-          </View>
-        );
-      })}
+          </>
+        )}
+      </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
 
-      {voice ? (
-        <View style={{ marginTop: 16 }}>
-          <VoiceRecorder size={56} hint="Gửi lời nhắn thoại" onDone={({ seconds }) => { dispatch({ type: 'reply', postId: post.id, voiceSec: seconds }); setVoice(false); }} />
-        </View>
-      ) : (
-        <View style={styles.inputRow}>
-          <TextInput value={text} onChangeText={setText} placeholder="Viết vài lời..." placeholderTextColor={colors.placeholder} style={styles.input} accessibilityLabel="Trả lời" />
-          <Pressable onPress={() => setVoice(true)} style={styles.send}>
-            <Ionicons name="mic" size={18} color={colors.ink} />
-          </Pressable>
-          <Pressable
-            onPress={() => { if (text.trim()) { dispatch({ type: 'reply', postId: post.id, text: text.trim() }); setText(''); } }}
-            style={[styles.send, { backgroundColor: colors.primary }]}
-          >
-            <Ionicons name="send" size={16} color={colors.white} />
-          </Pressable>
-        </View>
-      )}
-    </Screen>
+function Page({ post, side, height }: { post: Post; side: number; height: number }) {
+  const { state } = useApp();
+  const author = member(state, post.authorId);
+  const old = post.tag === 'xua';
+  const reacted = Object.entries(post.reactions);
+  const last = post.replies[post.replies.length - 1];
+  const lastBy = last ? member(state, last.authorId) : undefined;
+  return (
+    <View style={{ height, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }}>
+      <View style={styles.who}>
+        <Avatar name={author?.name ?? '?'} uri={author?.avatarUri} size={34} />
+        <T variant="body" weight="semibold">{author?.id === state.meId ? 'Bạn' : author?.roleLabel}</T>
+        <T variant="small" color={colors.muted}>{old && post.year ? `ảnh năm ${post.year}` : relativeTime(post.createdAt)}</T>
+      </View>
+      <PhotoTile seed={post.id} tone={old ? SEPIA : memberTone(state.family.members, post.authorId)} uri={post.photoUri}
+        style={{ width: side, height: side }} radiusSize={radius.xl + 8} scrim={!!post.photoUri}>
+        {post.photoUri ? (
+          <View style={styles.captionWrap}><T variant="body" weight="medium" color={colors.white} center style={styles.caption}>{post.caption}</T></View>
+        ) : (
+          <View style={styles.note}><T variant="h1" weight="regular" color={colors.white} style={{ lineHeight: 38 }}>{post.caption}</T></View>
+        )}
+      </PhotoTile>
+      <View style={{ minHeight: 48, marginTop: 14, alignItems: 'center', gap: 4 }}>
+        {post.voiceSec ? <T variant="small" color={colors.muted}>Có lời nói kèm, {duration(post.voiceSec)}</T> : null}
+        {last && (
+          <T variant="small" color={colors.inkSoft} numberOfLines={1}>
+            {lastBy?.id === state.meId ? 'Bạn' : lastBy?.roleLabel}: {last.text ?? `lời nói ${duration(last.voiceSec ?? 0)}`}
+            {post.replies.length > 1 ? `  ·  ${post.replies.length} lời` : ''}
+          </T>
+        )}
+        {reacted.length > 0 && <T variant="small" color={colors.muted}>{reacted.map(([, e]) => e).join(' ')}</T>}
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  voice: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.tone, borderRadius: 999, padding: 14, marginTop: 12 },
-  emojis: { flexDirection: 'row', gap: 8, marginTop: 18 },
-  emoji: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.tone, alignItems: 'center', justifyContent: 'center' },
-  bubbleRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginVertical: 5 },
-  bubble: { backgroundColor: colors.tone, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10, maxWidth: '75%' },
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16 },
-  input: {
-    flex: 1, height: 48, borderRadius: radius.pill, backgroundColor: colors.tone, paddingHorizontal: 18,
-    fontFamily: fonts.regular, fontSize: 16, color: colors.ink,
-  },
-  send: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.tone, alignItems: 'center', justifyContent: 'center' },
+  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 6 },
+  round: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.tone, alignItems: 'center', justifyContent: 'center' },
+  who: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  captionWrap: { position: 'absolute', left: 16, right: 16, bottom: 18, alignItems: 'center' },
+  caption: { backgroundColor: 'rgba(0,0,0,0.42)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999, overflow: 'hidden' },
+  note: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, padding: 26, justifyContent: 'center' },
+  bar: { minHeight: BAR, paddingHorizontal: 16, paddingBottom: 14, paddingTop: 8, gap: 10, borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.bg },
+  emojis: { flexDirection: 'row', justifyContent: 'center', gap: 10 },
+  emoji: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.tone, alignItems: 'center', justifyContent: 'center' },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  input: { flex: 1, height: 50, borderRadius: radius.pill, backgroundColor: colors.tone, paddingHorizontal: 20, fontFamily: fonts.regular, fontSize: 16, color: colors.ink },
+  send: { width: 50, height: 50, borderRadius: 25, backgroundColor: colors.tone, alignItems: 'center', justifyContent: 'center' },
 });

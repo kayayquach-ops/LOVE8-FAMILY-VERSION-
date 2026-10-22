@@ -2,7 +2,7 @@ import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { router } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, radius } from '@/theme';
+import { colors, radius, shadow } from '@/theme';
 import { Ionicons } from './Icon';
 import { GradientRing, T, Tap, type IconName } from './ui';
 
@@ -22,7 +22,7 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
         <Tap onPress={() => router.push('/capture')} label="Chụp và gửi ảnh cho cả nhà" scaleTo={0.88}>
           <GradientRing size={50}>
             <View style={styles.plus}>
-              <Ionicons name="add" size={28} color={colors.white} />
+              <Ionicons name="add" size={28} color={colors.ink} />
             </View>
           </GradientRing>
         </Tap>
@@ -31,7 +31,7 @@ export function TabBar({ state, navigateToTab }: BottomTabBarProps) {
             const tab = TABS[route.name];
             if (!tab) return null;
             const focused = state.index === index;
-            const color = focused ? colors.white : colors.muted;
+            const color = focused ? colors.ink : colors.muted;
             return (
               <Tap key={route.key} role="tab" selected={focused} label={tab.label} scaleTo={0.9}
                 onPress={() => { if (!focused) navigateToTab(route.key); }} style={styles.tab}>
@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
   wrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 14 },
   bar: {
     flexDirection: 'row', alignItems: 'center', gap: 4, height: 68, paddingHorizontal: 8, borderRadius: radius.pill,
-    backgroundColor: 'rgba(16,16,18,0.96)', borderWidth: 1, borderColor: colors.line,
+    backgroundColor: 'rgba(255,255,255,0.97)', borderWidth: 1, borderColor: colors.line, ...shadow.float,
   },
   plus: { flex: 1, borderRadius: radius.pill, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
   tabs: { flex: 1, flexDirection: 'row', justifyContent: 'space-around' },

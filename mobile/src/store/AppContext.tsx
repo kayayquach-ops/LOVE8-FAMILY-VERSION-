@@ -14,7 +14,7 @@ type NewMessage = Omit<FamilyMessage, 'id' | 'createdAt' | 'authorId'>;
 type Action =
   | { type: 'hydrate'; state: AppState }
   | { type: 'reset' }
-  | { type: 'chooseMember'; memberId: string; parentMode: boolean }
+  | { type: 'chooseMember'; memberId: string; parentMode: boolean; avatarUri?: string; birthday?: { day: number; month: number }; intro?: Record<string, string> }
   | { type: 'updateSettings'; patch: Partial<Settings> }
   | { type: 'addPost'; caption: string; tag?: PostTag; photoUri?: string; voiceSec?: number; year?: number }
   | { type: 'react'; postId: string; emoji: string }
@@ -44,10 +44,15 @@ function reducer(state: AppState, action: Action): AppState {
     case 'chooseMember':
       return {
         ...state, onboarded: true, meId: action.memberId,
-        settings: { ...state.settings, parentMode: action.parentMode },
+        settings: { ...state.settings, parentMode: action.parentMode, intro: action.intro ?? state.settings.intro },
         family: {
           ...state.family,
-          members: state.family.members.map((m) => (m.id === action.memberId ? { ...m, lastActiveAt: now() } : m)),
+          // Ảnh và ngày sinh nhập lúc mới vào app thay cho dữ liệu mẫu.
+          members: state.family.members.map((m) => (m.id === action.memberId ? {
+            ...m, lastActiveAt: now(),
+            avatarUri: action.avatarUri ?? m.avatarUri,
+            birthday: action.birthday ? { calendar: 'solar' as const, ...action.birthday, year: m.birthday?.year } : m.birthday,
+          } : m)),
         },
       };
     case 'updateSettings':

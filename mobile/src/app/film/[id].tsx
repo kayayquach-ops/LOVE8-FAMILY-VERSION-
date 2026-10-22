@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Platform, StyleSheet, View } from 'react-native';
+import { Animated, Easing, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SEPIA } from '@/components/Feed';
 import { Ionicons } from '@/components/Icon';
@@ -14,7 +14,7 @@ import { colors, radius } from '@/theme';
 const LANGS: Array<{ key: SubLang; label: string }> = [{ key: 'vi', label: 'Tiếng Việt' }, { key: 'ko', label: '한국어' }, { key: 'en', label: 'English' }];
 
 // Video Homeletter: ảnh xưa chuyển động chậm, giọng thật của người kể, phụ đề theo ngôn ngữ người xem.
-// Chỉ ghép từ ảnh thật và giọng thật, không tạo giọng giả. Bản demo mô phỏng phần phát.
+// Chỉ ghép từ ảnh thật và giọng thật, không tạo giọng giả. Hiện mô phỏng phần phát.
 export default function FilmScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { state } = useApp();
@@ -23,6 +23,7 @@ export default function FilmScreen() {
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [lang, setLang] = useState<SubLang>('vi');
+  const [showLang, setShowLang] = useState(false);
   const zoom = useRef(new Animated.Value(0)).current;
   const sceneLen = film ? film.durationSec / film.scenes.length : 1;
   const scene = film ? Math.min(film.scenes.length - 1, Math.floor(t / sceneLen)) : 0;
@@ -73,11 +74,12 @@ export default function FilmScreen() {
             <T variant="h3" weight="medium" color={colors.white} center>{sub[lang]}</T>
           </View>
         )}
+        <Pressable onPress={() => router.replace({ pathname: '/room', params: { film: film.id } })} accessibilityRole="button" style={styles.together}>
+          <Ionicons name="videocam" size={19} color={colors.ink} />
+          <T variant="body" weight="semibold" color={colors.ink}>Xem cùng cả nhà</T>
+        </Pressable>
         {done ? (
-          <View style={{ gap: 10, alignSelf: 'stretch' }}>
-            <Button label="Xem cùng cả nhà" icon="videocam" variant="dark" onPress={() => router.replace({ pathname: '/room', params: { film: film.id } })} />
-            <Button label="Xem lại" icon="refresh" variant="ghost" onPress={() => { setT(0); setPlaying(true); }} />
-          </View>
+          <Button label="Xem lại" icon="refresh" variant="ghost" style={{ alignSelf: 'stretch' }} onPress={() => { setT(0); setPlaying(true); }} />
         ) : (
           <View style={styles.controls}>
             <GradientButton icon={playing ? 'pause' : 'play'} size={52} label={playing ? 'Dừng' : 'Phát'} onPress={() => setPlaying(!playing)} />
@@ -85,16 +87,20 @@ export default function FilmScreen() {
             <T variant="small" color={colors.white}>{duration(t)}</T>
           </View>
         )}
+        <Tap onPress={() => setShowLang(!showLang)} label="Chọn thứ tiếng phụ đề" scaleTo={0.92}>
+          <View style={styles.lang}><Ionicons name="text" size={16} color={colors.white} /></View>
+        </Tap>
+        {showLang && (
         <View style={styles.langs}>
-          <Ionicons name="text" size={16} color="rgba(255,255,255,0.8)" />
           {LANGS.map((l) => (
             <Tap key={l.key} onPress={() => setLang(l.key)} selected={lang === l.key} label={`Phụ đề ${l.label}`} scaleTo={0.92}>
               <View style={[styles.lang, lang === l.key && { backgroundColor: colors.white }]}>
-                <T variant="caption" weight="semibold" color={lang === l.key ? colors.black : colors.white}>{l.label}</T>
+                <T variant="caption" weight="semibold" color={lang === l.key ? colors.ink : colors.white}>{l.label}</T>
               </View>
             </Tap>
           ))}
         </View>
+        )}
       </View>
     </View>
   );
@@ -110,6 +116,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 12, alignSelf: 'stretch', backgroundColor: 'rgba(0,0,0,0.4)',
     borderRadius: radius.pill, padding: 6, paddingRight: 18,
   },
+  together: { alignSelf: 'stretch', height: 54, borderRadius: radius.pill, backgroundColor: colors.white, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   langs: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   lang: { height: 34, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center' },
 });

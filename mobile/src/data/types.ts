@@ -182,6 +182,8 @@ export type Settings = {
   aiCallDay: 'sun' | 'sat' | 'wed';
   holidays: boolean;
   premium: boolean;
+  /** Câu trả lời lúc mới vào app (lần cuối gặp nhau, món nhớ nhất...), để Homeletter hỏi chuyện cho đúng người. */
+  intro?: Record<string, string>;
 };
 
 export type Family = { id: string; name: string; inviteCode: string; members: Member[] };

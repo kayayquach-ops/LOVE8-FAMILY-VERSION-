@@ -3,9 +3,9 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { BackHeader, memberTone, PhotoTile, Screen, SectionHeader, T } from '@/components/ui';
 import { relativeTime, weekday } from '@/lib/format';
-import { callName, daysToTet, mealToday, member, others, postedToday } from '@/lib/selectors';
+import { daysToTet, mealToday, member, others, postedToday } from '@/lib/selectors';
 import { useApp } from '@/store/AppContext';
-import { colors } from '@/theme';
+import { colors, familyTones } from '@/theme';
 
 // Xem trước widget ngoài màn hình chính. Widget thật cần bản build riêng (không chạy trong Expo Go):
 // iOS dùng WidgetKit (Swift), Android dùng App Widget. Bấm widget sẽ mở thẳng màn hình chụp nhanh.
@@ -73,10 +73,6 @@ export default function WidgetPreview() {
           <T variant="caption" color="rgba(255,255,255,0.8)">Chạm để nghe</T>
         </View>
       </View>
-      <T variant="small" color={colors.muted} style={{ marginTop: 8 }}>
-        Đúng giờ hẹn, điện thoại báo bằng chính giọng {from ? callName(from) : 'người gửi'} (tối đa 30 giây). Máy để im lặng thì chỉ hiện trên màn hình khoá.
-      </T>
-
       <SectionHeader title="Cách thêm widget" />
       <Step n={1} text="Giữ ngón tay lên màn hình chính đến khi các biểu tượng rung." />
       <Step n={2} text="Bấm dấu + (iPhone) hoặc chọn Tiện ích (Android), tìm “Homeletter”." />
@@ -98,14 +94,14 @@ function Step({ n, text }: { n: number; text: string }) {
 }
 
 const styles = StyleSheet.create({
-  phone: { borderRadius: 40, padding: 18, paddingBottom: 24, borderWidth: 6, borderColor: '#2A2A2E', backgroundColor: '#8A5DA6' },
+  phone: { borderRadius: 40, padding: 18, paddingBottom: 24, borderWidth: 6, borderColor: colors.deep, backgroundColor: familyTones[4] },
   row: { flexDirection: 'row', gap: 14, marginTop: 26 },
   small: { flex: 1, height: 150, borderRadius: 22, overflow: 'hidden' },
-  white: { backgroundColor: 'rgba(0,0,0,0.78)', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 12 },
+  white: { backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 12 },
   shoot: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   medium: { flexDirection: 'row', alignItems: 'center', borderRadius: 22, marginTop: 14, padding: 16 },
   dot: { width: 14, height: 14, borderRadius: 7 },
-  lock: { borderRadius: 32, padding: 18, paddingBottom: 22, backgroundColor: '#1E3A44', gap: 16 },
+  lock: { borderRadius: 32, padding: 18, paddingBottom: 22, backgroundColor: familyTones[6], gap: 16 },
   lockWidget: {
     flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 20,
     paddingHorizontal: 14, paddingVertical: 12,

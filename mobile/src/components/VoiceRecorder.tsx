@@ -9,11 +9,10 @@ import { colors } from '@/theme';
 import { T, Waveform } from './ui';
 
 /**
- * Nút ghi âm. Trên máy thật dùng micro qua expo-audio. Nếu không có quyền
- * (hoặc chạy trên web khi demo), nút vẫn đếm giờ để thử luồng màn hình.
+ * Nút ghi âm, dùng micro qua expo-audio. Không có quyền micro thì không ghi, chỉ nhắc cho phép.
  */
 export function VoiceRecorder({
-  onDone, size = 72, hint = 'Giữ bình tĩnh và kể thật tự nhiên nhé',
+  onDone, size = 72, hint = 'Bấm để kể',
 }: {
   onDone: (result: { uri?: string; seconds: number }) => void;
   size?: number;
@@ -22,6 +21,7 @@ export function VoiceRecorder({
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
+  const [denied, setDenied] = useState(false);
   const real = useRef(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -32,15 +32,19 @@ export function VoiceRecorder({
     real.current = false;
     try {
       const perm = await requestRecordingPermissionsAsync();
-      if (perm.granted) {
-        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-        await recorder.prepareToRecordAsync();
-        recorder.record();
-        real.current = true;
+      if (!perm.granted) {
+        setDenied(true);
+        return;
       }
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      real.current = true;
     } catch {
-      real.current = false;
+      setDenied(true);
+      return;
     }
+    setDenied(false);
     setRecording(true);
     timer.current = setInterval(() => setSeconds((s) => s + 1), 1000);
   }
@@ -67,7 +71,7 @@ export function VoiceRecorder({
           <T variant="small" weight="semibold">{duration(seconds)}</T>
         </View>
       ) : (
-        <T variant="small" color={colors.muted} center>{hint}</T>
+        <T variant="small" color={denied ? colors.holiday : colors.muted} center>{denied ? 'Cần cho phép micro' : hint}</T>
       )}
       <Pressable
         onPress={recording ? stop : start}
@@ -77,7 +81,7 @@ export function VoiceRecorder({
       >
         <Ionicons name={recording ? 'stop' : 'mic'} size={size * 0.42} color={colors.white} />
       </Pressable>
-      <T variant="small" color={colors.muted}>{recording ? 'Bấm để dừng' : 'Bấm để bắt đầu kể'}</T>
+      {recording && <T variant="small" color={colors.muted}>Bấm để dừng</T>}
     </View>
   );
 }

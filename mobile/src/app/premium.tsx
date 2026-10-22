@@ -12,10 +12,9 @@ const ROWS: Array<[string, string, string]> = [
   ['Homeletter gọi hỏi chuyện', '2 lần/tháng', 'Mỗi tuần'],
   ['Kho ảnh và giọng nói', '1 năm gần nhất', 'Không giới hạn'],
   ['Video theo dịp, phụ đề nhiều thứ tiếng', 'Video tuần', 'Mọi dịp'],
-  ['Giảm giá sách giọng nói in dịp Tết', '—', '20%'],
 ];
 
-// Giá ở đây là giả định để khảo sát. Khi phát hành, thanh toán qua App Store / Google Play (RevenueCat).
+// Giá chỉ là giả định. Khi phát hành, thanh toán qua App Store / Google Play (RevenueCat).
 export default function Premium() {
   const { state, dispatch } = useApp();
   const [plan, setPlan] = useState<'year' | 'month'>('year');
@@ -53,9 +52,6 @@ export default function Premium() {
         style={{ marginTop: 20 }}
         onPress={() => { dispatch({ type: 'updateSettings', patch: { premium: true } }); router.back(); }}
       />
-      <T variant="small" color={colors.muted} center style={{ marginTop: 10 }}>
-        Bản demo: không trừ tiền. Hoặc tặng bố mẹ "Hộp quà Tết": 1 năm Gói Gia đình kèm sách giọng nói in.
-      </T>
     </Screen>
   );
 }

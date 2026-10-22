@@ -1,49 +1,49 @@
-// Giao diện tối theo tham khảo "MAD – Social Dares" (Nixtio): nền đen, thẻ bo tròn lớn màu đất và pastel
-// có nét lượn mờ, avatar tròn, chữ đậm khít; điểm nhấn là dải chuyển màu tím, hồng, cam.
+// Giao diện sáng, tối giản: nền trắng ngà như giấy viết thư, chữ mực đen ấm, xám nhạt cho mặt nền thứ hai.
+// Chỉ một màu nhấn nâu đỏ như mực dấu bưu điện. Thẻ của từng người dùng màu trầm, không chuyển màu sặc sỡ.
 export const colors = {
-  bg: '#000000',
-  // Mặt nền thứ hai và các mức sáng dần cho trạng thái bấm.
-  tone: '#141416',
-  toneDeep: '#222226',
-  field: '#141416',
-  primaryTint: '#141416',
-  line: '#26262B',
-  // Chữ trên nền tối.
-  ink: '#FFFFFF',
-  inkSoft: '#D4D4D8',
-  muted: '#A1A1AA',
-  placeholder: '#8B8B94',
-  faint: '#5A5A63',
+  bg: '#FAF9F6',
+  // Mặt nền thứ hai và các mức đậm dần cho trạng thái bấm.
+  tone: '#F0EEE9',
+  toneDeep: '#E5E2DB',
+  field: '#F0EEE9',
+  primaryTint: '#F4ECE7',
+  line: '#E3E0D8',
+  // Chữ trên nền sáng.
+  ink: '#1F1D1A',
+  inkSoft: '#45423C',
+  muted: '#76726A',
+  placeholder: '#A29E95',
+  faint: '#C2BEB5',
   // Màu chữ và icon đặt trên thẻ màu hoặc nút tô màu.
   white: '#FFFFFF',
   black: '#000000',
-  // Màu nhấn: hồng đậm cho nút tô màu, hồng sáng cho chữ nhấn trên nền đen.
-  primary: '#D9366E',
-  primaryDark: '#B52A5B',
-  primarySoft: '#3A1424',
-  accentText: '#FF8FB1',
+  // Màu nhấn duy nhất: nâu đỏ như mực dấu thư.
+  primary: '#9A5A44',
+  primaryDark: '#7D4735',
+  primarySoft: '#F2E6E0',
+  accentText: '#9A5A44',
   // Chủ nhật, ngày Tết, ngày giỗ trên lịch.
-  holiday: '#FF7A6B',
+  holiday: '#B8473A',
   // Ngày âm lịch.
-  lunar: '#C4B5FD',
-  lunarSoft: '#1E1A2E',
-  green: '#5EE0A0',
-  greenSoft: '#11251B',
-  amber: '#F5C451',
-  amberSoft: '#2A2210',
-  blue: '#9DB8FF',
-  blueSoft: '#161C2E',
-  purple: '#C4B5FD',
-  purpleSoft: '#1E1A2E',
-  overlay: 'rgba(0,0,0,0.6)',
-  // Khung đầu màn hình xanh đậm có nét lượn, chấm "đang trực", nút cúp máy (tham khảo thêm mẫu friendlyhours).
-  deep: '#06252E',
-  online: '#22E06B',
-  endCall: '#E8602A',
+  lunar: '#6A5E9C',
+  lunarSoft: '#EEECF5',
+  green: '#3B7F5A',
+  greenSoft: '#E5F0E9',
+  amber: '#9A7322',
+  amberSoft: '#F5EEDC',
+  blue: '#41609E',
+  blueSoft: '#E8EDF6',
+  purple: '#6A5E9C',
+  purpleSoft: '#EEECF5',
+  overlay: 'rgba(31,29,26,0.45)',
+  // Khung đầu màn hình chat: xám than ấm, chữ trắng.
+  deep: '#3A3833',
+  online: '#3B9A62',
+  endCall: '#C8553F',
 };
 
-// Dải chuyển màu dùng cho viền nút chính, nút "+" và vòng thông báo.
-export const gradient = ['#8F20B3', '#E0306E', '#F28A3C'] as const;
+// Giữ tên cũ để mã cũ chạy; nay chỉ là một màu phẳng, không còn dải tím hồng cam.
+export const gradient = ['#9A5A44', '#9A5A44'] as const;
 
 // Một họ chữ: Be Vietnam Pro (do người Việt thiết kế cho tiếng Việt).
 // Các tên "serif" giữ lại để mã cũ vẫn chạy, nay trỏ về cùng họ chữ.
@@ -57,7 +57,7 @@ export const fonts = {
   serifBold: 'BeVietnamPro_700Bold',
 };
 
-export const radius = { sm: 14, md: 20, lg: 28, xl: 32, pill: 999 };
+export const radius = { sm: 12, md: 18, lg: 24, xl: 28, pill: 999 };
 
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 32 };
 
@@ -65,23 +65,23 @@ export const shadow = {
   card: {},
   soft: {},
   float: {
-    shadowColor: '#000000',
-    shadowOpacity: 0.5,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 10,
+    shadowColor: '#1F1D1A',
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
 };
 
-// Màu thẻ của từng người trong nhà, lấy theo bảng màu tham khảo nhưng đậm hơn một chút để chữ trắng đọc rõ.
+// Màu thẻ của từng người trong nhà: tông trầm như ảnh phim cũ, đủ đậm để chữ trắng cỡ lớn đọc rõ.
 export const familyTones = [
-  '#A8775A', // đất nung
-  '#B9788D', // hồng phấn
-  '#5E8C78', // xanh lá xám
-  '#A38842', // vàng mù tạt
-  '#8A5DA6', // tím oải hương
-  '#A44A3B', // gạch cam
-  '#4F7A8C', // xanh mòng két
+  '#8A6F5C', // nâu gỗ
+  '#946F7B', // hồng tro
+  '#5F7D6C', // xanh lá xám
+  '#857551', // vàng rơm cũ
+  '#6F6584', // tím khói
+  '#8C5B4E', // đất nung
+  '#5A7380', // xanh đá
 ];
 
 /** Làm sáng (amount > 0) hoặc tối (amount < 0) một mã màu, dùng để tạo dải màu trong thẻ. */

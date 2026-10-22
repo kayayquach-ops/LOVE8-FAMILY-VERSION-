@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 600 450">
+  <g fill="none" stroke="#2B2824" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <!-- cửa sổ phòng trọ, ngoài trời đêm -->
+    <rect x="300" y="60" width="200" height="170" rx="6"/>
+    <line x1="400" y1="60" x2="400" y2="230"/>
+    <line x1="300" y1="145" x2="500" y2="145"/>
+    <circle cx="455" cy="100" r="16" fill="#F1E3C8" stroke="#2B2824"/>
+    <path d="M318 205 l14 -18 l12 12 l18 -26 l22 32" />
+    <!-- bàn học -->
+    <line x1="90" y1="300" x2="540" y2="300"/>
+    <line x1="120" y1="300" x2="120" y2="400"/>
+    <line x1="510" y1="300" x2="510" y2="400"/>
+    <!-- đèn bàn -->
+    <path d="M170 300 l0 -70 l40 -40" />
+    <path d="M196 176 l40 14 l-18 30 z" fill="#2B2824"/>
+    <path d="M236 200 C 270 230, 300 260, 320 298" stroke="#E2B978" stroke-width="1.6" stroke-dasharray="3 7"/>
+    <!-- sách và cốc mì -->
+    <rect x="250" y="270" width="90" height="30" rx="3"/>
+    <line x1="250" y1="284" x2="340" y2="284"/>
+    <path d="M380 270 l50 0 l-6 30 l-38 0 z"/>
+    <path d="M392 262 c4 -8 -4 -12 0 -20 M406 262 c4 -8 -4 -12 0 -20" stroke-width="1.6"/>
+    <!-- điện thoại, tin nhắn chưa gửi -->
+    <rect x="455" y="276" width="34" height="24" rx="4" transform="rotate(-8 472 288)"/>
+  </g>
+  <rect x="300" y="60" width="200" height="170" rx="6" fill="#1F2A3A" opacity="0.06"/>
+  <ellipse cx="300" cy="300" rx="120" ry="18" fill="#F1E3C8" opacity="0.55"/>
+</svg>

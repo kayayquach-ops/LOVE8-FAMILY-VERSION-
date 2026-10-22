@@ -11,7 +11,7 @@ import { Avatar, Button, FadeIn, GradientRing, memberTone, PhotoTile, T, Tap, Wa
 
 /**
  * Viên thuốc phát giọng nói, có nút phát và sóng âm chạy theo.
- * Bản demo mô phỏng việc phát vì dữ liệu mẫu chưa có file ghi âm; bản thật dùng useAudioPlayer của expo-audio.
+ * Hiện mô phỏng việc phát; khi có file ghi âm thật sẽ dùng useAudioPlayer của expo-audio.
  */
 export function VoicePill({
   sec, autoPlay, onEnd, onLight, label = 'Nghe',
@@ -106,9 +106,6 @@ export function MorningVoice() {
           onPress={() => { close(); router.push({ pathname: '/chat', params: { voice: '1', to: msg.authorId } }); }} />
         <Button label="Để sau" variant="ghost" onPress={close} />
       </View>
-      <T variant="caption" weight="regular" color={colors.muted} center style={{ marginTop: 12 }}>
-        Mở app là tự phát. Trên điện thoại thật, đúng giờ hẹn máy sẽ báo bằng chính giọng này.
-      </T>
     </View>
   );
 }

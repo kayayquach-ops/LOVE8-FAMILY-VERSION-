@@ -10,16 +10,14 @@ import {
   Avatar, AvatarStack, Button, Chip, GradientButton, HeaderBlock, IconButton, LogoMark, memberTone, PhotoTile, T, Tap,
 } from '@/components/ui';
 import type { FamilyMessage } from '@/data/types';
-import { clock, dayLabel, inDaysLabel, localTimeFor, morningAt } from '@/lib/format';
-import { callName, isScheduled, member, others, shownAt, upcoming, visibleMessages } from '@/lib/selectors';
+import { clock, dayLabel, localTimeFor, morningAt } from '@/lib/format';
+import { callName, isScheduled, member, others, shownAt, visibleMessages } from '@/lib/selectors';
 import { onlineNow } from '@/services/ai';
 import { useApp } from '@/store/AppContext';
 import { colors, fonts, radius } from '@/theme';
 
 /** Lời chào buổi sáng dài tối đa 30 giây: iPhone chỉ cho âm báo dài chừng đó. */
 const MORNING_MAX_SEC = 30;
-
-const COUNTRY = { VN: 'Việt Nam', KR: 'Hàn Quốc', JP: 'Nhật Bản', TW: 'Đài Loan', US: 'Mỹ', OTHER: 'nơi đó' } as const;
 
 // Chat chung của cả nhà. Thư tuần và video của Homeletter cũng gửi vào đây.
 // Ghi âm xong có thể gửi ngay, hoặc hẹn 7 giờ sáng mai theo giờ người nhận: họ mở app là nghe.
@@ -43,7 +41,6 @@ export default function Chat() {
 
   const messages = visibleMessages(state);
   const online = onlineNow(state);
-  const next = upcoming(state).find((u) => u.inDays <= 30 && u.event.kind !== 'holiday') ?? upcoming(state)[0];
   const target = to ? member(state, to) : undefined;
   const morning = target ? morningAt(target.country, 'next') : undefined;
 
@@ -71,23 +68,14 @@ export default function Chat() {
         <View style={styles.header}>
           <AvatarStack people={state.family.members} max={3} size={40} borderColor={colors.deep} />
           <View style={{ flex: 1 }}>
-            <T variant="h2">{state.family.name}</T>
+            <T variant="h2" color={colors.white}>{state.family.name}</T>
             <View style={styles.rowSmall}>
               <View style={styles.online} />
-              <T variant="small" color={colors.inkSoft}>{online.length} đang online</T>
+              <T variant="small" color="rgba(255,255,255,0.8)">{online.length} đang online</T>
             </View>
           </View>
           <IconButton icon="videocam" size={48} light label="Gọi video cả nhà" onPress={() => router.push('/room')} />
         </View>
-        {next && (
-          <Tap onPress={() => router.push('/calendar')} label="Mở lịch" scaleTo={0.98}>
-            <View style={styles.next}>
-              <Ionicons name="calendar-outline" size={16} color={colors.lunar} />
-              <T variant="small" weight="medium" style={{ flex: 1 }} numberOfLines={1}>{next.event.title}</T>
-              <T variant="small" weight="semibold" color={colors.accentText}>{inDaysLabel(next.inDays)}</T>
-            </View>
-          </Tap>
-        )}
       </HeaderBlock>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -109,7 +97,7 @@ export default function Chat() {
           {mode === 'record' && (
             <View style={styles.panel}>
               {target && <T variant="small" weight="semibold" center>Ghi âm gửi {callName(target)}</T>}
-              <VoiceRecorder size={64} hint={`Nói tự nhiên thôi. Muốn hẹn gửi sáng mai thì dưới ${MORNING_MAX_SEC} giây.`}
+              <VoiceRecorder size={64}
                 onDone={({ seconds }) => { setDraftSec(seconds); setMode('draft'); }} />
               <Button label="Huỷ" variant="ghost" onPress={() => setMode('type')} />
             </View>
@@ -125,13 +113,9 @@ export default function Chat() {
               {target && morning && draftSec <= MORNING_MAX_SEC ? (
                 <Button label={`Hẹn ${localTimeFor(target.country, morning)} sáng mai`} icon="sunny" onPress={() => sendVoice(true)} />
               ) : null}
-              <T variant="caption" weight="regular" color={colors.muted}>
-                {!target
-                  ? 'Chọn một người để hẹn gửi lời chào buổi sáng.'
-                  : draftSec > MORNING_MAX_SEC
-                    ? `Lời chào buổi sáng tối đa ${MORNING_MAX_SEC} giây. Đoạn này vẫn gửi ngay được.`
-                    : `7 giờ sáng giờ ${COUNTRY[target.country]}: ${callName(target)} mở máy là nghe ngay.`}
-              </T>
+              {target && draftSec > MORNING_MAX_SEC && (
+                <T variant="caption" weight="regular" color={colors.muted}>Dài quá {MORNING_MAX_SEC} giây, chỉ gửi ngay được.</T>
+              )}
               <Button label="Gửi ngay" icon="paper-plane" variant="dark" onPress={() => sendVoice(false)} />
               <Button label="Ghi lại" variant="ghost" onPress={() => setMode('record')} />
             </View>
@@ -167,7 +151,7 @@ function Message({ m }: { m: FamilyMessage }) {
         <View style={styles.rowSmall}>
           <LogoMark size={26} />
           <T variant="small" weight="semibold">Homeletter</T>
-          <T variant="caption" weight="regular" color={colors.muted}>{letter ? 'gửi thư tuần' : 'làm video từ kho nhà mình'}, {clock(m.createdAt)}</T>
+          <T variant="caption" weight="regular" color={colors.muted}>{letter ? 'gửi thư tuần' : 'làm video'}, {clock(m.createdAt)}</T>
         </View>
         {letter && <LetterCard letter={letter} compact />}
         {film && <FilmCard film={film} />}
@@ -181,13 +165,13 @@ function Message({ m }: { m: FamilyMessage }) {
   const post = m.postId ? state.posts.find((p) => p.id === m.postId) : undefined;
   const letter = m.replyToLetterId ? state.letters.find((l) => l.id === m.replyToLetterId) : undefined;
   const toNames = m.to?.map((id) => (id === state.meId ? 'bạn' : callName(member(state, id)))).join(', ');
-  const fg = mine ? colors.black : colors.ink;
+  const fg = colors.ink;
 
   const labels: Array<{ icon: 'sunny' | 'time-outline' | 'lock-closed' | 'mail-open-outline'; text: string }> = [];
   if (scheduled && m.deliverAt) {
     const r = member(state, m.to?.[0] ?? '');
-    labels.push({ icon: 'time-outline', text: `Hẹn ${r ? localTimeFor(r.country, new Date(m.deliverAt)) : clock(m.deliverAt)} sáng mai: ${toNames} mở máy là nghe` });
-  } else if (m.deliverAt) labels.push({ icon: 'sunny', text: `Lời chào buổi sáng gửi ${toNames}` });
+    labels.push({ icon: 'time-outline', text: `Hẹn ${r ? localTimeFor(r.country, new Date(m.deliverAt)) : clock(m.deliverAt)} sáng mai` });
+  } else if (m.deliverAt) labels.push({ icon: 'sunny', text: `Lời chào buổi sáng, gửi ${toNames}` });
   else if (m.to) labels.push({ icon: 'lock-closed', text: `Gửi riêng ${toNames}` });
   if (letter) labels.push({ icon: 'mail-open-outline', text: `Trả lời thư “${letter.title}”` });
 
@@ -196,7 +180,7 @@ function Message({ m }: { m: FamilyMessage }) {
       {!mine && <Avatar name={author?.name ?? '?'} uri={author?.avatarUri} size={34} />}
       <View style={{ maxWidth: '82%', gap: 6, alignItems: mine ? 'flex-end' : 'flex-start' }}>
         {!mine && <T variant="small" weight="semibold" color={colors.inkSoft}>{author?.roleLabel}</T>}
-        {labels.map((l) => (
+        {labels.slice(0, 1).map((l) => (
           <View key={l.text} style={styles.rowSmall}>
             <Ionicons name={l.icon} size={14} color={colors.accentText} />
             <T variant="caption" weight="medium" color={colors.accentText} style={{ flexShrink: 1 }}>{l.text}</T>
@@ -239,12 +223,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16 },
   rowSmall: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   online: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.online },
-  next: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 14, paddingHorizontal: 14, height: 40,
-    borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.3)',
-  },
   bubble: { borderRadius: 22, paddingHorizontal: 16, paddingVertical: 11 },
-  mine: { backgroundColor: colors.white, borderTopRightRadius: 6 },
+  mine: { backgroundColor: colors.primarySoft, borderTopRightRadius: 6 },
   theirs: { backgroundColor: colors.tone, borderTopLeftRadius: 6 },
   quote: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.tone, borderRadius: 16, padding: 6, paddingRight: 12, width: 250 },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 16, paddingTop: 8 },

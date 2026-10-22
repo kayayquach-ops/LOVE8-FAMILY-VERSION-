@@ -11,6 +11,7 @@ import { colors, radius } from '@/theme';
 export default function Quiz() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { state } = useApp();
+  const parent = state.settings.parentMode;
   const target = member(state, id ?? '');
   const items = lettersFrom(state, id ?? '').flatMap((l) => (l.quiz ?? []).map((q) => ({ ...q, letter: l })));
   const [i, setI] = useState(0);
@@ -25,9 +26,9 @@ export default function Quiz() {
         <BackHeader title="Đố vui" />
         <FadeIn style={{ alignItems: 'center', gap: 14, marginTop: 40 }}>
           <Avatar name={target.name} uri={target.avatarUri} size={96} />
-          <T variant="display" center>Bạn đúng {score}/{items.length}</T>
+          <T variant="display" center>{parent ? 'Xong rồi' : `Bạn đúng ${score}/${items.length}`}</T>
           <T variant="body" color={colors.inkSoft} center>
-            {score === items.length ? `Bạn hiểu ${name} lắm đấy.` : `Câu nào sai là một chuyện mới để hỏi ${name}.`}
+            {parent ? `Gọi ${name} một cuộc nhé.` : score === items.length ? `Bạn hiểu ${name} lắm đấy.` : `Câu nào sai là một chuyện mới để hỏi ${name}.`}
           </T>
         </FadeIn>
         <View style={{ gap: 10, marginTop: 32 }}>
@@ -54,8 +55,8 @@ export default function Quiz() {
               <Tap key={o} disabled={answered} label={o} scaleTo={0.97}
                 onPress={() => { setPicked(k); if (k === q.answer) setScore(score + 1); }}>
                 <View style={[styles.option, right && { backgroundColor: colors.green }, wrong && { backgroundColor: colors.primaryDark }]}>
-                  <T variant="h3" color={right ? colors.black : colors.ink} style={{ flex: 1 }}>{o}</T>
-                  {right && <Ionicons name="checkmark-circle" size={24} color={colors.black} />}
+                  <T variant="h3" color={right ? colors.white : colors.ink} style={{ flex: 1 }}>{o}</T>
+                  {right && <Ionicons name="checkmark-circle" size={24} color={colors.white} />}
                   {wrong && <Ionicons name="close-circle" size={24} color={colors.white} />}
                 </View>
               </Tap>

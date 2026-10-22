@@ -112,7 +112,7 @@ export function MealTable() {
                 <Tap onPress={() => router.push({ pathname: '/capture', params: { kind: 'meal' } })} label="Chụp bữa cơm của bạn" scaleTo={0.95}>
                   <GradientRing width={2} style={{ borderRadius: 22 }}>
                     <View style={[styles.plate, styles.mine]}>
-                      <Ionicons name="camera" size={30} color={colors.white} />
+                      <Ionicons name="camera" size={30} color={colors.ink} />
                       <T variant="small" weight="semibold" center>Chụp bữa của bạn</T>
                     </View>
                   </GradientRing>

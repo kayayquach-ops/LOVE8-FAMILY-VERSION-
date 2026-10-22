@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Pressable, StyleSheet, Switch, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { EventRow } from '@/components/Feed';
 import { Ionicons } from '@/components/Icon';
 import { Avatar, Button, FadeIn, IconButton, PhotoTile, Screen, SectionHeader, T, Tap } from '@/components/ui';
@@ -16,11 +16,11 @@ const WEEK = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 
 // Tab Lịch: ngày âm và ngày lễ, sinh nhật, ngày cưới, cột mốc của từng người, và dòng đời của cả nhà.
 export default function CalendarTab() {
-  const { state, dispatch } = useApp();
+  const { state } = useApp();
   const today = new Date();
   const [cursor, setCursor] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selected, setSelected] = useState(today);
-  const [allHolidays, setAllHolidays] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   const cells = useMemo(() => {
     const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
@@ -47,8 +47,7 @@ export default function CalendarTab() {
 
   const sl = lunarOf(selected);
   const selectedEvents = eventDays.get(selected.toDateString()) ?? [];
-  const soon = upcoming(state).slice(0, 5);
-  const holidays = upcoming(state).filter((u) => u.event.kind === 'holiday');
+  const coming = upcoming(state);
   const life = timeline(state);
   const firstLunar = lunarOf(cells.find(Boolean) as Date);
   const until = daysBetween(today, selected);
@@ -124,7 +123,22 @@ export default function CalendarTab() {
       </FadeIn>
 
       <SectionHeader title="Sắp tới" action="Thêm ngày" onAction={() => router.push('/event-new')} />
-      {soon.map((e) => <EventRow key={e.event.id} item={e} />)}
+      {(showAll ? coming : coming.slice(0, 6)).map((e) => {
+        const k = e.event.kind;
+        const wish = e.inDays <= 14 && (k === 'birthday' || k === 'anniversary' || k === 'gio') && e.event.memberId !== state.meId;
+        return (
+          <View key={e.event.id}>
+            <EventRow item={e} />
+            {wish && (
+              <Button label={k === 'gio' ? 'Gọi về' : 'Gửi lời chúc'} icon={k === 'gio' ? 'call' : 'mic'} variant="soft" style={{ marginBottom: 8 }}
+                onPress={() => router.push(e.event.memberId ? { pathname: '/chat', params: { voice: '1', to: e.event.memberId } } : '/chat')} />
+            )}
+          </View>
+        );
+      })}
+      {coming.length > 6 && (
+        <Button label={showAll ? 'Thu gọn' : 'Xem hết'} variant="ghost" onPress={() => setShowAll(!showAll)} style={{ marginTop: 8 }} />
+      )}
 
       <SectionHeader title="Dòng đời nhà mình" />
       <View style={{ gap: 0 }}>
@@ -153,27 +167,6 @@ export default function CalendarTab() {
         ))}
       </View>
       <Button label="Thêm cột mốc" icon="add" variant="ghost" onPress={() => router.push({ pathname: '/event-new', params: { kind: 'milestone' } })} style={{ marginTop: 12 }} />
-
-      <SectionHeader title="Ngày lễ trong năm" />
-      <View style={styles.toggle}>
-        <T variant="body" weight="medium" style={{ flex: 1 }}>Hiện ngày lễ trên lịch</T>
-        <Switch value={state.settings.holidays} onValueChange={(v) => dispatch({ type: 'updateSettings', patch: { holidays: v } })}
-          trackColor={{ true: colors.ink, false: colors.toneDeep }} thumbColor={colors.white} accessibilityLabel="Hiện ngày lễ trên lịch"
-          {...({ activeThumbColor: colors.white } as object)} />
-      </View>
-      {state.settings.holidays && (
-        <>
-          {(allHolidays ? holidays : holidays.slice(0, 4)).map((e) => (
-            <View key={e.event.id}>
-              <EventRow item={e} />
-              {e.event.idea && <T variant="small" color={colors.muted} style={{ marginLeft: 68, marginTop: -4, marginBottom: 6 }}>{e.event.idea}</T>}
-            </View>
-          ))}
-          {holidays.length > 4 && (
-            <Button label={allHolidays ? 'Thu gọn' : `Xem cả ${holidays.length} ngày lễ`} variant="ghost" onPress={() => setAllHolidays(!allHolidays)} style={{ marginTop: 8 }} />
-          )}
-        </>
-      )}
     </Screen>
   );
 }
@@ -193,5 +186,4 @@ const styles = StyleSheet.create({
   lifeTrack: { width: 14, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
   lifeLine: { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: colors.line },
   lifeDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.lunar, borderWidth: 2, borderColor: colors.bg },
-  toggle: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 52 },
 });

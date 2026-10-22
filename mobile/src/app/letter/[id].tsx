@@ -4,16 +4,9 @@ import { Ionicons } from '@/components/Icon';
 import { FACTS } from '@/components/Understand';
 import { VoicePill } from '@/components/Voice';
 import { Avatar, BackHeader, Button, Empty, FadeIn, memberTone, PhotoTile, Screen, SectionHeader, T, Tap } from '@/components/ui';
-import { duration, relativeTime } from '@/lib/format';
 import { callName, member } from '@/lib/selectors';
 import { useApp } from '@/store/AppContext';
 import { colors, radius } from '@/theme';
-
-const SHARED = {
-  clip: 'đồng ý gửi đoạn giọng nói và bản tóm tắt này',
-  summary: 'đồng ý gửi bản tóm tắt và đoạn giọng nói ngắn này',
-  softened: 'nhờ Homeletter nói khéo lại trước khi gửi',
-} as const;
 
 // Homeletter tuần này: đoạn giọng thật hay nhất, tóm tắt, điều mới hiểu, và một việc nên làm cùng nhau.
 export default function LetterScreen() {
@@ -42,7 +35,6 @@ export default function LetterScreen() {
               <Avatar name={speaker?.name ?? '?'} uri={speaker?.avatarUri} size={48} />
               <View style={{ flex: 1 }}>
                 <T variant="body" weight="semibold" color={colors.white}>{mine ? 'Bạn kể' : `${Name} kể`}</T>
-                <T variant="caption" weight="regular" color="rgba(255,255,255,0.88)">Cuộc gọi {duration(letter.callSec)}, {relativeTime(letter.createdAt)}</T>
               </View>
             </View>
             <T variant="display" color={colors.white} style={{ fontSize: 34, lineHeight: 38 }}>{letter.title}</T>
@@ -52,6 +44,14 @@ export default function LetterScreen() {
           </View>
         </PhotoTile>
       </FadeIn>
+
+      {!mine && (
+        <View style={{ gap: 10, marginTop: 14 }}>
+          <Button label={`Trả lời ${name} bằng giọng nói`} icon="mic" variant="dark"
+            onPress={() => router.push({ pathname: '/chat', params: { voice: '1', to: letter.speakerId, reply: letter.id } })} />
+          <Button label={`Gọi video ${name}`} icon="videocam" variant="ghost" onPress={() => router.push({ pathname: '/room', params: { with: letter.speakerId } })} />
+        </View>
+      )}
 
       <T variant="body" color={colors.inkSoft} style={{ marginTop: 20, fontSize: 17, lineHeight: 27 }}>{letter.summary}</T>
 
@@ -68,22 +68,6 @@ export default function LetterScreen() {
         ))}
       </View>
 
-      {!mine && letter.suggestion && (
-        <View style={[styles.card, { marginTop: 12, backgroundColor: colors.primarySoft }]}>
-          <T variant="small" weight="semibold" color={colors.accentText}>Gợi ý cho bạn</T>
-          <T variant="h3">{letter.suggestion}</T>
-        </View>
-      )}
-
-      {!mine && (
-        <View style={{ gap: 10, marginTop: 16 }}>
-          <Button label={`Trả lời ${name} bằng giọng nói`} icon="mic" variant="dark"
-            onPress={() => router.push({ pathname: '/chat', params: { voice: '1', to: letter.speakerId, reply: letter.id } })} />
-          <Button label={`Gọi video ${name}`} icon="videocam" variant="ghost" onPress={() => router.push({ pathname: '/room', params: { with: letter.speakerId } })} />
-          <T variant="small" color={colors.muted} center>{Name} sẽ nghe được lời trả lời của bạn. Biết có người nghe, lần sau sẽ kể nhiều hơn.</T>
-        </View>
-      )}
-
       {!mine && letter.quiz?.length ? (
         <Tap onPress={() => router.push(`/quiz/${letter.speakerId}`)} label="Chơi đố vui" scaleTo={0.98} style={{ marginTop: 16 }}>
           <View style={[styles.card, styles.row]}>
@@ -94,16 +78,10 @@ export default function LetterScreen() {
         </Tap>
       ) : null}
 
-      {letter.storyId && (
+      {letter.storyId && state.stories.some((st) => st.id === letter.storyId) && (
         <Button label="Đọc cả câu chuyện" icon="book-outline" variant="ghost" style={{ marginTop: 12 }} onPress={() => router.push(`/story/${letter.storyId}`)} />
       )}
 
-      <View style={[styles.row, { marginTop: 24, alignItems: 'flex-start' }]}>
-        <Ionicons name="shield-checkmark-outline" size={18} color={colors.muted} />
-        <T variant="small" color={colors.muted} style={{ flex: 1 }}>
-          {mine ? 'Bạn' : Name} đã {SHARED[letter.shared]}. Phần muốn giữ riêng không có ở đây.
-        </T>
-      </View>
       {mine && <Button label="Xoá đoạn này" icon="trash-outline" variant="ghost" style={{ marginTop: 16 }} onPress={remove} />}
     </Screen>
   );

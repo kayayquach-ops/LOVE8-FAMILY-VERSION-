@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@/components/Icon';
@@ -11,6 +11,8 @@ import { aiAddress, callName, isElder, me, member } from '@/lib/selectors';
 import { onlineNow, planCall } from '@/services/ai';
 import { useApp } from '@/store/AppContext';
 import { colors, radius } from '@/theme';
+
+const DAY_LABEL = { sun: 'tối Chủ nhật', sat: 'tối Thứ Bảy', wed: 'tối Thứ Tư' } as const;
 
 type Phase = 'ringing' | 'opener' | 'talking' | 'consent' | 'handoff' | 'done';
 
@@ -29,6 +31,7 @@ export default function Call() {
   const [sec, setSec] = useState(0);
   const [qi, setQi] = useState(0);
   const [shared, setShared] = useState('');
+  const finished = useRef(false);
 
   useEffect(() => {
     if (phase === 'ringing') {
@@ -41,6 +44,8 @@ export default function Call() {
   }, [phase]);
 
   function finishTalk() {
+    if (finished.current) return;
+    finished.current = true;
     dispatch({ type: 'askedAll', toId: state.meId });
     setPhase('consent');
   }
@@ -54,8 +59,8 @@ export default function Call() {
   const header = (
     <View style={{ alignItems: 'center', gap: 8, marginTop: 36 }}>
       <View style={styles.mark}><LogoMark size={64} /></View>
-      <T variant="display" color={colors.white}>Homeletter</T>
-      <T variant="body" color="rgba(255,255,255,0.8)" center>
+      <T variant="display">Homeletter</T>
+      <T variant="body" color={colors.muted} center>
         {phase === 'ringing' ? `Trợ lý AI của ${state.family.name.toLowerCase()} đang gọi` : `Đang nói chuyện, ${duration(sec)}`}
       </T>
     </View>
@@ -73,7 +78,7 @@ export default function Call() {
     return (
       <SafeAreaView style={[styles.wrap, { padding: 20 }]}>
         <FadeIn style={{ marginTop: 24, gap: 12 }}>
-          <T variant="display" color={colors.white}>{elder ? `Homeletter gửi các con nhé, ${aiAddress(self)}?` : 'Bạn muốn chia sẻ thế nào?'}</T>
+          <T variant="display">{elder ? `Homeletter gửi các con nhé, ${aiAddress(self)}?` : 'Bạn muốn chia sẻ thế nào?'}</T>
           <T variant="body" color={colors.inkSoft}>
             {elder
               ? 'Homeletter vừa đọc lại tóm tắt. Chỉ cần nói "ừ" là gửi, hoặc bấm nút dưới đây.'
@@ -102,7 +107,7 @@ export default function Call() {
             <Avatar name={partner.name} uri={partner.avatarUri} size={112} />
             <View style={styles.onlineDot} />
           </View>
-          <T variant="display" color={colors.white} center>{partner.roleLabel} đang online</T>
+          <T variant="display" center>{partner.roleLabel} đang online</T>
           <T variant="body" color={colors.inkSoft} center>Nói chuyện với {callName(partner)} luôn nhé? Homeletter nối máy, rồi để hai người nói với nhau.</T>
         </FadeIn>
         <Button label={`Nối máy với ${callName(partner)}`} icon="call" variant="dark" style={{ marginTop: 16 }}
@@ -115,13 +120,20 @@ export default function Call() {
   if (phase === 'done') {
     return (
       <SafeAreaView style={[styles.wrap, { justifyContent: 'center', padding: 28, gap: 16 }]}>
-        <View style={styles.doneIcon}><Ionicons name="checkmark" size={40} color={colors.black} /></View>
-        <T variant="h1" color={colors.white} center>Cảm ơn {elder ? aiAddress(self) : 'bạn'}</T>
+        <View style={styles.doneIcon}><Ionicons name="checkmark" size={40} color={colors.white} /></View>
+        <T variant="h1" center>Cảm ơn {elder ? aiAddress(self) : 'bạn'}</T>
         <T variant="body" color={colors.inkSoft} center>
           {shared === 'keep'
             ? 'Homeletter giữ riêng cuộc trò chuyện này. Không ai khác nghe được.'
-            : `Homeletter tuần này sẽ tới ${elder ? 'các con' : 'bố mẹ'} vào tối Chủ nhật. Bạn xem lại được trong mục "Những gì bạn đã kể".`}
+            : `Homeletter tuần này sẽ tới ${elder ? 'các con' : 'bố mẹ'} vào ${DAY_LABEL[state.settings.aiCallDay]}. Bạn xem lại được trong mục "Những gì bạn đã kể".`}
         </T>
+        {!partner && (
+          <>
+            <T variant="body" weight="medium" center>Giờ chưa có ai online. Gửi một lời nhắn nhé?</T>
+            <Button label="Gửi lời nhắn bằng giọng" icon="mic" variant="dark"
+              onPress={() => router.replace({ pathname: '/chat', params: { voice: '1' } })} />
+          </>
+        )}
         <Button label="Xong" onPress={() => router.back()} style={{ marginTop: 20, alignSelf: 'stretch' }} />
       </SafeAreaView>
     );
@@ -138,7 +150,7 @@ export default function Call() {
             <T variant="small" color={colors.inkSoft} style={{ flex: 1 }}>Lời mở đầu, giọng thật của {callName(openerBy)}</T>
           </View>
           <VoicePill sec={6} autoPlay onEnd={() => setPhase('talking')} />
-          <T variant="h3" weight="regular" color={colors.white}>“{opener.text}”</T>
+          <T variant="h3" weight="regular">“{opener.text}”</T>
           <Next label="Nghe Homeletter nói" onPress={() => setPhase('talking')} />
         </FadeIn>
       )}
@@ -146,10 +158,10 @@ export default function Call() {
       {phase === 'talking' && step && (
         <FadeIn key={qi} style={styles.caption}>
           <T variant="small" color={colors.inkSoft}>
-            {step.kind === 'message' ? 'Homeletter chuyển lời' : 'Homeletter đang hỏi'}, {qi + 1}/{steps.length}
+            {step.kind === 'message' ? 'Homeletter chuyển lời' : 'Homeletter đang hỏi'}
           </T>
-          <T variant="h2" weight="regular" color={colors.white} style={{ fontSize: 22, lineHeight: 30 }}>{step.text}</T>
-          <View style={{ height: 30, marginTop: 6 }}><Waveform bars={34} color={colors.white} /></View>
+          <T variant="h2" weight="regular" style={{ fontSize: 22, lineHeight: 30 }}>{step.text}</T>
+          <View style={{ height: 30, marginTop: 6 }}><Waveform bars={34} color={colors.muted} /></View>
           <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
             <Next label={qi < steps.length - 1 ? 'Kể xong, tiếp' : 'Kết thúc'} onPress={() => (qi < steps.length - 1 ? setQi(qi + 1) : finishTalk())} />
             {step.kind !== 'message' && qi < steps.length - 1 && (
@@ -172,9 +184,11 @@ export default function Call() {
           <Round icon="call" bg={colors.endCall} label="Kết thúc" rotate onPress={finishTalk} />
         </View>
       )}
-      <T variant="caption" color="rgba(255,255,255,0.7)" center style={{ marginBottom: 16, paddingHorizontal: 24 }}>
-        Homeletter là trợ lý AI. Cuộc gọi được ghi âm để làm thư cho người nhà; bạn duyệt trước khi gửi đi.
-      </T>
+      {phase === 'ringing' && (
+        <T variant="caption" color={colors.muted} center style={{ marginBottom: 16, paddingHorizontal: 24 }}>
+          Homeletter là trợ lý AI. Chỉ gửi đi khi bạn đồng ý.
+        </T>
+      )}
     </SafeAreaView>
   );
 }
@@ -182,8 +196,8 @@ export default function Call() {
 function Next({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} accessibilityRole="button" style={styles.next}>
-      <T variant="small" weight="semibold" color={colors.black}>{label}</T>
-      <Ionicons name="chevron-forward" size={15} color={colors.black} />
+      <T variant="small" weight="semibold" color={colors.white}>{label}</T>
+      <Ionicons name="chevron-forward" size={15} color={colors.white} />
     </Pressable>
   );
 }
@@ -194,17 +208,17 @@ function Round({ icon, bg, label, onPress, rotate }: { icon: IconName; bg: strin
       <View style={[styles.round, { backgroundColor: bg }]}>
         <Ionicons name={icon} size={30} color={colors.white} style={rotate ? { transform: [{ rotate: '135deg' }] } : undefined} />
       </View>
-      <T variant="small" color={colors.white}>{label}</T>
+      <T variant="small">{label}</T>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: colors.bg },
-  mark: { width: 112, height: 112, borderRadius: 56, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  mark: { width: 112, height: 112, borderRadius: 56, backgroundColor: colors.tone, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   caption: { margin: 20, padding: 18, borderRadius: radius.lg, backgroundColor: colors.tone, gap: 12 },
   next: {
-    alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.white,
+    alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.ink,
     borderRadius: 999, paddingHorizontal: 16, minHeight: 44,
   },
   row: { flexDirection: 'row', justifyContent: 'space-evenly', marginBottom: 24 },
