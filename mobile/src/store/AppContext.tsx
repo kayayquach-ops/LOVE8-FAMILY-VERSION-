@@ -4,7 +4,9 @@ import { createSeedState } from '@/data/seed';
 import type { AppState, FamilyEvent, FamilyMessage, PostTag, Privacy, Question, Settings } from '@/data/types';
 
 // Đổi số phiên bản mỗi khi cấu trúc dữ liệu đổi hẳn, để bản lưu cũ không làm hỏng app.
-const STORAGE_KEY = 'homeletter-state-v2';
+const STORAGE_KEY = 'homeletter-state-v3';
+// Bản web: mở link có ?reset là xoá dữ liệu đã lưu và chạy lại từ màn chào.
+const RESET = typeof window !== 'undefined' && !!window.location?.search?.includes('reset');
 
 export const newId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 const now = () => new Date().toISOString();
@@ -176,7 +178,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [, force] = useReducer((x: number) => x + 1, 0);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
+    (RESET ? AsyncStorage.removeItem(STORAGE_KEY).then(() => null) : AsyncStorage.getItem(STORAGE_KEY))
       .then((raw) => {
         if (!raw) return;
         // Trộn với dữ liệu mặc định để bản lưu cũ vẫn chạy khi app thêm trường mới.
