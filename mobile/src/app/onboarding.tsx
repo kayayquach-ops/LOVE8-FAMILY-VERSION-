@@ -151,21 +151,17 @@ export default function Onboarding() {
 
       {step === 'q1' && (
         <Ask key="q1" title={parent ? `Hồi bé, ${child} thích ăn món gì nhất?` : 'Món gì ở nhà mà bạn nhớ nhất?'}
-          echo={answers.food ? (parent ? 'Món ấy, chắc đến giờ con vẫn nhớ vị.' : `Lần tới gọi về, thử hỏi mẹ cách nấu ${answers.food.toLowerCase()} nhé.`) : undefined}
-          footer={answers.food ? <Button label="Tiếp" onPress={next} /> : undefined}>
-          {(parent ? ['Trứng rán', 'Canh rau ngót', 'Chè đỗ đen', 'Bánh mì buổi sáng'] : ['Canh chua', 'Cá kho', 'Bát cháo hành lúc ốm', 'Cơm rang buổi sáng']).map((k) => (
-            <Option key={k} label={k} on={answers.food === k} onPress={() => answer('food', k)} />
-          ))}
+          echo={(answers.food ?? '').trim().length > 1 ? (parent ? 'Món ấy, chắc đến giờ con vẫn nhớ vị.' : 'Lần tới gọi về, thử hỏi mẹ cách nấu món ấy nhé.') : undefined}
+          footer={<><Button label="Tiếp" disabled={!(answers.food ?? '').trim()} onPress={next} /><Skip onPress={next} /></>}>
+          <Write value={answers.food ?? ''} onChange={(v) => answer('food', v)} placeholder={parent ? 'Ví dụ: trứng rán mẹ làm' : 'Ví dụ: canh chua của mẹ'} />
         </Ask>
       )}
 
       {step === 'q2' && (
-        <Ask key="q2" title={parent ? `Điều ${self.toLowerCase()} muốn nói với ${child} mà chưa nói?` : 'Lần gần nhất bạn nói “con nhớ bố mẹ” là khi nào?'}
-          echo={answers.unsaid ? (parent ? 'Homeletter sẽ giữ câu ấy, chờ lúc hợp để con được nghe.' : 'Có những câu khó nói thành lời. Đôi khi một tấm ảnh nói thay được.') : undefined}
-          footer={answers.unsaid ? <Button label="Tiếp" onPress={next} /> : undefined}>
-          {(parent ? [`${self} tự hào về con`, 'Nhớ ăn uống cho đủ', 'Mệt thì cứ về nhà'] : ['Hôm qua', 'Lâu lắm rồi', 'Chưa bao giờ nói thành lời']).map((k) => (
-            <Option key={k} label={k} on={answers.unsaid === k} onPress={() => answer('unsaid', k)} />
-          ))}
+        <Ask key="q2" title={parent ? `Điều ${self.toLowerCase()} muốn nói với ${child} mà chưa nói?` : 'Có điều gì bạn muốn nói với bố mẹ mà chưa nói?'}
+          echo={(answers.unsaid ?? '').trim().length > 1 ? (parent ? 'Homeletter sẽ giữ câu ấy, chờ lúc hợp để con được nghe.' : 'Có những câu khó nói thành lời. Homeletter sẽ giữ giúp bạn.') : undefined}
+          footer={<><Button label="Tiếp" disabled={!(answers.unsaid ?? '').trim()} onPress={next} /><Skip onPress={next} /></>}>
+          <Write value={answers.unsaid ?? ''} onChange={(v) => answer('unsaid', v)} placeholder="Viết ở đây, chỉ mình bạn thấy" multiline />
         </Ask>
       )}
 
@@ -273,6 +269,13 @@ function Num({ value, onChange, placeholder, max }: { value: string; onChange: (
   );
 }
 
+function Write({ value, onChange, placeholder, multiline }: { value: string; onChange: (v: string) => void; placeholder: string; multiline?: boolean }) {
+  return (
+    <TextInput value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor={colors.placeholder} multiline={multiline}
+      maxLength={multiline ? 200 : 60} accessibilityLabel={placeholder} style={[styles.write, multiline && { minHeight: 120, textAlignVertical: 'top' }]} />
+  );
+}
+
 function Skip({ onPress }: { onPress: () => void }) {
   return (
     <Tap onPress={onPress} label="Để sau" scaleTo={0.95} style={{ alignSelf: 'center', marginTop: 6 }}>
@@ -294,6 +297,10 @@ const styles = StyleSheet.create({
   option: {
     alignSelf: 'center', width: '82%', maxWidth: 360, minHeight: 56, justifyContent: 'center', paddingHorizontal: 20,
     borderRadius: radius.pill, borderWidth: 1, borderColor: 'rgba(43,39,35,0.14)', backgroundColor: 'rgba(255,255,255,0.55)',
+  },
+  write: {
+    alignSelf: 'center', width: '86%', maxWidth: 380, minHeight: 56, borderRadius: radius.lg, borderWidth: 1, borderColor: 'rgba(43,39,35,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.6)', paddingHorizontal: 20, paddingVertical: 16, fontFamily: fonts.regular, fontSize: 17, lineHeight: 26, color: colors.ink, textAlign: 'center',
   },
   optionOn: { backgroundColor: '#2B2723', borderColor: '#2B2723' },
   optionText: { fontFamily: fonts.regular, fontSize: 18, lineHeight: 26 },
