@@ -123,7 +123,7 @@ export function Camera({ me, onOpen, onSent }: { me: Me; onOpen: (s: 'feed' | 'j
   const quiet = me.members.filter((m) => m.id !== me.me.id && hoursSince(m.lastSeen) > SILENT_HOURS);
 
   return (
-    <div className="screen"
+    <div className="screen with-tabs"
       onTouchStart={(e) => { touchY.current = e.touches[0].clientY; }}
       onTouchEnd={(e) => { if (!draft && !rec && touchY.current - e.changedTouches[0].clientY > 80) onOpen('feed'); }}>
       <div className="top">
@@ -195,18 +195,9 @@ export function Camera({ me, onOpen, onSent }: { me: Me; onOpen: (s: 'feed' | 'j
         </>
       )}
 
-      <div className="toolbar">
-        <button className="tool" onClick={() => onOpen('feed')}>
-          <Icon name="up" /> Tin nhà
-          {me.unseen > 0 && <span className="badge">{me.unseen}</span>}
-        </button>
-        <button className="tool" onClick={() => onOpen('calendar')}><Icon name="calendar" /> Lịch</button>
-        <button className="tool" onClick={() => onOpen('jar')}><Icon name="jar" /> Lọ thương</button>
-        <button className="tool" onClick={() => onOpen('family')}><Icon name="people" /> Gia đình</button>
-      </div>
-      <div className="muted" style={{ textAlign: 'center', fontSize: 12, marginTop: 4 }}>
-        {cityOf(me.me.city)?.name ?? ''}
-      </div>
+      <button className="news-pill" onClick={() => onOpen('feed')}>
+        <Icon name="up" size={16} /> Tin nhà{me.unseen > 0 ? ` · ${me.unseen} mới` : ''}
+      </button>
     </div>
   );
 }
