@@ -1,0 +1,9 @@
+{
+  "name": "Homeletter",
+  "short_name": "Homeletter",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F6EEE2",
+  "theme_color": "#F6EEE2",
+  "icons": [{ "src": "/icon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" }]
+}
