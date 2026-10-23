@@ -29,7 +29,7 @@ function dayLabel(iso: string) {
   return d.toLocaleDateString('vi-VN', { day: 'numeric', month: 'long', year: d.getFullYear() === n.getFullYear() ? undefined : 'numeric' });
 }
 
-export function Chat({ me, onClose, onCall }: { me: Me; onClose: () => void; onCall?: () => void }) {
+export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => void; onCall?: () => void; live?: boolean }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState('');
   const [tray, setTray] = useState(false);
@@ -147,7 +147,7 @@ export function Chat({ me, onClose, onCall }: { me: Me; onClose: () => void; onC
           <b>{me.family.name}</b>
           <div className="chat-faces">{me.members.map((m) => <Avatar key={m.id} m={m} size={20} />)}</div>
         </div>
-        {onCall && <button className="icon-btn" onClick={onCall} aria-label="Gọi video"><Icon name="phone" /></button>}
+        {onCall && <button className={`icon-btn ${live ? 'live' : ''}`} onClick={onCall} aria-label="Gọi video"><Icon name="video" /></button>}
       </header>
 
       <div className="chat-list" ref={list} onScroll={(e) => { const t = e.currentTarget; stick.current = t.scrollHeight - t.scrollTop - t.clientHeight < 80; }}>

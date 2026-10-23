@@ -13,6 +13,7 @@ import { chatRouter, chatStreamRouter, migrateChat } from './chat.ts';
 import { migrateRecap, recapRouter, startRecapScheduler } from './recap.ts';
 import { callRouter, migrateCall } from './call.ts';
 import { migratePodcast, podcastRouter } from './podcast.ts';
+import { liveRouter, liveStreamRouter } from './facetime.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -101,6 +102,7 @@ app.get('/api/family/:code', h(async (req, res) => {
 }));
 
 app.use('/api', chatStreamRouter);
+app.use('/api', liveStreamRouter);
 app.use('/api', auth as express.RequestHandler);
 app.use('/api', calendarRouter);
 app.use('/api', jarRouter);
@@ -109,6 +111,7 @@ app.use('/api', chatRouter);
 app.use('/api', recapRouter);
 app.use('/api', callRouter(upload));
 app.use('/api', podcastRouter);
+app.use('/api', liveRouter);
 
 app.get('/api/me', h(async (req, res) => {
   const m = req.member!;

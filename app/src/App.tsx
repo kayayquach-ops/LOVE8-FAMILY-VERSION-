@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, token } from './api';
 import { Camera } from './Camera';
 import { Feed } from './Feed';
@@ -13,6 +13,8 @@ import { Chat } from './Chat';
 import { Recap } from './Recap';
 import { Podcast } from './Podcast';
 import { Call, snoozed } from './Call';
+import { FaceTime, Incoming } from './FaceTime';
+import { connectLive, livePost, onLive, type LiveRoom } from './live';
 import { TabBar, type Tab } from './TabBar';
 import { Mesh, Toaster } from './ui';
 
@@ -28,6 +30,12 @@ export function App() {
   const [chatUnread, setChatUnread] = useState(0);
   const [podcastId, setPodcastId] = useState<string | null>(null);
   const [calling, setCalling] = useState(false);
+  // Gọi video cả nhà: phòng đang mở, mình có đang trong cuộc gọi không, cuộc nào mình đã từ chối hoặc vừa rời.
+  const [room, setRoom] = useState<LiveRoom>(null);
+  const [facetime, setFacetime] = useState(false);
+  const inCall = useRef(false);
+  inCall.current = facetime;
+  const [skipRoom, setSkipRoom] = useState<string | null>(null);
   const [hug, setHug] = useState(() => { try { return localStorage.getItem(HUG_KEY) !== today(); } catch { return false; } });
 
   const loadUnread = () => fetch('/api/chat/unread', { headers: { authorization: `Bearer ${token.get()}` } }).then((r) => r.json()).then((d) => setChatUnread(d.n ?? 0)).catch(() => {});
@@ -44,6 +52,16 @@ export function App() {
     const onShow = () => document.visibilityState === 'visible' && load();
     document.addEventListener('visibilitychange', onShow);
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', onShow); };
+  }, [!!me]);
+  useEffect(() => {
+    if (!me) return;
+    connectLive();
+    return onLive((m) => {
+      if (m.type !== 'hello' && m.type !== 'room') return;
+      // Tải lại trang giữa cuộc gọi thì máy chủ còn giữ mình trong phòng: rời hẳn để chuông reo lại đúng.
+      if (m.type === 'hello' && !inCall.current && m.room?.members.includes(me.me.id)) void livePost('leave').catch(() => {});
+      setRoom(m.room);
+    });
   }, [!!me]);
 
   const doneHug = () => { try { localStorage.setItem(HUG_KEY, today()); } catch {} setHug(false); };
@@ -63,10 +81,14 @@ export function App() {
       {sheet === 'feed' && <Feed me={me} onClose={() => { setSheet(null); void load(); }} />}
       {sheet === 'jar' && <Jar me={me} onClose={() => setSheet(null)} />}
       {sheet === 'calendar' && <Calendar me={me} onClose={() => setSheet(null)} onWish={() => setSheet('chat')} />}
-      {sheet === 'chat' && <Chat me={me} onClose={() => { setSheet(null); void loadUnread(); }} />}
+      {sheet === 'chat' && <Chat me={me} live={!!room} onClose={() => { setSheet(null); void loadUnread(); }} onCall={() => setFacetime(true)} />}
       {sheet === 'recap' && <Recap me={me} onClose={() => setSheet(null)} />}
       {sheet === 'family' && <Family me={me} onClose={() => setSheet(null)} onChanged={load} />}
       {sheet === 'podcast' && <Podcast me={me} start={podcastId} onClose={() => setSheet(null)} onCall={() => setCalling(true)} />}
+      {facetime && <FaceTime me={me} onClose={() => { setFacetime(false); setSkipRoom(room?.id ?? null); }} />}
+      {!facetime && !calling && room && !room.members.includes(me.me.id) && skipRoom !== room.id && (
+        <Incoming me={me} room={room} onAccept={() => setFacetime(true)} onDecline={() => setSkipRoom(room.id)} />
+      )}
       {calling && <Call me={me} onClose={(done) => { setCalling(false); if (done) { setPodcastId(null); setSheet('podcast'); } }} />}
     </>
   );

@@ -26,6 +26,9 @@ const PATHS: Record<string, ReactNode> = {
   video: <><rect x="3" y="6.5" width="12.5" height="11" rx="2.5" /><path d="M15.5 10.5l5-3v9l-5-3z" /></>,
   calendar: <><rect x="3.5" y="5" width="17" height="15" rx="3" /><path d="M3.5 10h17M8 3v4M16 3v4" /></>,
   trash: <><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" /></>,
+  micOff: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0014 0M12 18v3M4 4l16 16" /></>,
+  videoOff: <><rect x="3" y="6.5" width="12.5" height="11" rx="2.5" /><path d="M15.5 10.5l5-3v9l-5-3zM3 4l16 16" /></>,
+  booth: <><rect x="3.5" y="3.5" width="7" height="7" rx="2" /><rect x="13.5" y="3.5" width="7" height="7" rx="2" /><rect x="3.5" y="13.5" width="7" height="7" rx="2" /><rect x="13.5" y="13.5" width="7" height="7" rx="2" /></>,
 };
 
 export function Icon({ name, size }: { name: keyof typeof PATHS | string; size?: number }) {
