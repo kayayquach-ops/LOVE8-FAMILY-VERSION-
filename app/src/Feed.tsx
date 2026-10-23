@@ -64,6 +64,14 @@ export function Feed({ me, onClose }: { me: Me; onClose: () => void }) {
     void load();
   }
 
+  async function remove(p: Post) {
+    if (!confirm('Xoá tin này khỏi nhà? Cả nhà sẽ không thấy nữa.')) return;
+    try { await api.remove(p.id); } catch (e) { return toast((e as Error).message); }
+    setPosts((l) => l && l.filter((x) => x.id !== p.id));
+    toast('Đã xoá');
+    void load();
+  }
+
   return (
     <div className="sheet">
       <div className="top" style={{ padding: 'calc(var(--safe-top) + 10px) 16px 6px' }}>
@@ -95,6 +103,7 @@ export function Feed({ me, onClose }: { me: Me; onClose: () => void }) {
                   <b>{a?.id === me.me.id ? 'Bạn' : a?.name}</b>
                   <div><span>{ago(p.createdAt)}{t && a?.city ? ` · ${cityOf(a.city)?.name} ${t}` : ''}</span></div>
                 </div>
+                {p.authorId === me.me.id && <button className="link" style={{ marginLeft: 'auto', padding: '8px 4px' }} onClick={() => remove(p)}>Xoá</button>}
               </div>
               <PostCard p={p} active={current?.id === p.id} name={a?.name ?? ''} />
               <div className="reacts">

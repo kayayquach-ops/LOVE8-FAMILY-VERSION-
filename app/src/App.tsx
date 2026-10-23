@@ -62,7 +62,7 @@ export function App() {
       }} />}
       {sheet === 'feed' && <Feed me={me} onClose={() => { setSheet(null); void load(); }} />}
       {sheet === 'jar' && <Jar me={me} onClose={() => setSheet(null)} />}
-      {sheet === 'calendar' && <Calendar me={me} onClose={() => setSheet(null)} onWish={() => setSheet(null)} />}
+      {sheet === 'calendar' && <Calendar me={me} onClose={() => setSheet(null)} onWish={() => setSheet('chat')} />}
       {sheet === 'chat' && <Chat me={me} onClose={() => { setSheet(null); void loadUnread(); }} />}
       {sheet === 'recap' && <Recap me={me} onClose={() => setSheet(null)} />}
       {sheet === 'family' && <Family me={me} onClose={() => setSheet(null)} onChanged={load} />}
