@@ -20,6 +20,26 @@ export type Week = {
   recap: { photos: number; videos: number; voices: number; hugs: number; meals: Post[]; top?: Post | null };
 };
 
+// Cuộc gọi hằng tuần và podcast.
+export const TOPICS = {
+  'ngay-cuoi': 'Ngày cưới',
+  'tuoi-tho': 'Tuổi thơ',
+  'mon-an': 'Món ăn nhà mình',
+  'ky-niem': 'Kỷ niệm',
+  'cuoc-song': 'Cuộc sống bây giờ',
+  'loi-nhan': 'Lời nhắn',
+} as const;
+export type Topic = keyof typeof TOPICS;
+export const EVENT_HINTS = ['none', 'wedding', 'anniversary', 'birthday', 'memory'] as const;
+export type CallQuestion = { text: string; topic: Topic; photo: boolean; event: (typeof EVENT_HINTS)[number] };
+export type CallScript = { greeting: string; questions: CallQuestion[]; goodbye: string; source: 'ai' | 'template' };
+
+export type Chapter = { at: number; until: number; say: string; who?: string; question?: string; transcript?: string | null };
+export type Podcast = {
+  id: string; kind: 'person' | 'topic'; title: string; topic: string; memberId: string | null; duration: number;
+  cover: string | null; media: string | null; chapters: Chapter[]; status: 'rendering' | 'ready' | 'failed'; createdAt: string;
+};
+
 // Thành phố có sẵn: đủ để hiện giờ và thời tiết bên đó (Open-Meteo, không cần khoá).
 export const CITIES: Record<string, { name: string; lat: number; lon: number; tz: string }> = {
   hanoi: { name: 'Hà Nội', lat: 21.03, lon: 105.85, tz: 'Asia/Ho_Chi_Minh' },

@@ -11,6 +11,8 @@ import { jarRouter, migrateJar } from './jar.ts';
 import { homeRouter } from './home.ts';
 import { chatRouter, chatStreamRouter, migrateChat } from './chat.ts';
 import { migrateRecap, recapRouter, startRecapScheduler } from './recap.ts';
+import { callRouter, migrateCall } from './call.ts';
+import { migratePodcast, podcastRouter } from './podcast.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -105,6 +107,8 @@ app.use('/api', jarRouter);
 app.use('/api', homeRouter);
 app.use('/api', chatRouter);
 app.use('/api', recapRouter);
+app.use('/api', callRouter(upload));
+app.use('/api', podcastRouter);
 
 app.get('/api/me', h(async (req, res) => {
   const m = req.member!;
@@ -272,5 +276,7 @@ await migrateCalendar(pool);
 await migrateJar(pool);
 await migrateChat(pool);
 await migrateRecap(pool);
+await migrateCall(pool);
+await migratePodcast(pool);
 startRecapScheduler(pool);
 app.listen(port, () => console.log(`Homeletter chạy ở cổng ${port}`));

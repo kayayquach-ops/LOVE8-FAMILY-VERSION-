@@ -62,7 +62,7 @@ function wrap(text: string, max = 30) {
 
 // ---------- Chạy ffmpeg ----------
 
-function run(bin: string, args: string[], cwd: string, timeoutMs = 180_000): Promise<string> {
+export function run(bin: string, args: string[], cwd: string, timeoutMs = 180_000): Promise<string> {
   return new Promise((resolve, reject) => {
     const p = spawn(bin, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     let out = '', err = '';
@@ -78,7 +78,7 @@ function run(bin: string, args: string[], cwd: string, timeoutMs = 180_000): Pro
   });
 }
 
-async function probe(file: string, cwd: string) {
+export async function probe(file: string, cwd: string) {
   try {
     const out = await run(FFPROBE, ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', file], cwd, 30_000);
     const j = JSON.parse(out);
@@ -148,7 +148,7 @@ function writeMask(file: string) {
 const CHORDS = [[174.61, 220, 261.63, 329.63], [164.81, 196, 246.94, 293.66], [146.83, 174.61, 220, 261.63], [130.81, 196, 261.63, 293.66]];
 const pick = (idx: string, vals: number[]) => vals.map((v, i) => `eq(${idx},${i})*${v.toFixed(3)}`).join('+');
 
-function musicExpr(detune: number) {
+export function musicExpr(detune: number) {
   // Hai lớp pad lệch nhau 2 giây, mỗi lớp phồng lên rồi tắt hẳn ở biên cửa sổ: đổi hợp âm không bị lách cách, tổng âm lượng đều.
   const pad = (shift: number) => {
     const w = `floor((t+${shift})/4)`, tau = `(t+${shift}-4*${w})`, c = `mod(${w},4)`;

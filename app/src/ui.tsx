@@ -54,14 +54,17 @@ export function Avatar({ m, size = 40 }: { m?: Member | null; size?: number }) {
 /** Chữ hiện dần từng từ: mờ thành rõ, nổi nhẹ lên, kèm tiếng chuông lật trang. Hiện xong gọi onDone. */
 export function Typed({ text, onDone }: { text: string; onDone?: () => void }) {
   const words = text.split(' ');
+  const [done, setDone] = useState(false);
   useEffect(() => {
+    setDone(false);
     sfx('reveal');
-    const t = setTimeout(() => onDone?.(), 600 + words.length * 220 + 1200);
+    // Safari iOS đôi khi kẹt chữ ở trạng thái mờ, nên hết giờ thì ép về rõ hẳn.
+    const t = setTimeout(() => { setDone(true); onDone?.(); }, 600 + words.length * 220 + 1700);
     return () => clearTimeout(t);
   }, [text]);
   return (
     <span key={text}>
-      {words.map((w, i) => <span key={i} className="word" style={{ animationDelay: `${600 + i * 220}ms` }}>{w}{i < words.length - 1 ? ' ' : ''}</span>)}
+      {words.map((w, i) => <span key={i} className={done ? 'word done' : 'word'} style={{ animationDelay: `${600 + i * 220}ms` }}>{w}{i < words.length - 1 ? ' ' : ''}</span>)}
     </span>
   );
 }
