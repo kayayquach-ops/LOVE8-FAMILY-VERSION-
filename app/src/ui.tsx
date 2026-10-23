@@ -56,12 +56,12 @@ export function Typed({ text, onDone }: { text: string; onDone?: () => void }) {
   const words = text.split(' ');
   useEffect(() => {
     sfx('reveal');
-    const t = setTimeout(() => onDone?.(), 350 + words.length * 90 + 500);
+    const t = setTimeout(() => onDone?.(), 600 + words.length * 220 + 1200);
     return () => clearTimeout(t);
   }, [text]);
   return (
     <span key={text}>
-      {words.map((w, i) => <span key={i} className="word" style={{ animationDelay: `${150 + i * 90}ms` }}>{w}{i < words.length - 1 ? ' ' : ''}</span>)}
+      {words.map((w, i) => <span key={i} className="word" style={{ animationDelay: `${600 + i * 220}ms` }}>{w}{i < words.length - 1 ? ' ' : ''}</span>)}
     </span>
   );
 }

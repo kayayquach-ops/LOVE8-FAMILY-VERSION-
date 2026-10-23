@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, token } from './api';
 import { CityPicker } from './CityPicker';
 import type { Role } from './shared';
-import { buzz, sfx, tap } from './sound';
+import { buzz, sfx, startMusic, stopMusic, tap } from './sound';
 import { Icon, toast, Typed } from './ui';
 
 type Step = 'hello' | 'role' | 'kid' | 'name' | 'dob' | 'city' | 'seen' | 'hug' | 'food' | 'love' | 'unsaid' | 'story' | 'home' | 'code' | 'invite';
@@ -48,7 +48,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     setStep(step === 'code' ? 'home' : FLOW[Math.max(0, FLOW.indexOf(step) - 1)]);
   };
   // Chọn xong thì để lời đáp hiện một lúc rồi tự sang câu sau.
-  const choose = (k: string, v: string) => { if (a[k]) return; tap(); setA({ ...a, [k]: v }); setTimeout(next, 2300); };
+  const choose = (k: string, v: string) => { if (a[k]) return; tap(); setA({ ...a, [k]: v }); setTimeout(next, 4200); };
 
   async function finish(join: boolean) {
     setBusy(true);
@@ -58,6 +58,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       token.set(r.token);
       if (dobValid) await fetch('/api/me/dob', { method: 'PUT', headers: { 'content-type': 'application/json', authorization: `Bearer ${r.token}` }, body: JSON.stringify({ dob: dobIso }) }).catch(() => {});
       sfx('arrive');
+      stopMusic(4);
       if (join) return onDone();
       const me = await api.me();
       setMade({ code: me.family.code, family: me.family.name });
@@ -71,7 +72,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   if (step === 'hello') {
     return (
-      <button className="screen hello" onClick={() => { sfx('hello'); setStep('role'); }} aria-label="Xin chào, chạm để bắt đầu">
+      <button className="screen hello" onClick={() => { sfx('hello'); void startMusic(); setStep('role'); }} aria-label="Xin chào, chạm để bắt đầu">
         <div className="center"><Hello /></div>
         <div className="hello-hint">{inviteName ? `Bạn được mời vào ${inviteName}` : 'Chạm để bắt đầu'}</div>
       </button>
@@ -156,7 +157,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       {step === 'hug' && (
         <Ask key="hug" q={parent ? 'Nhớ con thì ôm một cái.' : 'Nhớ bố mẹ thì ôm một cái.'} sub="Giữ ngón tay vào vòng tròn"
           echo={a.hug && (parent ? 'Con sẽ biết là có người đang ôm mình từ xa.' : 'Ở nhà sẽ biết là bạn đang nhớ.')} {...T}>
-          <Hold onDone={() => { sfx('hug'); setA({ ...a, hug: 'yes' }); setTimeout(next, 2300); }} />
+          <Hold onDone={() => { sfx('hug'); setA({ ...a, hug: 'yes' }); setTimeout(next, 4200); }} />
         </Ask>
       )}
 
@@ -244,22 +245,16 @@ function Opt({ on, onClick, children }: { on: boolean; onClick: () => void; chil
 function Ask({ q, sub, echo, typed, onTyped, children, footer }: {
   q: string; sub?: string; echo?: string | false; typed: boolean; onTyped: () => void; children?: React.ReactNode; footer?: React.ReactNode;
 }) {
-  useEffect(() => {
-    if (!typed || !children) return;
-    const n = Array.isArray(children) ? children.length : 1;
-    const ts = Array.from({ length: n }, (_, i) => setTimeout(() => sfx('pop'), 120 + i * 110));
-    return () => ts.forEach(clearTimeout);
-  }, [typed]);
   const items = Array.isArray(children) ? children : children ? [children] : [];
   return (
     <>
       <div className="center">
         <h1 className="q"><Typed text={q} onDone={onTyped} /></h1>
-        {typed && sub && <p className="sub fade">{sub}</p>}
-        <div className="options">{typed && items.map((c, i) => <div key={i} className="fade" style={{ animationDelay: `${120 + i * 110}ms`, width: '100%', display: 'flex', justifyContent: 'center' }}>{c}</div>)}</div>
-        <div className="echo">{echo && <span className="fade" key={echo}>{echo}</span>}</div>
+        {typed && sub && <p className="sub slow-in">{sub}</p>}
+        <div className="options">{typed && items.map((c, i) => <div key={i} className="slow-in" style={{ animationDelay: `${500 + i * 380}ms`, width: '100%', display: 'flex', justifyContent: 'center' }}>{c}</div>)}</div>
+        <div className="echo">{echo && <span className="slow-in" key={echo} style={{ animationDelay: '300ms' }}>{echo}</span>}</div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', minHeight: 56 }}>{typed && footer}</div>
+      <div className="slow-in" key={String(typed)} style={{ display: 'flex', flexDirection: 'column', minHeight: 56, animationDelay: '900ms' }}>{typed && footer}</div>
     </>
   );
 }
