@@ -1,18 +1,32 @@
 import { useEffect, useState } from 'react';
 import { api, token } from './api';
-import { CITIES, type Role } from './shared';
-import { tap } from './sound';
+import { CityPicker } from './CityPicker';
+import type { Role } from './shared';
+import { buzz, sfx, tap } from './sound';
 import { Icon, toast, Typed } from './ui';
 
-type Step = 'hello' | 'role' | 'name' | 'city' | 'home' | 'code' | 'invite';
+type Step = 'hello' | 'role' | 'kid' | 'name' | 'city' | 'seen' | 'hug' | 'food' | 'love' | 'unsaid' | 'story' | 'home' | 'code' | 'invite';
+const FLOW: Step[] = ['hello', 'role', 'kid', 'name', 'city', 'seen', 'hug', 'food', 'love', 'unsaid', 'story', 'home'];
 
-// Vào app như một cuộc trò chuyện ngắn: bạn là ai, gọi bạn là gì, đang ở đâu, rồi vào nhà.
+// Chuyện vì sao có Homeletter, kể chậm từng trang.
+const STORY: Array<{ art: string; lines: [string, string] }> = [
+  { art: 'room', lines: ['Homeletter bắt đầu từ một căn phòng trọ nhỏ ở Hàn Quốc.', 'Một bạn du học sinh, ngày đi học, tối đi làm thêm. Về đến phòng thì ở nhà đã ngủ.'] },
+  { art: 'room', lines: ['Nhớ bố mẹ lắm. Nhưng mỗi lần gọi về, bạn ấy chỉ nói được “con vẫn ổn”.', 'Chưa giúp được gì nhiều cho nhà, nên càng ngại kể chuyện mình.'] },
+  { art: 'home', lines: ['Ở quê, bố mẹ cũng vậy. Nhớ con, mà sợ hỏi nhiều con lại lo.', 'Hai đầu nỗi nhớ, ai cũng giữ cho riêng mình.'] },
+  { art: 'letter', lines: ['Rồi bạn ấy nghĩ: giá mỗi tuần có một lá thư đi về nhà.', 'Không cần dài. Một tấm ảnh, một câu hỏi, một giọng nói.'] },
+  { art: 'letter', lines: ['Homeletter là lá thư ấy.', 'Cho bạn, và cho những người đang chờ bạn ở nhà.'] },
+];
+
+// Vào app như một cuộc trò chuyện: bạn là ai, nhớ nhà thế nào, rồi nghe kể vì sao có Homeletter và vào nhà.
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const invite = new URLSearchParams(location.search).get('join') ?? '';
   const [step, setStep] = useState<Step>('hello');
   const [role, setRole] = useState<Role | null>(null);
+  const [kid, setKid] = useState('');
   const [name, setName] = useState('');
   const [city, setCity] = useState('');
+  const [a, setA] = useState<Record<string, string>>({});
+  const [page, setPage] = useState(0);
   const [family, setFamily] = useState('Nhà mình');
   const [code, setCode] = useState(invite);
   const [inviteName, setInviteName] = useState('');
@@ -21,18 +35,27 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [typed, setTyped] = useState(false);
 
   useEffect(() => { if (invite) api.familyName(invite).then((r) => setInviteName(r.name)).catch(() => {}); }, []);
-  useEffect(() => setTyped(false), [step]);
+  useEffect(() => setTyped(false), [step, page]);
 
-  const go = (s: Step) => { tap(); setStep(s); };
-  const order: Step[] = ['hello', 'role', 'name', 'city', 'home'];
-  const back = () => setStep(step === 'code' ? 'home' : order[Math.max(0, order.indexOf(step) - 1)]);
+  const parent = role === 'bo' || role === 'me';
+  const self = role === 'bo' ? 'bố' : role === 'me' ? 'mẹ' : 'bạn';
+  const Self = self[0].toUpperCase() + self.slice(1);
+  const go = (s: Step) => { sfx('button'); setStep(s); };
+  const next = () => go(FLOW[FLOW.indexOf(step) + 1]);
+  const back = () => {
+    if (step === 'story' && page > 0) return setPage(page - 1);
+    setStep(step === 'code' ? 'home' : FLOW[Math.max(0, FLOW.indexOf(step) - 1)]);
+  };
+  // Chọn xong thì để lời đáp hiện một lúc rồi tự sang câu sau.
+  const choose = (k: string, v: string) => { if (a[k]) return; tap(); setA({ ...a, [k]: v }); setTimeout(next, 2300); };
 
   async function finish(join: boolean) {
     setBusy(true);
     try {
-      const body = { name: name.trim(), role: role!, city };
+      const body = { name: name.trim(), role: role!, city, intro: { ...a, kid } };
       const r = join ? await api.join({ ...body, code: code.trim() }) : await api.create({ ...body, family: family.trim() || 'Nhà mình' });
       token.set(r.token);
+      sfx('arrive');
       if (join) return onDone();
       const me = await api.me();
       setMade({ code: me.family.code, family: me.family.name });
@@ -46,53 +69,119 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   if (step === 'hello') {
     return (
-      <button className="screen" onClick={() => go('role')} aria-label="Xin chào, chạm để bắt đầu" style={{ alignItems: 'center' }}>
+      <button className="screen hello" onClick={() => go('role')} aria-label="Xin chào, chạm để bắt đầu">
         <div className="center"><Hello /></div>
-        <div className="muted fade" style={{ animationDelay: '2.4s' }}>{inviteName ? `Bạn được mời vào ${inviteName}` : 'Chạm để bắt đầu'}</div>
+        <div className="hello-hint">{inviteName ? `Bạn được mời vào ${inviteName}` : 'Chạm để bắt đầu'}</div>
       </button>
     );
   }
 
-  const progress = { role: 1, name: 2, city: 3, home: 4, code: 4, invite: 5 }[step];
+  const seenOpts: Record<string, string> = {
+    'Mới tuần trước': 'Vậy là vòng tay vẫn còn ấm.',
+    'Vài tháng rồi': 'Vài tháng, đủ để nhà có thêm bao chuyện chưa kể.',
+    'Hơn một năm': parent ? 'Hơn một năm. Chắc con cũng đang đếm ngày về.' : 'Hơn một năm. Chắc ở nhà đã đếm qua mấy cái Tết.',
+    'Ở cùng nhà mà ít nói chuyện': 'Gần mà xa. Mình bắt đầu lại từ một câu hỏi nhỏ nhé.',
+  };
+  const loveOpts: Record<string, string> = parent ? {
+    'Nói thường xuyên': 'Con may mắn lắm đấy.',
+    'Thỉnh thoảng': 'Thỉnh thoảng thôi cũng đủ ấm cả tuần.',
+    'Chưa nói thành lời bao giờ': 'Bố mẹ nhiều khi thương mà không nói. Con vẫn biết mà.',
+  } : {
+    'Nói thường xuyên': 'Bố mẹ chắc vui lắm mỗi lần nghe.',
+    'Thỉnh thoảng': 'Lần tới, nói thêm một lần nữa nhé.',
+    'Chưa nói thành lời bao giờ': 'Không sao. Có những câu cần thời gian. Homeletter sẽ giúp bạn.',
+  };
+
+  const done = FLOW.indexOf(step === 'code' || step === 'invite' ? 'home' : step);
+  const T = { typed, onTyped: () => setTyped(true) };
 
   return (
     <div className="screen">
       <div className="top">
         {step !== 'invite' ? <button className="icon-btn" onClick={back} aria-label="Quay lại"><Icon name="back" /></button> : <span style={{ width: 44 }} />}
-        <div className="progress"><i style={{ width: `${(progress / 5) * 100}%` }} /></div>
+        <div className="progress"><i style={{ width: `${(done / (FLOW.length - 1)) * 100}%` }} /></div>
         <span style={{ width: 44 }} />
       </div>
 
       {step === 'role' && (
-        <Ask key="role" q="Bạn là ai trong gia đình?" typed={typed} onTyped={() => setTyped(true)}>
-          {([['bo', 'Là bố'], ['me', 'Là mẹ'], ['con', 'Là con']] as const).map(([k, label], i) => (
-            <button key={k} className={`opt fade ${role === k ? 'on' : ''}`} style={{ animationDelay: `${i * 110}ms` }}
-              onClick={() => { setRole(k); setName(k === 'bo' ? 'Bố' : k === 'me' ? 'Mẹ' : name); go('name'); }}>{label}</button>
+        <Ask key="role" q="Bạn là ai trong gia đình?" {...T}>
+          {([['bo', 'Là bố'], ['me', 'Là mẹ'], ['con', 'Là con']] as const).map(([k, label]) => (
+            <Opt key={k} on={role === k} onClick={() => { tap(); setRole(k); setName(k === 'bo' ? 'Bố' : k === 'me' ? 'Mẹ' : ''); setTimeout(next, 250); }}>{label}</Opt>
+          ))}
+        </Ask>
+      )}
+
+      {step === 'kid' && (
+        <Ask key="kid" q={parent ? `Con của ${self} là trai hay gái?` : 'Bạn là con trai hay con gái của bố mẹ?'} {...T}>
+          {(parent ? ['Con trai', 'Con gái', 'Cả trai lẫn gái'] : ['Con trai', 'Con gái']).map((k) => (
+            <Opt key={k} on={kid === k} onClick={() => { tap(); setKid(k); setTimeout(next, 250); }}>{k}</Opt>
           ))}
         </Ask>
       )}
 
       {step === 'name' && (
-        <Ask key="name" q="Mọi người trong nhà gọi bạn là gì?" typed={typed} onTyped={() => setTyped(true)}
-          footer={<button className="btn" disabled={!name.trim()} onClick={() => go('city')}>Tiếp</button>}>
-          <input className="field fade" autoFocus value={name} maxLength={30} onChange={(e) => setName(e.target.value)} placeholder={role === 'con' ? 'Ví dụ: Lan, bé Na' : 'Ví dụ: Bố, Mẹ Hoa'} />
+        <Ask key="name" q="Mọi người trong nhà gọi bạn là gì?" {...T} footer={<button className="btn" disabled={!name.trim()} onClick={next}>Tiếp</button>}>
+          <input className="field fade" value={name} maxLength={30} onChange={(e) => setName(e.target.value)} placeholder={parent ? 'Ví dụ: Bố, Mẹ Hoa' : 'Ví dụ: Lan, bé Na'} />
         </Ask>
       )}
 
       {step === 'city' && (
-        <Ask key="city" q="Bạn đang ở đâu?" sub="Để cả nhà biết giờ và thời tiết bên bạn." typed={typed} onTyped={() => setTyped(true)}
-          footer={<button className="btn" disabled={!city} onClick={() => go('home')}>Tiếp</button>}>
-          <div className="chips fade">
-            {Object.entries(CITIES).map(([k, c]) => <button key={k} className={`chip ${city === k ? 'on' : ''}`} onClick={() => { tap(); setCity(k); }}>{c.name}</button>)}
-          </div>
+        <Ask key="city" q={`${Self} đang ở đâu?`} sub="Để cả nhà biết giờ và thời tiết bên đó." {...T}
+          footer={<button className="btn" disabled={!city} onClick={next}>Tiếp</button>}>
+          <CityPicker value={city} onChange={setCity} />
         </Ask>
       )}
 
+      {step === 'seen' && (
+        <Ask key="seen" q={parent ? `Bao lâu rồi ${self} chưa gặp con?` : 'Bao lâu rồi bạn chưa về nhà?'} echo={a.seen && seenOpts[a.seen]} {...T}>
+          {Object.keys(seenOpts).map((k) => <Opt key={k} on={a.seen === k} onClick={() => choose('seen', k)}>{k}</Opt>)}
+        </Ask>
+      )}
+
+      {step === 'hug' && (
+        <Ask key="hug" q={parent ? 'Nhớ con thì ôm một cái.' : 'Nhớ bố mẹ thì ôm một cái.'} sub="Giữ ngón tay vào vòng tròn"
+          echo={a.hug && (parent ? 'Con sẽ biết là có người đang ôm mình từ xa.' : 'Ở nhà sẽ biết là bạn đang nhớ.')} {...T}>
+          <Hold onDone={() => { sfx('hug'); setA({ ...a, hug: 'yes' }); setTimeout(next, 2300); }} />
+        </Ask>
+      )}
+
+      {step === 'food' && (
+        <Ask key="food" q={parent ? `${Self} còn nhớ con thích ăn món gì không?` : 'Món gì ở nhà mà bạn nhớ nhất?'}
+          echo={(a.food ?? '').trim().length > 1 ? (parent ? 'Món ấy, chắc đến giờ con vẫn nhớ vị.' : 'Lần tới gọi về, thử hỏi mẹ cách nấu món ấy nhé.') : undefined} {...T}
+          footer={<><button className="btn" disabled={!(a.food ?? '').trim()} onClick={next}>Tiếp</button><button className="link" onClick={next}>Để sau</button></>}>
+          <input className="field fade" value={a.food ?? ''} maxLength={60} onChange={(e) => setA({ ...a, food: e.target.value })} placeholder={parent ? 'Ví dụ: trứng rán, canh chua' : 'Ví dụ: canh chua của mẹ'} />
+        </Ask>
+      )}
+
+      {step === 'love' && (
+        <Ask key="love" q={parent ? `${Self} đã bao giờ nói “${self} thương con” chưa?` : 'Bạn đã bao giờ nói “con thương bố mẹ” chưa?'} echo={a.love && loveOpts[a.love]} {...T}>
+          {Object.keys(loveOpts).map((k) => <Opt key={k} on={a.love === k} onClick={() => choose('love', k)}>{k}</Opt>)}
+        </Ask>
+      )}
+
+      {step === 'unsaid' && (
+        <Ask key="unsaid" q={parent ? `Điều ${self} muốn nói với con mà chưa nói?` : 'Có điều gì bạn muốn nói với bố mẹ mà chưa nói?'}
+          echo={(a.unsaid ?? '').trim().length > 1 ? (parent ? 'Homeletter sẽ giữ câu ấy, chờ lúc hợp để con được nghe.' : 'Có những câu khó nói thành lời. Homeletter sẽ giữ giúp bạn.') : undefined} {...T}
+          footer={<><button className="btn" disabled={!(a.unsaid ?? '').trim()} onClick={next}>Tiếp</button><button className="link" onClick={next}>Để sau</button></>}>
+          <textarea className="field fade" rows={3} value={a.unsaid ?? ''} maxLength={200} onChange={(e) => setA({ ...a, unsaid: e.target.value })} placeholder="Viết ở đây, chỉ mình bạn thấy" />
+        </Ask>
+      )}
+
+      {step === 'story' && (
+        <div key={page} className="center fade" style={{ justifyContent: 'flex-start' }}>
+          <img src={`/art/story-${STORY[page].art}.png`} alt="" style={{ width: '100%', maxHeight: '36vh', objectFit: 'contain', marginTop: 10 }} />
+          <h2 className="story-lead"><Typed text={STORY[page].lines[0]} onDone={() => setTyped(true)} /></h2>
+          {typed && <p className="story-line fade">{STORY[page].lines[1]}</p>}
+          <div style={{ flex: 1 }} />
+          {typed && <button className="btn fade" onClick={() => { sfx('button'); page < STORY.length - 1 ? setPage(page + 1) : setStep('home'); }}>{page < STORY.length - 1 ? 'Tiếp' : 'Viết lá thư đầu tiên'}</button>}
+        </div>
+      )}
+
       {step === 'home' && (invite ? (
-        <Ask key="join" q={inviteName ? `Vào ${inviteName} nhé?` : 'Vào nhà nhé?'} typed={typed} onTyped={() => setTyped(true)}
+        <Ask key="join" q={inviteName ? `Vào ${inviteName} nhé?` : 'Vào nhà nhé?'} {...T}
           footer={<button className="btn" disabled={busy} onClick={() => finish(true)}>Vào nhà</button>} />
       ) : (
-        <Ask key="home" q="Nhà mình tên là gì?" sub="Bạn tạo nhà trước, rồi mời mọi người vào." typed={typed} onTyped={() => setTyped(true)}
+        <Ask key="home" q="Nhà mình tên là gì?" sub="Bạn tạo nhà trước, rồi mời mọi người vào." {...T}
           footer={<>
             <button className="btn" disabled={busy || !family.trim()} onClick={() => finish(false)}>Tạo nhà</button>
             <button className="link" onClick={() => go('code')}>Mình có mã nhà rồi</button>
@@ -102,16 +191,16 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       ))}
 
       {step === 'code' && (
-        <Ask key="code" q="Mã nhà là gì?" sub="Người tạo nhà có mã 6 số trong mục Gia đình." typed={typed} onTyped={() => setTyped(true)}
+        <Ask key="code" q="Mã nhà là gì?" sub="Người tạo nhà có mã 6 số trong mục Gia đình." {...T}
           footer={<button className="btn" disabled={busy || code.trim().length !== 6} onClick={() => finish(true)}>Vào nhà</button>}>
           <input className="field fade" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} placeholder="123456" style={{ letterSpacing: 6, fontSize: 24 }} />
         </Ask>
       )}
 
       {step === 'invite' && made && (
-        <Ask key="invite" q="Giờ mời cả nhà vào nhé." typed={typed} onTyped={() => setTyped(true)}
+        <Ask key="invite" q="Giờ mời cả nhà vào nhé." {...T}
           footer={<>
-            <button className="btn" onClick={() => shareInvite(made.code, made.family)}><Icon name="share" size={20} /> Gửi lời mời</button>
+            <button className="btn" onClick={() => { sfx('button'); shareInvite(made.code, made.family); }}><Icon name="share" size={20} /> Gửi lời mời</button>
             <button className="link" onClick={onDone}>Vào nhà trước</button>
           </>}>
           <div className="panel fade" style={{ alignSelf: 'center', width: '86%', textAlign: 'center' }}>
@@ -132,33 +221,67 @@ export function shareInvite(code: string, family: string) {
   else navigator.clipboard?.writeText(`${text}\n${url}`).then(() => toast('Đã chép lời mời'));
 }
 
-function Ask({ q, sub, typed, onTyped, children, footer }: { q: string; sub?: string; typed: boolean; onTyped: () => void; children?: React.ReactNode; footer?: React.ReactNode }) {
+function Opt({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
+  return <button className={`opt ${on ? 'on' : ''}`} onClick={onClick}>{children}</button>;
+}
+
+/** Câu hỏi gõ từng chữ; gõ xong các đáp án hiện lên lần lượt với tiếng "bụp" nhẹ. */
+function Ask({ q, sub, echo, typed, onTyped, children, footer }: {
+  q: string; sub?: string; echo?: string | false; typed: boolean; onTyped: () => void; children?: React.ReactNode; footer?: React.ReactNode;
+}) {
+  useEffect(() => {
+    if (!typed || !children) return;
+    const n = Array.isArray(children) ? children.length : 1;
+    const ts = Array.from({ length: n }, (_, i) => setTimeout(() => sfx('pop'), 120 + i * 110));
+    return () => ts.forEach(clearTimeout);
+  }, [typed]);
+  const items = Array.isArray(children) ? children : children ? [children] : [];
   return (
     <>
       <div className="center">
         <h1 className="q"><Typed text={q} onDone={onTyped} /></h1>
         {typed && sub && <p className="sub fade">{sub}</p>}
-        <div className="options">{typed && children}</div>
+        <div className="options">{typed && items.map((c, i) => <div key={i} className="fade" style={{ animationDelay: `${120 + i * 110}ms`, width: '100%', display: 'flex', justifyContent: 'center' }}>{c}</div>)}</div>
+        <div className="echo">{echo && <span className="fade" key={echo}>{echo}</span>}</div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 56 }}>{typed && footer}</div>
     </>
   );
 }
 
-/** Chữ "xin chào" mở dần từ trái sang như đang được viết ra. */
-function Hello() {
+/** Giữ ngón tay để "ôm": vòng tròn đầy dần trong khoảng 1,6 giây, rung nhẹ theo từng nhịp. */
+function Hold({ onDone }: { onDone: () => void }) {
   const [p, setP] = useState(0);
+  const [holding, setHolding] = useState(false);
   useEffect(() => {
     if (p >= 1) return;
-    const t = setTimeout(() => setP(Math.min(1, p + 0.025)), p === 0 ? 500 : 38);
+    if (!holding) {
+      if (p <= 0) return;
+      const t = setTimeout(() => setP(Math.max(0, p - 0.08)), 30);
+      return () => clearTimeout(t);
+    }
+    const t = setTimeout(() => {
+      const np = Math.min(1, p + 0.02);
+      if (Math.floor(np * 4) > Math.floor(p * 4)) buzz(12);
+      setP(np);
+      if (np >= 1) onDone();
+    }, 32);
     return () => clearTimeout(t);
-  }, [p]);
-  const e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+  }, [p, holding]);
   return (
-    <div style={{ width: 300, alignSelf: 'center' }}>
-      <div style={{ width: `${e * 100}%`, overflow: 'hidden' }}>
-        <div style={{ width: 300, textAlign: 'center', fontSize: 58, letterSpacing: -1.5, color: '#4A3B2E', whiteSpace: 'nowrap' }}>xin chào</div>
-      </div>
+    <div className="hold" onPointerDown={() => setHolding(true)} onPointerUp={() => setHolding(false)} onPointerLeave={() => setHolding(false)}
+      onContextMenu={(e) => e.preventDefault()} role="button" aria-label="Giữ để ôm">
+      <i style={{ transform: `scale(${0.25 + p * 0.75})`, opacity: 0.25 + p * 0.75 }} />
+      <span style={{ color: p >= 1 ? '#fff' : 'var(--accent)', position: 'relative' }}><Icon name={p >= 1 ? 'heartFill' : 'heart'} size={46} /></span>
     </div>
+  );
+}
+
+/** "xin chào" viết tay: nét chữ được vẽ dần như đang viết, rồi mực đầy lên. */
+function Hello() {
+  return (
+    <svg className="hello-word" viewBox="0 0 600 220" role="img" aria-label="xin chào">
+      <text x="300" y="150" textAnchor="middle">xin chào</text>
+    </svg>
   );
 }

@@ -32,6 +32,7 @@ export async function migrate() {
       mission text not null, week text not null, created_at timestamptz not null default now(),
       primary key (member_id, mission, week)
     );
+    alter table members add column if not exists intro text;
     create table if not exists seen (member_id text primary key references members(id), at timestamptz not null default now());
   `);
 }

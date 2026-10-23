@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from './api';
 import { AUDIO_TYPE, fileName, record, snap, VIDEO_TYPE, type Recording } from './media';
-import { CITIES, SILENT_HOURS, type Me } from './shared';
-import { buzz, tap } from './sound';
+import { cityOf, SILENT_HOURS, type Me } from './shared';
+import { buzz, sfx, tap } from './sound';
+import { Letter } from './Letter';
 import { hoursSince } from './time';
 import { Avatar, Icon, toast } from './ui';
 
@@ -19,6 +20,7 @@ export function Camera({ me, onOpen, onSent }: { me: Me; onOpen: (s: 'feed' | 'j
   const [caption, setCaption] = useState('');
   const [meal, setMeal] = useState(false);
   const [sending, setSending] = useState(false);
+  const [flying, setFlying] = useState(false);
   const [rec, setRec] = useState<'video' | 'voice' | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const stopRec = useRef<(() => Promise<Recording>) | null>(null);
@@ -37,7 +39,7 @@ export function Camera({ me, onOpen, onSent }: { me: Me; onOpen: (s: 'feed' | 'j
     }
   }
 
-  useEffect(() => { if (!draft) start(); }, [facing, draft]);
+  useEffect(() => { if (!draft && !flying) start(); }, [facing, draft, flying]);
   useEffect(() => () => stream.current?.getTracks().forEach((t) => t.stop()), []);
   useEffect(() => {
     if (!rec) return;
@@ -55,14 +57,14 @@ export function Camera({ me, onOpen, onSent }: { me: Me; onOpen: (s: 'feed' | 'j
       stopRec.current = record(stream.current!, VIDEO_TYPE());
       setElapsed(0);
       setRec('video');
-      buzz(20);
+      sfx('rec'); buzz(20);
     }, 350);
   }
   async function shutterUp() {
     clearTimeout(holdTimer.current);
     if (rec === 'video') return finishRec();
     if (!video.current || !stream.current) return;
-    tap();
+    sfx('shutter'); buzz(15);
     const blob = await snap(video.current, facing === 'user');
     setDraft({ kind: 'photo', blob, url: URL.createObjectURL(blob) });
   }
@@ -76,12 +78,13 @@ export function Camera({ me, onOpen, onSent }: { me: Me; onOpen: (s: 'feed' | 'j
     stopRec.current = record(new MediaStream(s.getAudioTracks()), AUDIO_TYPE());
     setElapsed(0);
     setRec('voice');
-    buzz(20);
+    sfx('rec'); buzz(20);
   }
 
   async function finishRec() {
     const kind = rec;
     setRec(null);
+    sfx('rec');
     const r = await stopRec.current?.();
     stopRec.current = null;
     if (!r || !kind) return;
@@ -105,8 +108,7 @@ export function Camera({ me, onOpen, onSent }: { me: Me; onOpen: (s: 'feed' | 'j
       if (meal) f.set('meal', 'true');
       if (draft.seconds) f.set('seconds', String(draft.seconds));
       await api.post(f);
-      tap();
-      toast('Đã gửi cả nhà');
+      setFlying(true);
       setDraft(null); setCaption(''); setMeal(false);
       onSent();
     } catch (e) {
@@ -115,6 +117,8 @@ export function Camera({ me, onOpen, onSent }: { me: Me; onOpen: (s: 'feed' | 'j
       setSending(false);
     }
   }
+
+  if (flying) return <Letter onDone={() => setFlying(false)} />;
 
   const quiet = me.members.filter((m) => m.id !== me.me.id && hoursSince(m.lastSeen) > SILENT_HOURS);
 
@@ -200,7 +204,7 @@ export function Camera({ me, onOpen, onSent }: { me: Me; onOpen: (s: 'feed' | 'j
         <button className="tool" onClick={() => onOpen('family')}><Icon name="people" /> Gia đình</button>
       </div>
       <div className="muted" style={{ textAlign: 'center', fontSize: 12, marginTop: 4 }}>
-        {me.me.city ? `${CITIES[me.me.city]?.name}` : ''}
+        {cityOf(me.me.city)?.name ?? ''}
       </div>
     </div>
   );

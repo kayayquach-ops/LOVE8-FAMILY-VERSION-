@@ -1,6 +1,7 @@
 @font-face { font-family: 'BVP'; src: url('/fonts/BeVietnamPro-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
 @font-face { font-family: 'BVP'; src: url('/fonts/BeVietnamPro-Medium.woff2') format('woff2'); font-weight: 500; font-display: swap; }
 @font-face { font-family: 'BVP'; src: url('/fonts/BeVietnamPro-SemiBold.woff2') format('woff2'); font-weight: 600; font-display: swap; }
+@font-face { font-family: 'Script'; src: url('/fonts/greatvibes-sub.ttf') format('truetype'); font-display: block; }
 
 :root {
   --bg: #F6EEE2;
@@ -38,7 +39,7 @@ img, video { display: block; }
 .mesh img:nth-child(2) { right: -55vmax; top: -20vmax; animation-duration: 18s; animation-direction: alternate-reverse; }
 .mesh img:nth-child(3) { left: -30vmax; bottom: -60vmax; animation-duration: 20s; }
 .mesh img:nth-child(4) { right: -50vmax; bottom: -45vmax; animation-duration: 15s; animation-direction: alternate-reverse; }
-@keyframes drift { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(8vw, 6vh, 0) scale(1.12); } }
+@keyframes drift { 0% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); } 50% { transform: translate3d(14vw, -8vh, 0) scale(1.18) rotate(20deg); } 100% { transform: translate3d(-10vw, 12vh, 0) scale(1.05) rotate(-15deg); } }
 @media (prefers-reduced-motion: reduce) { .mesh img { animation: none; } }
 
 .fade { animation: fade .45s cubic-bezier(.33, 1, .68, 1) both; }
@@ -158,3 +159,52 @@ img, video { display: block; }
 .hold i { position: absolute; inset: 0; border-radius: 50%; background: var(--accent); transform: scale(.25); opacity: .25; }
 .hold svg { position: relative; width: 44px; height: 44px; }
 .toast { position: fixed; left: 50%; bottom: calc(var(--safe-bottom) + 110px); transform: translateX(-50%); background: var(--ink); color: #fff; padding: 12px 20px; border-radius: 999px; font-size: 15px; z-index: 50; animation: fade .3s both; white-space: nowrap; }
+
+/* Màn chào kiểu "hello": nền kem đậm loang và trôi, chữ viết tay trắng được vẽ dần. */
+.hello { align-items: center; background: #D9BFA0; color: #fff; overflow: hidden; }
+.hello::before, .hello::after {
+  content: ''; position: absolute; width: 140vmax; height: 140vmax; border-radius: 50%; will-change: transform; pointer-events: none;
+  background: radial-gradient(circle at 30% 30%, #F6E7D2 0%, rgba(246,231,210,0) 55%), radial-gradient(circle at 70% 60%, #B98E6C 0%, rgba(185,142,108,0) 50%);
+  animation: swirl 12s ease-in-out infinite alternate;
+}
+.hello::before { left: -70vmax; top: -60vmax; }
+.hello::after { right: -75vmax; bottom: -70vmax; animation-duration: 15s; animation-direction: alternate-reverse;
+  background: radial-gradient(circle at 40% 40%, #EAD3B5 0%, rgba(234,211,181,0) 55%), radial-gradient(circle at 60% 70%, #C9A07E 0%, rgba(201,160,126,0) 50%); }
+@keyframes swirl { from { transform: translate3d(0,0,0) rotate(0deg) scale(1); } to { transform: translate3d(18vw, 14vh, 0) rotate(40deg) scale(1.15); } }
+.hello .center, .hello-hint { position: relative; z-index: 1; }
+.hello-word { width: min(92vw, 520px); overflow: visible; }
+.hello-word text {
+  font-family: 'Script', cursive; font-size: 150px; fill: #fff; fill-opacity: 0; stroke: #fff; stroke-width: 1.4;
+  stroke-dasharray: 1600; stroke-dashoffset: 1600; paint-order: stroke;
+  animation: write 2.6s .4s cubic-bezier(.45,.05,.35,1) forwards, ink 1s 2.4s ease forwards;
+  filter: drop-shadow(0 4px 18px rgba(90,60,30,.18));
+}
+@keyframes write { to { stroke-dashoffset: 0; } }
+@keyframes ink { to { fill-opacity: 1; stroke-opacity: .2; } }
+.hello-hint { font-size: 15px; color: rgba(255,255,255,.9); opacity: 0; animation: fade .8s 3.2s both; padding-bottom: 8px; }
+@media (prefers-reduced-motion: reduce) { .hello::before, .hello::after { animation: none; } .hello-word text { animation: none; fill-opacity: 1; stroke-dashoffset: 0; } }
+
+.story-lead { font-size: 23px; line-height: 1.45; font-weight: 400; margin: 18px 0 0; letter-spacing: -.2px; }
+.story-line { font-size: 17px; line-height: 1.65; color: var(--soft); margin: 12px 0 0; }
+textarea.field { resize: none; text-align: left; line-height: 1.5; }
+.city-list { margin-top: 10px; border-radius: 20px; background: rgba(255,255,255,.92); border: 1px solid var(--line); overflow: hidden; box-shadow: 0 10px 30px rgba(43,39,35,.08); }
+.city-item { display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 12px 18px; border-bottom: 1px solid var(--line); text-align: left; }
+.city-item:last-child { border-bottom: 0; }
+.city-item b { font-weight: 500; font-size: 16px; }
+.city-item span { font-size: 13px; color: var(--muted); }
+
+/* Gửi xong: bản vẽ nét tay máy bay giấy bay về nhà */
+.letter { position: fixed; inset: 0; z-index: 30; background: rgba(246, 238, 226, .97); display: flex; flex-direction: column; align-items: center; justify-content: center; animation: fade .3s both; }
+.letter svg { width: min(100vw, 460px); height: 78vh; }
+.letter .ink path, .letter .ink circle { fill: none; stroke: #2B2723; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.letter .wave { stroke-dasharray: 200; stroke-dashoffset: 200; animation: draw 1s ease forwards; }
+.letter .route { stroke: #9A5A44 !important; stroke-width: 1.3 !important; stroke-dasharray: 600; stroke-dashoffset: 600; animation: draw 2.1s .2s cubic-bezier(.4,0,.2,1) forwards; }
+.letter .family { opacity: 0; animation: fade .6s .6s both; }
+.letter .string { stroke-dasharray: 220; stroke-dashoffset: 220; animation: draw .7s 2.2s ease forwards; }
+.letter .drop { opacity: 0; transform: translateY(-210px); animation: drop .7s 2.2s cubic-bezier(.3,1.4,.5,1) forwards; }
+.letter .pop-heart { transform-origin: 330px 497px; transform: scale(0); animation: heart .5s 2.9s cubic-bezier(.3,1.6,.5,1) forwards; }
+.letter .route-text { font-family: 'Script', cursive; font-size: 30px; fill: #9A5A44; opacity: 0; animation: fade 1s .9s both; }
+.letter-note { font-size: 16px; color: var(--soft); margin-top: -20px; animation: fade .6s 1s both; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes drop { to { opacity: 1; transform: none; } }
+@keyframes heart { to { transform: scale(1.4); } }

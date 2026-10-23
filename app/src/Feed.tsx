@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from './api';
 import { VoiceDot } from './Camera';
 import { AUDIO_TYPE, fileName, record, type Recording } from './media';
-import { CITIES, type Me, type Post, type Week } from './shared';
+import { cityOf, type Me, type Post, type Week } from './shared';
 import { buzz, tap } from './sound';
 import { ago, localTime } from './time';
 import { Avatar, Icon, toast } from './ui';
@@ -93,7 +93,7 @@ export function Feed({ me, onClose }: { me: Me; onClose: () => void }) {
                 <Avatar m={a} size={36} />
                 <div>
                   <b>{a?.id === me.me.id ? 'Bạn' : a?.name}</b>
-                  <div><span>{ago(p.createdAt)}{t && a?.city ? ` · ${CITIES[a.city].name} ${t}` : ''}</span></div>
+                  <div><span>{ago(p.createdAt)}{t && a?.city ? ` · ${cityOf(a.city)?.name} ${t}` : ''}</span></div>
                 </div>
               </div>
               <PostCard p={p} active={current?.id === p.id} name={a?.name ?? ''} />

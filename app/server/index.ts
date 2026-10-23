@@ -68,8 +68,9 @@ async function newCode() {
 
 async function addMember(familyId: string, b: any) {
   const token = randomBytes(24).toString('base64url');
-  await pool.query('insert into members (id, family_id, name, role, token, city) values ($1,$2,$3,$4,$5,$6)', [
-    id(), familyId, String(b.name || '').slice(0, 30) || 'Mình', ['bo', 'me', 'con'].includes(b.role) ? b.role : 'con', token, b.city || null,
+  await pool.query('insert into members (id, family_id, name, role, token, city, intro) values ($1,$2,$3,$4,$5,$6,$7)', [
+    id(), familyId, String(b.name || '').slice(0, 30) || 'Mình', ['bo', 'me', 'con'].includes(b.role) ? b.role : 'con', token,
+    b.city ? String(b.city).slice(0, 300) : null, b.intro ? JSON.stringify(b.intro).slice(0, 4000) : null,
   ]);
   return token;
 }

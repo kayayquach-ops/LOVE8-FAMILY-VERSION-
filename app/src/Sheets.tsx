@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api, token } from './api';
+import { CityPicker } from './CityPicker';
 import { shareInvite } from './Onboarding';
-import { CITIES, ROLE_LABEL, SILENT_HOURS, type Me, type Week } from './shared';
-import { buzz, tap } from './sound';
+import { cityOf, ROLE_LABEL, SILENT_HOURS, type Me, type Week } from './shared';
+import { buzz, sfx, tap } from './sound';
 import { ago, hoursSince, localTime, weather } from './time';
 import { Avatar, Icon, toast } from './ui';
 
@@ -45,7 +46,7 @@ export function Jar({ onClose }: { onClose: () => void }) {
               <div className="pts">+{m.points} hạt{m.doneBy.length ? ` · ${m.doneBy.length} người đã làm` : ''}</div>
             </div>
             <button className={`done-btn ${m.done ? 'done' : ''}`} disabled={m.done}
-              onClick={async () => { tap(); buzz(30); await api.mission(m.key); toast(`+${m.points} hạt vào bình`); void load(); }}>
+              onClick={async () => { tap(); buzz(30); await api.mission(m.key); sfx("sparkle"); toast(`+${m.points} hạt vào bình`); void load(); }}>
               {m.done ? 'Đã làm' : 'Xong'}
             </button>
           </div>
@@ -106,7 +107,7 @@ export function Family({ me, onClose, onChanged }: { me: Me; onClose: () => void
   }
 
   async function hug() {
-    buzz(40); tap();
+    buzz(40); sfx('hug');
     await api.hug();
     toast('Đã ôm cả nhà');
   }
@@ -123,7 +124,7 @@ export function Family({ me, onClose, onChanged }: { me: Me; onClose: () => void
               <Avatar m={m} size={48} />
               <div className="meta">
                 <div className="name">{m.name}{m.id === me.me.id ? ' (bạn)' : ''}</div>
-                <div className="info">{m.city ? `${CITIES[m.city]?.name} ${t ?? ''}` : ROLE_LABEL[m.role]}{wx[m.id] ? ` · ${wx[m.id]}` : ''}</div>
+                <div className="info">{m.city ? `${cityOf(m.city)?.name ?? ''} ${t ?? ''}` : ROLE_LABEL[m.role]}{wx[m.id] ? ` · ${wx[m.id]}` : ''}</div>
                 <div className={`info ${quiet ? 'warn' : ''}`}>{m.id === me.me.id ? 'Đang mở app' : quiet ? `${Math.floor(hoursSince(m.lastSeen) / 24)} ngày chưa mở app` : `Hoạt động ${ago(m.lastSeen)}`}</div>
               </div>
               {m.id !== me.me.id && m.phone && <a className="round" href={`tel:${m.phone}`} aria-label={`Gọi ${m.name}`}><Icon name="phone" /></a>}
@@ -146,9 +147,7 @@ export function Family({ me, onClose, onChanged }: { me: Me; onClose: () => void
         <div className="panel" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <input className="field" style={{ width: '100%' }} value={name} onChange={(e) => setName(e.target.value)} placeholder="Tên mọi người gọi" />
           <input className="field" style={{ width: '100%' }} value={phone} inputMode="tel" onChange={(e) => setPhone(e.target.value)} placeholder="Số điện thoại (để cả nhà bấm gọi)" />
-          <div className="chips" style={{ marginTop: 0 }}>
-            {Object.entries(CITIES).map(([k, c]) => <button key={k} className={`chip ${city === k ? 'on' : ''}`} onClick={() => setCity(k)}>{c.name}</button>)}
-          </div>
+          <CityPicker value={city} onChange={(v) => v && setCity(v)} />
           <button className="btn" onClick={() => save()}>Lưu</button>
         </div>
       ) : (

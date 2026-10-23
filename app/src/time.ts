@@ -1,4 +1,4 @@
-import { CITIES } from './shared';
+import { cityOf } from './shared';
 
 export function ago(iso: string) {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -15,7 +15,7 @@ export function hoursSince(iso: string) {
 
 /** Giờ hiện tại ở thành phố của một người. */
 export function localTime(city?: string | null) {
-  const c = city ? CITIES[city] : undefined;
+  const c = cityOf(city);
   if (!c) return null;
   return new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: c.tz, hour12: false }).format(new Date());
 }
@@ -28,7 +28,7 @@ const WEATHER: Array<[number[], string]> = [
 const weatherCache: Record<string, { at: number; text: string }> = {};
 
 export async function weather(city?: string | null): Promise<string | null> {
-  const c = city ? CITIES[city] : undefined;
+  const c = cityOf(city);
   if (!c) return null;
   const hit = weatherCache[city!];
   if (hit && Date.now() - hit.at < 30 * 60e3) return hit.text;

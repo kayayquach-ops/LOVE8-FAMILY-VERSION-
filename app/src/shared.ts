@@ -38,6 +38,15 @@ export const CITIES: Record<string, { name: string; lat: number; lon: number; tz
   taipei: { name: 'Đài Bắc', lat: 25.03, lon: 121.56, tz: 'Asia/Taipei' },
 };
 
+export type City = { name: string; lat: number; lon: number; tz: string };
+
+/** Thành phố lưu dạng JSON (gõ tìm bất kỳ nơi nào), bản cũ lưu mã trong danh sách có sẵn. */
+export function cityOf(v?: string | null): City | undefined {
+  if (!v) return undefined;
+  if (v.startsWith('{')) { try { const c = JSON.parse(v); return { name: c.name, lat: c.lat, lon: c.lon, tz: c.tz }; } catch { return undefined; } }
+  return CITIES[v];
+}
+
 export const ROLE_LABEL: Record<Role, string> = { bo: 'Bố', me: 'Mẹ', con: 'Con' };
 
 /** Bao lâu không mở app thì báo cho cả nhà. */
