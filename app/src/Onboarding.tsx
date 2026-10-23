@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, token } from './api';
 import { CityPicker } from './CityPicker';
 import type { Role } from './shared';
-import { buzz, sfx, tap } from './sound';
+import { buzz, popNote, sfx, tap } from './sound';
 import { Icon, toast, Typed } from './ui';
 
 type Step = 'hello' | 'role' | 'kid' | 'name' | 'city' | 'seen' | 'hug' | 'food' | 'love' | 'unsaid' | 'story' | 'home' | 'code' | 'invite';
@@ -232,7 +232,7 @@ function Ask({ q, sub, echo, typed, onTyped, children, footer }: {
   useEffect(() => {
     if (!typed || !children) return;
     const n = Array.isArray(children) ? children.length : 1;
-    const ts = Array.from({ length: n }, (_, i) => setTimeout(() => sfx('pop'), 120 + i * 110));
+    const ts = Array.from({ length: n }, (_, i) => setTimeout(() => popNote(i), 120 + i * 110));
     return () => ts.forEach(clearTimeout);
   }, [typed]);
   const items = Array.isArray(children) ? children : children ? [children] : [];
