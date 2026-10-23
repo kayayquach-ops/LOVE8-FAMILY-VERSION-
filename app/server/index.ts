@@ -6,6 +6,8 @@ import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { Member, Post, Reply, Week } from '../src/shared.ts';
 import { migrate, pool } from './db.ts';
+import { calendarRouter, migrateCalendar } from './calendar.ts';
+import { jarRouter, migrateJar } from './jar.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -94,6 +96,8 @@ app.get('/api/family/:code', h(async (req, res) => {
 }));
 
 app.use('/api', auth as express.RequestHandler);
+app.use('/api', calendarRouter);
+app.use('/api', jarRouter);
 
 app.get('/api/me', h(async (req, res) => {
   const m = req.member!;
@@ -257,4 +261,6 @@ if (existsSync(dist)) {
 
 const port = Number(process.env.PORT || 3010);
 await migrate();
+await migrateCalendar(pool);
+await migrateJar(pool);
 app.listen(port, () => console.log(`Homeletter chạy ở cổng ${port}`));

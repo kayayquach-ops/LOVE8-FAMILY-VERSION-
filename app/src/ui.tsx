@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { Member } from './shared';
-import { key } from './sound';
+import { sfx } from './sound';
 
 // Icon nét mảnh tự vẽ, một bộ duy nhất cho cả app.
 const PATHS: Record<string, ReactNode> = {
@@ -22,6 +22,7 @@ const PATHS: Record<string, ReactNode> = {
   phone: <path d="M6.5 4h3l1.5 4-2 1.5a10 10 0 005 5l1.5-2 4 1.5v3a2 2 0 01-2 2A15 15 0 014.5 6a2 2 0 012-2z" />,
   share: <><path d="M12 15V4M8 8l4-4 4 4" /><path d="M5 12v6a2 2 0 002 2h10a2 2 0 002-2v-6" /></>,
   check: <path d="M5 12.5l4.5 4.5L19 7" />,
+  calendar: <><rect x="3.5" y="5" width="17" height="15" rx="3" /><path d="M3.5 10h17M8 3v4M16 3v4" /></>,
   trash: <><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" /></>,
 };
 
@@ -33,10 +34,12 @@ export function Icon({ name, size }: { name: keyof typeof PATHS | string; size?:
   );
 }
 
+/** Nền sương mờ: vùng sáng trắng, hồng đào và xám tím trôi rất chậm, phủ một lớp hạt mịn như ảnh phim. */
 export function Mesh() {
   return (
-    <div className="mesh" aria-hidden>
-      {[1, 2, 4, 3].map((i) => <img key={i} src={`/art/cream-${i}.png`} alt="" />)}
+    <div className="mist" aria-hidden>
+      <i className="m1" /><i className="m2" /><i className="m3" /><i className="m4" />
+      <b className="grain" />
     </div>
   );
 }
@@ -46,22 +49,17 @@ export function Avatar({ m, size = 40 }: { m?: Member | null; size?: number }) {
   return <div className="avatar" style={{ width: size, height: size, fontSize: size * 0.42 }}>{(m?.name ?? '?').trim().split(/\s+/).pop()?.[0]?.toUpperCase()}</div>;
 }
 
-/** Chữ hiện từng ký tự như đang gõ, có tiếng phím nhẹ. Gõ xong gọi onDone. */
+/** Chữ hiện dần từng từ: mờ thành rõ, nổi nhẹ lên, kèm tiếng chuông lật trang. Hiện xong gọi onDone. */
 export function Typed({ text, onDone }: { text: string; onDone?: () => void }) {
-  const [n, setN] = useState(0);
-  useEffect(() => setN(0), [text]);
+  const words = text.split(' ');
   useEffect(() => {
-    if (n >= text.length) { onDone?.(); return; }
-    const t = setTimeout(() => {
-      setN(n + 1);
-      if (text[n] !== ' ' && n % 2 === 0) key();
-    }, n === 0 ? 300 : 50);
+    sfx('reveal');
+    const t = setTimeout(() => onDone?.(), 350 + words.length * 90 + 500);
     return () => clearTimeout(t);
-  }, [n, text]);
+  }, [text]);
   return (
-    <span style={{ position: 'relative', display: 'inline-block' }}>
-      <span style={{ visibility: 'hidden' }}>{text}</span>
-      <span style={{ position: 'absolute', inset: 0 }}>{text.slice(0, n)}</span>
+    <span key={text}>
+      {words.map((w, i) => <span key={i} className="word" style={{ animationDelay: `${150 + i * 90}ms` }}>{w}{i < words.length - 1 ? ' ' : ''}</span>)}
     </span>
   );
 }

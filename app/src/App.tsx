@@ -5,7 +5,9 @@ import { Feed } from './Feed';
 import { Hug } from './Hug';
 import { Onboarding } from './Onboarding';
 import type { Me } from './shared';
-import { Family, Jar } from './Sheets';
+import { Calendar } from './Calendar';
+import { Jar } from './Jar';
+import { Family } from './Sheets';
 import { Mesh, Toaster } from './ui';
 
 const HUG_KEY = 'homeletter-hug-day';
@@ -14,7 +16,7 @@ const today = () => new Date().toDateString();
 export function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [ready, setReady] = useState(false);
-  const [sheet, setSheet] = useState<'feed' | 'jar' | 'family' | null>(null);
+  const [sheet, setSheet] = useState<'feed' | 'jar' | 'family' | 'calendar' | null>(null);
   const [hug, setHug] = useState(() => { try { return localStorage.getItem(HUG_KEY) !== today(); } catch { return false; } });
 
   const load = () => api.me().then(setMe).catch(() => { token.clear(); setMe(null); }).finally(() => setReady(true));
@@ -39,7 +41,8 @@ export function App() {
     <>
       <Camera me={me} onOpen={setSheet} onSent={load} />
       {sheet === 'feed' && <Feed me={me} onClose={() => { setSheet(null); void load(); }} />}
-      {sheet === 'jar' && <Jar onClose={() => setSheet(null)} />}
+      {sheet === 'jar' && <Jar me={me} onClose={() => setSheet(null)} />}
+      {sheet === 'calendar' && <Calendar me={me} onClose={() => setSheet(null)} onWish={() => setSheet(null)} />}
       {sheet === 'family' && <Family me={me} onClose={() => setSheet(null)} onChanged={load} />}
     </>
   );

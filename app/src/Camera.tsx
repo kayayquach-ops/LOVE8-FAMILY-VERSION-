@@ -11,7 +11,7 @@ type Draft = { kind: 'photo' | 'video' | 'voice'; blob: Blob; url: string; secon
 const MAX_VIDEO = 15;
 
 // Màn chính kiểu Locket: mở ra là camera. Chạm để chụp, giữ để quay. Giữ nút dưới để nói.
-export function Camera({ me, onOpen, onSent }: { me: Me; onOpen: (s: 'feed' | 'jar' | 'family') => void; onSent: () => void }) {
+export function Camera({ me, onOpen, onSent }: { me: Me; onOpen: (s: 'feed' | 'jar' | 'family' | 'calendar') => void; onSent: () => void }) {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const [facing, setFacing] = useState<'user' | 'environment'>('user');
@@ -200,7 +200,8 @@ export function Camera({ me, onOpen, onSent }: { me: Me; onOpen: (s: 'feed' | 'j
           <Icon name="up" /> Tin nhà
           {me.unseen > 0 && <span className="badge">{me.unseen}</span>}
         </button>
-        <button className="tool" onClick={() => onOpen('jar')}><Icon name="jar" /> Bình yêu thương</button>
+        <button className="tool" onClick={() => onOpen('calendar')}><Icon name="calendar" /> Lịch</button>
+        <button className="tool" onClick={() => onOpen('jar')}><Icon name="jar" /> Lọ thương</button>
         <button className="tool" onClick={() => onOpen('family')}><Icon name="people" /> Gia đình</button>
       </div>
       <div className="muted" style={{ textAlign: 'center', fontSize: 12, marginTop: 4 }}>

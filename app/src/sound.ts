@@ -1,7 +1,7 @@
-// Bộ âm thanh tự tạo (branding/sfx/make_sfx.py): kalimba gỗ, hộp nhạc, ngòi bút, gió nhẹ, cùng một gam. Phát bằng Web Audio để không trễ và chồng được lên nhau
+// Âm thanh từ Mixkit (giấy phép miễn phí dùng trong app): chuông, lật trang, nhịp tim, lấp lánh. Phát bằng Web Audio để không trễ và chồng được lên nhau
 // (tiếng gõ phím nhanh). iPhone chỉ cho phát sau lần chạm đầu tiên, nên âm thanh mở khoá ở đó.
-type Name = 'key' | 'tap' | 'pop0' | 'pop1' | 'pop2' | 'pop3' | 'button' | 'shutter' | 'send' | 'arrive' | 'sparkle' | 'hug' | 'rec';
-const VOLUME: Record<Name, number> = { key: 0.35, tap: 0.45, pop0: 0.45, pop1: 0.45, pop2: 0.45, pop3: 0.45, button: 0.45, shutter: 0.6, send: 0.55, arrive: 0.5, sparkle: 0.45, hug: 0.6, rec: 0.4 };
+type Name = 'hello' | 'reveal' | 'pop' | 'tap' | 'button' | 'shutter' | 'send' | 'arrive' | 'sparkle' | 'hug' | 'rec';
+const VOLUME: Record<Name, number> = { hello: 0.6, reveal: 0.35, pop: 0.3, tap: 0.45, button: 0.45, shutter: 0.55, send: 0.5, arrive: 0.5, sparkle: 0.45, hug: 0.7, rec: 0.4 };
 
 let ctx: AudioContext | null = null;
 const buffers: Partial<Record<Name, AudioBuffer>> = {};
@@ -33,8 +33,4 @@ export function sfx(name: Name) {
 }
 
 export const tap = () => { sfx('tap'); navigator.vibrate?.(10); };
-export const key = () => sfx('key');
 export const buzz = (ms = 10) => navigator.vibrate?.(ms);
-
-/** Nốt cho đáp án thứ i hiện ra: đi lên dần như một giai điệu nhỏ. */
-export const popNote = (i: number) => sfx(`pop${Math.min(i, 3)}` as Name);

@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { api, token } from './api';
 import { CityPicker } from './CityPicker';
 import type { Role } from './shared';
-import { buzz, popNote, sfx, tap } from './sound';
+import { buzz, sfx, tap } from './sound';
 import { Icon, toast, Typed } from './ui';
 
-type Step = 'hello' | 'role' | 'kid' | 'name' | 'city' | 'seen' | 'hug' | 'food' | 'love' | 'unsaid' | 'story' | 'home' | 'code' | 'invite';
-const FLOW: Step[] = ['hello', 'role', 'kid', 'name', 'city', 'seen', 'hug', 'food', 'love', 'unsaid', 'story', 'home'];
+type Step = 'hello' | 'role' | 'kid' | 'name' | 'dob' | 'city' | 'seen' | 'hug' | 'food' | 'love' | 'unsaid' | 'story' | 'home' | 'code' | 'invite';
+const FLOW: Step[] = ['hello', 'role', 'kid', 'name', 'dob', 'city', 'seen', 'hug', 'food', 'love', 'unsaid', 'story', 'home'];
 
 // Chuyện vì sao có Homeletter, kể chậm từng trang.
 const STORY: Array<{ art: string; lines: [string, string] }> = [
@@ -25,6 +25,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [kid, setKid] = useState('');
   const [name, setName] = useState('');
   const [city, setCity] = useState('');
+  const [dob, setDob] = useState({ d: '', m: '', y: '' });
   const [a, setA] = useState<Record<string, string>>({});
   const [page, setPage] = useState(0);
   const [family, setFamily] = useState('Nhà mình');
@@ -55,6 +56,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       const body = { name: name.trim(), role: role!, city, intro: { ...a, kid } };
       const r = join ? await api.join({ ...body, code: code.trim() }) : await api.create({ ...body, family: family.trim() || 'Nhà mình' });
       token.set(r.token);
+      if (dobValid) await fetch('/api/me/dob', { method: 'PUT', headers: { 'content-type': 'application/json', authorization: `Bearer ${r.token}` }, body: JSON.stringify({ dob: dobIso }) }).catch(() => {});
       sfx('arrive');
       if (join) return onDone();
       const me = await api.me();
@@ -69,7 +71,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   if (step === 'hello') {
     return (
-      <button className="screen hello" onClick={() => go('role')} aria-label="Xin chào, chạm để bắt đầu">
+      <button className="screen hello" onClick={() => { sfx('hello'); setStep('role'); }} aria-label="Xin chào, chạm để bắt đầu">
         <div className="center"><Hello /></div>
         <div className="hello-hint">{inviteName ? `Bạn được mời vào ${inviteName}` : 'Chạm để bắt đầu'}</div>
       </button>
@@ -92,6 +94,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     'Chưa nói thành lời bao giờ': 'Không sao. Có những câu cần thời gian. Homeletter sẽ giúp bạn.',
   };
 
+  const dobValid = +dob.d >= 1 && +dob.d <= 31 && +dob.m >= 1 && +dob.m <= 12 && +dob.y >= 1920 && +dob.y <= new Date().getFullYear();
+  const dobIso = `${dob.y}-${dob.m.padStart(2, '0')}-${dob.d.padStart(2, '0')}`;
   const done = FLOW.indexOf(step === 'code' || step === 'invite' ? 'home' : step);
   const T = { typed, onTyped: () => setTyped(true) };
 
@@ -122,6 +126,17 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       {step === 'name' && (
         <Ask key="name" q="Mọi người trong nhà gọi bạn là gì?" {...T} footer={<button className="btn" disabled={!name.trim()} onClick={next}>Tiếp</button>}>
           <input className="field fade" value={name} maxLength={30} onChange={(e) => setName(e.target.value)} placeholder={parent ? 'Ví dụ: Bố, Mẹ Hoa' : 'Ví dụ: Lan, bé Na'} />
+        </Ask>
+      )}
+
+      {step === 'dob' && (
+        <Ask key="dob" q={`${Self} sinh ngày nào?`} sub={parent ? 'Để các con không bao giờ quên ngày này.' : 'Để bố mẹ nhớ chúc mừng bạn.'} {...T}
+          footer={<><button className="btn" disabled={!dobValid} onClick={next}>Tiếp</button><button className="link" onClick={next}>Để sau</button></>}>
+          <div className="dob fade">
+            <input className="field" inputMode="numeric" maxLength={2} placeholder="Ngày" value={dob.d} onChange={(e) => setDob({ ...dob, d: e.target.value.replace(/\D/g, '') })} />
+            <input className="field" inputMode="numeric" maxLength={2} placeholder="Tháng" value={dob.m} onChange={(e) => setDob({ ...dob, m: e.target.value.replace(/\D/g, '') })} />
+            <input className="field" inputMode="numeric" maxLength={4} placeholder="Năm" value={dob.y} onChange={(e) => setDob({ ...dob, y: e.target.value.replace(/\D/g, '') })} style={{ flex: 1.4 }} />
+          </div>
         </Ask>
       )}
 
@@ -232,7 +247,7 @@ function Ask({ q, sub, echo, typed, onTyped, children, footer }: {
   useEffect(() => {
     if (!typed || !children) return;
     const n = Array.isArray(children) ? children.length : 1;
-    const ts = Array.from({ length: n }, (_, i) => setTimeout(() => popNote(i), 120 + i * 110));
+    const ts = Array.from({ length: n }, (_, i) => setTimeout(() => sfx('pop'), 120 + i * 110));
     return () => ts.forEach(clearTimeout);
   }, [typed]);
   const items = Array.isArray(children) ? children : children ? [children] : [];
