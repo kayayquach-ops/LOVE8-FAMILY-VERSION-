@@ -24,14 +24,14 @@ export function Letter({ onDone }: { onDone: () => void }) {
           <path id="route" className="route" d={ROUTE} />
           {/* nhà và cả nhà đang chờ */}
           <g className="family">
-            <path d="M300 420 l30 -24 l30 24 v40 h-60z" />
+            <path d="M232 430 l30 -24 l30 24 v40 h-60z" /><path d="M254 470 v-18 h16 v18" />
             <circle cx="300" cy="560" r="12" /><path d="M300 572 v34 M300 584 l-14 10 M300 584 l14 10 M300 606 l-10 20 M300 606 l10 20" />
             <circle cx="345" cy="566" r="10" /><path d="M345 576 v28 M345 586 l-12 8 M345 586 l12 8 M345 604 l-8 16 M345 604 l8 16" />
           </g>
           {/* sợi chỉ và lá thư thả xuống */}
           <path className="string" d="M330 300 V520" />
         </g>
-        <text className="route-text"><textPath href="#route" startOffset="8%">đường thư về nhà</textPath></text>
+        <text className="route-text"><textPath href="#route" startOffset="34%">đường thư về nhà</textPath></text>
         <g className="drop">
           <rect x="316" y="505" width="28" height="22" rx="3" fill="#FBF7F0" stroke="#2B2723" strokeWidth="1.6" />
           <path d="M316 507 l14 10 l14 -10" fill="none" stroke="#2B2723" strokeWidth="1.4" />

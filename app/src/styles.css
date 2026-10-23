@@ -163,13 +163,13 @@ img, video { display: block; }
 /* Màn chào kiểu "hello": nền kem đậm loang và trôi, chữ viết tay trắng được vẽ dần. */
 .hello { align-items: center; background: #D9BFA0; color: #fff; overflow: hidden; }
 .hello::before, .hello::after {
-  content: ''; position: absolute; width: 140vmax; height: 140vmax; border-radius: 50%; will-change: transform; pointer-events: none;
-  background: radial-gradient(circle at 30% 30%, #F6E7D2 0%, rgba(246,231,210,0) 55%), radial-gradient(circle at 70% 60%, #B98E6C 0%, rgba(185,142,108,0) 50%);
+  content: ''; position: absolute; width: 140vmax; height: 140vmax; will-change: transform; pointer-events: none;
+  background: radial-gradient(closest-side at 38% 38%, rgba(246,231,210,.95), rgba(246,231,210,0)), radial-gradient(closest-side at 64% 62%, rgba(185,142,108,.75), rgba(185,142,108,0));
   animation: swirl 12s ease-in-out infinite alternate;
 }
 .hello::before { left: -70vmax; top: -60vmax; }
 .hello::after { right: -75vmax; bottom: -70vmax; animation-duration: 15s; animation-direction: alternate-reverse;
-  background: radial-gradient(circle at 40% 40%, #EAD3B5 0%, rgba(234,211,181,0) 55%), radial-gradient(circle at 60% 70%, #C9A07E 0%, rgba(201,160,126,0) 50%); }
+  background: radial-gradient(closest-side at 42% 42%, rgba(240,220,194,.95), rgba(240,220,194,0)), radial-gradient(closest-side at 60% 66%, rgba(201,160,126,.8), rgba(201,160,126,0)); }
 @keyframes swirl { from { transform: translate3d(0,0,0) rotate(0deg) scale(1); } to { transform: translate3d(18vw, 14vh, 0) rotate(40deg) scale(1.15); } }
 .hello .center, .hello-hint { position: relative; z-index: 1; }
 .hello-word { width: min(92vw, 520px); overflow: visible; }
@@ -203,7 +203,7 @@ textarea.field { resize: none; text-align: left; line-height: 1.5; }
 .letter .string { stroke-dasharray: 220; stroke-dashoffset: 220; animation: draw .7s 2.2s ease forwards; }
 .letter .drop { opacity: 0; transform: translateY(-210px); animation: drop .7s 2.2s cubic-bezier(.3,1.4,.5,1) forwards; }
 .letter .pop-heart { transform-origin: 330px 497px; transform: scale(0); animation: heart .5s 2.9s cubic-bezier(.3,1.6,.5,1) forwards; }
-.letter .route-text { font-family: 'Script', cursive; font-size: 30px; fill: #9A5A44; opacity: 0; animation: fade 1s .9s both; }
+.letter .route-text { font-family: 'Script', cursive; font-size: 26px; fill: #9A5A44; opacity: 0; animation: fade 1s .9s both; }
 .letter-note { font-size: 16px; color: var(--soft); margin-top: -20px; animation: fade .6s 1s both; }
 @keyframes draw { to { stroke-dashoffset: 0; } }
 @keyframes drop { to { opacity: 1; transform: none; } }
