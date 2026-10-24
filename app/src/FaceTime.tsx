@@ -7,10 +7,11 @@ import { livePost, onLive, type LiveMsg, type LiveRoom } from './live';
 import type { Me } from './shared';
 import { buzz, sfx, tap } from './sound';
 import { Avatar, Icon, toast } from './ui';
+import { t, type Key } from './i18n';
 
 type Peer = { pc: RTCPeerConnection; stream: MediaStream | null; cam: boolean; mic: boolean; state: string };
 const AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
-const nameOf = (me: Me, id: string) => (id === me.me.id ? 'Mình' : me.members.find((m) => m.id === id)?.name ?? 'Ai đó');
+const nameOf = (me: Me, id: string) => (id === me.me.id ? t('facetime.me') : me.members.find((m) => m.id === id)?.name ?? t('common.someone'));
 
 /** Không mở được camera (máy chặn, máy tính không có) thì vẫn lên hình bằng một ô chữ cái đầu tên, có micro nếu được. */
 function fakeVideo(name: string) {
@@ -20,12 +21,12 @@ function fakeVideo(name: string) {
   const letter = (name.trim().split(/\s+/).pop()?.[0] ?? '?').toUpperCase();
   const stream = cv.captureStream(12);
   const draw = () => {
-    const t = Date.now() / 1000;
+    const sec = Date.now() / 1000;
     const g = c.createLinearGradient(0, 0, 480, 640);
     g.addColorStop(0, '#F1E2D8'); g.addColorStop(1, '#D9D2E0');
     c.fillStyle = g; c.fillRect(0, 0, 480, 640);
     c.fillStyle = 'rgba(154,90,68,.18)';
-    c.beginPath(); c.arc(240, 300, 120 + Math.sin(t * 1.6) * 8, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(240, 300, 120 + Math.sin(sec * 1.6) * 8, 0, Math.PI * 2); c.fill();
     c.fillStyle = '#9A5A44'; c.font = '600 120px BVP, system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillText(letter, 240, 306);
   };
@@ -84,7 +85,7 @@ export function FaceTime({ me, onClose }: { me: Me; onClose: () => void }) {
   function makePeer(id: string) {
     const pc = new RTCPeerConnection({ iceServers: ice.current });
     const s = localRef.current;
-    s?.getTracks().forEach((t) => pc.addTrack(t, s));
+    s?.getTracks().forEach((tr) => pc.addTrack(tr, s));
     const p: Peer = { pc, stream: null, cam: true, mic: true, state: 'new' };
     pc.onicecandidate = (e) => { if (e.candidate) void signal(id, { candidate: e.candidate.toJSON() }); };
     pc.ontrack = (e) => {
@@ -135,7 +136,7 @@ export function FaceTime({ me, onClose }: { me: Me; onClose: () => void }) {
   async function handle(m: LiveMsg) {
     if (ended.current) return;
     if (m.type === 'hello' || m.type === 'room') return sync(m.room);
-    if (m.type === 'declined') return toast(`${nameOf(me, m.from)} chưa nghe được`);
+    if (m.type === 'declined') return toast(t('facetime.declined', { name: nameOf(me, m.from) }));
     if (m.type !== 'signal' || !m.data) return;
     const { from, data } = m;
     try {
@@ -174,12 +175,12 @@ export function FaceTime({ me, onClose }: { me: Me; onClose: () => void }) {
         livePost<{ iceServers: RTCIceServer[] }>('config').catch(() => ({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })),
         getMedia(me.me.name),
       ]);
-      if (!alive) { media.stream.getTracks().forEach((t) => t.stop()); return; }
+      if (!alive) { media.stream.getTracks().forEach((tr) => tr.stop()); return; }
       ice.current = cfg.iceServers;
       localRef.current = media.stream;
       setLocal(media.stream);
       setFake(media.fake);
-      if (media.fake) toast(media.stream.getAudioTracks().length ? 'Chưa mở được camera' : 'Chưa mở được camera và micro');
+      if (media.fake) toast(media.stream.getAudioTracks().length ? t('facetime.noCam') : t('facetime.noCamMic'));
       const r = await livePost<{ room: LiveRoom }>('join');
       joined.current = true;
       sync(r.room);
@@ -191,15 +192,15 @@ export function FaceTime({ me, onClose }: { me: Me; onClose: () => void }) {
   const alone = !members.filter((id) => id !== meId).length;
   useEffect(() => {
     if (!alone || !local) return;
-    const t = setInterval(() => sfx('reveal'), 2600);
-    return () => clearInterval(t);
+    const iv = setInterval(() => sfx('reveal'), 2600);
+    return () => clearInterval(iv);
   }, [alone, !!local]);
 
   function hangUp(silent = false) {
     if (ended.current) return;
     ended.current = true;
     for (const id of [...peers.current.keys()]) close(id);
-    localRef.current?.getTracks().forEach((t) => t.stop());
+    localRef.current?.getTracks().forEach((tr) => tr.stop());
     localRef.current = null;
     if (joined.current) void livePost('leave').catch(() => {});
     if (!silent) { tap(); onClose(); }
@@ -209,7 +210,7 @@ export function FaceTime({ me, onClose }: { me: Me; onClose: () => void }) {
     tap();
     const next = !(kind === 'mic' ? mic : cam);
     const tracks = kind === 'mic' ? localRef.current?.getAudioTracks() : localRef.current?.getVideoTracks();
-    tracks?.forEach((t) => { t.enabled = next; });
+    tracks?.forEach((tr) => { tr.enabled = next; });
     if (kind === 'mic') setMic(next); else setCam(next);
     state.current = { ...state.current, [kind]: next };
     void signal('*', { state: state.current });
@@ -244,8 +245,8 @@ export function FaceTime({ me, onClose }: { me: Me; onClose: () => void }) {
               {(!stream || !camOn) && <div className="ft-face"><Avatar m={mine ? me.me : me.members.find((m) => m.id === id)} size={84} /></div>}
               <span className="ft-name">
                 {(mine ? !mic : p && !p.mic) && <Icon name="micOff" size={14} />}
-                {mine ? 'Mình' : nameOf(me, id)}
-                {!mine && p && p.state !== 'connected' && <small>đang nối</small>}
+                {mine ? t('facetime.me') : nameOf(me, id)}
+                {!mine && p && p.state !== 'connected' && <small>{t('facetime.connecting')}</small>}
               </span>
             </div>
           );
@@ -255,16 +256,16 @@ export function FaceTime({ me, onClose }: { me: Me; onClose: () => void }) {
       {alone && !!local && (
         <div className="ft-wait fade">
           <div className="ft-wait-faces">{me.members.filter((m) => m.id !== meId).map((m) => <Avatar key={m.id} m={m} size={38} />)}</div>
-          <span>Đang gọi cả nhà...</span>
+          <span>{t('facetime.calling')}</span>
         </div>
       )}
       {!!smile && <Countdown key={smile} onDone={() => setSmile(0)} />}
 
       <div className="ft-bar">
-        <button className={`ft-btn ${mic ? '' : 'off'}`} onClick={() => toggle('mic')} aria-label={mic ? 'Tắt mic' : 'Bật mic'}><Icon name={mic ? 'mic' : 'micOff'} /></button>
-        <button className={`ft-btn ${cam ? '' : 'off'}`} onClick={() => toggle('cam')} aria-label={cam ? 'Tắt camera' : 'Bật camera'}><Icon name={cam ? 'video' : 'videoOff'} /></button>
-        <button className="ft-btn" onClick={() => { tap(); setBooth(true); }} aria-label="Chụp chung"><Icon name="booth" /></button>
-        <button className="ft-btn end" onClick={() => hangUp()} aria-label="Gác máy"><Icon name="phone" /></button>
+        <button className={`ft-btn ${mic ? '' : 'off'}`} onClick={() => toggle('mic')} aria-label={mic ? t('facetime.micOff') : t('facetime.micOn')}><Icon name={mic ? 'mic' : 'micOff'} /></button>
+        <button className={`ft-btn ${cam ? '' : 'off'}`} onClick={() => toggle('cam')} aria-label={cam ? t('facetime.camOff') : t('facetime.camOn')}><Icon name={cam ? 'video' : 'videoOff'} /></button>
+        <button className="ft-btn" onClick={() => { tap(); setBooth(true); }} aria-label={t('facetime.booth')}><Icon name="booth" /></button>
+        <button className="ft-btn end" onClick={() => hangUp()} aria-label={t('facetime.hangUp')}><Icon name="phone" /></button>
       </div>
 
       {booth && <Booth me={me} tiles={boothTiles} onShoot={() => void signal('*', { smile: true })} onClose={() => setBooth(false)} />}
@@ -287,12 +288,12 @@ function Video({ stream, muted, mirror, hidden, el }: { stream: MediaStream; mut
 function Countdown({ onDone }: { onDone: () => void }) {
   const [k, setK] = useState(3);
   useEffect(() => {
-    if (k === 0) { const t = setTimeout(onDone, 500); return () => clearTimeout(t); }
+    if (k === 0) { const to = setTimeout(onDone, 500); return () => clearTimeout(to); }
     sfx('tap');
-    const t = setTimeout(() => setK(k - 1), 900);
-    return () => clearTimeout(t);
+    const to = setTimeout(() => setK(k - 1), 900);
+    return () => clearTimeout(to);
   }, [k]);
-  return <div className="ft-count" aria-live="polite">{k ? <b key={k}>{k}</b> : <i className="ft-flash" />}<span>Cười lên nào</span></div>;
+  return <div className="ft-count" aria-live="polite">{k ? <b key={k}>{k}</b> : <i className="ft-flash" />}<span>{t('facetime.smile')}</span></div>;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -310,15 +311,16 @@ function useThumbs(title: string, photo: HTMLImageElement | null) {
         const one = document.createElement('canvas');
         one.width = 120; one.height = 150;
         const c1 = one.getContext('2d')!;
-        for (const t of THEMES) {
+        const sample = [{ video: null, name: t('role.bo'), mirror: false }, { video: null, name: t('role.con'), mirror: false }];
+        for (const th of THEMES) {
           c1.setTransform(120 / W, 0, 0, 150 / H, 0, 0);
-          drawBooth(c1, t.id, [{ video: null, name: 'Bố', mirror: false }, { video: null, name: 'Con', mirror: false }], title, photo);
-          out[`one:${t.id}`] = one.toDataURL('image/jpeg', 0.8);
+          drawBooth(c1, th.id, sample, title, photo);
+          out[`one:${th.id}`] = one.toDataURL('image/jpeg', 0.8);
         }
         const blank = [null, null, null];
-        for (const t of STRIPS) {
-          const cv = renderStrip(t.id, blank, 3, { title, when: new Date(), photo }, t.tone, false, 0.2);
-          out[`strip:${t.id}`] = cv.toDataURL('image/jpeg', 0.8);
+        for (const th of STRIPS) {
+          const cv = renderStrip(th.id, blank, 3, { title, when: new Date(), photo }, th.tone, false, 0.2);
+          out[`strip:${th.id}`] = cv.toDataURL('image/jpeg', 0.8);
         }
         setThumbs(out);
       });
@@ -327,7 +329,7 @@ function useThumbs(title: string, photo: HTMLImageElement | null) {
   return thumbs;
 }
 
-const TONES: { id: Tone; name: string }[] = [{ id: 'color', name: 'Ảnh màu' }, { id: 'bw', name: 'Đen trắng' }, { id: 'wine', name: 'Đỏ rượu' }];
+const TONES: Tone[] = ['color', 'bw', 'wine'];
 
 /** Photobooth: một tấm chung, hoặc dải 3 đến 4 tấm chụp liền nhau. Chọn khung, đếm 3 2 1, rồi gửi vào nhà. */
 function Booth({ me, tiles, onShoot, onClose }: { me: Me; tiles: () => Tile[]; onShoot: () => void; onClose: () => void }) {
@@ -360,11 +362,12 @@ function Booth({ me, tiles, onShoot, onClose }: { me: Me; tiles: () => Tile[]; o
   function facesFor(i: number): Tile[] {
     const L = live.current;
     const cur = tilesRef.current();
-    const base = L.locked ? L.locked.map((t) => cur.find((x) => x.id === t.id) ?? { ...t, video: null }) : cur;
+    const base = L.locked ? L.locked.map((f) => cur.find((x) => x.id === f.id) ?? { ...f, video: null }) : cur;
     if (L.group === 'all' || !base.length) return base;
     return [base[i % base.length]];
   }
-  const title = me.family.name.toLowerCase().startsWith('nhà') ? me.family.name : `Nhà ${me.family.name}`;
+  const pre = t('booth.familyPrefix');
+  const title = pre && me.family.name.toLowerCase().startsWith(pre) ? me.family.name : t('booth.familyTitle', { name: me.family.name });
   const thumbs = useThumbs(title, photo);
 
   // Một tấm: vẽ cả khung theo từng hình. Dải ảnh: chỉ vẽ ô ngắm 4:3, nhẹ hơn nhiều.
@@ -413,10 +416,10 @@ function Booth({ me, tiles, onShoot, onClose }: { me: Me; tiles: () => Tile[]; o
       setNum(0);
       const f = snap(facesFor(i));
       live.current.next = i + 1;
-      const t = document.createElement('canvas');
-      t.width = 160; t.height = Math.round((160 * FH) / FW);
-      t.getContext('2d')!.drawImage(f, 0, 0, t.width, t.height);
-      got.push({ cv: f, thumb: t.toDataURL('image/jpeg', 0.7) });
+      const th = document.createElement('canvas');
+      th.width = 160; th.height = Math.round((160 * FH) / FW);
+      th.getContext('2d')!.drawImage(f, 0, 0, th.width, th.height);
+      got.push({ cv: f, thumb: th.toDataURL('image/jpeg', 0.7) });
       setFrames([...got]);
       setFlash(Date.now()); sfx('shutter'); buzz(30);
       await sleep(i < shots - 1 ? 700 : 400);
@@ -433,8 +436,8 @@ function Booth({ me, tiles, onShoot, onClose }: { me: Me; tiles: () => Tile[]; o
   useEffect(() => {
     if (!count) return;
     if (count === 4) { onShoot(); }
-    if (count > 1) { sfx('tap'); const t = setTimeout(() => setCount(count - 1), 900); return () => clearTimeout(t); }
-    const t = setTimeout(() => {
+    if (count > 1) { sfx('tap'); const to = setTimeout(() => setCount(count - 1), 900); return () => clearTimeout(to); }
+    const to = setTimeout(() => {
       const c = cv.current;
       if (!c) return;
       live.current.frozen = true;
@@ -442,7 +445,7 @@ function Booth({ me, tiles, onShoot, onClose }: { me: Me; tiles: () => Tile[]; o
       sfx('shutter'); buzz(30);
       c.toBlob((b) => { if (b) setShot({ url: URL.createObjectURL(b), blob: b }); setCount(0); }, 'image/jpeg', 0.9);
     }, 900);
-    return () => clearTimeout(t);
+    return () => clearTimeout(to);
   }, [count]);
 
   function pickPhoto(f?: File) {
@@ -457,9 +460,9 @@ function Booth({ me, tiles, onShoot, onClose }: { me: Me; tiles: () => Tile[]; o
     setSaving(true);
     try {
       const f = new FormData();
-      f.set('kind', 'photo'); f.set('caption', 'Cả nhà chụp chung'); f.set('file', shot.blob, 'booth.jpg');
+      f.set('kind', 'photo'); f.set('caption', t('booth.caption')); f.set('file', shot.blob, 'booth.jpg');
       await api.post(f);
-      sfx('send'); toast('Đã gửi vào nhà');
+      sfx('send'); toast(t('booth.sent'));
       onClose();
     } catch (e) { toast((e as Error).message); setSaving(false); }
   }
@@ -504,10 +507,10 @@ function Booth({ me, tiles, onShoot, onClose }: { me: Me; tiles: () => Tile[]; o
   return (
     <div className="ft-booth fade">
       <header className="ft-booth-top">
-        <button className="icon-btn" onClick={() => { tap(); onClose(); }} aria-label="Quay lại"><Icon name="back" /></button>
+        <button className="icon-btn" onClick={() => { tap(); onClose(); }} aria-label={t('common.back')}><Icon name="back" /></button>
         <div className={`ft-seg ${busy || shot ? 'dim' : ''}`}>
-          <button className={mode === 'one' ? 'on' : ''} onClick={() => !busy && !shot && pickMode('one')}>Một tấm</button>
-          <button className={mode === 'strip' ? 'on' : ''} onClick={() => !busy && !shot && pickMode('strip')}>Dải ảnh</button>
+          <button className={mode === 'one' ? 'on' : ''} onClick={() => !busy && !shot && pickMode('one')}>{t('booth.one')}</button>
+          <button className={mode === 'strip' ? 'on' : ''} onClick={() => !busy && !shot && pickMode('strip')}>{t('booth.strip')}</button>
         </div>
         <span style={{ width: 44 }} />
       </header>
@@ -515,11 +518,11 @@ function Booth({ me, tiles, onShoot, onClose }: { me: Me; tiles: () => Tile[]; o
         {mode === 'one' ? (
           <>
             <canvas ref={cv} width={W} height={H} className="ft-canvas" style={shot ? { display: 'none' } : undefined} />
-            {shot && <img src={shot.url} className="ft-canvas" alt="Ảnh chung" />}
+            {shot && <img src={shot.url} className="ft-canvas" alt={t('booth.alt.one')} />}
             {count > 1 && <b key={count} className="ft-num">{count - 1}</b>}
           </>
         ) : stripDone ? (
-          shot ? <img src={shot.url} className="ft-strip-out" alt="Dải ảnh chung" /> : null
+          shot ? <img src={shot.url} className="ft-strip-out" alt={t('booth.alt.strip')} /> : null
         ) : (
           <div className="ft-shoot">
             <div className="ft-view-wrap">
@@ -538,42 +541,42 @@ function Booth({ me, tiles, onShoot, onClose }: { me: Me; tiles: () => Tile[]; o
       <div className="ft-booth-foot">
         {!(mode === 'one' && shot) && !running && (
           <div className="ft-picks">
-            {list.map((t) => {
-              const src = thumbs[`${mode}:${t.id}`];
-              const inner = <>{src ? <img src={src} alt="" /> : <i />}<span>{t.name}</span></>;
-              const cls = `ft-pick ${mode} ${current === t.id ? 'on' : ''}`;
-              return t.id === 'photo' ? (
-                <label key={t.id} className={cls}>
+            {list.map((th) => {
+              const src = thumbs[`${mode}:${th.id}`];
+              const inner = <>{src ? <img src={src} alt="" /> : <i />}<span>{t(`booth.${mode === 'one' ? 'theme' : 'strip'}.${th.id}` as Key)}</span></>;
+              const cls = `ft-pick ${mode} ${current === th.id ? 'on' : ''}`;
+              return th.id === 'photo' ? (
+                <label key={th.id} className={cls}>
                   {inner}
                   <input type="file" accept="image/*" hidden onChange={(e) => { pickPhoto(e.target.files?.[0]); e.target.value = ''; }} />
                 </label>
-              ) : <button key={t.id} className={cls} onClick={() => choose(t.id)}>{inner}</button>;
+              ) : <button key={th.id} className={cls} onClick={() => choose(th.id)}>{inner}</button>;
             })}
           </div>
         )}
         {mode === 'strip' && !running && (
           <div className="ft-opts">
             {!stripDone && people > 1 && (
-              <button className="chip" onClick={() => { tap(); setGroup(group === 'all' ? 'each' : 'all'); }}>{group === 'all' ? 'Chung một ô' : 'Mỗi người một ô'}</button>
+              <button className="chip" onClick={() => { tap(); setGroup(group === 'all' ? 'each' : 'all'); }}>{group === 'all' ? t('booth.groupAll') : t('booth.groupEach')}</button>
             )}
             {!stripDone && <>
-              <button className={`chip ${shots === 3 ? 'on' : ''}`} onClick={() => { tap(); setShots(3); }}>3 tấm</button>
-              <button className={`chip ${shots === 4 ? 'on' : ''}`} onClick={() => { tap(); setShots(4); }}>4 tấm</button>
+              <button className={`chip ${shots === 3 ? 'on' : ''}`} onClick={() => { tap(); setShots(3); }}>{t('booth.shots', { n: 3 })}</button>
+              <button className={`chip ${shots === 4 ? 'on' : ''}`} onClick={() => { tap(); setShots(4); }}>{t('booth.shots', { n: 4 })}</button>
             </>}
-            <button className="chip" onClick={() => { tap(); setPair(!pair); }}>{pair ? 'Hai dải' : 'Một dải'}</button>
-            <button className="chip" onClick={() => { tap(); setTone(TONES[(TONES.findIndex((x) => x.id === tone) + 1) % TONES.length].id); }}>{TONES.find((x) => x.id === tone)?.name}</button>
+            <button className="chip" onClick={() => { tap(); setPair(!pair); }}>{pair ? t('booth.pair.two') : t('booth.pair.one')}</button>
+            <button className="chip" onClick={() => { tap(); setTone(TONES[(TONES.indexOf(tone) + 1) % TONES.length]); }}>{t(`booth.tone.${tone}`)}</button>
           </div>
         )}
         {shot ? (
           <>
-            <button className="btn" onClick={save} disabled={saving}>{saving ? 'Đang gửi...' : 'Gửi vào nhà'}</button>
+            <button className="btn" onClick={save} disabled={saving}>{saving ? t('chat.sending') : t('booth.send')}</button>
             <div className="ft-links">
-              <button className="link" onClick={download}>Lưu về máy</button>
-              <button className="link" onClick={again}>Chụp lại</button>
+              <button className="link" onClick={download}>{t('booth.download')}</button>
+              <button className="link" onClick={again}>{t('booth.again')}</button>
             </div>
           </>
         ) : (
-          <button className="shutter" disabled={busy} onClick={() => { if (busy) return; if (mode === 'strip') void runStrip(); else setCount(4); }} aria-label="Chụp"><i /></button>
+          <button className="shutter" disabled={busy} onClick={() => { if (busy) return; if (mode === 'strip') void runStrip(); else setCount(4); }} aria-label={t('booth.shoot')}><i /></button>
         )}
       </div>
     </div>

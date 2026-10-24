@@ -9,7 +9,7 @@ type Box = { x: number; y: number; w: number; h: number };
 export type StripInfo = { title: string; when: Date; photo?: HTMLImageElement | null };
 type L = { n: number; h: number; cells: Box[]; info: StripInfo };
 type StripTheme = {
-  id: string; name: string; tone: Tone;
+  id: string; tone: Tone;
   top: number; bottom: number; side: number; gap: number;
   frame: string | null; pad: number; radius: number; shadow?: boolean;
   pair: string; tilt?: number;
@@ -26,8 +26,10 @@ function rand(seed: number) {
   return () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
 }
 
+import { t } from './i18n';
+
 const two = (x: number) => String(x).padStart(2, '0');
-const WD = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
+const WD = (d: Date) => t(`strip.weekday.${d.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6}`);
 const dmy = (d: Date, s = '.') => `${two(d.getDate())}${s}${two(d.getMonth() + 1)}${s}${d.getFullYear()}`;
 const hm = (d: Date) => `${two(d.getHours())}:${two(d.getMinutes())}`;
 
@@ -38,10 +40,10 @@ function fit(c: Ctx, text: string, maxW: number, size: number, weight = 500, fam
   return s;
 }
 
-function text(c: Ctx, t: string, x: number, y: number, color: string, size: number, maxW: number, weight = 500, align: CanvasTextAlign = 'center', family = F) {
-  fit(c, t, maxW, size, weight, family);
+function text(c: Ctx, s: string, x: number, y: number, color: string, size: number, maxW: number, weight = 500, align: CanvasTextAlign = 'center', family = F) {
+  fit(c, s, maxW, size, weight, family);
   c.fillStyle = color; c.textAlign = align; c.textBaseline = 'alphabetic';
-  c.fillText(t, x, y);
+  c.fillText(s, x, y);
 }
 
 // ---------- Chữ riêng từng khung ----------
@@ -59,6 +61,7 @@ const STRIP_FONTS: Record<string, string[]> = {
   xmas: [`400 40px ${LO}`, `700 40px ${DS}`],
   photo: [`italic 700 40px ${PF}`, `400 40px ${PH}`],
 };
+// i18n-ok: chữ mẫu để nạp phông (đủ dấu tiếng Việt), không hiện ra màn hình.
 const VI = 'Cả nhà mình, Hồ Chí Minh, Đà Nẵng, Tết ăâêôơưđ ẢÃẠẮẰẲẴẶ 0123456789';
 
 /** Nạp chữ của các khung (cả bộ dấu tiếng Việt) trước khi vẽ, để tấm đầu không rơi về chữ mặc định. */
@@ -417,7 +420,7 @@ const WINE = '#5E0F1B', CREAM = '#F5EBDC';
 
 export const STRIPS: StripTheme[] = [
   {
-    id: 'mist', name: 'Sương sớm', tone: 'color', top: 64, bottom: 250, side: 44, gap: 24,
+    id: 'mist', tone: 'color', top: 64, bottom: 250, side: 44, gap: 24,
     frame: '#FFFFFF', pad: 10, radius: 24, shadow: true, pair: '#E5E0DA',
     under: (c, l) => {
       soft(c, l.h, '#ECEAE8', [[300, 0.3, 520, 'rgba(255,255,255,.95)'], [40, 0.95, 560, 'rgba(241,200,182,.85)'], [580, 0.88, 520, 'rgba(190,182,204,.8)']]);
@@ -433,12 +436,12 @@ export const STRIPS: StripTheme[] = [
       scribble(c, SW / 2 - tw / 2 + 10, SW / 2 + tw / 2 - 10, y + 22, 'rgba(214,140,120,.8)', 4);
       heart(c, SW / 2 + tw / 2 + 20, y - 46, 13, 'rgba(214,120,110,.85)');
       heart(c, SW / 2 + tw / 2 + 40, y - 24, 8, 'rgba(190,160,200,.9)');
-      fit(c, `${WD[l.info.when.getDay()].toLowerCase()}, ${dmy(l.info.when)}`, 480, 30, 400, PH);
-      marker(c, `${WD[l.info.when.getDay()].toLowerCase()}, ${dmy(l.info.when)}`, SW / 2, l.h - 60, 'rgba(58,47,42,.75)');
+      fit(c, `${WD(l.info.when).toLowerCase()}, ${dmy(l.info.when)}`, 480, 30, 400, PH);
+      marker(c, `${WD(l.info.when).toLowerCase()}, ${dmy(l.info.when)}`, SW / 2, l.h - 60, 'rgba(58,47,42,.75)');
     },
   },
   {
-    id: 'ticket', name: 'Vé rạp', tone: 'color', top: 262, bottom: 248, side: 58, gap: 16,
+    id: 'ticket', tone: 'color', top: 262, bottom: 248, side: 58, gap: 16,
     frame: WINE, pad: 4, radius: 3, pair: WINE,
     under: (c, l) => {
       const h = l.h;
@@ -460,25 +463,25 @@ export const STRIPS: StripTheme[] = [
       c.moveTo(150, y0); c.lineTo(150, y1); c.moveTo(242, y0); c.lineTo(242, y1); c.moveTo(242, 202); c.lineTo(x3, 202);
       c.stroke();
       const d = l.info.when;
-      text(c, 'HÀNG', 104, 184, WINE, 17, 80, 500, 'center', OS);
+      text(c, t('strip.ticket.row'), 104, 184, WINE, 17, 80, 500, 'center', OS);
       text(c, two(d.getDate()), 104, 234, WINE, 42, 80, 500, 'center', OS);
-      text(c, 'GHẾ', 196, 184, WINE, 17, 80, 500, 'center', OS);
+      text(c, t('strip.ticket.seat'), 196, 184, WINE, 17, 80, 500, 'center', OS);
       text(c, two(d.getMonth() + 1), 196, 234, WINE, 42, 80, 500, 'center', OS);
-      text(c, `${WD[d.getDay()]}, ${dmy(d, '/')}`.toUpperCase(), (242 + x3) / 2, 192, WINE, 20, 280, 500, 'center', OS);
-      text(c, `SUẤT ${hm(d)}`, (242 + x3) / 2, 236, WINE, 28, 280, 500, 'center', OS);
+      text(c, `${WD(d)}, ${dmy(d, '/')}`.toUpperCase(), (242 + x3) / 2, 192, WINE, 20, 280, 500, 'center', OS);
+      text(c, t('strip.ticket.show', { time: hm(d) }), (242 + x3) / 2, 236, WINE, 28, 280, 500, 'center', OS);
     },
     over: (c, l) => {
       const h = l.h, y = h - 232;
       c.strokeStyle = WINE; c.lineWidth = 2;
       c.beginPath(); c.moveTo(58, y); c.lineTo(SW - 58, y); c.moveTo(58, y + 44); c.lineTo(SW - 58, y + 44); c.stroke();
-      text(c, 'GIỮ LẠI KHOẢNH KHẮC NÀY', SW / 2, y + 31, WINE, 20, 380, 500, 'center', OS);
+      text(c, t('strip.ticket.keep'), SW / 2, y + 31, WINE, 20, 380, 500, 'center', OS);
       star5(c, 82, y + 22, 8, WINE); star5(c, SW - 82, y + 22, 8, WINE);
       fit(c, 'sweet home', 440, 66, 700, PF, 'italic');
       c.textAlign = 'center'; c.fillStyle = WINE; c.fillText('sweet home', SW / 2, h - 96);
     },
   },
   {
-    id: 'film', name: 'Phim cũ', tone: 'bw', top: 66, bottom: 150, side: 54, gap: 22,
+    id: 'film', tone: 'bw', top: 66, bottom: 150, side: 54, gap: 22,
     frame: null, pad: 0, radius: 3, pair: '#E9E6E1', tilt: 0.04,
     under: (c, l) => {
       c.fillStyle = '#121110'; c.fillRect(0, 0, SW, l.h);
@@ -498,12 +501,12 @@ export const STRIPS: StripTheme[] = [
       c.fillText(`'${String(l.info.when.getFullYear()).slice(2)} ${two(l.info.when.getMonth() + 1)} ${two(l.info.when.getDate())}`, last.x + last.w - 16, last.y + last.h - 16);
       c.restore();
       // Chữ máy đánh chữ: mỗi ký tự lệch nhẹ, đậm nhạt không đều như mực ruy băng.
-      const t = l.info.title.normalize('NFC');
-      fit(c, t, 440, 30, 400, SM);
-      const tw = c.measureText(t).width, r = rand(31);
+      const ti = l.info.title.normalize('NFC');
+      fit(c, ti, 440, 30, 400, SM);
+      const tw = c.measureText(ti).width, r = rand(31);
       let x = SW / 2 - tw / 2;
       c.textAlign = 'left'; c.textBaseline = 'alphabetic';
-      for (const ch of [...t]) {
+      for (const ch of [...ti]) {
         c.fillStyle = `rgba(237,230,216,${0.72 + r() * 0.28})`;
         c.fillText(ch, x, l.h - 62 + (r() - 0.5) * 2.5);
         x += c.measureText(ch).width;
@@ -511,7 +514,7 @@ export const STRIPS: StripTheme[] = [
     },
   },
   {
-    id: 'music', name: 'Thanh nhạc', tone: 'color', top: 46, bottom: 426, side: 40, gap: 20,
+    id: 'music', tone: 'color', top: 46, bottom: 426, side: 40, gap: 20,
     frame: null, pad: 0, radius: 20, pair: '#E2DAE0',
     under: (c, l) => {
       soft(c, l.h, '#E8E1DA', [[80, 0.1, 480, 'rgba(255,255,255,.9)'], [560, 0.45, 520, 'rgba(214,196,214,.85)'], [60, 0.9, 520, 'rgba(240,205,190,.85)']]);
@@ -524,9 +527,9 @@ export const STRIPS: StripTheme[] = [
       c.fillStyle = 'rgba(255,255,255,.62)';
       c.beginPath(); c.roundRect(x, y, w, 360, 30); c.fill();
       c.restore();
-      text(c, 'Đang phát', x + 34, y + 48, mute, 18, 300, 400, 'left', IN);
+      text(c, t('strip.music.playing'), x + 34, y + 48, mute, 18, 300, 400, 'left', IN);
       text(c, l.info.title, x + 34, y + 94, ink, 36, w - 120, 700, 'left', IN);
-      text(c, `Cả nhà · ${dmy(l.info.when)}`, x + 34, y + 130, mute, 21, w - 120, 400, 'left', IN);
+      text(c, t('strip.music.by', { date: dmy(l.info.when) }), x + 34, y + 130, mute, 21, w - 120, 400, 'left', IN);
       // Trái tim nhỏ bên phải tên bài.
       const hx = x + w - 52, hy = y + 82;
       c.fillStyle = '#C8576A';
@@ -561,7 +564,7 @@ export const STRIPS: StripTheme[] = [
     },
   },
   {
-    id: 'halloween', name: 'Halloween', tone: 'color', top: 232, bottom: 236, side: 48, gap: 24,
+    id: 'halloween', tone: 'color', top: 232, bottom: 236, side: 48, gap: 24,
     frame: '#0E0A10', pad: 7, radius: 26, shadow: true, pair: '#B9A6D9',
     under: (c, l) => {
       const g = c.createLinearGradient(0, 0, 0, l.h);
@@ -603,7 +606,7 @@ export const STRIPS: StripTheme[] = [
     },
   },
   {
-    id: 'tet', name: 'Tết', tone: 'color', top: 236, bottom: 236, side: 52, gap: 22,
+    id: 'tet', tone: 'color', top: 236, bottom: 236, side: 52, gap: 22,
     frame: '#FFF3DC', pad: 8, radius: 14, shadow: true, pair: '#F4E3C3',
     under: (c, l) => {
       const g = c.createLinearGradient(0, 0, 0, l.h);
@@ -616,28 +619,28 @@ export const STRIPS: StripTheme[] = [
       c.beginPath(); c.roundRect(16, 16, SW - 32, l.h - 32, 18); c.stroke();
       c.lineWidth = 1.2; c.beginPath(); c.roundRect(26, 26, SW - 52, l.h - 52, 12); c.stroke();
       lantern(c, 92, 26, 102, 36); lantern(c, SW - 92, 26, 126, 30);
-      text(c, 'Tết sum vầy', SW / 2, 106, '#FFE3A3', 34, 300, 700, 'center', DS);
+      text(c, t('strip.tet.title'), SW / 2, 106, '#FFE3A3', 34, 300, 700, 'center', DS);
       // Tên nhà: viền kép đỏ sẫm và vàng nhạt, ruột vàng ánh kim.
-      const t = l.info.title;
-      fit(c, t, 340, 52, 400, PA);
+      const ti = l.info.title;
+      fit(c, ti, 340, 52, 400, PA);
       c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.lineJoin = 'round';
-      c.lineWidth = 12; c.strokeStyle = '#5A0B0B'; c.strokeText(t, SW / 2, 182);
-      c.lineWidth = 5; c.strokeStyle = '#FFE3A3'; c.strokeText(t, SW / 2, 182);
+      c.lineWidth = 12; c.strokeStyle = '#5A0B0B'; c.strokeText(ti, SW / 2, 182);
+      c.lineWidth = 5; c.strokeStyle = '#FFE3A3'; c.strokeText(ti, SW / 2, 182);
       const gg = c.createLinearGradient(0, 140, 0, 186);
       gg.addColorStop(0, '#FFE38A'); gg.addColorStop(1, '#E2A62B');
-      c.fillStyle = gg; c.fillText(t, SW / 2, 182);
+      c.fillStyle = gg; c.fillText(ti, SW / 2, 182);
     },
     over: (c, l) => {
       const [a] = l.cells;
       maiBranch(c, [[-10, a.y + 130], [40, a.y + 70], [110, a.y + 26], [170, a.y - 6], [230, a.y - 20]], 3, 0.85);
       maiBranch(c, [[-10, l.h - 30], [60, l.h - 92], [130, l.h - 132], [200, l.h - 156], [252, l.h - 176]], 9);
       envelope(c, SW - 150, l.h - 118, 70, -0.18); envelope(c, SW - 84, l.h - 108, 64, 0.16);
-      stamp(c, 344, l.h - 100, 54, -0.2, '#FFE3A3', `XUÂN ${l.info.when.getFullYear() + (l.info.when.getMonth() >= 9 ? 1 : 0)} · AN KHANG · `, 'Phúc', `500 13px ${OS}`, `400 30px ${PA}`);
+      stamp(c, 344, l.h - 100, 54, -0.2, '#FFE3A3', t('strip.tet.stamp', { year: l.info.when.getFullYear() + (l.info.when.getMonth() >= 9 ? 1 : 0) }), t('strip.tet.luck'), `500 13px ${OS}`, `400 30px ${PA}`);
       text(c, dmy(l.info.when), 344, l.h - 28, 'rgba(255,227,163,.85)', 22, 200, 700, 'center', DS);
     },
   },
   {
-    id: 'xmas', name: 'Giáng sinh', tone: 'color', top: 226, bottom: 262, side: 48, gap: 22,
+    id: 'xmas', tone: 'color', top: 226, bottom: 262, side: 48, gap: 22,
     frame: '#FFFFFF', pad: 8, radius: 18, shadow: true, pair: '#E7EEE8',
     under: (c, l) => {
       const g = c.createLinearGradient(0, 0, 0, l.h);
@@ -655,14 +658,14 @@ export const STRIPS: StripTheme[] = [
       const r = rand(17);
       c.fillStyle = 'rgba(255,255,255,.8)';
       for (let i = 0; i < 110; i++) { c.beginPath(); c.arc(r() * SW, r() * l.h, 1.5 + r() * 3.2, 0, TAU); c.fill(); }
-      text(c, 'Giáng sinh an lành', SW / 2, 112, '#F6CF57', 32, 400, 700, 'center', DS);
+      text(c, t('strip.xmas.title'), SW / 2, 112, '#F6CF57', 32, 400, 700, 'center', DS);
       // Tên nhà: bóng đỏ lệch xuống phải như in hai màu, sao nhỏ hai bên.
-      const t = l.info.title;
-      fit(c, t, 430, 60, 400, LO);
+      const ti = l.info.title;
+      fit(c, ti, 430, 60, 400, LO);
       c.textAlign = 'center'; c.textBaseline = 'alphabetic';
-      c.fillStyle = '#D83A3A'; c.fillText(t, SW / 2 + 4, 186);
-      c.fillStyle = '#FFFFFF'; c.fillText(t, SW / 2, 182);
-      const tw = Math.min(c.measureText(t).width, 430);
+      c.fillStyle = '#D83A3A'; c.fillText(ti, SW / 2 + 4, 186);
+      c.fillStyle = '#FFFFFF'; c.fillText(ti, SW / 2, 182);
+      const tw = Math.min(c.measureText(ti).width, 430);
       star4(c, SW / 2 - tw / 2 - 26, 150, 12, '#F6CF57'); star4(c, SW / 2 + tw / 2 + 24, 140, 9, '#F6CF57'); star4(c, SW / 2 + tw / 2 + 12, 176, 6, '#FFFFFF');
     },
     over: (c, l) => {
@@ -681,7 +684,7 @@ export const STRIPS: StripTheme[] = [
     },
   },
   {
-    id: 'photo', name: 'Ảnh của mình', tone: 'color', top: 60, bottom: 226, side: 44, gap: 22,
+    id: 'photo', tone: 'color', top: 60, bottom: 226, side: 44, gap: 22,
     frame: '#FFFFFF', pad: 9, radius: 22, shadow: true, pair: '#2B2723',
     under: (c, l) => {
       c.fillStyle = '#8A8278'; c.fillRect(0, 0, SW, l.h);
@@ -696,8 +699,8 @@ export const STRIPS: StripTheme[] = [
       c.fillText(l.info.title, SW / 2, l.h - 124);
       const tw = Math.min(c.measureText(l.info.title).width, 480);
       scribble(c, SW / 2 - tw / 2, SW / 2 + tw / 2, l.h - 102, 'rgba(255,255,255,.85)', 3.5);
-      fit(c, `${WD[l.info.when.getDay()].toLowerCase()}, ${dmy(l.info.when)}`, 480, 28, 400, PH);
-      marker(c, `${WD[l.info.when.getDay()].toLowerCase()}, ${dmy(l.info.when)}`, SW / 2, l.h - 58, 'rgba(255,255,255,.92)', 9);
+      fit(c, `${WD(l.info.when).toLowerCase()}, ${dmy(l.info.when)}`, 480, 28, 400, PH);
+      marker(c, `${WD(l.info.when).toLowerCase()}, ${dmy(l.info.when)}`, SW / 2, l.h - 58, 'rgba(255,255,255,.92)', 9);
       c.restore();
     },
   },
@@ -733,14 +736,14 @@ export function drawStrip(c: Ctx, id: string, frames: (CanvasImageSource | null)
 }
 
 /** Xuất ảnh: một dải, hoặc hai dải cạnh nhau như tấm ảnh in đôi ở tiệm chụp. */
-export function renderStrip(id: string, frames: (CanvasImageSource | null)[], n: number, info: StripInfo, t: Tone, pair: boolean, scale = 2) {
+export function renderStrip(id: string, frames: (CanvasImageSource | null)[], n: number, info: StripInfo, tn: Tone, pair: boolean, scale = 2) {
   const h = stripH(n);
   const one = document.createElement('canvas');
   const s1 = pair ? scale * 0.72 : scale;
   one.width = Math.round(SW * s1); one.height = Math.round(h * s1);
   const c1 = one.getContext('2d')!;
   c1.scale(s1, s1);
-  drawStrip(c1, id, frames, n, info, t);
+  drawStrip(c1, id, frames, n, info, tn);
   if (!pair) return one;
   const th = stripTheme(id);
   const M = 70, PW = SW * 2 + M * 3, PH = h + M * 2;
@@ -754,7 +757,8 @@ export function renderStrip(id: string, frames: (CanvasImageSource | null)[], n:
     c.save();
     c.strokeStyle = 'rgba(43,39,35,.22)'; c.lineWidth = 2.5;
     c.font = `600 132px ${F}`; c.textAlign = 'center'; c.textBaseline = 'middle';
-    for (let y = 90, i = 0; y < PH; y += 170, i++) { c.globalAlpha = 1 - i * 0.07; c.strokeText('KHOẢNH KHẮC', PW / 2, y); }
+    const back = t('strip.pair.back');
+    for (let y = 90, i = 0; y < PH; y += 170, i++) { c.globalAlpha = 1 - i * 0.07; c.strokeText(back, PW / 2, y); }
     c.restore();
   } else grain(c, PW, PH, 0.05);
   [M, M * 2 + SW].forEach((x, i) => {

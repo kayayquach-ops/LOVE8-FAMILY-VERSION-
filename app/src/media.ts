@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { buzz, sfx } from './sound';
 import { toast } from './ui';
+import { t } from './i18n';
 
 function pick(types: string[]) {
   return types.find((t) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t)) ?? '';
@@ -82,7 +83,7 @@ export function useHoldMic(onDone: (r: Recording) => void, borrow?: () => MediaS
     let s: MediaStream | null = lent?.getAudioTracks().length ? new MediaStream(lent.getAudioTracks()) : null;
     if (!s) {
       s = (await navigator.mediaDevices?.getUserMedia({ audio: true }).catch(() => null)) ?? null;
-      if (!s) { held.current = false; toast('Cho phép micro để nói nhé'); return; }
+      if (!s) { held.current = false; toast(t('media.needMic')); return; }
       if (!held.current) { s.getTracks().forEach((t) => t.stop()); return; }
       own.current = s;
     }
@@ -98,7 +99,7 @@ export function useHoldMic(onDone: (r: Recording) => void, borrow?: () => MediaS
     const r = await go().catch(() => null);
     release();
     if (!r) return;
-    if (r.seconds < 1) { URL.revokeObjectURL(r.url); toast('Giữ lâu hơn một chút để nói'); return; }
+    if (r.seconds < 1) { URL.revokeObjectURL(r.url); toast(t('media.holdLonger')); return; }
     onDone(r);
   }
   return { rec, down, up };

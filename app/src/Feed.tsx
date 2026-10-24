@@ -6,6 +6,7 @@ import { cityOf, type Me, type Post, type Week } from './shared';
 import { tap } from './sound';
 import { ago, localTime } from './time';
 import { Avatar, Icon, toast } from './ui';
+import { t } from './i18n';
 
 const EMOJIS = ['❤️', '🥺', '😂', '🙏'];
 
@@ -41,11 +42,11 @@ export function Feed({ me, start, onClose }: { me: Me; start?: string | null; on
     f.set('file', r.blob, fileName(r.blob, 'voice'));
     f.set('seconds', String(r.seconds));
     try {
-      const t = target.current;
-      if (t.post) await api.reply(t.post, f);
-      else { f.set('kind', 'voice'); if (t.week) f.set('questionWeek', t.week); await api.post(f); }
+      const to = target.current;
+      if (to.post) await api.reply(to.post, f);
+      else { f.set('kind', 'voice'); if (to.week) f.set('questionWeek', to.week); await api.post(f); }
       tap();
-      toast('Đã gửi');
+      toast(t('common.sent'));
       void load();
     } catch (e) { toast((e as Error).message); }
   });
@@ -78,50 +79,50 @@ export function Feed({ me, start, onClose }: { me: Me; start?: string | null; on
   }
 
   async function remove(p: Post) {
-    if (!confirm('Xoá tin này khỏi nhà? Cả nhà sẽ không thấy nữa.')) return;
+    if (!confirm(t('feed.confirmDelete'))) return;
     try { await api.remove(p.id); } catch (e) { return toast((e as Error).message); }
     setPosts((l) => l && l.filter((x) => x.id !== p.id));
-    toast('Đã xoá');
+    toast(t('common.deleted'));
     void load();
   }
 
   return (
     <div className="sheet">
       <div className="top" style={{ padding: 'calc(var(--safe-top) + 10px) 16px 6px' }}>
-        <button className="icon-btn" onClick={onClose} aria-label="Đóng"><Icon name="down" /></button>
-        <div style={{ flex: 1, textAlign: 'center', fontWeight: 500 }}>Tin nhà</div>
+        <button className="icon-btn" onClick={onClose} aria-label={t('common.close')}><Icon name="down" /></button>
+        <div style={{ flex: 1, textAlign: 'center', fontWeight: 500 }}>{t('feed.title')}</div>
         <span style={{ width: 44 }} />
       </div>
 
       <div className="pager" ref={pager} onScroll={(e) => setIndex(Math.round(e.currentTarget.scrollTop / e.currentTarget.clientHeight))}>
         <div className="page">
-          {week ? <WeekCard week={week} me={me} recording={voice.rec && !!target.current.week} onDown={() => voiceDown({ week: week.week })} onUp={voiceUp} /> : <div className="muted" style={{ textAlign: 'center' }}>Đang mở thư nhà...</div>}
-          {posts && posts.length > 0 && <div className="muted" style={{ textAlign: 'center', marginTop: 18 }}>Vuốt lên để xem tin nhà</div>}
+          {week ? <WeekCard week={week} me={me} recording={voice.rec && !!target.current.week} onDown={() => voiceDown({ week: week.week })} onUp={voiceUp} /> : <div className="muted" style={{ textAlign: 'center' }}>{t('feed.loading')}</div>}
+          {posts && posts.length > 0 && <div className="muted" style={{ textAlign: 'center', marginTop: 18 }}>{t('feed.swipe')}</div>}
         </div>
         {posts?.length === 0 && (
           <div className="page" style={{ textAlign: 'center' }}>
-            <div className="h1">Nhà mình chưa có tin nào</div>
-            <div className="muted">Chụp một tấm, hoặc giữ nút để nói với cả nhà.</div>
+            <div className="h1">{t('feed.empty.title')}</div>
+            <div className="muted">{t('feed.empty.body')}</div>
           </div>
         )}
         {posts?.map((p) => {
           const a = member(p.authorId);
-          const t = localTime(a?.city);
+          const lt = localTime(a?.city);
           const counts = EMOJIS.map((e) => Object.values(p.reactions).filter((x) => x === e).length);
           return (
             <div key={p.id} className="page">
               <div className="who">
                 <Avatar m={a} size={36} />
                 <div>
-                  <b>{a?.id === me.me.id ? 'Bạn' : a?.name}</b>
-                  <div><span>{ago(p.createdAt)}{t && a?.city ? ` · ${cityOf(a.city)?.name} ${t}` : ''}</span></div>
+                  <b>{a?.id === me.me.id ? t('common.you') : a?.name}</b>
+                  <div><span>{ago(p.createdAt)}{lt && a?.city ? ` · ${cityOf(a.city)?.name} ${lt}` : ''}</span></div>
                 </div>
-                {p.authorId === me.me.id && <button className="link" style={{ marginLeft: 'auto', padding: '0 6px', minHeight: 44, minWidth: 44 }} onClick={() => remove(p)}>Xoá</button>}
+                {p.authorId === me.me.id && <button className="link" style={{ marginLeft: 'auto', padding: '0 6px', minHeight: 44, minWidth: 44 }} onClick={() => remove(p)}>{t('common.delete')}</button>}
               </div>
               <PostCard p={p} active={current?.id === p.id} name={a?.name ?? ''} />
               <div className="reacts">
                 {EMOJIS.map((e, i) => (
-                  <button key={e} className={`react ${p.reactions[me.me.id] === e ? 'on' : ''}`} onClick={() => react(p, e)} aria-label={`Thả ${e}`}>
+                  <button key={e} className={`react ${p.reactions[me.me.id] === e ? 'on' : ''}`} onClick={() => react(p, e)} aria-label={t('feed.reactAria', { e })}>
                     {e}{counts[i] > 0 && <small>{counts[i]}</small>}
                   </button>
                 ))}
@@ -133,7 +134,7 @@ export function Feed({ me, start, onClose }: { me: Me; start?: string | null; on
                     {r.kind === 'voice' ? <MiniVoice url={r.media!} seconds={r.seconds} /> : <span>{r.text}</span>}
                   </div>
                 ))}
-                {p.replies.length > 2 && <span className="muted">và {p.replies.length - 2} lời khác</span>}
+                {p.replies.length > 2 && <span className="muted">{t('feed.moreReplies', { n: p.replies.length - 2 })}</span>}
               </div>
             </div>
           );
@@ -144,12 +145,12 @@ export function Feed({ me, start, onClose }: { me: Me; start?: string | null; on
       {current && (
         <div className="reply-bar fade-only">
           <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) void sendText(); }}
-            enterKeyHint="send" placeholder={`Trả lời ${current.authorId === me.me.id ? 'cả nhà' : member(current.authorId)?.name}...`} />
+            enterKeyHint="send" placeholder={t('feed.replyTo', { name: current.authorId === me.me.id ? t('feed.everyone') : member(current.authorId)?.name as string })} />
           {text.trim() ? (
-            <button className="round dark" onClick={sendText} disabled={busy} aria-label="Gửi"><Icon name="send" /></button>
+            <button className="round dark" onClick={sendText} disabled={busy} aria-label={t('common.send')}><Icon name="send" /></button>
           ) : (
             <button className={`round ${voice.rec && target.current.post ? 'rec' : ''}`} onPointerDown={() => voiceDown({ post: current.id })} onPointerUp={voiceUp} onPointerLeave={voiceUp} onPointerCancel={voiceUp}
-              onContextMenu={(e) => e.preventDefault()} aria-label="Giữ để trả lời bằng giọng nói"><Icon name="mic" /></button>
+              onContextMenu={(e) => e.preventDefault()} aria-label={t('feed.holdVoice')}><Icon name="mic" /></button>
           )}
         </div>
       )}
@@ -165,14 +166,14 @@ function PostCard({ p, active, name }: { p: Post; active: boolean; name: string 
     return (
       <div className="card hug-card">
         <div style={{ color: 'var(--accent)' }}><Icon name="heartFill" size={72} /></div>
-        <div style={{ fontSize: 20 }}>{name} ôm cả nhà một cái</div>
+        <div style={{ fontSize: 20 }}>{t('feed.hug', { name })}</div>
       </div>
     );
   }
   if (p.kind === 'voice') {
     return (
       <div className="card voice-card">
-        {p.questionWeek && <div className="muted" style={{ color: '#6B5544' }}>Trả lời câu hỏi tuần</div>}
+        {p.questionWeek && <div className="muted" style={{ color: '#6B5544' }}>{t('feed.weekAnswer')}</div>}
         {p.caption && <div className="muted" style={{ color: '#6B5544' }}>{p.caption}</div>}
         <VoiceDot url={p.media!} seconds={p.seconds} />
       </div>
@@ -182,7 +183,7 @@ function PostCard({ p, active, name }: { p: Post; active: boolean; name: string 
     <div className="card" onClick={() => p.kind === 'video' && setMuted(!muted)}>
       {p.kind === 'video' ? <video ref={v} src={p.media!} loop playsInline muted={muted} /> : <img src={p.media!} alt={p.caption ?? ''} loading="lazy" onLoad={(e) => { const i = e.currentTarget; if (i.naturalHeight > i.naturalWidth * 1.3) i.classList.add('tall'); }} />}
       {p.caption && <div className="cap">{p.caption}</div>}
-      {p.kind === 'video' && muted && <div className="cap" style={{ top: 16, bottom: 'auto' }}>Chạm để nghe tiếng</div>}
+      {p.kind === 'video' && muted && <div className="cap" style={{ top: 16, bottom: 'auto' }}>{t('feed.tapSound')}</div>}
     </div>
   );
 }
@@ -193,7 +194,7 @@ function MiniVoice({ url, seconds }: { url: string; seconds?: number | null }) {
   return (
     <button onClick={() => { if (on) a.current?.pause(); else void a.current?.play().catch(() => {}); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minHeight: 32 }}>
       <audio ref={a} src={url} preload="none" onPlay={() => setOn(true)} onPause={() => setOn(false)} onEnded={() => setOn(false)} />
-      <Icon name={on ? 'pause' : 'play'} size={14} /> {seconds ? `${Math.round(seconds)}s` : 'Nghe'}
+      <Icon name={on ? 'pause' : 'play'} size={14} /> {seconds ? `${Math.round(seconds)}s` : t('common.listen')}
     </button>
   );
 }
@@ -203,22 +204,22 @@ function WeekCard({ week, me, recording, onDown, onUp }: { week: Week; me: Me; r
   const r = week.recap;
   return (
     <div className="panel">
-      <div className="muted">Câu hỏi tuần này</div>
+      <div className="muted">{t('feed.week.question')}</div>
       <div style={{ fontSize: 22, lineHeight: 1.4, margin: '6px 0 14px' }}>{week.question}</div>
       <button className={`talk ${recording ? 'rec' : ''}`} style={{ marginTop: 0 }} onPointerDown={onDown} onPointerUp={onUp} onPointerLeave={onUp} onPointerCancel={onUp} onContextMenu={(e) => e.preventDefault()}>
-        <Icon name="mic" size={20} /> {recording ? 'Đang nghe...' : 'Giữ để trả lời bằng giọng nói'}
+        <Icon name="mic" size={20} /> {recording ? t('common.listening') : t('feed.holdVoice')}
       </button>
-      <div className="h2" style={{ marginTop: 22 }}>Tuần này nhà mình</div>
+      <div className="h2" style={{ marginTop: 22 }}>{t('feed.week.title')}</div>
       <div className="stat">
-        <span>{r.photos} ảnh</span><span>{r.videos} video</span><span>{r.voices} lời nói</span><span>{r.hugs} cái ôm</span>
+        <span>{t('feed.stat.photos', { n: r.photos })}</span><span>{t('feed.stat.videos', { n: r.videos })}</span><span>{t('feed.stat.voices', { n: r.voices })}</span><span>{t('feed.stat.hugs', { n: r.hugs })}</span>
       </div>
       {r.meals.length > 0 && (
         <>
-          <div className="h2">Mâm cơm chung</div>
+          <div className="h2">{t('feed.week.meals')}</div>
           <div className="thumbs">{r.meals.map((m) => <img key={m.id} src={m.media!} alt="" />)}</div>
         </>
       )}
-      {r.photos + r.videos + r.voices + r.hugs === 0 && <div className="muted" style={{ marginTop: 10 }}>Tuần này còn trống. {me.me.name} mở lời trước nhé.</div>}
+      {r.photos + r.videos + r.voices + r.hugs === 0 && <div className="muted" style={{ marginTop: 10 }}>{t('feed.week.empty', { name: me.me.name })}</div>}
     </div>
   );
 }

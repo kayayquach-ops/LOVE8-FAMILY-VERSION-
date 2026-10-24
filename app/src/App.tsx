@@ -15,6 +15,7 @@ import { connectLive, livePost, onLive, type LiveRoom } from './live';
 import { onPushOpen, syncPush } from './push';
 import { TabBar, type Tab } from './TabBar';
 import { Mesh, Toaster } from './ui';
+import { t, useLang } from './i18n';
 
 // Màn ít dùng tải sau, để lần mở app đầu tiên nhẹ hơn. Rảnh thì tải sẵn, lúc bấm vào là có ngay.
 const loadRecap = () => import('./Recap');
@@ -31,6 +32,8 @@ const ME_KEY = 'homeletter-me';
 const today = () => new Date().toDateString();
 
 export function App() {
+  // Đổi ngôn ngữ thì vẽ lại cả app một lần.
+  useLang();
   // Mở app là hiện ngay bản lưu lần trước (tên nhà, cả nhà), máy chủ trả lời thì thay bằng bản mới. Không còn màn trống lúc chờ mạng.
   const [me, setMe] = useState<Me | null>(() => { if (!token.get()) return null; try { return JSON.parse(localStorage.getItem(ME_KEY) ?? 'null'); } catch { return null; } });
   const [ready, setReady] = useState(() => !!me);
@@ -111,9 +114,9 @@ export function App() {
   if (!ready) body = null;
   else if (!me && offline) body = (
     <div className="screen"><div className="center" style={{ alignItems: 'center', textAlign: 'center', gap: 18 }}>
-      <div className="h1">Chưa nối được về nhà</div>
-      <div className="muted">Mạng đang chập chờn. Kiểm tra wifi hoặc 4G rồi thử lại nhé.</div>
-      <button className="btn" style={{ maxWidth: 260 }} onClick={() => void load()}>Thử lại</button>
+      <div className="h1">{t('app.offline.title')}</div>
+      <div className="muted">{t('app.offline.body')}</div>
+      <button className="btn" style={{ maxWidth: 260 }} onClick={() => void load()}>{t('common.retry')}</button>
     </div></div>
   );
   else if (!me) body = <Onboarding onDone={() => { history.replaceState(null, '', '/'); doneHug(); void load(); }} />;

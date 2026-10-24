@@ -1,4 +1,5 @@
 import { token } from './api';
+import { t } from './i18n';
 
 // Thông báo đẩy ở máy khách: đăng ký service worker, xin quyền, gửi đăng ký lên máy chủ.
 export type PushKind = 'call' | 'chat' | 'post' | 'calendar' | 'weekly';
@@ -42,7 +43,7 @@ export async function enablePush(): Promise<PushState> {
   let sub = await reg.pushManager.getSubscription();
   if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
   const res = await post('/api/push/subscribe', sub.toJSON());
-  if (!res.ok) throw new Error('Chưa bật được, thử lại nhé');
+  if (!res.ok) throw new Error(t('notify.failed'));
   return 'on';
 }
 

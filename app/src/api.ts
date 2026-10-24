@@ -1,3 +1,4 @@
+import { hasKey, onLangChange, t } from './i18n';
 import type { Me, Post, Week } from './shared';
 
 // Mã riêng của máy này, có được khi tạo nhà hoặc vào nhà. Không có mật khẩu.
@@ -8,11 +9,17 @@ export const token = {
   clear: () => { try { localStorage.removeItem(KEY); localStorage.removeItem('homeletter-me'); } catch {} },
 };
 
+/** Lời báo lỗi: máy chủ gửi mã ổn định (code) thì tra bảng chữ; chưa có khoá thì dùng câu máy chủ gửi kèm. */
+export function errorText(data: { error?: string; code?: string }) {
+  const k = data.code ? `error.${data.code}` : '';
+  return hasKey(k) ? t(k) : data.error || t('common.error');
+}
+
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const t = token.get();
-  const res = await fetch(path, { ...init, headers: { ...(init.body instanceof FormData ? {} : { 'content-type': 'application/json' }), ...(t ? { authorization: `Bearer ${t}` } : {}), ...init.headers } });
+  const tk = token.get();
+  const res = await fetch(path, { ...init, headers: { ...(init.body instanceof FormData ? {} : { 'content-type': 'application/json' }), ...(tk ? { authorization: `Bearer ${tk}` } : {}), ...init.headers } });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(data.error || 'Có lỗi, thử lại nhé'), { status: res.status });
+  if (!res.ok) throw Object.assign(new Error(errorText(data)), { status: res.status });
   return data as T;
 }
 
@@ -24,16 +31,16 @@ export function upload<T>(path: string, form: FormData, onProgress?: (p: number)
   return new Promise((resolve, reject) => {
     const x = new XMLHttpRequest();
     x.open('POST', path);
-    const t = token.get();
-    if (t) x.setRequestHeader('authorization', `Bearer ${t}`);
+    const tk = token.get();
+    if (tk) x.setRequestHeader('authorization', `Bearer ${tk}`);
     x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(e.loaded / e.total); };
     x.onload = () => {
-      let data: { error?: string } = {};
+      let data: { error?: string; code?: string } = {};
       try { data = JSON.parse(x.responseText); } catch {}
       if (x.status >= 200 && x.status < 300) resolve(data as T);
-      else reject(Object.assign(new Error(data.error || 'Có lỗi, thử lại nhé'), { status: x.status }));
+      else reject(Object.assign(new Error(errorText(data)), { status: x.status }));
     };
-    x.onerror = () => reject(new Error('Mạng đang chập chờn, gửi lại nhé'));
+    x.onerror = () => reject(new Error(t('common.offlineSend')));
     x.send(form);
   });
 }
@@ -41,8 +48,8 @@ export function upload<T>(path: string, form: FormData, onProgress?: (p: number)
 const json = (body: unknown) => ({ method: 'POST', body: JSON.stringify(body) });
 
 export const api = {
-  create: (b: { family: string; name: string; role: string; city: string; intro?: Record<string, string | boolean> }) => call<{ token: string }>('/api/families', json(b)),
-  join: (b: { code: string; name: string; role: string; city: string; intro?: Record<string, string | boolean> }) => call<{ token: string }>('/api/join', json(b)),
+  create: (b: { family: string; name: string; role: string; city: string; lang?: string; intro?: Record<string, string | boolean> }) => call<{ token: string }>('/api/families', json(b)),
+  join: (b: { code: string; name: string; role: string; city: string; lang?: string; intro?: Record<string, string | boolean> }) => call<{ token: string }>('/api/join', json(b)),
   familyName: (code: string) => call<{ name: string }>(`/api/family/${code}`),
   me: () => call<Me>('/api/me'),
   updateMe: (f: FormData) => call('/api/me', { method: 'PATCH', body: f }),
@@ -55,4 +62,8 @@ export const api = {
   remove: (id: string) => call(`/api/posts/${id}`, { method: 'DELETE' }),
   week: () => call<Week>('/api/week'),
   mission: (key: string) => call(`/api/missions/${key}`, { method: 'POST' }),
+  lang: (lang: string) => call('/api/me/lang', { method: 'PUT', body: JSON.stringify({ lang }) }),
 };
+
+// Đổi ngôn ngữ thì báo máy chủ, để thông báo đẩy và lời AI sau này nói đúng thứ tiếng.
+onLangChange((l) => { if (token.get()) void api.lang(l).catch(() => {}); });

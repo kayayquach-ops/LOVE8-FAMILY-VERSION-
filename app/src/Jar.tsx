@@ -1,36 +1,38 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, token } from './api';
+import { api, errorText, token } from './api';
+import { t, type Key } from './i18n';
 import type { Me, Week } from './shared';
 import { buzz, sfx, tap } from './sound';
 import { Avatar, Icon, toast } from './ui';
 
 type Shape = 'heart' | 'round' | 'star' | 'petal' | 'drop' | 'leaf';
-type SeedDef = { id: string; name: string; colors: [string, string]; shape: Shape; price: number };
+type SeedDef = { id: string; colors: [string, string]; shape: Shape; price: number };
 type JarData = {
   capacity: number; level: number; gifts: number; seeds: Array<{ memberId: string; seed: string; count: number }>;
   catalog: SeedDef[]; owned: string[]; mine: string;
 };
 
 const CATALOG: SeedDef[] = [
-  { id: 'heart_red', name: 'Hạt đỏ tim', colors: ['#D9534F', '#A23430'], shape: 'heart', price: 0 },
-  { id: 'lotus', name: 'Hạt sen', colors: ['#F2B5C4', '#C9798F'], shape: 'round', price: 0 },
-  { id: 'sun', name: 'Hạt nắng', colors: ['#F6C453', '#C98E1B'], shape: 'star', price: 0 },
-  { id: 'leaf', name: 'Hạt lá', colors: ['#8DB580', '#4F7A47'], shape: 'leaf', price: 0 },
-  { id: 'pearl', name: 'Hạt ngọc trai', colors: ['#F4EFE8', '#B9AEA0'], shape: 'round', price: 19000 },
-  { id: 'sakura', name: 'Hạt hoa anh đào', colors: ['#F9C9D6', '#E58CA5'], shape: 'petal', price: 19000 },
-  { id: 'gold', name: 'Hạt vàng', colors: ['#E8B93C', '#9C6F0C'], shape: 'heart', price: 29000 },
-  { id: 'crystal', name: 'Hạt pha lê', colors: ['#BFE3F2', '#6FA8C4'], shape: 'drop', price: 29000 },
-  { id: 'rainbow', name: 'Hạt cầu vồng', colors: ['#B48AE0', '#F08A7A'], shape: 'star', price: 39000 },
-  { id: 'dew', name: 'Hạt sương mai', colors: ['#9FD8CF', '#4E9E94'], shape: 'drop', price: 19000 },
+  { id: 'heart_red', colors: ['#D9534F', '#A23430'], shape: 'heart', price: 0 },
+  { id: 'lotus', colors: ['#F2B5C4', '#C9798F'], shape: 'round', price: 0 },
+  { id: 'sun', colors: ['#F6C453', '#C98E1B'], shape: 'star', price: 0 },
+  { id: 'leaf', colors: ['#8DB580', '#4F7A47'], shape: 'leaf', price: 0 },
+  { id: 'pearl', colors: ['#F4EFE8', '#B9AEA0'], shape: 'round', price: 19000 },
+  { id: 'sakura', colors: ['#F9C9D6', '#E58CA5'], shape: 'petal', price: 19000 },
+  { id: 'gold', colors: ['#E8B93C', '#9C6F0C'], shape: 'heart', price: 29000 },
+  { id: 'crystal', colors: ['#BFE3F2', '#6FA8C4'], shape: 'drop', price: 29000 },
+  { id: 'rainbow', colors: ['#B48AE0', '#F08A7A'], shape: 'star', price: 39000 },
+  { id: 'dew', colors: ['#9FD8CF', '#4E9E94'], shape: 'drop', price: 19000 },
 ];
 const seedOf = (id: string) => CATALOG.find((s) => s.id === id) ?? CATALOG[0];
+const seedName = (s: SeedDef) => t(`jar.seed.${s.id}` as Key);
 const money = (n: number) => `${n.toLocaleString('vi-VN')}₫`;
 
 async function jfetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const t = token.get();
-  const res = await fetch(path, { ...init, headers: { 'content-type': 'application/json', ...(t ? { authorization: `Bearer ${t}` } : {}) } });
+  const tk = token.get();
+  const res = await fetch(path, { ...init, headers: { 'content-type': 'application/json', ...(tk ? { authorization: `Bearer ${tk}` } : {}) } });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Có lỗi, thử lại nhé');
+  if (!res.ok) throw new Error(errorText(data));
   return data as T;
 }
 
@@ -103,7 +105,7 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
   return (
     <div className="sheet">
       <div className="top" style={{ padding: 'calc(var(--safe-top) + 10px) 16px 6px' }}>
-        <button className="icon-btn" onClick={onClose} aria-label="Đóng"><Icon name="down" /></button>
+        <button className="icon-btn" onClick={onClose} aria-label={t('common.close')}><Icon name="down" /></button>
         <div style={{ flex: 1, textAlign: 'center', fontWeight: 500 }}>{title}</div>
         <span style={{ width: 44 }} />
       </div>
@@ -112,7 +114,7 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-const GIFTS = ['Sổ giọng nói của nhà mình', 'Tập podcast "Chuyện nhà mình"', 'Cuốn sách ảnh một năm', 'Thư tay in gửi về nhà'];
+const GIFTS = [1, 2, 3, 4] as const;
 
 export function Jar({ me, onClose }: { me: Me; onClose: () => void }) {
   const [w, setW] = useState<Week | null>(null);
@@ -127,7 +129,7 @@ export function Jar({ me, onClose }: { me: Me; onClose: () => void }) {
 
   const list = useMemo(() => (j ? j.seeds.flatMap((s) => Array<string>(s.count).fill(s.seed)) : []), [j]);
 
-  if (!w || !j) return <Sheet title="Lọ yêu thương" onClose={onClose}><div className="muted">Đang mở...</div></Sheet>;
+  if (!w || !j) return <Sheet title={t('jar.title')} onClose={onClose}><div className="muted">{t('common.loading')}</div></Sheet>;
 
   async function pick(s: SeedDef) {
     tap();
@@ -136,11 +138,11 @@ export function Jar({ me, onClose }: { me: Me; onClose: () => void }) {
   }
 
   return (
-    <Sheet title="Lọ yêu thương" onClose={onClose}>
+    <Sheet title={t('jar.title')} onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 6 }}>
         <JarArt list={list} />
-        <div className="h1">{j.level} / {j.capacity} hạt thương</div>
-        <div className="muted" style={{ textAlign: 'center' }}>Mỗi lần thương là một hạt. Đầy lọ thì mở một món quà.</div>
+        <div className="h1">{t('jar.count', { level: j.level, capacity: j.capacity })}</div>
+        <div className="muted" style={{ textAlign: 'center' }}>{t('jar.sub')}</div>
       </div>
 
       <div className="jar-legend">
@@ -157,46 +159,46 @@ export function Jar({ me, onClose }: { me: Me; onClose: () => void }) {
         })}
       </div>
 
-      <div className="h2">Hạt của bạn</div>
+      <div className="h2">{t('jar.mySeeds')}</div>
       <div className="jar-grid">
         {CATALOG.map((s) => {
           const locked = s.price > 0 && !j.owned.includes(s.id);
           return (
             <button key={s.id} className={`jar-seed ${j.mine === s.id ? 'on' : ''}`} onClick={() => pick(s)}>
               <SeedShape def={s} size={32} />
-              <span>{s.name}</span>
-              <i>{locked ? money(s.price) : j.mine === s.id ? 'Đang dùng' : 'Dùng'}</i>
+              <span>{seedName(s)}</span>
+              <i>{locked ? money(s.price) : j.mine === s.id ? t('jar.using') : t('jar.use')}</i>
             </button>
           );
         })}
       </div>
 
-      <div className="h2">Nhiệm vụ tuần này</div>
+      <div className="h2">{t('jar.missions')}</div>
       <div className="panel" style={{ padding: '4px 18px' }}>
         {w.missions.map((m) => (
           <div key={m.key} className="mission">
             <div>
               <div>{m.text}</div>
-              <div className="pts">+1 hạt{m.doneBy.length ? ` · ${m.doneBy.length} người đã làm` : ''}</div>
+              <div className="pts">{t('jar.plusOne')}{m.doneBy.length ? t('jar.doneBy', { n: m.doneBy.length }) : ''}</div>
             </div>
             <button className={`done-btn ${m.done ? 'done' : ''}`} disabled={m.done || doing === m.key}
               onClick={async () => {
                 if (doing) return;
                 setDoing(m.key); tap(); buzz(30);
-                try { await api.mission(m.key); sfx('sparkle'); toast('+1 hạt vào lọ'); load(); } catch (e) { toast((e as Error).message); } finally { setDoing(null); }
+                try { await api.mission(m.key); sfx('sparkle'); toast(t('jar.added')); load(); } catch (e) { toast((e as Error).message); } finally { setDoing(null); }
               }}>
-              {m.done ? 'Đã làm' : 'Xong'}
+              {m.done ? t('jar.done') : t('common.done')}
             </button>
           </div>
         ))}
       </div>
 
-      <div className="h2">Quà của nhà mình</div>
+      <div className="h2">{t('jar.gifts')}</div>
       <div className="panel" style={{ padding: '4px 18px' }}>
         {GIFTS.map((g, i) => (
           <div key={g} className="mission" style={{ opacity: i < j.gifts ? 1 : 0.5 }}>
-            <div>{g}</div>
-            <div className="pts" style={{ marginLeft: 'auto' }}>{i < j.gifts ? 'Đã mở' : `Đầy lọ lần ${i + 1}`}</div>
+            <div>{t(`jar.gift.${g}`)}</div>
+            <div className="pts" style={{ marginLeft: 'auto' }}>{i < j.gifts ? t('jar.opened') : t('jar.fullN', { n: i + 1 })}</div>
           </div>
         ))}
       </div>
@@ -205,9 +207,9 @@ export function Jar({ me, onClose }: { me: Me; onClose: () => void }) {
         <div className="jar-modal" onClick={() => setSoon(null)}>
           <div className="jar-modal-box" onClick={(e) => e.stopPropagation()}>
             <SeedShape def={soon} size={56} />
-            <div className="h1" style={{ marginTop: 10 }}>Sắp mở bán</div>
-            <div className="muted" style={{ textAlign: 'center' }}>{soon.name} ({money(soon.price)}) sẽ có sớm thôi. Chưa tính tiền gì cả.</div>
-            <button className="btn" style={{ marginTop: 18 }} onClick={() => setSoon(null)}>Ừ, mình chờ</button>
+            <div className="h1" style={{ marginTop: 10 }}>{t('jar.soon.title')}</div>
+            <div className="muted" style={{ textAlign: 'center' }}>{t('jar.soon.body', { name: seedName(soon), price: money(soon.price) })}</div>
+            <button className="btn" style={{ marginTop: 18 }} onClick={() => setSoon(null)}>{t('jar.soon.ok')}</button>
           </div>
         </div>
       )}

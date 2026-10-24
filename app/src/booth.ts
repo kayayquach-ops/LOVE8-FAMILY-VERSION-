@@ -1,10 +1,12 @@
+import { locale } from './i18n';
+
 // Photobooth: vẽ một tấm ảnh chung từ các ô video, trên nền và khung theo chủ đề. Tất cả vẽ bằng canvas, không cần dịch vụ ngoài.
 
 export const W = 1080, H = 1350;
 
 export type Tile = { id?: string; video: HTMLVideoElement | null; name: string; mirror: boolean };
 type Ctx = CanvasRenderingContext2D;
-type Theme = { id: string; name: string; ink: string; frame: string; radius: number; bg: (c: Ctx, photo?: HTMLImageElement | null) => void };
+type Theme = { id: string; ink: string; frame: string; radius: number; bg: (c: Ctx, photo?: HTMLImageElement | null) => void };
 
 // Ngẫu nhiên có hạt giống: vẽ lại mỗi khung hình mà hoạ tiết không nhảy.
 function rand(seed: number) {
@@ -39,7 +41,7 @@ function flower(c: Ctx, x: number, y: number, s: number, color: string) {
 
 export const THEMES: Theme[] = [
   {
-    id: 'mist', name: 'Sương sớm', ink: '#2B2723', frame: '#FFFFFF', radius: 34,
+    id: 'mist', ink: '#2B2723', frame: '#FFFFFF', radius: 34,
     bg: (c) => {
       c.fillStyle = '#ECEAE8'; c.fillRect(0, 0, W, H);
       blob(c, 540, 520, 700, 'rgba(255,255,255,.95)');
@@ -49,7 +51,7 @@ export const THEMES: Theme[] = [
     },
   },
   {
-    id: 'film', name: 'Phim cũ', ink: '#F3E7D3', frame: '#F3E7D3', radius: 6,
+    id: 'film', ink: '#F3E7D3', frame: '#F3E7D3', radius: 6,
     bg: (c) => {
       c.fillStyle = '#2A211C'; c.fillRect(0, 0, W, H);
       c.fillStyle = '#F3E7D3';
@@ -58,7 +60,7 @@ export const THEMES: Theme[] = [
     },
   },
   {
-    id: 'tet', name: 'Hoa đào', ink: '#FFF4EE', frame: '#FFF4EE', radius: 30,
+    id: 'tet', ink: '#FFF4EE', frame: '#FFF4EE', radius: 30,
     bg: (c) => {
       const g = c.createLinearGradient(0, 0, 0, H);
       g.addColorStop(0, '#A8322D'); g.addColorStop(1, '#7C1F22');
@@ -68,7 +70,7 @@ export const THEMES: Theme[] = [
     },
   },
   {
-    id: 'sea', name: 'Biển', ink: '#24425A', frame: '#FFFFFF', radius: 40,
+    id: 'sea', ink: '#24425A', frame: '#FFFFFF', radius: 40,
     bg: (c) => {
       const g = c.createLinearGradient(0, 0, 0, H);
       g.addColorStop(0, '#F4EFE6'); g.addColorStop(0.55, '#BFD8E2'); g.addColorStop(1, '#6E9BB4');
@@ -83,7 +85,7 @@ export const THEMES: Theme[] = [
     },
   },
   {
-    id: 'night', name: 'Đêm sao', ink: '#F2EEE6', frame: 'rgba(242,238,230,.9)', radius: 999,
+    id: 'night', ink: '#F2EEE6', frame: 'rgba(242,238,230,.9)', radius: 999,
     bg: (c) => {
       const g = c.createLinearGradient(0, 0, 0, H);
       g.addColorStop(0, '#1C2340'); g.addColorStop(1, '#3B3355');
@@ -95,7 +97,7 @@ export const THEMES: Theme[] = [
     },
   },
   {
-    id: 'letter', name: 'Thư nhà', ink: '#5A4636', frame: '#FFFDF8', radius: 8,
+    id: 'letter', ink: '#5A4636', frame: '#FFFDF8', radius: 8,
     bg: (c) => {
       c.fillStyle = '#F6EEDF'; c.fillRect(0, 0, W, H);
       c.strokeStyle = 'rgba(154,90,68,.18)'; c.lineWidth = 2;
@@ -105,7 +107,7 @@ export const THEMES: Theme[] = [
     },
   },
   {
-    id: 'photo', name: 'Ảnh của mình', ink: '#FFFFFF', frame: '#FFFFFF', radius: 30,
+    id: 'photo', ink: '#FFFFFF', frame: '#FFFFFF', radius: 30,
     bg: (c, photo) => {
       c.fillStyle = '#8A8278'; c.fillRect(0, 0, W, H);
       if (photo?.naturalWidth) cover(c, photo, photo.naturalWidth, photo.naturalHeight, 0, 0, W, H, false);
@@ -195,6 +197,6 @@ export function drawBooth(c: Ctx, themeId: string, tiles: Tile[], title: string,
   c.fillText(title, W / 2, H - 112);
   c.font = '400 32px BVP, system-ui, sans-serif';
   c.globalAlpha = 0.75;
-  c.fillText(new Date().toLocaleDateString('vi-VN', { day: 'numeric', month: 'long', year: 'numeric' }), W / 2, H - 60);
+  c.fillText(new Date().toLocaleDateString(locale(), { day: 'numeric', month: 'long', year: 'numeric' }), W / 2, H - 60);
   c.restore();
 }

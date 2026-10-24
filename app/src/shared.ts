@@ -20,34 +20,33 @@ export type Week = {
   recap: { photos: number; videos: number; voices: number; hugs: number; meals: Post[]; top?: Post | null };
 };
 
-// Cuộc gọi hằng tuần và podcast.
-export const TOPICS = {
-  'ngay-cuoi': 'Ngày cưới',
-  'tuoi-tho': 'Tuổi thơ',
-  'mon-an': 'Món ăn nhà mình',
-  'ky-niem': 'Kỷ niệm',
-  'cuoc-song': 'Cuộc sống bây giờ',
-  'loi-nhan': 'Lời nhắn',
-} as const;
-export type Topic = keyof typeof TOPICS;
+// Cuộc gọi hằng tuần và podcast. Tên chủ đề nằm trong bảng chữ máy chủ (khoá `topic.<mã>`).
+export const TOPICS = ['ngay-cuoi', 'tuoi-tho', 'mon-an', 'ky-niem', 'cuoc-song', 'loi-nhan'] as const;
+export type Topic = (typeof TOPICS)[number];
+export const isTopic = (v: unknown): v is Topic => (TOPICS as readonly unknown[]).includes(v);
 export const EVENT_HINTS = ['none', 'wedding', 'anniversary', 'birthday', 'memory'] as const;
 export type CallQuestion = { text: string; topic: Topic; photo: boolean; event: (typeof EVENT_HINTS)[number] };
 export type CallScript = { greeting: string; questions: CallQuestion[]; goodbye: string; source: 'ai' | 'template' | 'first' };
 
-/** Câu cố định trong cuộc gọi (chào, đáp mẫu, nhắc, tạm biệt). Máy chủ nạp sẵn giọng Gemini cho từng câu, nên chỉ phụ thuộc vai, không phụ thuộc tên. */
-export function callLines(role: string) {
+/** Hàm tra chữ: máy khách truyền `t`, máy chủ truyền `tServer` theo ngôn ngữ của người nghe. */
+export type Tr = (key: string, vars?: Record<string, string | number>) => string;
+
+/** Câu cố định trong cuộc gọi (chào, đáp mẫu, nhắc, tạm biệt). Máy chủ nạp sẵn giọng Gemini cho từng câu, nên chỉ phụ thuộc vai, không phụ thuộc tên.
+ * Chữ nằm ở bảng chữ máy khách (khoá `call.line.*`); máy chủ tra cùng bảng ấy, chỉ một nguồn. */
+export function callLines(role: string, tr: Tr) {
   const parent = role === 'bo' || role === 'me';
-  const self = role === 'bo' ? 'bố' : role === 'me' ? 'mẹ' : '';
+  const who = parent ? 'parent' : 'child';
+  const self = role === 'bo' ? tr('call.self.bo') : role === 'me' ? tr('call.self.me') : '';
   const Self = self ? self[0].toUpperCase() + self.slice(1) : '';
+  const L = (k: string) => tr(`call.line.${k}.${who}`, { self, Self });
   return {
-    ack: parent ? 'Dạ, con nghe đây ạ.' : 'Ừm, mình nghe đây.',
-    slow: parent ? `${Self} cứ từ từ nhé, nhớ gì kể nấy.` : 'Cứ từ từ nhé, nhớ gì kể nấy.',
-    busy: parent ? `Chắc ${self} đang bận. Tuần sau con gọi lại nhé.` : 'Chắc bạn đang bận. Tuần sau mình gọi lại nhé.',
-    skip: parent ? 'Dạ, không sao. Mình nói chuyện khác nhé.' : 'Không sao. Mình nói chuyện khác nhé.',
-    photo: parent ? `${Self} có tấm ảnh nào muốn kể cho con nghe không? Gửi con giữ giúp nhé.` : 'Bạn có tấm ảnh nào muốn kể cho mình nghe không? Gửi mình giữ giúp nhé.',
-    short: parent ? ['Dạ, con hiểu rồi ạ.', 'Dạ, con nghe rồi ạ.', `Dạ, con cảm ơn ${self}.`] : ['Dạ, mình hiểu rồi.', 'Ừ, mình nghe rồi nhé.', 'Cảm ơn bạn đã kể nhé.'],
-    long: parent ? ['Nghe hay quá ạ.', `Con thích nghe ${self} kể lắm.`, 'Thương quá ạ.', 'Dạ, con nhớ rồi.', `Hay quá. Lần sau ${self} kể tiếp con nghe nhé.`]
-      : ['Nghe hay quá.', 'Thương ghê.', 'Mình nhớ rồi nhé.', 'Nghe mà thấy ấm ghê.', 'Hay quá. Lần sau kể tiếp nhé.'],
+    ack: L('ack'),
+    slow: L('slow'),
+    busy: L('busy'),
+    skip: L('skip'),
+    photo: L('photo'),
+    short: [1, 2, 3].map((n) => L(`short${n}`)),
+    long: [1, 2, 3, 4, 5].map((n) => L(`long${n}`)),
   };
 }
 export const CALL_ROLES = ['bo', 'me', 'con'] as const;
@@ -58,6 +57,7 @@ export type Podcast = {
   cover: string | null; media: string | null; chapters: Chapter[]; status: 'rendering' | 'ready' | 'failed'; createdAt: string;
 };
 
+// i18n-ok-begin: địa danh, đợt sau thêm tên tiếng Anh, tiếng Hàn.
 // Thành phố có sẵn: đủ để hiện giờ và thời tiết bên đó (Open-Meteo, không cần khoá).
 export const CITIES: Record<string, { name: string; lat: number; lon: number; tz: string }> = {
   hanoi: { name: 'Hà Nội', lat: 21.03, lon: 105.85, tz: 'Asia/Ho_Chi_Minh' },
@@ -75,6 +75,7 @@ export const CITIES: Record<string, { name: string; lat: number; lon: number; tz
   osaka: { name: 'Osaka', lat: 34.69, lon: 135.5, tz: 'Asia/Tokyo' },
   taipei: { name: 'Đài Bắc', lat: 25.03, lon: 121.56, tz: 'Asia/Taipei' },
 };
+// i18n-ok-end
 
 export type City = { name: string; lat: number; lon: number; tz: string };
 
@@ -84,8 +85,6 @@ export function cityOf(v?: string | null): City | undefined {
   if (v.startsWith('{')) { try { const c = JSON.parse(v); return { name: c.name, lat: c.lat, lon: c.lon, tz: c.tz }; } catch { return undefined; } }
   return CITIES[v];
 }
-
-export const ROLE_LABEL: Record<Role, string> = { bo: 'Bố', me: 'Mẹ', con: 'Con' };
 
 /** Bao lâu không mở app thì báo cho cả nhà. */
 export const SILENT_HOURS = 48;

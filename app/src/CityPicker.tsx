@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { cityOf } from './shared';
 import { tap } from './sound';
+import { t } from './i18n';
 
 type Hit = { name: string; lat: number; lon: number; tz: string; where: string };
 
+// i18n-ok-begin: địa danh, đợt sau thêm tên tiếng Anh, tiếng Hàn cùng places.json.
 // Chọn nhanh khi ô còn trống. Cả bộ địa danh tĩnh (places.json) tải lười khi mở bước này.
 const VN = 'Asia/Ho_Chi_Minh';
 const QUICK: Hit[] = [
@@ -13,12 +15,14 @@ const QUICK: Hit[] = [
   { name: 'Busan', lat: 35.1017, lon: 129.03, tz: 'Asia/Seoul', where: 'Hàn Quốc' },
   { name: 'Tokyo', lat: 35.6895, lon: 139.6917, tz: 'Asia/Tokyo', where: 'Nhật Bản' },
 ];
+// i18n-ok-end
 const BY_COUNTRY = ['VN', 'KR', 'JP', 'US', 'AU', 'DE', 'CA'];
 
 type Place = Hit & { cc: string; n: string; k: string; w: string };
 type Data = { c: Record<string, string>; z: string[]; p: [string, string, number, number, number, string][] };
 let placesCache: Promise<{ list: Place[]; countries: Record<string, string> }> | undefined;
 
+// i18n-ok: bỏ dấu tiếng Việt để gõ không dấu vẫn tìm được.
 const norm = (x: string) => x.toLowerCase().replace(/đ/g, 'd').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 function loadPlaces() {
   placesCache ??= import('./places.json').then((m) => {
@@ -87,20 +91,20 @@ export function CityPicker({ value, onChange }: { value: string; onChange: (v: s
 
   return (
     <div style={{ width: '86%', maxWidth: 380, alignSelf: 'center', position: 'relative' }}>
-      <input className="field" style={{ width: '100%' }} value={q} placeholder="Gõ tên thành phố, ví dụ: Busan"
+      <input className="field" style={{ width: '100%' }} value={q} placeholder={t('city.placeholder')}
         onFocus={() => setOpen(true)} onChange={(e) => { setQ(e.target.value); setOpen(true); setBy(null); onChange(''); }} />
       {open && (short || (hits.length === 0 && asked)) && (
         <>
-          {!short && <p className="sub" style={{ marginTop: 14 }}>Chưa thấy nơi này. Thử gõ tên khác, hoặc chọn nhanh:</p>}
+          {!short && <p className="sub" style={{ marginTop: 14 }}>{t('city.notFound')}</p>}
           <div className="chips" style={{ marginTop: 14 }}>
             {QUICK.map((c) => <button key={c.name} className="chip" onClick={() => pick(c)}>{c.name}</button>)}
           </div>
           {data && (
             <>
-              <p className="sub" style={{ marginTop: 18, marginBottom: 0 }}>Theo nước</p>
+              <p className="sub" style={{ marginTop: 18, marginBottom: 0 }}>{t('city.byCountry')}</p>
               <div className="chips" style={{ marginTop: 10 }}>
                 {BY_COUNTRY.map((c) => <button key={c} className={`chip ${by === c ? 'on' : ''}`} onClick={() => setBy(by === c ? null : c)}>{data.countries[c]}</button>)}
-                <button className={`chip ${by === 'other' ? 'on' : ''}`} onClick={() => setBy(by === 'other' ? null : 'other')}>Khác</button>
+                <button className={`chip ${by === 'other' ? 'on' : ''}`} onClick={() => setBy(by === 'other' ? null : 'other')}>{t('city.other')}</button>
               </div>
               {by === 'other' && (
                 <div className="chips" style={{ marginTop: 10 }}>

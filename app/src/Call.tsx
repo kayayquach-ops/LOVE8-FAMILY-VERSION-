@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { token } from './api';
+import { errorText, token } from './api';
 import { type Drive, type MascotMode } from './Mascot';
 import { MascotAny as Mascot } from './Mascot3D';
 import { AUDIO_TYPE, fileName, record, type Recording } from './media';
@@ -8,12 +8,13 @@ import { buzz, sfx, tap } from './sound';
 import { playVoice, prefetchVoice, setVoiceContext, speak, stopSpeaking, unlockSpeech, voiceAvailable, voiceReady, warmVoice } from './speech';
 import { Icon, toast } from './ui';
 import { snooze } from './callSnooze';
+import { t, type Key } from './i18n';
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const t = token.get();
   const res = await fetch(path, { ...init, headers: { ...(init.body instanceof FormData ? {} : { 'content-type': 'application/json' }), ...(t ? { authorization: `Bearer ${t}` } : {}) } });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Có lỗi, thử lại nhé');
+  if (!res.ok) throw new Error(errorText(data));
   return data as T;
 }
 
@@ -37,6 +38,7 @@ const VAD = {
   silence: 9000, // không nói gì
   maxAnswer: 180_000,
 };
+// i18n-ok: từ ngập ngừng tiếng Việt lúc nghe. TODO(i18n đợt 3): theo ngôn ngữ người nói.
 const FILLER = /(?:^|\s)(ờ|ừ|ừm|à|ơ|thì|là|mà|và|với|nhưng|rồi|cái|kiểu)\s*$/i;
 
 type Heard = { recording: Recording | null; transcript: string; speechMs: number };
@@ -68,7 +70,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
   const photoDone = useRef<(() => void) | null>(null);
 
   const role = me.me.role;
-  const lines = callLines(role);
+  const lines = callLines(role, (k, v) => t(k as Key, v));
   // Một giọng cho cả cuộc gọi: Gemini, hoặc giọng máy nếu Gemini không dùng được ngay từ đầu.
   const machine = useRef(false);
 
@@ -126,7 +128,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
         analyser.current = a;
       }
     } catch {
-      toast('Cho Sweet Home dùng micro để kể nhé');
+      toast(t('call.needMic'));
     }
     try {
       const s = session ?? (await prep.current!);
@@ -189,7 +191,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       if (R) {
         try {
           r = new R();
-          r.lang = 'vi-VN';
+          r.lang = 'vi-VN'; // TODO(i18n đợt 3): chép lời theo ngôn ngữ người nói
           r.continuous = true;
           r.interimResults = true;
           let final = '';
@@ -272,7 +274,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     f.set('transcript', h.transcript);
     f.set('seconds', String(h.recording.seconds));
     f.set('file', h.recording.blob, fileName(h.recording.blob, 'answer'));
-    const p = call<Saved>(`/api/call/${s.id}/answer`, { method: 'POST', body: f }).catch(() => { toast('Chưa gửi được câu này'); return null; });
+    const p = call<Saved>(`/api/call/${s.id}/answer`, { method: 'POST', body: f }).catch(() => { toast(t('call.answerFailed')); return null; });
     uploads.current.push(p);
     count.current += 1;
     setAnswered(count.current);
@@ -357,7 +359,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       const f = new FormData();
       f.set('idx', String(idx.current));
       f.set('file', file);
-      uploads.current.push(call(`/api/call/${session.id}/photo`, { method: 'POST', body: f }).then(() => toast('Ảnh đã vào kho')).catch(() => toast('Chưa gửi được ảnh')));
+      uploads.current.push(call(`/api/call/${session.id}/photo`, { method: 'POST', body: f }).then(() => toast(t('call.photoSaved'))).catch(() => toast(t('call.photoFailed'))));
     }
     stopSpeaking();
     photoDone.current?.();
@@ -404,12 +406,12 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       {phase === 'ring' ? (
         <div className="call-ring fade">
           <div className="call-orb"><i /><i /><Mascot mode="wave" size={140} /></div>
-          <div className="call-who">Sweet Home đang gọi</div>
-          <div className="call-sub">Cuộc gọi tuần này</div>
+          <div className="call-who">{t('call.ring.who')}</div>
+          <div className="call-sub">{t('call.ring.sub')}</div>
           <div style={{ flex: 1 }} />
           <div className="call-actions">
-            <button className="call-btn later" onClick={hangUp}><Icon name="close" size={26} /><span>Để sau</span></button>
-            <button className="call-btn pick" onClick={pickUp}><Icon name="phone" size={26} /><span>Nghe máy</span></button>
+            <button className="call-btn later" onClick={hangUp}><Icon name="close" size={26} /><span>{t('common.later')}</span></button>
+            <button className="call-btn pick" onClick={pickUp}><Icon name="phone" size={26} /><span>{t('call.pickUp')}</span></button>
           </div>
         </div>
       ) : (
@@ -424,18 +426,18 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
             {phase === 'photo' && (
               <div className="call-photo fade">
                 <label className="btn">
-                  <Icon name="image" size={20} /> Chọn ảnh
+                  <Icon name="image" size={20} /> {t('call.pickPhoto')}
                   <input type="file" accept="image/*" hidden onChange={(e) => sendPhoto(e.target.files?.[0])} />
                 </label>
-                <button className="link" onClick={() => sendPhoto(null)}>Để sau</button>
+                <button className="link" onClick={() => sendPhoto(null)}>{t('common.later')}</button>
               </div>
             )}
-            {phase === 'bye' && answered > 0 && <p className="call-note fade">Giọng kể sẽ thành một tập podcast, chờ ít phút nhé.</p>}
+            {phase === 'bye' && answered > 0 && <p className="call-note fade">{t('call.podcastSoon')}</p>}
           </div>
           <div className="call-foot">
             {phase === 'bye'
-              ? <button className="btn ghost" onClick={() => { tap(); live.current = false; cleanup(); onClose(answered > 0); }}>Xong</button>
-              : <button className="call-end" onClick={hangUp} aria-label="Kết thúc"><Icon name="phone" size={26} /></button>}
+              ? <button className="btn ghost" onClick={() => { tap(); live.current = false; cleanup(); onClose(answered > 0); }}>{t('common.done')}</button>
+              : <button className="call-end" onClick={hangUp} aria-label={t('call.end')}><Icon name="phone" size={26} /></button>}
           </div>
         </div>
       )}

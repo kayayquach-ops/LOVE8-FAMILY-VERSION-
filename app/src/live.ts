@@ -1,4 +1,4 @@
-import { token } from './api';
+import { errorText, token } from './api';
 
 // Kênh sự kiện gọi video, mở một lần cho cả app: chuông gọi đến và các gói tin kết nối đi chung một đường.
 export type LiveRoom = { id: string; by: string; members: string[]; started: number } | null;
@@ -36,6 +36,6 @@ export async function livePost<T = any>(path: string, body?: unknown): Promise<T
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Có lỗi, thử lại nhé');
+  if (!res.ok) throw new Error(errorText(data));
   return data as T;
 }

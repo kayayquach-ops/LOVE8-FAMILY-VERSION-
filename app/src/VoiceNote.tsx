@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AUDIO_TYPE, record, type Recording } from './media';
 import { buzz, duckMusic, tap } from './sound';
 import { Icon } from './ui';
+import { t } from './i18n';
 import './voice.css';
 
 const MAX = 20;
@@ -111,10 +112,10 @@ export function VoiceNote({ value, onChange, onDenied }: { value: Recording | nu
   if (value) {
     return (
       <div className="vn">
-        <button className="vn-btn done" onClick={play} aria-label={playing ? 'Dừng' : 'Nghe lại'}>
+        <button className="vn-btn done" onClick={play} aria-label={playing ? t('common.stop') : t('voice.replay')}>
           <Icon name={playing ? 'pause' : 'play'} size={40} />
         </button>
-        <div className="vn-note">{playing ? 'Đang nghe lại' : `Nghe lại · ${Math.max(1, Math.round(value.seconds))} giây`}</div>
+        <div className="vn-note">{playing ? t('voice.replaying') : t('voice.replayLen', { n: Math.max(1, Math.round(value.seconds)) })}</div>
         <audio ref={audio} src={value.url} onEnded={ended} onPause={ended} playsInline />
       </div>
     );
@@ -122,7 +123,7 @@ export function VoiceNote({ value, onChange, onDenied }: { value: Recording | nu
 
   return (
     <div className="vn">
-      <div className={`vn-btn ${rec ? 'rec' : ''}`} role="button" aria-label="Giữ để nói"
+      <div className={`vn-btn ${rec ? 'rec' : ''}`} role="button" aria-label={t('chat.holdTalk')}
         onPointerDown={down} onPointerUp={up} onPointerLeave={up} onPointerCancel={up} onContextMenu={(e) => e.preventDefault()}>
         <i className="vn-glow" />
         <span className="vn-icon"><Icon name="mic" size={40} /></span>
@@ -130,7 +131,7 @@ export function VoiceNote({ value, onChange, onDenied }: { value: Recording | nu
       <div className="vn-wave" aria-hidden>
         {Array.from({ length: BARS }, (_, i) => <i key={i} ref={(el) => { bars.current[i] = el; }} />)}
       </div>
-      <div className="vn-note">{rec ? `Đang nghe... còn ${left} giây` : 'Giữ nút tròn để nói'}</div>
+      <div className="vn-note">{rec ? t('voice.left', { n: left }) : t('voice.hold')}</div>
     </div>
   );
 }

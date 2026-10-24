@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { sfx } from './sound';
+import { t } from './i18n';
 
 // Gửi xong: máy bay giấy bay theo đường thư qua biển, rồi lá thư thả xuống tới cả nhà (từ bản vẽ tay ý tưởng).
 const ROUTE = 'M30 560 C 110 360, 250 250, 330 300';
@@ -12,7 +13,7 @@ export function Letter({ onDone }: { onDone: () => void }) {
     return () => { clearTimeout(a); clearTimeout(b); };
   }, []);
   return (
-    <button className="letter" onClick={onDone} aria-label="Đã gửi về nhà">
+    <button className="letter" onClick={onDone} aria-label={t('letter.aria')}>
       <svg viewBox="0 0 390 700" preserveAspectRatio="xMidYMid meet">
         <g className="ink">
           {/* biển */}
@@ -31,7 +32,7 @@ export function Letter({ onDone }: { onDone: () => void }) {
           {/* sợi chỉ và lá thư thả xuống */}
           <path className="string" d="M330 300 V520" />
         </g>
-        <text className="route-text"><textPath href="#route" startOffset="34%">đường thư về nhà</textPath></text>
+        <text className="route-text"><textPath href="#route" startOffset="34%">{t('letter.route')}</textPath></text>
         <g className="drop">
           <rect x="316" y="505" width="28" height="22" rx="3" fill="#FBF7F0" stroke="#2B2723" strokeWidth="1.6" />
           <path d="M316 507 l14 10 l14 -10" fill="none" stroke="#2B2723" strokeWidth="1.4" />
@@ -43,7 +44,7 @@ export function Letter({ onDone }: { onDone: () => void }) {
           <animateMotion dur="2s" begin="0.2s" fill="freeze" rotate="auto" path={ROUTE} keyTimes="0;1" keySplines=".4 0 .2 1" calcMode="spline" />
         </g>
       </svg>
-      <div className="letter-note">Lá thư đang về nhà</div>
+      <div className="letter-note">{t('letter.note')}</div>
     </button>
   );
 }

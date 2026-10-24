@@ -6,6 +6,7 @@ import { buzz, sfx, tap } from './sound';
 import { Letter } from './Letter';
 import { hoursSince } from './time';
 import { Avatar, Icon, toast } from './ui';
+import { t } from './i18n';
 
 type Draft = { kind: 'photo' | 'video' | 'voice'; blob: Blob; url: string; seconds?: number };
 const MAX_VIDEO = 15;
@@ -49,7 +50,7 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
       if (video.current) { video.current.srcObject = s; await video.current.play().catch(() => {}); }
       setError('');
     } catch {
-      if (my === gen.current) setError('Cho phép camera để chụp gửi cả nhà nhé.');
+      if (my === gen.current) setError(t('camera.noAccess'));
     }
   }
 
@@ -115,7 +116,7 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
     sfx('rec');
     const r = await go().catch(() => null);
     if (!r) return;
-    if (r.seconds < 1) return toast('Giữ lâu hơn để quay');
+    if (r.seconds < 1) return toast(t('camera.holdLonger'));
     setDraft({ kind: 'video', blob: r.blob, url: r.url, seconds: r.seconds });
   }
 
@@ -162,13 +163,13 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
           {me.members.slice(0, 4).map((m, i) => <div key={m.id} style={{ marginLeft: i ? -10 : 0, borderRadius: 99, border: '2px solid var(--bg)' }}><Avatar m={m} size={32} /></div>)}
         </div>
         <div style={{ flex: 1, fontSize: 17, fontWeight: 500, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{me.family.name}</div>
-        {draft && <button className="icon-btn" onClick={() => setDraft(null)} disabled={sending !== null} aria-label="Bỏ"><Icon name="close" /></button>}
+        {draft && <button className="icon-btn" onClick={() => setDraft(null)} disabled={sending !== null} aria-label={t('camera.discard')}><Icon name="close" /></button>}
       </div>
 
       {quiet.length > 0 && !draft && (
         <div className="banner fade">
-          <span>{quiet[0].name} chưa mở app {Math.floor(hoursSince(quiet[0].lastSeen) / 24)} ngày rồi. Gọi hỏi thăm nhé.</span>
-          {quiet[0].phone ? <a href={`tel:${quiet[0].phone}`}>Gọi</a> : <button className="banner-go" onClick={() => onOpen('family')}>Xem</button>}
+          <span>{t('camera.quiet', { name: quiet[0].name, days: Math.floor(hoursSince(quiet[0].lastSeen) / 24) })}</span>
+          {quiet[0].phone ? <a href={`tel:${quiet[0].phone}`}>{t('camera.quiet.call')}</a> : <button className="banner-go" onClick={() => onOpen('family')}>{t('camera.quiet.view')}</button>}
         </div>
       )}
 
@@ -185,23 +186,23 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
           <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 30, textAlign: 'center' }}>
             <div>
               <div className="muted" style={{ marginBottom: 14 }}>{error}</div>
-              <button className="btn" onClick={() => void start()}>Bật camera</button>
-              <div className="muted" style={{ marginTop: 12 }}>Hoặc chọn ảnh có sẵn ở nút bên dưới.</div>
+              <button className="btn" onClick={() => void start()}>{t('camera.turnOn')}</button>
+              <div className="muted" style={{ marginTop: 12 }}>{t('camera.orPick')}</div>
             </div>
           </div>
         )}
-        {draft && draft.kind !== 'voice' && <input className="cap-input" value={caption} maxLength={60} onChange={(e) => setCaption(e.target.value)} placeholder="Viết một dòng..." enterKeyHint="done" onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />}
-        {rec === 'video' && <div className="cap-input" style={{ background: '#C8553F' }}>Đang quay {Math.floor(elapsed)}s / {MAX_VIDEO}s</div>}
+        {draft && draft.kind !== 'voice' && <input className="cap-input" value={caption} maxLength={60} onChange={(e) => setCaption(e.target.value)} placeholder={t('camera.captionPlaceholder')} enterKeyHint="done" onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />}
+        {rec === 'video' && <div className="cap-input" style={{ background: '#C8553F' }}>{t('camera.recording', { s: Math.floor(elapsed), max: MAX_VIDEO })}</div>}
       </div>
 
       {draft ? (
         <>
           <div className="chips" style={{ marginTop: 18 }}>
-            <button className={`chip ${meal ? 'on' : ''}`} onClick={() => { tap(); setMeal(!meal); }}>Bữa cơm hôm nay</button>
+            <button className={`chip ${meal ? 'on' : ''}`} onClick={() => { tap(); setMeal(!meal); }}>{t('camera.meal')}</button>
           </div>
           <div className="shutter-row">
-            <button className="icon-btn" onClick={() => setDraft(null)} disabled={sending !== null} aria-label="Làm lại"><Icon name="close" /></button>
-            <button className="shutter" onClick={send} disabled={sending !== null} aria-label={sending !== null ? 'Đang gửi' : 'Gửi'} style={{ background: 'var(--ink)', borderColor: 'var(--ink)', color: '#fff' }}>
+            <button className="icon-btn" onClick={() => setDraft(null)} disabled={sending !== null} aria-label={t('camera.redo')}><Icon name="close" /></button>
+            <button className="shutter" onClick={send} disabled={sending !== null} aria-label={sending !== null ? t('camera.sending') : t('common.send')} style={{ background: 'var(--ink)', borderColor: 'var(--ink)', color: '#fff' }}>
               {sending !== null ? <span className="send-pct">{Math.round(sending * 100)}%</span> : <Icon name="send" size={34} />}
             </button>
             <span style={{ width: 44 }} />
@@ -210,25 +211,25 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
       ) : (
         <>
           <div className="shutter-row">
-            <label className="icon-btn" aria-label="Chọn ảnh trong máy">
+            <label className="icon-btn" aria-label={t('camera.pickAria')}>
               <Icon name="image" />
               <input type="file" accept="image/*,video/*" hidden onChange={(e) => { void pickFile(e.target.files?.[0]); e.target.value = ''; }} />
             </label>
-            <button className={`shutter ${rec === 'video' ? 'rec' : ''}`} aria-label="Chạm để chụp, giữ để quay"
+            <button className={`shutter ${rec === 'video' ? 'rec' : ''}`} aria-label={t('camera.shutterAria')}
               onPointerDown={shutterDown} onPointerUp={shutterUp} onPointerLeave={shutterCancel} onPointerCancel={shutterCancel} onContextMenu={(e) => e.preventDefault()}>
               <i />
             </button>
-            <button className="icon-btn" onClick={() => { tap(); setFacing(facing === 'user' ? 'environment' : 'user'); }} aria-label="Đổi camera"><Icon name="flip" /></button>
+            <button className="icon-btn" onClick={() => { tap(); setFacing(facing === 'user' ? 'environment' : 'user'); }} aria-label={t('camera.flip')}><Icon name="flip" /></button>
           </div>
           <button className={`talk ${talk.rec ? 'rec' : ''}`} onPointerDown={() => void talk.down()} onPointerUp={() => void talk.up()}
             onPointerLeave={() => void talk.up()} onPointerCancel={() => void talk.up()} onContextMenu={(e) => e.preventDefault()}>
-            <Icon name="mic" size={20} /> {talk.rec ? `Đang nghe... ${Math.floor(elapsed)}s` : 'Giữ để nói với cả nhà'}
+            <Icon name="mic" size={20} /> {talk.rec ? t('camera.talk.listening', { s: Math.floor(elapsed) }) : t('camera.talk.hold')}
           </button>
         </>
       )}
 
       <button className="news-pill" onClick={() => onOpen('feed')}>
-        <Icon name="up" size={16} /> Tin nhà{me.unseen > 0 ? ` · ${me.unseen} mới` : ''}
+        <Icon name="up" size={16} /> {t('feed.title')}{me.unseen > 0 ? t('camera.news.new', { n: me.unseen }) : ''}
       </button>
     </div>
   );
@@ -241,7 +242,7 @@ export function VoiceDot({ url, seconds }: { url: string; seconds?: number | nul
   return (
     <>
       <audio ref={audio} src={url} preload="metadata" onTimeUpdate={(e) => setPos(e.currentTarget.currentTime)} onPause={() => setPlaying(false)} onPlay={() => setPlaying(true)} onEnded={() => { setPlaying(false); setPos(0); }} />
-      <button className="play" onClick={() => { if (playing) audio.current?.pause(); else void audio.current?.play().catch(() => {}); }} aria-label={playing ? 'Dừng' : 'Nghe'}>
+      <button className="play" onClick={() => { if (playing) audio.current?.pause(); else void audio.current?.play().catch(() => {}); }} aria-label={playing ? t('common.stop') : t('common.listen')}>
         <Icon name={playing ? 'pause' : 'play'} />
       </button>
       <div className="bars">
@@ -249,7 +250,7 @@ export function VoiceDot({ url, seconds }: { url: string; seconds?: number | nul
           <i key={i} className={seconds && pos / seconds > i / 22 ? 'on' : ''} style={{ height: 8 + Math.abs(Math.sin(i * 1.7)) * 26 + (i % 3) * 3 }} />
         ))}
       </div>
-      <div style={{ fontSize: 14 }}>{seconds ? `${Math.round(seconds)} giây` : ''}</div>
+      <div style={{ fontSize: 14 }}>{seconds ? t('common.seconds', { n: Math.round(seconds) }) : ''}</div>
     </>
   );
 }

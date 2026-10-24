@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Me, Member } from './shared';
-import { token } from './api';
+import { errorText, token } from './api';
+import { locale, t, type Key } from './i18n';
 import { fileName, shrinkImage, useHoldMic } from './media';
 import { Avatar, Icon, toast } from './ui';
 import { sfx } from './sound';
@@ -12,21 +13,21 @@ type Msg = {
 };
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const t = token.get();
-  const res = await fetch(path, { ...init, headers: { ...(t ? { authorization: `Bearer ${t}` } : {}), ...init.headers } });
+  const tk = token.get();
+  const res = await fetch(path, { ...init, headers: { ...(tk ? { authorization: `Bearer ${tk}` } : {}), ...init.headers } });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as any).error || 'Có lỗi, thử lại nhé');
+  if (!res.ok) throw new Error(errorText(data));
   return data as T;
 }
 
-const hm = (iso: string) => new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+const hm = (iso: string) => new Date(iso).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
 function dayLabel(iso: string) {
   const d = new Date(iso), n = new Date();
   const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const diff = Math.round((day(n) - day(d)) / 86400e3);
-  if (diff === 0) return 'Hôm nay';
-  if (diff === 1) return 'Hôm qua';
-  return d.toLocaleDateString('vi-VN', { day: 'numeric', month: 'long', year: d.getFullYear() === n.getFullYear() ? undefined : 'numeric' });
+  if (diff === 0) return t('common.today');
+  if (diff === 1) return t('common.yesterday');
+  return d.toLocaleDateString(locale(), { day: 'numeric', month: 'long', year: d.getFullYear() === n.getFullYear() ? undefined : 'numeric' });
 }
 
 export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => void; onCall?: () => void; live?: boolean }) {
@@ -102,12 +103,12 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
   }
   const lastSent = useRef({ t: '', at: 0 });
   function sendText() {
-    const t = text.trim();
+    const s = text.trim();
     // Hai lần bấm gửi sát nhau (state chưa kịp xoá ô chữ) thì chỉ gửi một lần.
-    if (!t || (lastSent.current.t === t && Date.now() - lastSent.current.at < 800)) return;
-    lastSent.current = { t, at: Date.now() };
+    if (!s || (lastSent.current.t === s && Date.now() - lastSent.current.at < 800)) return;
+    lastSent.current = { t: s, at: Date.now() };
     setText('');
-    const f = new FormData(); f.set('kind', 'text'); f.set('text', t);
+    const f = new FormData(); f.set('kind', 'text'); f.set('text', s);
     void send(f);
   }
   function sendSticker(id: string) {
@@ -147,16 +148,16 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
   return (
     <div className="chat" style={vh ? { height: vh } : undefined}>
       <header className="chat-top">
-        <button className="icon-btn" onClick={onClose} aria-label="Quay lại"><Icon name="back" /></button>
+        <button className="icon-btn" onClick={onClose} aria-label={t('common.back')}><Icon name="back" /></button>
         <div className="chat-title">
           <b>{me.family.name}</b>
           <div className="chat-faces">{me.members.map((m) => <Avatar key={m.id} m={m} size={20} />)}</div>
         </div>
-        {onCall && <button className={`icon-btn ${live ? 'live' : ''}`} onClick={onCall} aria-label="Gọi video"><Icon name="video" /></button>}
+        {onCall && <button className={`icon-btn ${live ? 'live' : ''}`} onClick={onCall} aria-label={t('chat.videoCall')}><Icon name="video" /></button>}
       </header>
 
-      <div className="chat-list" ref={list} onScroll={(e) => { const t = e.currentTarget; stick.current = t.scrollHeight - t.scrollTop - t.clientHeight < 80; }}>
-        {!msgs.length && <div className="chat-empty">Chưa có tin nào. Nhắn một câu cho cả nhà nhé.</div>}
+      <div className="chat-list" ref={list} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
+        {!msgs.length && <div className="chat-empty">{t('chat.empty')}</div>}
         {rows.map((r) => {
           if (r.type === 'day') return <div key={r.key} className="chat-day">{r.label}</div>;
           const { m, first, last } = r;
@@ -166,45 +167,45 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
             <div key={m.id} className={`chat-row ${mine ? 'mine' : ''} ${first ? 'first' : ''}`}>
               {!mine && <div className="chat-av">{last ? <Avatar m={who} size={30} /> : null}</div>}
               <div className="chat-col">
-                {!mine && first && <small className="chat-name">{who?.name ?? 'Ai đó'}</small>}
+                {!mine && first && <small className="chat-name">{who?.name ?? t('common.someone')}</small>}
                 {m.kind === 'sticker' ? <div className="chat-sticker"><Sticker id={m.sticker ?? ''} size={120} /></div>
-                  : m.kind === 'photo' ? <button className="chat-photo-btn" onClick={() => setViewer(m.media!)} aria-label="Xem ảnh"><img className="chat-photo" src={m.media!} alt="" loading="lazy" onLoad={() => { if (stick.current && list.current) list.current.scrollTop = list.current.scrollHeight; }} /></button>
+                  : m.kind === 'photo' ? <button className="chat-photo-btn" onClick={() => setViewer(m.media!)} aria-label={t('chat.viewPhoto')}><img className="chat-photo" src={m.media!} alt="" loading="lazy" onLoad={() => { if (stick.current && list.current) list.current.scrollTop = list.current.scrollHeight; }} /></button>
                   : <div className={`bubble ${mine ? 'mine' : ''}`}>{m.kind === 'voice' ? <Voice url={m.media!} seconds={m.seconds} /> : m.text}</div>}
                 {last && <small className="chat-time">{hm(m.created_at)}</small>}
               </div>
             </div>
           );
         })}
-        {pending > 0 && <div className="chat-day chat-sending">Đang gửi...</div>}
+        {pending > 0 && <div className="chat-day chat-sending">{t('chat.sending')}</div>}
       </div>
 
       {tray && (
         <div className="chat-tray">
           {STICKER_LIST.map((s) => (
-            <button key={s.id} onClick={() => sendSticker(s.id)}><Sticker id={s.id} size={64} /><span>{s.label}</span></button>
+            <button key={s.id} onClick={() => sendSticker(s.id)}><Sticker id={s.id} size={64} /><span>{t(`sticker.${s.id}` as Key)}</span></button>
           ))}
         </div>
       )}
 
       <div className="chat-bar">
-        <button className={`icon-btn ${tray ? 'on' : ''}`} onClick={() => setTray(!tray)} aria-label="Hình dán"><Icon name="heart" /></button>
-        <label className="icon-btn" aria-label="Gửi ảnh">
+        <button className={`icon-btn ${tray ? 'on' : ''}`} onClick={() => setTray(!tray)} aria-label={t('chat.stickers')}><Icon name="heart" /></button>
+        <label className="icon-btn" aria-label={t('chat.sendPhoto')}>
           <Icon name="image" />
           <input type="file" accept="image/*" hidden onChange={(e) => { void sendPhoto(e.target.files?.[0]); e.target.value = ''; }} />
         </label>
-        <input className="chat-input" value={text} placeholder={rec ? 'Đang nghe...' : 'Nhắn cho cả nhà'} disabled={rec}
+        <input className="chat-input" value={text} placeholder={rec ? t('common.listening') : t('chat.placeholder')} disabled={rec}
           onChange={(e) => setText(e.target.value)} onFocus={() => { setTray(false); stick.current = true; }}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) sendText(); }} enterKeyHint="send" />
         {text.trim()
-          ? <button className="icon-btn dark" onClick={sendText} aria-label="Gửi"><Icon name="send" /></button>
-          : <button className={`icon-btn mic ${rec ? 'rec' : 'dark'}`} onPointerDown={micDown} onPointerUp={micUp} onPointerCancel={micUp} onContextMenu={(e) => e.preventDefault()} aria-label="Giữ để nói"><Icon name="mic" /></button>}
+          ? <button className="icon-btn dark" onClick={sendText} aria-label={t('common.send')}><Icon name="send" /></button>
+          : <button className={`icon-btn mic ${rec ? 'rec' : 'dark'}`} onPointerDown={micDown} onPointerUp={micUp} onPointerCancel={micUp} onContextMenu={(e) => e.preventDefault()} aria-label={t('chat.holdTalk')}><Icon name="mic" /></button>}
       </div>
 
       {/* Xem ảnh ngay trong app (mở tab mới thì app thêm vào màn hình chính bị văng ra Safari). Chụm hai ngón để phóng to. */}
       {viewer && (
-        <div className="viewer" onClick={() => setViewer(null)} role="dialog" aria-label="Ảnh">
+        <div className="viewer" onClick={() => setViewer(null)} role="dialog" aria-label={t('chat.photo')}>
           <img src={viewer} alt="" />
-          <button className="icon-btn viewer-close" aria-label="Đóng"><Icon name="close" /></button>
+          <button className="icon-btn viewer-close" aria-label={t('common.close')}><Icon name="close" /></button>
         </div>
       )}
     </div>
@@ -219,7 +220,7 @@ function Voice({ url, seconds }: { url: string; seconds?: number | null }) {
       <audio ref={a} src={url} onEnded={() => setOn(false)} onPause={() => setOn(false)} onPlay={() => setOn(true)} />
       <Icon name={on ? 'pause' : 'play'} size={18} />
       <i className="chat-wave" />
-      <span>{seconds ? `${Math.round(seconds)}s` : 'Nghe'}</span>
+      <span>{seconds ? `${Math.round(seconds)}s` : t('common.listen')}</span>
     </button>
   );
 }

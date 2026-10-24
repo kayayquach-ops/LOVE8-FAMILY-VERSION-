@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { t, type Key } from './i18n';
 
 // Hình dán tự vẽ, đơn giản, màu ấm. Mỗi hình kèm một câu ngắn.
 const face = (cx: number, cy: number) => (
@@ -84,19 +85,19 @@ const ART: Record<string, ReactNode> = {
   </>,
 };
 
-export const STICKER_LIST: Array<{ id: string; label: string }> = [
-  { id: 'hug', label: 'Ôm cái nào' },
-  { id: 'love', label: 'Thương con' },
-  { id: 'home', label: 'Nhớ nhà' },
-  { id: 'rice', label: 'Ăn cơm chưa?' },
-  { id: 'sleep', label: 'Ngủ ngon' },
-  { id: 'go', label: 'Cố lên!' },
-  { id: 'thanks', label: 'Cảm ơn bố mẹ' },
-  { id: 'heart', label: 'Tim' },
-  { id: 'bowl', label: 'Bát cơm nhà' },
-  { id: 'tea', label: 'Uống trà nhé' },
-  { id: 'sun', label: 'Chào buổi sáng' },
-  { id: 'moon', label: 'Trăng khuya' },
+export const STICKER_LIST: Array<{ id: string }> = [
+  { id: 'hug' },
+  { id: 'love' },
+  { id: 'home' },
+  { id: 'rice' },
+  { id: 'sleep' },
+  { id: 'go' },
+  { id: 'thanks' },
+  { id: 'heart' },
+  { id: 'bowl' },
+  { id: 'tea' },
+  { id: 'sun' },
+  { id: 'moon' },
 ];
 
 export function Sticker({ id, size = 96 }: { id: string; size?: number }) {
@@ -108,4 +109,4 @@ export const STICKERS: Record<string, (p: { size?: number }) => ReactNode> = Obj
   STICKER_LIST.map((s) => [s.id, (p: { size?: number }) => <Sticker id={s.id} size={p.size} />]),
 );
 
-export const stickerLabel = (id?: string | null) => STICKER_LIST.find((s) => s.id === id)?.label ?? '';
+export const stickerLabel = (id?: string | null) => (STICKER_LIST.some((s) => s.id === id) ? t(`sticker.${id}` as Key) : '');

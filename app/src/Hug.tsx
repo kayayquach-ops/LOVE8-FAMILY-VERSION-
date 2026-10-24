@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from './api';
 import { buzz, tap } from './sound';
 import { Icon, toast, Typed } from './ui';
+import { t } from './i18n';
 
 // Mở app mỗi ngày lần đầu: giữ ngón tay để ôm cả nhà, rồi vào camera gửi vài lời.
 export function Hug({ name, onDone }: { name: string; onDone: () => void }) {
@@ -33,17 +34,17 @@ export function Hug({ name, onDone }: { name: string; onDone: () => void }) {
   return (
     <div className="screen">
       <div className="center">
-        <h1 className="q"><Typed text={done ? 'Cả nhà đã nhận được cái ôm.' : `Nhớ nhà thì ôm một cái, ${name}.`} onDone={() => setTyped(true)} /></h1>
+        <h1 className="q"><Typed text={done ? t('hug.done') : t('hug.q', { name })} onDone={() => setTyped(true)} /></h1>
         {/* Giữ sẵn chỗ cho dòng gợi ý và vòng tròn, để câu chữ không bị đẩy lên khi chúng hiện ra. */}
-        <p className={`sub ${typed ? 'fade' : 'reserve'}`} style={{ visibility: done ? 'hidden' : undefined }}>Giữ ngón tay vào vòng tròn</p>
+        <p className={`sub ${typed ? 'fade' : 'reserve'}`} style={{ visibility: done ? 'hidden' : undefined }}>{t('hug.hint')}</p>
         <div style={{ height: 40 }} />
         <div className={`hold ${typed ? 'fade' : 'reserve'}`} onPointerDown={() => setHolding(true)} onPointerUp={() => setHolding(false)} onPointerLeave={() => setHolding(false)} onPointerCancel={() => setHolding(false)}
-          onContextMenu={(e) => e.preventDefault()} role="button" aria-label="Giữ để ôm">
+          onContextMenu={(e) => e.preventDefault()} role="button" aria-label={t('hug.aria')}>
           <i style={{ transform: `scale(${0.25 + p * 0.75})`, opacity: 0.25 + p * 0.75 }} />
           <span style={{ color: done ? '#fff' : 'var(--accent)', position: 'relative' }}><Icon name={done ? 'heartFill' : 'heart'} size={46} /></span>
         </div>
       </div>
-      <button className="link" onClick={onDone} style={{ visibility: done ? 'hidden' : undefined }}>Để sau</button>
+      <button className="link" onClick={onDone} style={{ visibility: done ? 'hidden' : undefined }}>{t('common.later')}</button>
     </div>
   );
 }
