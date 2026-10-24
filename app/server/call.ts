@@ -119,7 +119,7 @@ function firstScript(c: Ctx): CallScript {
   const nick = lastWord(name);
   const q = (text: string, topic: Topic): CallQuestion => ({ text, topic, photo: false, event: 'none' });
   return parent ? {
-    greeting: `${Self} ơi, con là Homeletter đây ạ. Con hỏi ${self} vài câu nhỏ thôi, không lâu đâu.`,
+    greeting: `${Self} ơi, con là Mây đây ạ. Con hỏi ${self} vài câu nhỏ thôi, không lâu đâu.`,
     questions: [
       q(`Hôm nay ${self} thế nào ạ? Có gì vui không?`, 'cuoc-song'),
       q(`Hôm nay ${self} ăn món gì rồi ạ?`, 'mon-an'),
@@ -128,7 +128,7 @@ function firstScript(c: Ctx): CallScript {
     goodbye: `Con cảm ơn ${self} ạ. Mình nói chuyện tiếp vào lần sau nhé.`,
     source: 'first',
   } : {
-    greeting: `Chào ${nick}, Homeletter đây. Mình hỏi bạn vài câu nhỏ thôi, không lâu đâu.`,
+    greeting: `Chào ${nick}, Mây đây. Mình hỏi bạn vài câu nhỏ thôi, không lâu đâu.`,
     questions: [
       q('Hôm nay của bạn thế nào? Có gì vui không?', 'cuoc-song'),
       q('Hôm nay bạn ăn gì rồi?', 'mon-an'),
@@ -188,7 +188,7 @@ function templateScript(c: Ctx, week: string): CallScript {
 
 // ---------- Chống bịa ----------
 
-const NAME_OK = new Set(['bố', 'mẹ', 'con', 'bà', 'ông', 'cô', 'chú', 'dì', 'anh', 'chị', 'em', 'homeletter', 'tết']);
+const NAME_OK = new Set(['bố', 'mẹ', 'con', 'bà', 'ông', 'cô', 'chú', 'dì', 'anh', 'chị', 'em', 'mây', 'sweet', 'home', 'tết']);
 const fold = (s: string) => s.toLowerCase().normalize('NFC');
 
 type Allow = { prevCall: boolean; ownStory: boolean; photos: boolean };

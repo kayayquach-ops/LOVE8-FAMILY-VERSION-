@@ -44,7 +44,7 @@ export function callLines(role: string) {
     slow: parent ? `${Self} cứ từ từ nhé, nhớ gì kể nấy.` : 'Cứ từ từ nhé, nhớ gì kể nấy.',
     busy: parent ? `Chắc ${self} đang bận. Tuần sau con gọi lại nhé.` : 'Chắc bạn đang bận. Tuần sau mình gọi lại nhé.',
     skip: parent ? 'Dạ, không sao. Mình nói chuyện khác nhé.' : 'Không sao. Mình nói chuyện khác nhé.',
-    photo: parent ? `${Self} có tấm ảnh nào muốn kể cho con nghe không? Gửi con giữ giúp nhé.` : 'Bạn có tấm ảnh nào muốn kể cho mình nghe không? Gửi Homeletter giữ giúp nhé.',
+    photo: parent ? `${Self} có tấm ảnh nào muốn kể cho con nghe không? Gửi con giữ giúp nhé.` : 'Bạn có tấm ảnh nào muốn kể cho mình nghe không? Gửi mình giữ giúp nhé.',
     short: parent ? ['Dạ, con hiểu rồi ạ.', 'Dạ, con nghe rồi ạ.', `Dạ, con cảm ơn ${self}.`] : ['Dạ, mình hiểu rồi.', 'Ừ, mình nghe rồi nhé.', 'Cảm ơn bạn đã kể nhé.'],
     long: parent ? ['Nghe hay quá ạ.', `Con thích nghe ${self} kể lắm.`, 'Thương quá ạ.', 'Dạ, con nhớ rồi.', `Hay quá. Lần sau ${self} kể tiếp con nghe nhé.`]
       : ['Nghe hay quá.', 'Thương ghê.', 'Mình nhớ rồi nhé.', 'Nghe mà thấy ấm ghê.', 'Hay quá. Lần sau kể tiếp nhé.'],
