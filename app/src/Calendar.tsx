@@ -3,10 +3,11 @@ import { token } from './api';
 import type { Me } from './shared';
 import { tap } from './sound';
 import { Icon, toast } from './ui';
+import { lunarEventInSolarYear, nextOccurrence, solarToLunar } from './lunar';
 
 export type CalEvent = {
   id: string; kind: string; title: string; day: number; month: number; year: number | null;
-  lunar: boolean; note: string | null; memberId: string | null; createdBy: string | null; virtual?: boolean;
+  lunar: boolean; leap?: boolean; note: string | null; memberId: string | null; createdBy: string | null; virtual?: boolean;
 };
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -44,6 +45,8 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
   const [day, setDay] = useState('');
   const [month, setMonth] = useState('');
   const [year, setYear] = useState('');
+  const [lunar, setLunar] = useState(false);
+  const [leap, setLeap] = useState(false);
   const touchX = useRef<number | null>(null);
 
   const load = () => call<CalEvent[]>('/api/calendar').then(setEvents).catch((e) => toast(e.message));
@@ -53,21 +56,34 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
 
   const byDay = useMemo(() => {
     const map = new Map<number, number>();
-    for (const e of events ?? []) if (e.month === ym.m + 1) map.set(e.day, (map.get(e.day) ?? 0) + 1);
+    for (const e of events ?? []) {
+      if (e.lunar) {
+        for (const s of lunarEventInSolarYear(e.day, e.month, !!e.leap, ym.y)) {
+          if (s.month === ym.m + 1) map.set(s.day, (map.get(s.day) ?? 0) + 1);
+        }
+      } else if (e.month === ym.m + 1) map.set(e.day, (map.get(e.day) ?? 0) + 1);
+    }
     return map;
   }, [events, ym]);
+
+  // Ngày âm của từng ô trong tháng đang xem.
+  const lunarOf = useMemo(
+    () => Array.from({ length: new Date(ym.y, ym.m + 1, 0).getDate() }, (_, i) => solarToLunar(i + 1, ym.m + 1, ym.y)),
+    [ym],
+  );
 
   const first = (new Date(ym.y, ym.m, 1).getDay() + 6) % 7;
   const total = new Date(ym.y, ym.m + 1, 0).getDate();
   const isThisMonth = ym.y === now.getFullYear() && ym.m === now.getMonth();
 
   const next = useMemo(() => {
-    const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-    return (events ?? []).map((e) => {
-      let y = now.getFullYear();
-      let t = Date.UTC(y, e.month - 1, e.day);
-      if (t < today) { y += 1; t = Date.UTC(y, e.month - 1, e.day); }
-      return { e, inDays: Math.round((t - today) / DAY), years: e.year ? y - e.year : null };
+    const todayParts = { day: now.getDate(), month: now.getMonth() + 1, year: now.getFullYear() };
+    const today = Date.UTC(todayParts.year, todayParts.month - 1, todayParts.day);
+    return (events ?? []).flatMap((e) => {
+      const occ = nextOccurrence(e, todayParts);
+      if (!occ) return [];
+      const inDays = Math.round((Date.UTC(occ.year, occ.month - 1, occ.day) - today) / DAY);
+      return [{ e, inDays, occ, years: e.year ? (occ.lunarYear ?? occ.year) - e.year : null }];
     }).sort((a, b) => a.inDays - b.inDays).slice(0, 8);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events]);
@@ -76,12 +92,20 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
     const t = title.trim() || (kind === 'birthday' ? 'Sinh nhật' : '');
     if (!t) return toast('Đặt tên cho ngày này nhé');
     try {
-      await call('/api/calendar', { method: 'POST', body: JSON.stringify({ kind, title: t, day: Number(day), month: Number(month), year: year ? Number(year) : undefined }) });
-      setTitle(''); setDay(''); setMonth(''); setYear(''); setAdding(false);
+      await call('/api/calendar', { method: 'POST', body: JSON.stringify({ kind, title: t, day: Number(day), month: Number(month), year: year ? Number(year) : undefined, lunar, leap: lunar && leap }) });
+      setTitle(''); setDay(''); setMonth(''); setYear(''); setLunar(false); setLeap(false); setAdding(false);
       toast('Đã thêm vào lịch');
       void load();
     } catch (e) { toast((e as Error).message); }
   };
+
+  const preview = useMemo(() => {
+    const d = Number(day), m = Number(month);
+    if (!lunar || !d || !m || d > 30 || m > 12) return '';
+    const o = nextOccurrence({ day: d, month: m, lunar: true, leap }, { day: now.getDate(), month: now.getMonth() + 1, year: now.getFullYear() });
+    return o ? `Lần tới rơi vào ${o.day}/${o.month}/${o.year} dương lịch` : '';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lunar, leap, day, month]);
 
   const del = async (id: string) => {
     try { await call(`/api/calendar/${id}`, { method: 'DELETE' }); void load(); } catch (e) { toast((e as Error).message); }
@@ -118,12 +142,17 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
               const d = i + 1;
               const today = isThisMonth && d === now.getDate();
               const n = byDay.get(d) ?? 0;
+              const l = lunarOf[i];
+              const mark = l.day === 1 || l.day === 15;
               return (
-                <div key={d} style={{ height: 44, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+                <div key={d} style={{ height: 54, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
                   <div style={{
                     width: 32, height: 32, borderRadius: 16, display: 'grid', placeItems: 'center', fontSize: 15,
                     background: today ? 'var(--accent)' : 'transparent', color: today ? '#fff' : 'var(--ink)', fontWeight: today ? 600 : 400,
                   }}>{d}</div>
+                  <div style={{ fontSize: 10, lineHeight: '11px', height: 11, color: 'var(--muted)', fontWeight: mark ? 700 : 400, opacity: mark ? 1 : 0.7 }}>
+                    {mark ? `${l.day}/${l.month}${l.leap ? 'n' : ''}` : l.day}
+                  </div>
                   <div style={{ height: 5, display: 'flex', gap: 3 }}>
                     {Array.from({ length: Math.min(n, 3) }, (_, k) => <span key={k} style={{ width: 5, height: 5, borderRadius: 3, background: 'var(--accent)' }} />)}
                   </div>
@@ -139,7 +168,7 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
       {events && !next.length && <div className="muted">Chưa có ngày nào. Thêm sinh nhật hay ngày cưới của nhà mình nhé.</div>}
       {next.length > 0 && (
         <div className="panel" style={{ padding: '4px 18px' }}>
-          {next.map(({ e, inDays, years }) => {
+          {next.map(({ e, inDays, occ, years }) => {
             const mine = !e.virtual && e.createdBy === me.me.id;
             const other = e.memberId !== me.me.id;
             const wish = onWish && other && (e.kind === 'birthday' || e.kind === 'wedding');
@@ -148,7 +177,7 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div>{e.title}</div>
                   <div className="muted" style={{ fontSize: 13 }}>
-                    {e.day}/{e.month} · {inDays === 0 ? 'hôm nay' : `còn ${inDays} ngày`}{years !== null ? ` · ${sub(e, years)}` : ''}
+                    {e.lunar ? `${e.day}/${e.month}${e.leap ? ' nhuận' : ''} âm lịch · ${occ.day}/${occ.month}/${occ.year}` : `${e.day}/${e.month}`} · {inDays === 0 ? 'hôm nay' : `còn ${inDays} ngày`}{years !== null ? ` · ${sub(e, years)}` : ''}
                   </div>
                 </div>
                 {wish && <button className="chip" style={{ minHeight: 44 }} onClick={() => { tap(); onWish!(e); }}>Gửi lời chúc</button>}
@@ -170,10 +199,15 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
           </div>
           <input className="field" placeholder="Tên ngày này" value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} />
           <div style={{ display: 'flex', gap: 8 }}>
-            <input className="field" inputMode="numeric" placeholder="Ngày" value={day} maxLength={2} onChange={(e) => setDay(e.target.value.replace(/\D/g, ''))} style={{ minWidth: 0 }} />
-            <input className="field" inputMode="numeric" placeholder="Tháng" value={month} maxLength={2} onChange={(e) => setMonth(e.target.value.replace(/\D/g, ''))} style={{ minWidth: 0 }} />
-            <input className="field" inputMode="numeric" placeholder="Năm (không bắt buộc)" value={year} maxLength={4} onChange={(e) => setYear(e.target.value.replace(/\D/g, ''))} style={{ minWidth: 0 }} />
+            <input className="field" inputMode="numeric" placeholder={lunar ? 'Ngày âm' : 'Ngày'} value={day} maxLength={2} onChange={(e) => setDay(e.target.value.replace(/\D/g, ''))} style={{ minWidth: 0 }} />
+            <input className="field" inputMode="numeric" placeholder={lunar ? 'Tháng âm' : 'Tháng'} value={month} maxLength={2} onChange={(e) => setMonth(e.target.value.replace(/\D/g, ''))} style={{ minWidth: 0 }} />
+            <input className="field" inputMode="numeric" placeholder={lunar ? 'Năm âm (không bắt buộc)' : 'Năm (không bắt buộc)'} value={year} maxLength={4} onChange={(e) => setYear(e.target.value.replace(/\D/g, ''))} style={{ minWidth: 0 }} />
           </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <button className={`chip ${lunar ? 'on' : ''}`} style={{ minHeight: 44 }} onClick={() => { tap(); setLunar(!lunar); if (lunar) setLeap(false); }}>Âm lịch</button>
+            {lunar && <button className={`chip ${leap ? 'on' : ''}`} style={{ minHeight: 44 }} onClick={() => { tap(); setLeap(!leap); }}>Tháng nhuận</button>}
+          </div>
+          {lunar && preview && <div className="muted" style={{ fontSize: 13 }}>{preview}</div>}
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn ghost" style={{ flex: 1, minHeight: 48 }} onClick={() => setAdding(false)}>Thôi</button>
             <button className="btn" style={{ flex: 1, minHeight: 48 }} disabled={!day || !month} onClick={() => { tap(); void add(); }}>Lưu</button>

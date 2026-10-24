@@ -1,6 +1,7 @@
 import express from 'express';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
+import { nextOccurrence } from '../src/lunar.ts';
 
 const KINDS = ['birthday', 'wedding', 'anniversary', 'memory', 'other'];
 
@@ -22,13 +23,14 @@ export async function migrateCalendar(pool: Pool) {
       created_by text,
       created_at timestamptz not null default now()
     );
+    alter table events add column if not exists leap boolean not null default false;
     create index if not exists events_family_idx on events (family_id);
   `);
 }
 
 export type CalEvent = {
   id: string; kind: string; title: string; day: number; month: number; year: number | null;
-  lunar: boolean; note: string | null; photo: string | null; memberId: string | null; createdBy: string | null; virtual?: boolean;
+  lunar: boolean; leap: boolean; note: string | null; photo: string | null; memberId: string | null; createdBy: string | null; virtual?: boolean;
 };
 
 async function listEvents(pool: Pool, familyId: string): Promise<CalEvent[]> {
@@ -38,30 +40,31 @@ async function listEvents(pool: Pool, familyId: string): Promise<CalEvent[]> {
                 from members where family_id = $1 and dob is not null`, [familyId]),
   ]);
   const real: CalEvent[] = ev.rows.map((r) => ({
-    id: r.id, kind: r.kind, title: r.title, day: r.day, month: r.month, year: r.year, lunar: r.lunar,
+    id: r.id, kind: r.kind, title: r.title, day: r.day, month: r.month, year: r.year, lunar: r.lunar, leap: r.leap,
     note: r.note, photo: r.photo, memberId: r.member_id, createdBy: r.created_by,
   }));
   const dobs: CalEvent[] = ms.rows.map((r) => ({
-    id: `dob-${r.id}`, kind: 'birthday', title: `Sinh nhật ${r.name}`, day: r.d, month: r.m, year: r.y, lunar: false,
+    id: `dob-${r.id}`, kind: 'birthday', title: `Sinh nhật ${r.name}`, day: r.d, month: r.m, year: r.y, lunar: false, leap: false,
     note: null, photo: null, memberId: r.id, createdBy: null, virtual: true,
   }));
   return [...dobs, ...real];
 }
 
-// Lịch âm chưa quy đổi: sự kiện đánh dấu âm tạm tính theo ngày dương.
+// Sự kiện âm lịch (lunar=true) được quy đổi ra ngày dương của lần tới; `year` của sự kiện âm là năm âm.
 export async function upcoming(pool: Pool, familyId: string, days: number) {
-  const now = new Date();
-  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const out: Array<{ id: string; title: string; kind: string; date: string; inDays: number; years: number | null }> = [];
+  const now = new Date(Date.now() + 7 * 3600000); // giờ Việt Nam
+  const todayParts = { day: now.getUTCDate(), month: now.getUTCMonth() + 1, year: now.getUTCFullYear() };
+  const today = Date.UTC(todayParts.year, todayParts.month - 1, todayParts.day);
+  const out: Array<{ id: string; title: string; kind: string; date: string; inDays: number; years: number | null; lunar: boolean }> = [];
   for (const e of await listEvents(pool, familyId)) {
-    let y = now.getUTCFullYear();
-    let t = Date.UTC(y, e.month - 1, e.day);
-    if (t < today) { y += 1; t = Date.UTC(y, e.month - 1, e.day); }
+    const occ = nextOccurrence(e, todayParts);
+    if (!occ) continue;
+    const t = Date.UTC(occ.year, occ.month - 1, occ.day);
     const inDays = Math.round((t - today) / 86400000);
     if (inDays > days) continue;
     out.push({
       id: e.id, title: e.title, kind: e.kind, date: new Date(t).toISOString().slice(0, 10), inDays,
-      years: e.year ? new Date(t).getUTCFullYear() - e.year : null,
+      years: e.year ? (occ.lunarYear ?? occ.year) - e.year : null, lunar: e.lunar,
     });
   }
   return out.sort((a, b) => a.inDays - b.inDays);
@@ -95,9 +98,9 @@ calendarRouter.post('/calendar', h(async (req, res) => {
   if (year !== null && (!Number.isInteger(year) || year < 1900 || year > 2100)) return res.status(400).json({ error: 'Năm chưa đúng' });
   const eid = randomUUID();
   await pool.query(
-    `insert into events (id, family_id, member_id, kind, title, day, month, year, lunar, note, created_by)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-    [eid, req.member.family_id, b.memberId ? String(b.memberId) : null, b.kind, title, day, month, year, !!b.lunar,
+    `insert into events (id, family_id, member_id, kind, title, day, month, year, lunar, leap, note, created_by)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+    [eid, req.member.family_id, b.memberId ? String(b.memberId) : null, b.kind, title, day, month, year, !!b.lunar, !!b.lunar && !!b.leap,
       b.note ? String(b.note).slice(0, 500) : null, req.member.id],
   );
   res.json({ id: eid });
