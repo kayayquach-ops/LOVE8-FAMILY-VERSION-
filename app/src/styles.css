@@ -545,3 +545,6 @@ textarea.field { resize: none; text-align: left; line-height: 1.5; }
 
 /* Giữ chỗ cho phần chưa hiện, để câu hỏi không bị nhảy khi đáp án xuất hiện */
 .reserve { opacity: 0; visibility: hidden; pointer-events: none; }
+
+/* Đáp án hiện nhanh hơn chữ câu hỏi */
+.options .slow-in, .sub.slow-in { animation-duration: .7s; }

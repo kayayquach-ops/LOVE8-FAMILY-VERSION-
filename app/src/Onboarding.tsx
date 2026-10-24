@@ -266,10 +266,10 @@ function Ask({ q, sub, echo, typed, onTyped, children, footer }: {
       <div className="center">
         <h1 className="q"><Typed text={q} onDone={onTyped} /></h1>
         {sub && <p className={`sub ${typed ? 'slow-in' : 'reserve'}`}>{sub}</p>}
-        <div className="options">{items.map((c, i) => <div key={i} className={typed ? 'slow-in' : 'reserve'} style={{ animationDelay: `${500 + i * 380}ms`, width: '100%', display: 'flex', justifyContent: 'center' }}>{c}</div>)}</div>
+        <div className="options">{items.map((c, i) => <div key={i} className={typed ? 'slow-in' : 'reserve'} style={{ animationDelay: `${i * 130}ms`, width: '100%', display: 'flex', justifyContent: 'center' }}>{c}</div>)}</div>
         <div className="echo">{echo && <span className="slow-in" key={echo} style={{ animationDelay: '300ms' }}>{echo}</span>}</div>
       </div>
-      <div className="slow-in" key={String(typed)} style={{ display: 'flex', flexDirection: 'column', minHeight: 56, animationDelay: '900ms' }}>{typed && footer}</div>
+      <div className="slow-in" key={String(typed)} style={{ display: 'flex', flexDirection: 'column', minHeight: 56, animationDelay: "350ms" }}>{typed && footer}</div>
     </>
   );
 }

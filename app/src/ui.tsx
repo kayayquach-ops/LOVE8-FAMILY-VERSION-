@@ -62,8 +62,10 @@ export function Typed({ text, onDone }: { text: string; onDone?: () => void }) {
     setDone(false);
     sfx('reveal');
     // Safari iOS đôi khi kẹt chữ ở trạng thái mờ, nên hết giờ thì ép về rõ hẳn.
-    const t = setTimeout(() => { setDone(true); onDone?.(); }, 600 + words.length * 220 + 1700);
-    return () => clearTimeout(t);
+    const t = setTimeout(() => setDone(true), 600 + words.length * 220 + 1700);
+    // Đáp án bắt đầu hiện khi từ cuối đã hiện được nửa chừng, không đợi chữ rõ hẳn mới ra.
+    const early = setTimeout(() => onDone?.(), 600 + (words.length - 1) * 220 + 700);
+    return () => { clearTimeout(t); clearTimeout(early); };
   }, [text]);
   return (
     <span key={text}>
