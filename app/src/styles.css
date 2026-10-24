@@ -230,10 +230,10 @@ textarea.field { resize: none; text-align: left; line-height: 1.5; }
 /* Nền sương mờ theo ảnh tham khảo: trắng sáng giữa, hồng đào dưới trái, xám tím dưới phải, hạt phim mịn. */
 .mist { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background: linear-gradient(170deg, #CDD3D8 0%, #E7E6E5 40%, #E9DED6 75%, #C9C3CB 100%); }
 .mist i { position: absolute; border-radius: 50%; }
-/* Không dùng filter blur: vùng mờ dựng sẵn bằng radial-gradient nhiều nấc. Chỉ hai lớp trôi, chỉ bằng translate3d. */
+/* Không dùng filter blur: vùng mờ dựng sẵn bằng radial-gradient nhiều nấc. Nền đứng yên: trên iPhone, lớp gradient lớn trôi liên tục kéo cả trang xuống 30 khung hình mỗi giây và chữ hiện bị giật. */
 .mist .m1 { width: 120vmax; height: 120vmax; left: -30vmax; top: -10vmax; background: radial-gradient(closest-side, rgba(255,255,255,.9), rgba(255,255,255,.55) 45%, rgba(255,255,255,.18) 75%, rgba(255,255,255,0)); }
-.mist .m2 { width: 100vmax; height: 100vmax; left: -45vmax; bottom: -40vmax; background: radial-gradient(closest-side, rgba(236,196,172,.8), rgba(236,196,172,.48) 45%, rgba(236,196,172,.15) 75%, rgba(236,196,172,0)); will-change: transform; animation: mist2 26s ease-in-out infinite alternate; }
-.mist .m3 { width: 100vmax; height: 100vmax; right: -50vmax; bottom: -45vmax; background: radial-gradient(closest-side, rgba(150,146,170,.65), rgba(150,146,170,.38) 45%, rgba(150,146,170,.12) 75%, rgba(150,146,170,0)); will-change: transform; animation: mist3 30s ease-in-out infinite alternate; }
+.mist .m2 { width: 100vmax; height: 100vmax; left: -45vmax; bottom: -40vmax; background: radial-gradient(closest-side, rgba(236,196,172,.8), rgba(236,196,172,.48) 45%, rgba(236,196,172,.15) 75%, rgba(236,196,172,0)); }
+.mist .m3 { width: 100vmax; height: 100vmax; right: -50vmax; bottom: -45vmax; background: radial-gradient(closest-side, rgba(150,146,170,.65), rgba(150,146,170,.38) 45%, rgba(150,146,170,.12) 75%, rgba(150,146,170,0)); }
 .mist .m4 { width: 90vmax; height: 90vmax; right: -35vmax; top: -45vmax; background: radial-gradient(closest-side, rgba(176,190,200,.65), rgba(176,190,200,.38) 45%, rgba(176,190,200,.12) 75%, rgba(176,190,200,0)); }
 @keyframes mist2 { to { transform: translate3d(14vw, -12vh, 0); } }
 @keyframes mist3 { to { transform: translate3d(-16vw, -8vh, 0); } }
