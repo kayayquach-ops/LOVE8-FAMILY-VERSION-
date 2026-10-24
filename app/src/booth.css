@@ -1,0 +1,43 @@
+/* Chữ riêng cho từng khung dải ảnh. Tự host qua Vite, có bộ chữ tiếng Việt; trình duyệt chỉ tải tệp khi canvas cần đến. */
+@import '@fontsource/playfair-display/700-italic.css';
+@import '@fontsource/oswald/500.css';
+@import '@fontsource/space-mono/400.css';
+@import '@fontsource/space-mono/700.css';
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/bangers/400.css';
+@import '@fontsource/pacifico/400.css';
+@import '@fontsource/dancing-script/700.css';
+@import '@fontsource/lobster/400.css';
+@import '@fontsource/patrick-hand/400.css';
+
+/* Photobooth: chọn khung, dải ảnh. Tách riêng khỏi styles.css. */
+.ft-seg { display: flex; padding: 3px; border-radius: 999px; background: rgba(255,255,255,.6); border: 1px solid var(--line); transition: opacity .3s; }
+.ft-seg button { padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--ink); }
+.ft-seg button.on { background: var(--ink); color: #fff; }
+.ft-seg.dim { opacity: .45; }
+.ft-stage > .ft-flash { pointer-events: none; z-index: 5; }
+.ft-shoot { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.ft-view-wrap { position: relative; width: 100%; display: grid; place-items: center; }
+.ft-view { width: 100%; aspect-ratio: 23 / 20; border-radius: 22px; box-shadow: 0 14px 40px rgba(43,39,35,.16); background: #2B2723; }
+.ft-slots { display: flex; gap: 8px; justify-content: center; }
+.ft-slots span { width: 52px; aspect-ratio: 23 / 20; border-radius: 8px; overflow: hidden; background: rgba(255,255,255,.55); border: 1px solid var(--line); transition: transform .3s, border-color .3s; }
+.ft-slots span.next { border-color: var(--accent); transform: scale(1.08); }
+.ft-slots img { width: 100%; height: 100%; object-fit: cover; display: block; animation: fade .4s both; }
+.ft-strip-out { position: absolute; inset: 10px 0; width: 100%; height: calc(100% - 20px); object-fit: contain; filter: drop-shadow(0 12px 26px rgba(43,39,35,.22)); animation: fade .4s both; }
+.ft-picks { display: flex; gap: 10px; overflow-x: auto; width: 100%; padding: 4px 2px 2px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.ft-picks::-webkit-scrollbar { display: none; }
+.ft-pick { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: var(--muted); }
+.ft-pick img, .ft-pick i { display: block; height: 84px; border-radius: 10px; border: 2px solid transparent; transition: border-color .2s, transform .2s; }
+.ft-pick.one img, .ft-pick.one i { width: 67px; }
+.ft-pick.strip img, .ft-pick.strip i { width: 28px; border-radius: 5px; }
+.ft-pick.strip { width: 62px; }
+.ft-pick i { background: rgba(255,255,255,.6); }
+.ft-pick span { white-space: nowrap; }
+.ft-pick.on img, .ft-pick.on i { border-color: var(--ink); transform: translateY(-2px); }
+.ft-pick.on span { color: var(--ink); font-weight: 500; }
+.ft-opts { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.ft-opts .chip { padding: 7px 14px; font-size: 14px; cursor: pointer; }
+.ft-links { display: flex; gap: 28px; }
+.shutter:disabled { opacity: .5; }
+.card img.tall { object-fit: contain; }

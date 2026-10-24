@@ -166,7 +166,7 @@ function PostCard({ p, active, name }: { p: Post; active: boolean; name: string 
   }
   return (
     <div className="card" onClick={() => p.kind === 'video' && setMuted(!muted)}>
-      {p.kind === 'video' ? <video ref={v} src={p.media!} loop playsInline muted={muted} /> : <img src={p.media!} alt={p.caption ?? ''} loading="lazy" />}
+      {p.kind === 'video' ? <video ref={v} src={p.media!} loop playsInline muted={muted} /> : <img src={p.media!} alt={p.caption ?? ''} loading="lazy" onLoad={(e) => { const i = e.currentTarget; if (i.naturalHeight > i.naturalWidth * 1.3) i.classList.add('tall'); }} />}
       {p.caption && <div className="cap">{p.caption}</div>}
       {p.kind === 'video' && muted && <div className="cap" style={{ top: 16, bottom: 'auto' }}>Chạm để nghe tiếng</div>}
     </div>

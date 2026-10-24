@@ -2,7 +2,7 @@
 
 export const W = 1080, H = 1350;
 
-export type Tile = { video: HTMLVideoElement | null; name: string; mirror: boolean };
+export type Tile = { id?: string; video: HTMLVideoElement | null; name: string; mirror: boolean };
 type Ctx = CanvasRenderingContext2D;
 type Theme = { id: string; name: string; ink: string; frame: string; radius: number; bg: (c: Ctx, photo?: HTMLImageElement | null) => void };
 
@@ -114,7 +114,7 @@ export const THEMES: Theme[] = [
   },
 ];
 
-function cover(c: Ctx, src: CanvasImageSource, sw: number, sh: number, x: number, y: number, w: number, h: number, mirror: boolean) {
+export function cover(c: Ctx, src: CanvasImageSource, sw: number, sh: number, x: number, y: number, w: number, h: number, mirror: boolean) {
   const s = Math.max(w / sw, h / sh);
   const cw = w / s, ch = h / s;
   c.save();
