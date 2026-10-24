@@ -5,7 +5,7 @@ import Anthropic from '@anthropic-ai/sdk';
 const MODEL = 'claude-opus-5-5';
 let client: Anthropic | null = null;
 
-const useGemini = () => !!process.env.GEMINI_API_KEY && process.env.AI_PROVIDER !== 'claude';
+export const useGemini = () => !!process.env.GEMINI_API_KEY && process.env.AI_PROVIDER !== 'claude';
 export const hasAI = () => useGemini() || !!process.env.ANTHROPIC_API_KEY;
 
 const GEMINI_MODEL = () => process.env.GEMINI_MODEL || 'gemini-2.5-flash';

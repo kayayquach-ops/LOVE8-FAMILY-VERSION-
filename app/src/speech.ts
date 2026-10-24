@@ -1,4 +1,6 @@
 // Giọng tiếng Việt của máy (speechSynthesis). iPhone chỉ cho nói sau một lần chạm, nên mở khoá ở nút bấm.
+// Có giọng Gemini thì cuộc gọi dùng giọng ấy (playVoice), giọng máy chỉ để dự phòng.
+import { token } from './api';
 
 let voice: SpeechSynthesisVoice | null | undefined;
 function viVoice() {
@@ -18,6 +20,127 @@ export function unlockSpeech() {
 
 export function stopSpeaking() {
   if (canSpeak()) speechSynthesis.cancel();
+  stopVoice();
+}
+
+// ---------- Giọng Gemini: máy chủ đọc sẵn thành mp3, phát qua AudioContext đã mở trong cú chạm ----------
+
+let ctx: AudioContext | null = null;
+let out: AnalyserNode | null = null;
+let playing: { src: AudioBufferSourceNode; done: () => void } | null = null;
+let off = false; // máy chủ báo chưa có giọng: thôi hỏi nữa trong lần này
+const clips = new Map<string, Promise<ArrayBuffer | null>>();
+const decoded = new Map<string, AudioBuffer>();
+
+/** Gọi ngay trong cú chạm "Nghe máy": nối loa qua bộ đo âm lượng và phát một mẩu im lặng để iPhone mở khoá. */
+export function setVoiceContext(ac: AudioContext | null) {
+  ctx = ac;
+  out = null;
+  if (!ac) return;
+  try {
+    out = ac.createAnalyser();
+    out.fftSize = 512;
+    out.connect(ac.destination);
+    const s = ac.createBufferSource();
+    s.buffer = ac.createBuffer(1, 1, 22050);
+    s.connect(ac.destination);
+    s.start(0);
+  } catch { out = null; }
+}
+
+async function fetchClip(text: string): Promise<ArrayBuffer | null> {
+  if (off) return null;
+  try {
+    const t = token.get();
+    const r = await fetch('/api/call/tts', { method: 'POST', headers: { 'content-type': 'application/json', ...(t ? { authorization: `Bearer ${t}` } : {}) }, body: JSON.stringify({ text }) });
+    if (!r.ok) return null;
+    const { url, off: none } = await r.json() as { url: string | null; off?: boolean };
+    if (none) off = true;
+    if (!url) return null;
+    const a = await fetch(url);
+    return a.ok ? await a.arrayBuffer() : null;
+  } catch { return null; }
+}
+
+/** Xin trước âm thanh của một câu để lúc cần là phát ngay. */
+export function prefetchVoice(text: string) {
+  const k = text.trim();
+  if (!k || off) return;
+  if (!clips.has(k)) {
+    const p = fetchClip(k);
+    clips.set(k, p);
+    void p.then((b) => { if (!b) clips.delete(k); });
+  }
+}
+
+/** Câu này đã có âm thanh sẵn trong máy chưa (để chọn câu đáp mẫu khi câu đáp mới đến muộn). */
+export function voiceReady(text: string) { return decoded.has(text.trim()); }
+
+async function bufferOf(text: string, ms: number): Promise<AudioBuffer | null> {
+  const k = text.trim();
+  const hit = decoded.get(k);
+  if (hit) return hit;
+  if (!ctx) return null;
+  prefetchVoice(k);
+  const p = clips.get(k);
+  if (!p) return null;
+  let t = 0;
+  const data = await Promise.race([p, new Promise<null>((r) => { t = window.setTimeout(() => r(null), ms); })]);
+  clearTimeout(t);
+  if (!data || !ctx) return null;
+  try {
+    const b = await ctx.decodeAudioData(data.slice(0));
+    decoded.set(k, b);
+    return b;
+  } catch { return null; }
+}
+
+/** Giải mã sẵn khi đã tải xong, để voiceReady biết câu nào phát được ngay. */
+export function warmVoice(text: string) { void bufferOf(text, 30_000); }
+
+function stopVoice() {
+  const p = playing;
+  playing = null;
+  if (p) { try { p.src.stop(); } catch {} p.done(); }
+}
+
+/** Phát câu bằng giọng Gemini. Quá ms chưa có âm thanh thì trả false để nơi gọi dùng giọng máy. level nhận âm lượng thật 0..1. */
+export async function playVoice(text: string, level: (v: number) => void, ms = 4000): Promise<boolean> {
+  if (!ctx || !out || off) return false;
+  const b = await bufferOf(text, ms);
+  if (!b || !ctx || !out) return false;
+  stopVoice();
+  if (ctx.state !== 'running') { try { await ctx.resume(); } catch {} }
+  const ac = ctx, an = out;
+  return new Promise<boolean>((resolve) => {
+    const src = ac.createBufferSource();
+    src.buffer = b;
+    src.connect(an);
+    const buf = new Float32Array(an.fftSize);
+    let raf = 0, finished = false;
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      cancelAnimationFrame(raf);
+      clearTimeout(guard);
+      level(0);
+      if (playing?.src === src) playing = null;
+      resolve(true);
+    };
+    const tick = () => {
+      an.getFloatTimeDomainData(buf);
+      let sum = 0;
+      for (let k = 0; k < buf.length; k++) sum += buf[k] * buf[k];
+      level(Math.min(1, Math.max(0, (Math.sqrt(sum / buf.length) - 0.01) * 3.2)));
+      raf = requestAnimationFrame(tick);
+    };
+    // Máy tạm dừng âm thanh (iPhone khoá màn hình) thì vẫn đi tiếp, không treo cuộc gọi.
+    const guard = window.setTimeout(done, b.duration * 1000 + 1500);
+    src.onended = done;
+    playing = { src, done };
+    src.start();
+    raf = requestAnimationFrame(tick);
+  });
 }
 
 /** Đọc chậm, đằm. Luôn trả về: có máy không báo xong nên có hẹn giờ dự phòng. */

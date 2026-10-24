@@ -97,9 +97,10 @@ function Mascot3D({ mode = 'idle', drive = still, size = 220, className = '', on
           const mo = modeRef.current, d = drive.current;
           const listen = mo === 'listen', sleep = mo === 'sleep', happy = mo === 'happy', wave = mo === 'wave';
 
-          // Miệng: nhịp giả theo âm tiết cộng cú mở mỗi khi máy báo một từ mới.
+          // Miệng: theo âm lượng thật của giọng Gemini; giọng máy thì nhịp giả theo âm tiết cộng cú mở mỗi khi máy báo một từ mới.
           let tgt = 0;
-          if (d?.talking) {
+          if (d?.talking && d.voice != null) tgt = d.voice;
+          else if (d?.talking) {
             const beat = Math.abs(Math.sin(t / 95)) * 0.55 + Math.abs(Math.sin(t / 160 + 1)) * 0.25;
             const kick = Math.max(0, 1 - (t - d.pulse) / 200) * 0.45;
             tgt = Math.min(1, 0.15 + beat + kick);

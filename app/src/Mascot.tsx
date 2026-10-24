@@ -1,7 +1,8 @@
 import { useEffect, useId, useRef } from 'react';
 
 /** Điều khiển linh vật từ ngoài, đọc trong vòng rAF để không phải render lại React mỗi khung hình. */
-export type Drive = { talking: boolean; pulse: number; level: number };
+/** voice: âm lượng thật của giọng đang phát (0..1); không có (giọng máy) thì miệng mở theo nhịp giả. */
+export type Drive = { talking: boolean; pulse: number; level: number; voice?: number | null };
 export type MascotMode = 'idle' | 'talk' | 'listen' | 'wave' | 'sleep' | 'happy';
 
 const still: React.RefObject<Drive> = { current: { talking: false, pulse: 0, level: 0 } };
@@ -25,7 +26,8 @@ export function Mascot({ mode = 'idle', drive = still, size = 220, className = '
     const loop = (t: number) => {
       const d = drive.current;
       let target = 0;
-      if (d?.talking) {
+      if (d?.talking && d.voice != null) target = d.voice;
+      else if (d?.talking) {
         // Nhịp giả theo âm tiết, cộng thêm cú mở to mỗi khi máy báo đọc tới một từ mới.
         const beat = Math.abs(Math.sin(t / 95)) * 0.55 + Math.abs(Math.sin(t / 160 + 1)) * 0.25;
         const kick = Math.max(0, 1 - (t - d.pulse) / 200) * 0.45;

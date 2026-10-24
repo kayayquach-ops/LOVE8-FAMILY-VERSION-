@@ -5,7 +5,7 @@ import { MascotAny as Mascot } from './Mascot3D';
 import { AUDIO_TYPE, fileName, record, type Recording } from './media';
 import type { CallScript, Me } from './shared';
 import { buzz, sfx, tap } from './sound';
-import { speak, stopSpeaking, unlockSpeech } from './speech';
+import { playVoice, prefetchVoice, setVoiceContext, speak, stopSpeaking, unlockSpeech, voiceReady, warmVoice } from './speech';
 import { Icon, toast } from './ui';
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -43,6 +43,9 @@ const VAD = {
 const FILLER = /(?:^|\s)(ờ|ừ|ừm|à|ơ|thì|là|mà|và|với|nhưng|rồi|cái|kiểu)\s*$/i;
 
 type Heard = { recording: Recording | null; transcript: string; speechMs: number };
+type Saved = { transcript?: string | null; reply?: string | null } | null;
+// Tiếng "ừm" phát ngay khi người kể vừa ngừng, trong lúc chờ câu đáp thật.
+const ACK = 'Ừm.';
 type Session = { id: string; script: CallScript };
 type Phase = 'ring' | 'talk' | 'photo' | 'bye';
 
@@ -73,6 +76,15 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
   const parent = role === 'bo' || role === 'me';
   const self = role === 'bo' ? 'bố' : role === 'me' ? 'mẹ' : me.me.name;
   const Self = self[0].toUpperCase() + self.slice(1);
+  const lines = {
+    slow: parent ? `${Self} cứ từ từ nhé, nhớ gì kể nấy.` : 'Cứ từ từ nhé, nhớ gì kể nấy.',
+    busy: parent ? `Chắc ${self} đang bận. Tuần sau con gọi lại nhé.` : 'Chắc bạn đang bận. Tuần sau mình gọi lại nhé.',
+    skip: parent ? 'Dạ, không sao. Mình nói chuyện khác nhé.' : 'Không sao. Mình nói chuyện khác nhé.',
+    photo: parent ? `${Self} có tấm ảnh nào ngày ấy không? Gửi con giữ giúp nhé.` : 'Có tấm ảnh nào ngày ấy không? Gửi Homeletter giữ giúp nhé.',
+    short: parent ? ['Dạ, con nghe rồi.', 'Dạ.', `Dạ, con cảm ơn ${self}.`] : ['Mình nghe rồi.', 'Ừ, vậy à.', 'Cảm ơn nhé.'],
+    long: parent ? ['Nghe hay quá ạ.', `Con thích nghe ${self} kể lắm.`, 'Thương quá ạ.', 'Dạ, con nhớ rồi.', `Hay quá. Lần sau ${self} kể tiếp con nghe nhé.`]
+      : ['Nghe hay quá.', 'Thương ghê.', 'Mình nhớ rồi nhé.', 'Nghe mà thấy ấm ghê.', 'Hay quá. Lần sau kể tiếp nhé.'],
+  };
 
   // Chuẩn bị câu hỏi ngay khi chuông reo để nhấc máy là nói được.
   useEffect(() => {
@@ -80,6 +92,12 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     prep.current.then(setSession).catch(() => {});
     return () => { live.current = false; cleanup(); };
   }, []);
+
+  // Có bộ câu hỏi là xin trước giọng đọc lời chào và câu đầu, chuông còn reo thì giọng đã sẵn.
+  useEffect(() => {
+    if (!session) return;
+    [session.script.greeting, session.script.questions[0]?.text, ACK, lines.slow].forEach((t) => t && prefetchVoice(t));
+  }, [session]);
 
   useEffect(() => {
     if (phase !== 'ring') return;
@@ -96,6 +114,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     rec.current = null;
     stream.current?.getTracks().forEach((t) => t.stop());
     stream.current = null;
+    setVoiceContext(null);
     audio.current?.close().catch(() => {});
     audio.current = null;
     analyser.current = null;
@@ -110,6 +129,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       audio.current = new AC();
       void audio.current!.resume();
     } catch { audio.current = null; }
+    setVoiceContext(audio.current);
     setPhase('talk');
     try {
       stream.current = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
@@ -132,14 +152,24 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     }
   }
 
-  /** Linh vật nói một câu, phụ đề hiện bên dưới. Lúc này không nghe để tiếng loa không lọt vào. */
-  async function say(text: string) {
+  /** Linh vật nói một câu, phụ đề hiện bên dưới. Lúc này không nghe để tiếng loa không lọt vào.
+   * Ưu tiên giọng Gemini, miệng mở theo âm lượng thật; quá 4 giây chưa có tiếng thì đọc câu mẫu alt (nếu đã sẵn giọng) hoặc giọng máy. */
+  async function say(text: string, alt?: string) {
     if (!live.current || !text) return;
     setMode('talk');
     setCaption(text);
-    drive.current.talking = true;
-    await speak(text, { start: () => { drive.current.talking = true; }, boundary: () => { drive.current.pulse = performance.now(); } });
-    drive.current.talking = false;
+    const d = drive.current;
+    d.talking = true;
+    d.voice = 0;
+    const level = (v: number) => { d.voice = v; };
+    let ok = await playVoice(text, level, 4000);
+    if (!ok && alt && voiceReady(alt) && live.current) { setCaption(alt); ok = await playVoice(alt, level, 500); }
+    if (!ok && live.current) {
+      d.voice = null;
+      await speak(text, { start: () => { d.talking = true; }, boundary: () => { d.pulse = performance.now(); } });
+    }
+    d.voice = null;
+    d.talking = false;
     setMode((m) => (m === 'talk' ? 'idle' : m));
   }
 
@@ -238,31 +268,33 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     return p.finally(() => { if (hearing.current === p) hearing.current = null; });
   }
 
-  function upload(s: Session, n: number, h: Heard) {
-    if (!h.recording || h.recording.seconds < 1) return;
+  /** Gửi câu trả lời. Máy không chép được lời thì máy chủ nhờ Gemini chép và trả về luôn câu đáp. */
+  function upload(s: Session, n: number, h: Heard): Promise<Saved> {
+    if (!h.recording || h.recording.seconds < 1) return Promise.resolve(null);
     const f = new FormData();
     f.set('idx', String(n));
     f.set('transcript', h.transcript);
     f.set('seconds', String(h.recording.seconds));
     f.set('file', h.recording.blob, fileName(h.recording.blob, 'answer'));
-    uploads.current.push(call(`/api/call/${s.id}/answer`, { method: 'POST', body: f }).catch(() => toast('Chưa gửi được câu này')));
+    const p = call<Saved>(`/api/call/${s.id}/answer`, { method: 'POST', body: f }).catch(() => { toast('Chưa gửi được câu này'); return null; });
+    uploads.current.push(p);
     count.current += 1;
     setAnswered(count.current);
+    return p;
   }
 
-  /** Câu đáp ngắn: hỏi Claude nếu máy chủ có, quá 2 giây thì dùng câu mẫu. */
-  async function replyFor(s: Session, n: number, h: Heard) {
-    const short = h.speechMs < 3000;
-    const local = pickOne(parent
-      ? (short ? ['Dạ, con nghe rồi.', 'Ừm, dạ.', `Dạ, con cảm ơn ${self}.`] : ['Ừm, nghe hay quá ạ.', `Con thích nghe ${self} kể lắm.`, 'Thương quá ạ.', 'Dạ, con nhớ rồi.', `Hay quá. Lần sau ${self} kể tiếp con nghe nhé.`])
-      : (short ? ['Ừm, mình nghe rồi.', 'Ừ, vậy à.', 'Cảm ơn nhé.'] : ['Ừm, nghe hay quá.', 'Thương ghê.', 'Mình nhớ rồi nhé.', 'Nghe mà thấy ấm ghê.', 'Hay quá. Lần sau kể tiếp nhé.']));
-    if (!h.transcript) return local;
+  /** Câu đáp ngắn theo điều vừa kể. Có lời chép thì hỏi AI (quá 2 giây thôi); không có thì chờ Gemini chép (quá 4 giây thôi). */
+  async function replyFor(s: Session, n: number, h: Heard, saved: Promise<Saved>): Promise<string | null> {
+    if (!h.transcript) {
+      const r = await Promise.race([saved, wait(4000).then(() => null)]);
+      return r?.reply || null;
+    }
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 2000);
     try {
       const r = await call<{ text: string | null }>(`/api/call/${s.id}/reply`, { method: 'POST', body: JSON.stringify({ idx: n, transcript: h.transcript }), signal: ctrl.signal });
-      return r.text || local;
-    } catch { return local; } finally { clearTimeout(t); }
+      return r.text || null;
+    } catch { return null; } finally { clearTimeout(t); }
   }
 
   async function run(s: Session) {
@@ -274,12 +306,16 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       idx.current = n;
       setI(n);
       setHeard('');
+      // Câu đáp mẫu chọn trước; giọng của chúng và của câu hỏi kế tiếp được xin sẵn trong lúc người kể đang nói.
+      const fallback = { short: pickOne(lines.short), long: pickOne(lines.long) };
+      const next = qs[n + 1]?.text ?? s.script.goodbye;
+      [fallback.short, fallback.long, next, ACK, lines.slow].forEach(warmVoice);
       await say(qs[n].text);
       await wait(250);
       let h = await hear();
       if (!live.current) return;
       if (!h) {
-        await say(parent ? `${Self} cứ từ từ nhé, nhớ gì kể nấy.` : 'Cứ từ từ nhé, nhớ gì kể nấy.');
+        await say(lines.slow);
         await wait(250);
         setCaption(qs[n].text);
         h = await hear();
@@ -288,20 +324,27 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       if (!h || !h.recording || h.recording.seconds < 1) {
         silentRow += 1;
         if (silentRow >= 2 || n === qs.length - 1) {
-          await say(parent ? `Chắc ${self} đang bận. Tuần sau con gọi lại nhé.` : 'Chắc bạn đang bận. Tuần sau mình gọi lại nhé.');
+          await say(lines.busy);
           return void bye(false);
         }
-        await say(parent ? 'Dạ, không sao. Mình nói chuyện khác nhé.' : 'Không sao. Mình nói chuyện khác nhé.');
+        await say(lines.skip);
         continue;
       }
       silentRow = 0;
-      upload(s, n, h);
+      if (qs[n].photo) warmVoice(lines.photo);
+      const reply = replyFor(s, n, h, upload(s, n, h));
       setMode('idle');
-      await say(await replyFor(s, n, h));
+      // Giọng Gemini sẵn thì "ừm" một tiếng ngay cho khỏi im, rồi mới đáp.
+      const acked = voiceReady(ACK);
+      if (acked) await say(ACK);
+      const local = h.speechMs < 3000 ? fallback.short : fallback.long;
+      const text = (await reply) || local;
+      const trim = (t: string) => (acked ? t.replace(/^Ừm[,.]?\s*/i, '').replace(/^./, (c) => c.toUpperCase()) : t) || t;
+      await say(trim(text), text === local ? undefined : local);
       if (qs[n].photo && live.current) {
         setPhase('photo');
         const picked = new Promise<void>((r) => { photoDone.current = r; });
-        await say(parent ? `${Self} có tấm ảnh nào ngày ấy không? Gửi con giữ giúp nhé.` : 'Có tấm ảnh nào ngày ấy không? Gửi Homeletter giữ giúp nhé.');
+        await say(lines.photo);
         await picked;
         if (!live.current) return;
         setPhase('talk');
@@ -330,9 +373,10 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     setMode(count.current ? 'happy' : 'sleep');
     stream.current?.getTracks().forEach((t) => t.stop());
     if (!count.current) { snooze(); return; }
-    await Promise.all(uploads.current);
-    await call(`/api/call/${s.id}/finish`, { method: 'POST' }).catch(() => {});
+    // Chào trong lúc máy chủ còn chép lời câu cuối, không bắt người nghe chờ.
+    const finished = Promise.all(uploads.current).then(() => call(`/api/call/${s.id}/finish`, { method: 'POST' })).catch(() => {});
     if (spoke) { await say(s.script.goodbye); setMode('happy'); }
+    await finished;
   }
 
   async function hangUp() {
@@ -348,8 +392,8 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     if (s && h) upload(s, idx.current, h);
     cleanup();
     if (s && count.current > 0 && phase !== 'bye') {
-      await Promise.all(uploads.current);
-      await call(`/api/call/${s.id}/finish`, { method: 'POST' }).catch(() => {});
+      // Máy chủ có thể còn đang chép lời: gửi xong thì báo kết thúc, không giữ màn hình lại.
+      void Promise.all(uploads.current).then(() => call(`/api/call/${s.id}/finish`, { method: 'POST' })).catch(() => {});
     }
     if (!count.current) snooze();
     onClose(count.current > 0);

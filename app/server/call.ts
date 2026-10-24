@@ -10,6 +10,10 @@ import { askJSON, askQuick } from './ai.ts';
 import { pool } from './db.ts';
 import { weekKey } from './recap.ts';
 import { buildPodcastsForCall } from './podcast.ts';
+import { cachedSpeech, hasVoice, speech, transcribe, TTS_MAX } from './voice.ts';
+import path from 'node:path';
+
+const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 
 export async function migrateCall(p: pg.Pool) {
   await p.query(`
@@ -189,6 +193,14 @@ const REPLY_SYSTEM = `You are Homeletter on a warm weekly voice call with a Viet
 Reply with ONE short spoken Vietnamese reaction, at most 12 words, like a caring person on the phone: acknowledge one concrete detail they said. Do not ask a new question. No em dash, no emoji, no quotation marks.
 If role is bo or me, call yourself con and address them as Bố or Mẹ, end politely with ạ when natural. If role is con, call yourself mình and use their name sparingly.`;
 
+async function quickReply(who: { name: string; role: string } | undefined, question: string, said: string, memberId: string) {
+  const text = await askQuick(REPLY_SYSTEM, JSON.stringify({ person: { name: who?.name ?? '', role: who?.role ?? 'con' }, question, answer: said.slice(0, 1500) }), 1800);
+  const clean = text?.replace(/\s*[—–]\s*/g, ', ').replace(/["“”]/g, '').split('\n')[0].trim().slice(0, 140) || null;
+  // Đọc sẵn câu đáp ngay: lúc máy khách xin giọng sẽ nhận chung kết quả, đỡ một lượt mạng.
+  if (clean) void speech(clean, memberId);
+  return clean;
+}
+
 // ---------- Rút ngày tháng sau cuộc gọi ----------
 
 type Found = { kind: string; title: string; day: number; month: number; year: number | null; note: string };
@@ -219,8 +231,8 @@ const DATES_SCHEMA = {
 
 const DATES_SYSTEM = `You read the transcript of a family voice call (speech recognition, Vietnamese, may contain recognition errors) and pull out important family dates to add to the shared family calendar.
 Only include a date when the speaker clearly states both the day and the month. Include the year when stated. Do not guess.
-Skip dates already in the calendar. Title is short Vietnamese, for example: Ngày cưới bố mẹ, Sinh nhật bà nội, Ngày cả nhà chuyển nhà. No em dash.
-Note is one short Vietnamese sentence about the day from the speaker's words.
+Skip dates already in the calendar. Title is short Vietnamese with full diacritics, for example: Ngày cưới bố mẹ, Sinh nhật bà nội, Ngày cả nhà chuyển nhà. No em dash.
+Note is one short Vietnamese sentence (full diacritics) about the day from the speaker's words.
 If nothing qualifies, return an empty list.`;
 
 /** Không có Claude: đọc kiểu "ngày 12 tháng 3 năm 1995" hoặc "12/3/1995" trong câu trả lời có hẹn trước loại ngày. */
@@ -316,25 +328,45 @@ export function callRouter(upload: multer.Multer) {
     const idx = Number(req.body.idx);
     const q = script.questions[idx];
     if (!q) return res.status(400).json({ error: 'Không có câu hỏi này' });
+    const aid = randomUUID();
+    let transcript = String(req.body.transcript || '').trim().slice(0, 4000) || null;
     await pool.query('delete from call_answers where call_id = $1 and idx = $2', [call.id, idx]);
     await pool.query(
       'insert into call_answers (id, call_id, family_id, member_id, idx, question, topic, media, transcript, seconds) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-      [randomUUID(), call.id, call.family_id, call.member_id, idx, q.text, q.topic, media(req.file),
-        String(req.body.transcript || '').trim().slice(0, 4000) || null, Number(req.body.seconds) || null],
+      [aid, call.id, call.family_id, call.member_id, idx, q.text, q.topic, media(req.file), transcript, Number(req.body.seconds) || null],
     );
-    res.json({ ok: true });
+    // Máy không chép được lời (iPhone hay bị): nhờ Gemini chép, quá 8 giây thì thôi. Chép được thì đáp luôn một câu.
+    let reply: string | null = null;
+    if (!transcript && req.file) {
+      transcript = (await transcribe(path.join(MEDIA_DIR, req.file.filename), req.member.id, 8000))?.slice(0, 4000) ?? null;
+      if (transcript) {
+        await pool.query('update call_answers set transcript = $2 where id = $1', [aid, transcript]);
+        const { rows: [m] } = await pool.query('select name, role from members where id = $1', [call.member_id]);
+        reply = await quickReply(m, q.text, transcript, req.member.id);
+      }
+    }
+    res.json({ ok: true, transcript, reply });
   }));
 
-  // Nghe xong một câu: Claude đáp một câu ngắn theo điều vừa kể. Không có khoá hay quá 2 giây thì máy khách dùng câu mẫu.
+  // Nghe xong một câu: AI đáp một câu ngắn theo điều vừa kể. Không có khoá hay quá 2 giây thì máy khách dùng câu mẫu.
   r.post('/call/:id/reply', h(async (req, res) => {
     const said = String(req.body.transcript || '').trim().slice(0, 1500);
     if (!said) return res.json({ text: null });
     const { rows: [call] } = await pool.query('select c.script, m.name, m.role from calls c join members m on m.id = c.member_id where c.id = $1 and c.member_id = $2', [req.params.id, req.member.id]);
     if (!call) return res.status(404).json({ error: 'Không thấy cuộc gọi' });
     const q = (JSON.parse(call.script) as CallScript).questions[Number(req.body.idx)];
-    const text = await askQuick(REPLY_SYSTEM, JSON.stringify({ person: { name: call.name, role: call.role }, question: q?.text ?? '', answer: said }), 1800);
-    const clean = text?.replace(/\s*[—–]\s*/g, ', ').replace(/["“”]/g, '').split('\n')[0].trim().slice(0, 140);
-    res.json({ text: clean || null });
+    res.json({ text: await quickReply(call, q?.text ?? '', said, req.member.id) });
+  }));
+
+  // Giọng đọc của Homeletter: trả về đường dẫn file âm thanh, chưa có khoá hay quá giới hạn thì url null để máy dùng giọng máy.
+  r.post('/call/tts', h(async (req, res) => {
+    const text = String(req.body.text || '').replace(/\s+/g, ' ').trim();
+    if (!text || text.length > TTS_MAX) return res.json({ url: null });
+    const hit = cachedSpeech(text);
+    if (hit) return res.json({ url: hit });
+    if (!hasVoice()) return res.json({ url: null, off: true });
+    const p = speech(text, req.member.id);
+    res.json({ url: p ? await p : null });
   }));
 
   r.post('/call/:id/photo', upload.single('file'), h(async (req, res) => {
