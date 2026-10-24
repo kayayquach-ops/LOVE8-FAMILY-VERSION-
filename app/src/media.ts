@@ -1,6 +1,6 @@
 // Ghi âm, quay video và chụp ảnh bằng chính camera của trình duyệt.
 import { useEffect, useRef, useState } from 'react';
-import { buzz, sfx } from './sound';
+import { buzz } from './sound';
 import { toast } from './ui';
 import { t } from './i18n';
 
@@ -88,7 +88,7 @@ export function useHoldMic(onDone: (r: Recording) => void, borrow?: () => MediaS
       own.current = s;
     }
     stop.current = record(s, AUDIO_TYPE());
-    setRec(true); sfx('rec'); buzz(20);
+    setRec(true); buzz(12);
   }
   async function up() {
     held.current = false;

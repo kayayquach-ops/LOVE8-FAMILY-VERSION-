@@ -4,7 +4,7 @@ import { CityPicker } from './CityPicker';
 import { getLang, t } from './i18n';
 import { fileName, type Recording } from './media';
 import type { Role } from './shared';
-import { sfx, startMusic, stopMusic, tap } from './sound';
+import { sfx, startMusic, stopMusic, tapSoft } from './sound';
 import { Icon, SKIP_EVENT, toast, Typed } from './ui';
 import { VoiceNote } from './VoiceNote';
 import './onboarding.css';
@@ -65,7 +65,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const V = { self, Self, kids };
   // Câu theo vai: bố mẹ một câu, con một câu.
   const R = (k: string) => t(`onboarding.${k}.${parent ? 'parent' : 'child'}` as Parameters<typeof t>[0], V);
-  const go = (s: Step) => { sfx('button'); setStep(s); };
+  const go = (s: Step) => { sfx('button', true); setStep(s); };
   const next = () => go(FLOW[FLOW.indexOf(step) + 1]);
   const auto = useRef<ReturnType<typeof setTimeout>>(undefined);
   const later = (f: () => void, ms: number) => { clearTimeout(auto.current); auto.current = setTimeout(f, ms); };
@@ -81,7 +81,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const choose = (k: string, v: string) => {
     if (choosing.current) return;
     choosing.current = true;
-    tap();
+    tapSoft();
     setA({ ...a, [k]: v });
     later(() => { choosing.current = false; next(); }, 4200);
   };
@@ -154,7 +154,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       {step === 'role' && (
         <Ask key="role" q={t('onboarding.role.q')} {...T}>
           {(['bo', 'me', 'con'] as const).map((k) => (
-            <Opt key={k} on={role === k} onClick={() => { tap(); setRole(k); setName(k === 'bo' ? t('role.bo') : k === 'me' ? t('role.me') : ''); later(next, 250); }}>{t(`onboarding.role.opt.${k}`)}</Opt>
+            <Opt key={k} on={role === k} onClick={() => { tapSoft(); setRole(k); setName(k === 'bo' ? t('role.bo') : k === 'me' ? t('role.me') : ''); later(next, 250); }}>{t(`onboarding.role.opt.${k}`)}</Opt>
           ))}
         </Ask>
       )}
@@ -162,7 +162,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       {step === 'kid' && (
         <Ask key="kid" q={R('kid.q')} {...T}>
           {(parent ? ['son', 'daughter', 'both'] as const : ['son', 'daughter'] as const).map((k) => (
-            <Opt key={k} on={kid === k} onClick={() => { tap(); setKid(k); later(next, 250); }}>{t(`onboarding.kid.opt.${k}`)}</Opt>
+            <Opt key={k} on={kid === k} onClick={() => { tapSoft(); setKid(k); later(next, 250); }}>{t(`onboarding.kid.opt.${k}`)}</Opt>
           ))}
         </Ask>
       )}
@@ -200,8 +200,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       {step === 'hug' && (
         <Ask key="hug" q={R('hug.q')}
           echo={wantHug === true ? R('hug.echo.yes') : wantHug === false ? R('hug.echo.no') : undefined} {...T}>
-          <Opt key="yes" on={wantHug === true} onClick={() => { if (wantHug !== null) return; tap(); setWantHug(true); later(next, 4200); }}>{t('onboarding.hug.yes')}</Opt>
-          <Opt key="no" on={wantHug === false} onClick={() => { if (wantHug !== null) return; tap(); setWantHug(false); later(next, 4200); }}>{t('onboarding.hug.no')}</Opt>
+          <Opt key="yes" on={wantHug === true} onClick={() => { if (wantHug !== null) return; tapSoft(); setWantHug(true); later(next, 4200); }}>{t('onboarding.hug.yes')}</Opt>
+          <Opt key="no" on={wantHug === false} onClick={() => { if (wantHug !== null) return; tapSoft(); setWantHug(false); later(next, 4200); }}>{t('onboarding.hug.no')}</Opt>
         </Ask>
       )}
 
@@ -224,7 +224,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           sub={R('voice.sub')}
           echo={voice ? t('onboarding.voice.kept') : micDenied ? t('onboarding.voice.denied') : undefined} {...T}
           footer={voice
-            ? <><button className="btn" onClick={next}>{t('onboarding.voice.keep')}</button><button className="link" onClick={() => { tap(); URL.revokeObjectURL(voice.url); setVoice(null); }}>{t('onboarding.voice.redo')}</button></>
+            ? <><button className="btn" onClick={next}>{t('onboarding.voice.keep')}</button><button className="link" onClick={() => { tapSoft(); URL.revokeObjectURL(voice.url); setVoice(null); }}>{t('onboarding.voice.redo')}</button></>
             : <button className="link" onClick={next}>{t('common.later')}</button>}>
           <VoiceNote value={voice} onChange={(r) => { setMicDenied(false); setVoice(r); }} onDenied={() => setMicDenied(true)} />
         </Ask>
@@ -246,7 +246,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <h2 className="story-lead"><Typed text={storyLine(page, 'a')} onDone={setTyped} /></h2>
           <p className={`story-line ${typed ? (fast ? 'quick-in' : 'fade') : 'reserve'}`}>{storyLine(page, 'b')}</p>
           <div style={{ flex: 1 }} />
-          <button className={`btn ${typed ? (fast ? 'quick-in' : 'fade') : 'reserve'}`} onClick={() => { sfx('button'); page < STORY.length - 1 ? setPage(page + 1) : setStep('home'); }}>{page < STORY.length - 1 ? t('common.next') : t('onboarding.story.end')}</button>
+          <button className={`btn ${typed ? (fast ? 'quick-in' : 'fade') : 'reserve'}`} onClick={() => { sfx('button', true); page < STORY.length - 1 ? setPage(page + 1) : setStep('home'); }}>{page < STORY.length - 1 ? t('common.next') : t('onboarding.story.end')}</button>
         </div>
       )}
 
@@ -274,7 +274,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       {step === 'invite' && made && (
         <Ask key="invite" q={t('onboarding.invite.q')} {...T}
           footer={<>
-            <button className="btn" onClick={() => { sfx('button'); void shareInvite(made.code, made.family); }}><Icon name="share" size={20} /> {t('invite.send')}</button>
+            <button className="btn" onClick={() => { sfx('button', true); void shareInvite(made.code, made.family); }}><Icon name="share" size={20} /> {t('invite.send')}</button>
             <button className="link" onClick={onDone}>{t('onboarding.invite.skip')}</button>
           </>}>
           <div className="panel fade" style={{ alignSelf: 'center', width: '86%', textAlign: 'center' }}>

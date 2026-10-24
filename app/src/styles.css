@@ -95,9 +95,17 @@ img, video { display: block; }
 }
 .cap-input::placeholder { color: rgba(255,255,255,.75); }
 .shutter-row { display: flex; align-items: center; justify-content: space-between; margin-top: 26px; padding: 0 10px; }
-.shutter { width: 86px; height: 86px; border-radius: 50%; border: 4px solid var(--ink); display: grid; place-items: center; touch-action: none; }
+.shutter { position: relative; width: 86px; height: 86px; border-radius: 50%; border: 4px solid var(--ink); display: grid; place-items: center; touch-action: none; transition: transform .2s; }
 .shutter i { width: 68px; height: 68px; border-radius: 50%; background: var(--accent); transition: transform .2s, border-radius .2s; }
-.shutter.rec i { transform: scale(.55); border-radius: 14px; background: #C8553F; }
+.shutter-ring { position: absolute; left: -4px; top: -4px; width: 86px; height: 86px; transform: rotate(-90deg); pointer-events: none; opacity: 0; }
+.shutter-ring circle { fill: none; stroke: #C8553F; stroke-width: 5; stroke-linecap: round; stroke-dasharray: 257.6; stroke-dashoffset: 257.6; }
+.shutter.rec { transform: scale(1.1); }
+.shutter.rec i { transform: scale(.78); }
+.shutter.rec .shutter-ring { opacity: 1; }
+.shutter.rec .shutter-ring circle { animation: shutter-ring 15s linear forwards; }
+@keyframes shutter-ring { to { stroke-dashoffset: 0; } }
+.rec-dot { position: absolute; top: 16px; left: 18px; width: 10px; height: 10px; border-radius: 50%; background: #C8553F; animation: rec-dot 1.4s ease-in-out infinite; }
+@keyframes rec-dot { 50% { opacity: .35; } }
 .ring { position: absolute; inset: -4px; }
 .toolbar { margin-top: auto; display: flex; justify-content: space-around; padding-top: 10px; }
 .tool { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 13px; color: var(--soft); min-width: 72px; position: relative; }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { upload } from './api';
 import { fileName, record, shrinkImage, snap, useHoldMic, VIDEO_TYPE, type Recording } from './media';
 import { SILENT_HOURS, type Me } from './shared';
-import { buzz, sfx, tap } from './sound';
+import { buzz, tap } from './sound';
 import { Letter } from './Letter';
 import { hoursSince } from './time';
 import { Avatar, Icon, toast } from './ui';
@@ -24,9 +24,9 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
   const [sending, setSending] = useState<number | null>(null);
   const [flying, setFlying] = useState(false);
   const [rec, setRec] = useState<'video' | null>(null);
-  const [elapsed, setElapsed] = useState(0);
   const stopRec = useRef<(() => Promise<Recording>) | null>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const maxTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const touchY = useRef(0);
   const gen = useRef(0);
   const pressed = useRef(false);
@@ -64,20 +64,9 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
     document.addEventListener('visibilitychange', onVis);
     return () => { document.removeEventListener('visibilitychange', onVis); };
   }, [facing, live]);
-  useEffect(() => () => { clearTimeout(holdTimer.current); stopCam(); }, []);
+  useEffect(() => () => { clearTimeout(holdTimer.current); clearTimeout(maxTimer.current); stopCam(); }, []);
 
   const recording = rec ?? (talk.rec ? 'voice' : null);
-  useEffect(() => {
-    if (!recording) return;
-    setElapsed(0);
-    const t0 = Date.now();
-    const t = setInterval(() => {
-      const e = (Date.now() - t0) / 1000;
-      setElapsed(e);
-      if (recording === 'video' && e >= MAX_VIDEO) void finishRec();
-    }, 250);
-    return () => clearInterval(t);
-  }, [recording]);
 
   // Nút chụp: chạm nhanh là ảnh, giữ quá 0,35 giây là quay video.
   function shutterDown() {
@@ -87,7 +76,11 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
       if (!stream.current) return;
       stopRec.current = record(stream.current, VIDEO_TYPE());
       setRec('video');
-      sfx('rec'); buzz(20);
+      buzz(12);
+      maxTimer.current = setTimeout(() => void finishRec(), MAX_VIDEO * 1000);
+      // Safari iOS hay làm khung xem trước đứng hình khi bắt đầu ghi cùng luồng: bật lại nếu bị dừng.
+      const v = video.current;
+      if (v?.paused) void v.play().catch(() => {});
     }, 350);
   }
   async function shutterUp() {
@@ -97,7 +90,7 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
     if (!pressed.current) return;
     pressed.current = false;
     if (!video.current || !stream.current) return;
-    sfx('shutter'); buzz(15);
+    buzz(12);
     const blob = await snap(video.current, facing === 'user');
     setDraft({ kind: 'photo', blob, url: URL.createObjectURL(blob) });
   }
@@ -109,11 +102,11 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
   }
 
   async function finishRec() {
+    clearTimeout(maxTimer.current);
     const go = stopRec.current;
     stopRec.current = null;
     setRec(null);
     if (!go) return;
-    sfx('rec');
     const r = await go().catch(() => null);
     if (!r) return;
     if (r.seconds < 1) return toast(t('camera.holdLonger'));
@@ -181,7 +174,7 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
             <VoiceDot url={draft.url} seconds={draft.seconds} />
           </div>
         )}
-        {!draft && <video ref={video} className={facing === 'user' ? 'mirror' : ''} muted playsInline autoPlay />}
+        {!draft && <video ref={video} className={facing === 'user' ? 'mirror' : ''} muted playsInline autoPlay onPause={(e) => { if (stream.current) void e.currentTarget.play().catch(() => {}); }} />}
         {!draft && error && (
           <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 30, textAlign: 'center' }}>
             <div>
@@ -192,7 +185,7 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
           </div>
         )}
         {draft && draft.kind !== 'voice' && <input className="cap-input" value={caption} maxLength={60} onChange={(e) => setCaption(e.target.value)} placeholder={t('camera.captionPlaceholder')} enterKeyHint="done" onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />}
-        {rec === 'video' && <div className="cap-input" style={{ background: '#C8553F' }}>{t('camera.recording', { s: Math.floor(elapsed), max: MAX_VIDEO })}</div>}
+        {rec === 'video' && <span className="rec-dot" aria-hidden="true" />}
       </div>
 
       {draft ? (
@@ -217,13 +210,14 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
             </label>
             <button className={`shutter ${rec === 'video' ? 'rec' : ''}`} aria-label={t('camera.shutterAria')}
               onPointerDown={shutterDown} onPointerUp={shutterUp} onPointerLeave={shutterCancel} onPointerCancel={shutterCancel} onContextMenu={(e) => e.preventDefault()}>
+              <svg className="shutter-ring" viewBox="0 0 86 86" aria-hidden="true"><circle cx="43" cy="43" r="41" /></svg>
               <i />
             </button>
             <button className="icon-btn" onClick={() => { tap(); setFacing(facing === 'user' ? 'environment' : 'user'); }} aria-label={t('camera.flip')}><Icon name="flip" /></button>
           </div>
           <button className={`talk ${talk.rec ? 'rec' : ''}`} onPointerDown={() => void talk.down()} onPointerUp={() => void talk.up()}
             onPointerLeave={() => void talk.up()} onPointerCancel={() => void talk.up()} onContextMenu={(e) => e.preventDefault()}>
-            <Icon name="mic" size={20} /> {talk.rec ? t('camera.talk.listening', { s: Math.floor(elapsed) }) : t('camera.talk.hold')}
+            <Icon name="mic" size={20} /> {talk.rec ? t('camera.talk.listening') : t('camera.talk.hold')}
           </button>
         </>
       )}

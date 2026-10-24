@@ -1,7 +1,11 @@
 // Âm thanh từ Mixkit (giấy phép miễn phí dùng trong app): chuông, lật trang, nhịp tim, lấp lánh. Phát bằng Web Audio để không trễ và chồng được lên nhau
 // (tiếng gõ phím nhanh). iPhone chỉ cho phát sau lần chạm đầu tiên, nên âm thanh mở khoá ở đó.
 type Name = 'hello' | 'reveal' | 'pop' | 'tap' | 'button' | 'shutter' | 'send' | 'arrive' | 'sparkle' | 'hug' | 'rec';
-const VOLUME: Record<Name, number> = { hello: 0.3, reveal: 0.12, pop: 0.16, tap: 0.14, button: 0.16, shutter: 0.35, send: 0.3, arrive: 0.28, sparkle: 0.2, hug: 0.5, rec: 0.25 };
+const VOLUME: Record<Name, number> = { hello: 0.3, reveal: 0.12, pop: 0.16, tap: 0.14, button: 0.16, shutter: 0.35, send: 0.12, arrive: 0.28, sparkle: 0.2, hug: 0.5, rec: 0.25 };
+
+/** true: nút bấm chung im lặng (chỉ rung nhẹ), như Messenger/Locket/IG. Đặt false để bật lại tiếng tap, button, pop, shutter, rec. Onboarding gọi sfx(tên, true) nên không bị ảnh hưởng. */
+export const QUIET_UI = true;
+const UI_SOUNDS: Name[] = ['tap', 'button', 'pop', 'shutter', 'rec'];
 
 let ctx: AudioContext | null = null;
 const buffers: Partial<Record<Name, AudioBuffer>> = {};
@@ -26,7 +30,8 @@ if (typeof window !== 'undefined') {
   window.addEventListener('keydown', unlock, { capture: true });
 }
 
-export function sfx(name: Name) {
+export function sfx(name: Name, always = false) {
+  if (QUIET_UI && !always && UI_SOUNDS.includes(name)) return;
   const buf = buffers[name];
   // App đang ẩn thì im: tránh chuông dồn lại kêu một loạt khi mở lại.
   if (!ctx || !buf || document.hidden) return;
@@ -50,6 +55,8 @@ export function sfx(name: Name) {
 }
 
 export const tap = () => { sfx('tap'); navigator.vibrate?.(10); };
+/** Tiếng chạm riêng cho onboarding (đã chỉnh êm), không bị QUIET_UI chặn. */
+export const tapSoft = () => { sfx('tap', true); navigator.vibrate?.(10); };
 export const buzz = (ms = 10) => navigator.vibrate?.(ms);
 
 // Nhạc nền piano nhẹ cho phần hỏi đầu: vào nhỏ dần, lặp lại, khi xong thì tắt dần.

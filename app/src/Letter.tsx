@@ -8,9 +8,8 @@ const ROUTE = 'M30 560 C 110 360, 250 250, 330 300';
 export function Letter({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     sfx('send');
-    const a = setTimeout(() => sfx('arrive'), 2100);
     const b = setTimeout(onDone, 3600);
-    return () => { clearTimeout(a); clearTimeout(b); };
+    return () => { clearTimeout(b); };
   }, []);
   return (
     <button className="letter" onClick={onDone} aria-label={t('letter.aria')}>

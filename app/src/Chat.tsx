@@ -4,7 +4,6 @@ import { errorText, token } from './api';
 import { locale, t, type Key } from './i18n';
 import { fileName, shrinkImage, useHoldMic } from './media';
 import { Avatar, Icon, toast } from './ui';
-import { sfx } from './sound';
 import { STICKER_LIST, Sticker } from './stickers';
 
 type Msg = {
@@ -51,7 +50,7 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
       const seen = new Set(prev.map((m) => m.id));
       const added = incoming.filter((m) => !seen.has(m.id));
       if (!added.length) return prev;
-      if (added.some((m) => m.author_id !== meId)) { sfx('pop'); markRead(); }
+      if (added.some((m) => m.author_id !== meId)) markRead();
       return [...prev, ...added].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
     });
   }, [meId, markRead]);
@@ -97,7 +96,6 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
       const m = await call<Msg>('/api/chat', { method: 'POST', body: f });
       stick.current = true;
       setMsgs((p) => (p.some((x) => x.id === m.id) ? p : [...p, m]));
-      sfx('send');
     } catch (e) { toast((e as Error).message); }
     finally { if (slow) setPending((n) => n - 1); }
   }
