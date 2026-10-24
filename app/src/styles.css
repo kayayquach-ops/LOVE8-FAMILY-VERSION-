@@ -161,29 +161,6 @@ img, video { display: block; }
 .hold svg { position: relative; width: 44px; height: 44px; }
 .toast { position: fixed; left: 50%; bottom: calc(var(--safe-bottom) + 110px); transform: translateX(-50%); background: var(--ink); color: #fff; padding: 12px 20px; border-radius: 999px; font-size: 15px; z-index: 50; animation: fade .3s both; white-space: nowrap; }
 
-/* Màn chào kiểu "hello": nền kem đậm loang và trôi, chữ viết tay trắng được vẽ dần. */
-.hello { align-items: center; background: transparent; color: #3B3631; overflow: hidden; }
-.hello-off::before, .hello-off::after {
-  content: ''; position: absolute; width: 140vmax; height: 140vmax; will-change: transform; pointer-events: none;
-  background: radial-gradient(closest-side at 38% 38%, rgba(246,231,210,.95), rgba(246,231,210,0)), radial-gradient(closest-side at 64% 62%, rgba(185,142,108,.75), rgba(185,142,108,0));
-  animation: swirl 12s ease-in-out infinite alternate;
-}
-
-.hello-off::before { left: -70vmax; top: -60vmax; }
-.hello-off::after { right: -75vmax; bottom: -70vmax; animation-duration: 15s; animation-direction: alternate-reverse;
-  background: radial-gradient(closest-side at 42% 42%, rgba(240,220,194,.95), rgba(240,220,194,0)), radial-gradient(closest-side at 60% 66%, rgba(201,160,126,.8), rgba(201,160,126,0)); }
-@keyframes swirl { from { transform: translate3d(0,0,0) rotate(0deg) scale(1); } to { transform: translate3d(18vw, 14vh, 0) rotate(40deg) scale(1.15); } }
-.hello .center, .hello-hint { position: relative; z-index: 1; }
-.hello-word { width: min(92vw, 520px); overflow: visible; }
-.hello-word text {
-  font-family: 'Script', cursive; font-size: 150px; fill: #3B3631; fill-opacity: 0; stroke: #3B3631; stroke-width: 1.2;
-  stroke-dasharray: 1600; stroke-dashoffset: 1600; paint-order: stroke;
-  animation: write 2.6s .4s cubic-bezier(.45,.05,.35,1) forwards, ink 1s 2.4s ease forwards;
-}
-@keyframes write { to { stroke-dashoffset: 0; } }
-@keyframes ink { to { fill-opacity: 1; stroke-opacity: .2; } }
-.hello-hint { font-size: 15px; color: rgba(59,54,49,.7); opacity: 0; animation: fade .8s 3.2s both; padding-bottom: 8px; }
-@media (prefers-reduced-motion: reduce) { .hello::before, .hello::after { animation: none; } }
 
 .story-lead { font-size: 23px; line-height: 1.45; font-weight: 400; margin: 18px 0 0; letter-spacing: -.2px; }
 .story-line { font-size: 17px; line-height: 1.65; color: var(--soft); margin: 12px 0 0; }
@@ -374,20 +351,8 @@ textarea.field { resize: none; text-align: left; line-height: 1.5; }
 .slow-in { opacity: 0; animation: slowIn 1.3s cubic-bezier(.25,.6,.25,1) forwards; }
 @keyframes slowIn { from { opacity: 0; transform: translate3d(0, 10px, 0); } to { opacity: 1; transform: translate3d(0, 0, 0); } }
 .opt { transition: transform .25s, background .5s, color .5s; }
-/* "xin chào" phát sáng và đung đưa nhẹ sau khi viết xong */
-.hello-word { position: relative; transform-origin: 50% 70%; will-change: transform; animation: sway 6s 3.2s ease-in-out infinite; }
-.hello-word text { animation: write 3.2s .5s cubic-bezier(.45,.05,.35,1) forwards, ink 1.4s 3s ease forwards; }
-@keyframes sway { 0%, 100% { transform: rotate(-1.6deg) translate3d(0, 0, 0); } 50% { transform: rotate(1.6deg) translate3d(0, -6px, 0); } }
-/* Quầng sáng sau chữ: gradient dựng sẵn, chỉ thở bằng opacity thay cho drop-shadow động. */
-.hello-wrap { position: relative; display: grid; place-items: center; }
-.hello-glow { position: absolute; left: 50%; top: 50%; width: min(110vw, 640px); height: 300px; margin: -150px 0 0 calc(min(110vw, 640px) / -2); border-radius: 50%; pointer-events: none;
-  background: radial-gradient(closest-side, rgba(255,255,255,.95), rgba(255,244,230,.6) 40%, rgba(255,236,214,.22) 70%, rgba(255,236,214,0));
-  opacity: 0; will-change: opacity; animation: glow-in 1.6s 3.2s ease forwards, glow 4s 4.8s ease-in-out infinite; }
-@keyframes glow-in { to { opacity: .7; } }
-@keyframes glow { 0%, 100% { opacity: .7; } 50% { opacity: 1; } }
-.hello-hint { animation: fade 1.2s 4s both, breathe 3.5s 5.2s ease-in-out infinite; }
 @keyframes breathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .hello-word, .hello-hint { animation: none; } .hello-glow { animation: none; opacity: .7; } .slow-in { animation-name: slowFade; } .fade { animation-name: slowFade; } }
+@media (prefers-reduced-motion: reduce) { .slow-in { animation-name: slowFade; } .fade { animation-name: slowFade; } }
 @keyframes slowFade { from { opacity: 0; } to { opacity: 1; } }
 
 /* Cuộc gọi tuần: chuông nhẹ, chữ lớn, nhịp chậm. */

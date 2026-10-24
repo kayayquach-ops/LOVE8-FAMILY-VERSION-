@@ -153,7 +153,7 @@ export async function buildPodcastsForCall(callId: string) {
   const jobs: Job[] = [{
     fid: call.family_id, key: `call:${callId}`, kind: 'person', memberId: call.member_id, topic: first,
     title: `${name} kể ${TITLE_OF[first] ?? 'chuyện nhà'}`, cover: await coverFor(call.family_id, call.member_id),
-    intro: `Đây là Homeletter. Tuần này, mình ngồi nghe ${name} kể chuyện.`,
+    intro: `Mây đây. Tuần này, mình ngồi nghe ${name} kể chuyện.`,
     outro: `Cảm ơn ${name} đã kể. Hẹn tuần sau nhé.`,
     clips: usable.map((a) => ({ file: mediaFile(a.media), who: a.who, question: a.question, transcript: a.transcript, say: a.question })),
   }];
@@ -169,7 +169,7 @@ export async function buildPodcastsForCall(callId: string) {
     const label = topicLabel(topic);
     jobs.push({
       fid: call.family_id, key: `topic:${topic}`, kind: 'topic', memberId: null, topic, title: label, cover: await coverFor(call.family_id, null),
-      intro: `Homeletter. ${label}. Chuyện cả nhà cùng kể.`,
+      intro: `${label}. Chuyện cả nhà cùng kể.`,
       outro: 'Còn nhiều chuyện nữa. Hẹn lần sau nhé.',
       clips: clips.map((a) => ({ file: mediaFile(a.media), who: a.who, question: a.question, transcript: a.transcript, say: `${a.who}. ${a.question}` })),
     });
@@ -183,7 +183,7 @@ export async function buildFirstVoicePodcast(fid: string, memberId: string, name
   if (!existsSync(file)) return;
   await enqueue({
     fid, key: `first:${memberId}`, kind: 'person', memberId, topic: 'loi-nhan', title: 'Lời thương đầu tiên', cover: await coverFor(fid, memberId),
-    intro: `Đây là Homeletter. Ngày đầu vào nhà, ${name} có một câu muốn nói.`,
+    intro: `Mây đây. Ngày đầu vào nhà, ${name} có một câu muốn nói.`,
     outro: 'Câu ấy, từ giờ nhà mình giữ.',
     clips: [{ file, who: name, question: 'Lời thương đầu tiên', transcript: null, say: `Giọng ${name}.` }],
   });

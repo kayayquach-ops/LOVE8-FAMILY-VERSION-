@@ -473,8 +473,8 @@ export const STRIPS: StripTheme[] = [
       c.beginPath(); c.moveTo(58, y); c.lineTo(SW - 58, y); c.moveTo(58, y + 44); c.lineTo(SW - 58, y + 44); c.stroke();
       text(c, 'GIỮ LẠI KHOẢNH KHẮC NÀY', SW / 2, y + 31, WINE, 20, 380, 500, 'center', OS);
       star5(c, 82, y + 22, 8, WINE); star5(c, SW - 82, y + 22, 8, WINE);
-      fit(c, 'homeletter', 440, 66, 700, PF, 'italic');
-      c.textAlign = 'center'; c.fillStyle = WINE; c.fillText('homeletter', SW / 2, h - 96);
+      fit(c, 'sweet home', 440, 66, 700, PF, 'italic');
+      c.textAlign = 'center'; c.fillStyle = WINE; c.fillText('sweet home', SW / 2, h - 96);
     },
   },
   {

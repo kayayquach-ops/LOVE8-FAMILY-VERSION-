@@ -180,7 +180,7 @@ function Mascot3D({ mode = 'idle', drive = still, size = 220, className = '', on
   }, [w, h]);
 
   return (
-    <div className={`mascot mascot3d ${className}`} style={{ width: w, height: h }} role="img" aria-label="Homeletter">
+    <div className={`mascot mascot3d ${className}`} style={{ width: w, height: h }} role="img" aria-label="Sweet Home">
       <i className="mascot3d-shadow" style={{ opacity: ready ? 1 : 0 }} />
       <div ref={host} className="mascot3d-gl" style={{ opacity: ready ? 1 : 0 }} />
     </div>
