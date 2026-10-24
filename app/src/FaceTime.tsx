@@ -495,7 +495,7 @@ function Booth({ me, tiles, onShoot, onClose }: { me: Me; tiles: () => Tile[]; o
   async function download() {
     if (!shot) return;
     tap();
-    const name = `homeletter-${Date.now()}.jpg`;
+    const name = `sweet-home-${Date.now()}.jpg`;
     const file = new File([shot.blob], name, { type: 'image/jpeg' });
     if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
       try { await navigator.share({ files: [file] }); } catch {}

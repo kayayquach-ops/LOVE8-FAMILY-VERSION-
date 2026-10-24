@@ -160,7 +160,7 @@ export function Podcast({ me, start, onClose, onCall }: { me: Me; start?: string
         {eps === null ? null : shown ? <Player ep={shown} me={me} /> : (
           <div className="recap-empty">
             <div className="h1">{busy ? 'Đang ghép tập đầu tiên' : 'Chưa có tập nào'}</div>
-            <p>{busy ? 'Chờ ít phút, giọng kể của nhà mình sắp xong rồi.' : 'Mỗi tuần Homeletter gọi hỏi chuyện. Giọng kể của cả nhà sẽ thành một tập ngắn.'}</p>
+            <p>{busy ? 'Chờ ít phút, giọng kể của nhà mình sắp xong rồi.' : 'Mỗi tuần Sweet Home gọi hỏi chuyện. Giọng kể của cả nhà sẽ thành một tập ngắn.'}</p>
           </div>
         )}
 
@@ -188,7 +188,7 @@ export function Podcast({ me, start, onClose, onCall }: { me: Me; start?: string
         )}
 
         <button className="btn ghost" style={{ marginTop: 26 }} onClick={() => { tap(); onCall(); }}>
-          <Icon name="phone" size={20} /> {ready.length ? 'Kể thêm một chuyện' : 'Gọi Homeletter ngay'}
+          <Icon name="phone" size={20} /> {ready.length ? 'Kể thêm một chuyện' : 'Gọi Sweet Home ngay'}
         </button>
       </div>
     </div>

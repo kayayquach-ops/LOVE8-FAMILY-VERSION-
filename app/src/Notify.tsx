@@ -49,9 +49,9 @@ export function Notify() {
     <>
       <div className="h2">Thông báo</div>
       <div className="panel">
-        {state === 'ios-browser' && <div className="muted">Thêm Homeletter vào Màn hình chính rồi mở từ đó để nhận thông báo.</div>}
+        {state === 'ios-browser' && <div className="muted">Thêm Sweet Home vào Màn hình chính rồi mở từ đó để nhận thông báo.</div>}
         {state === 'unsupported' && <div className="muted">Máy này chưa nhận được thông báo.</div>}
-        {state === 'denied' && <div className="muted">Thông báo đang bị chặn. Mở cài đặt của máy, cho Homeletter gửi thông báo là được.</div>}
+        {state === 'denied' && <div className="muted">Thông báo đang bị chặn. Mở cài đặt của máy, cho Sweet Home gửi thông báo là được.</div>}
         {state === 'off' && <button className="btn" disabled={busy} onClick={turnOn}>Bật thông báo</button>}
         {state === 'on' && (
           <>

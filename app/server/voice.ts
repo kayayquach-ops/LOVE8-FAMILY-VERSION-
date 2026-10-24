@@ -1,4 +1,4 @@
-// Giọng nói của Homeletter bằng Gemini: đọc câu thành tiếng (TTS) và chép lời câu trả lời (STT).
+// Giọng nói của Mây (Sweet Home) bằng Gemini: đọc câu thành tiếng (TTS) và chép lời câu trả lời (STT).
 // Âm thanh đọc ra lưu theo hash(chữ + giọng + model) trong MEDIA_DIR/tts, câu lặp lại không phải gọi lần nữa.
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';

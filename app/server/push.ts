@@ -224,7 +224,7 @@ async function weeklyTick() {
   for (const { member_id: mid } of rows) {
     if (!(await once(`weekly:${mid}:${week}`))) continue;
     await notifyMembers([mid], {
-      kind: 'weekly', title: 'Homeletter đang gọi bạn', body: 'Kể cả nhà nghe chuyện tuần này nhé', tag: 'weekly', open: 'weekly', ttl: 6 * 3600,
+      kind: 'weekly', title: 'Sweet Home đang gọi bạn', body: 'Kể cả nhà nghe chuyện tuần này nhé', tag: 'weekly', open: 'weekly', ttl: 6 * 3600,
     });
   }
 }

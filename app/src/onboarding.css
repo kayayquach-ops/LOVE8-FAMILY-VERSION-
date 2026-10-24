@@ -1,0 +1,57 @@
+/* Màn chào và nền cánh đồng cho phần hỏi đầu. Chữ tự host qua Vite, có bộ tiếng Việt; trình duyệt chỉ tải tệp chữ khi màn này vẽ đến. */
+@import '@fontsource/pinyon-script/400.css';
+@import '@fontsource/playfair-display/400.css';
+
+/* Nền cánh đồng cỏ lau: một lớp ảnh đứng yên, phủ sữa mỏng cho chữ dễ đọc. Không filter, không lớp lớn chuyển động. */
+.meadow {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; background-color: #F3F4EE;
+  background-image: linear-gradient(180deg, rgba(251,250,246,.28) 0%, rgba(251,250,246,.36) 45%, rgba(248,248,242,.5) 100%), url('/art/bg-meadow.webp');
+  background-size: cover; background-position: center;
+}
+@media (min-aspect-ratio: 4/5) {
+  .meadow { background-image: linear-gradient(180deg, rgba(251,250,246,.3), rgba(248,248,242,.5)), url('/art/bg-meadow-wide.webp'); background-position: center bottom; }
+}
+/* Vài hạt lấp lánh, chỉ nhấp nháy bằng độ mờ. */
+.meadow i { position: absolute; width: 6px; height: 6px; margin: -3px; border-radius: 50%; opacity: 0;
+  background: radial-gradient(closest-side, #fff, rgba(255,250,232,.7) 45%, rgba(255,250,232,0));
+  animation: twinkle 4.6s ease-in-out infinite; will-change: opacity; }
+.meadow i:nth-child(3n) { width: 4px; height: 4px; margin: -2px; animation-duration: 3.8s; }
+.meadow i:nth-child(4n+1) { width: 8px; height: 8px; margin: -4px; animation-duration: 5.4s; }
+@keyframes twinkle { 0%, 100% { opacity: 0; } 50% { opacity: .9; } }
+
+/* Màn chào: "sweet home" nhỏ ở đỉnh, giữa là "chào mừng về nhà" viết tay và chữ "bạn" lớn. */
+.hello { align-items: stretch; color: var(--ink); background: transparent; }
+.hello-top { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 14px; opacity: 0; animation: slowFade 1.6s .2s forwards; }
+.hello-logo { width: 30px; height: 30px; }
+.hello-brand { font-family: 'Pinyon Script', cursive; font-size: 21px; line-height: 1.2; color: #6A7060; }
+.hello .center { position: relative; }
+
+.welcome { position: relative; display: flex; align-items: flex-end; justify-content: center; width: 100%; margin-top: -6vh; }
+.wl-glow { position: absolute; left: 50%; top: 50%; width: 120%; height: 150%; transform: translate3d(-50%, -50%, 0); border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(255,255,253,.85), rgba(255,255,250,.5) 45%, rgba(255,255,250,.16) 75%, rgba(255,255,250,0));
+  opacity: 0; will-change: opacity; animation: wl-glow-in 1.6s 1.6s ease forwards, wl-glow 6s 3.2s ease-in-out infinite; }
+@keyframes wl-glow-in { to { opacity: .8; } }
+@keyframes wl-glow { 0%, 100% { opacity: .8; } 50% { opacity: 1; } }
+
+.wl-left { position: relative; z-index: 1; margin-right: -.3em; padding-bottom: .62em;
+  font-family: 'Pinyon Script', cursive; font-size: clamp(34px, 10.6vw, 54px); line-height: 1.05; color: #58604C;
+  animation: wl-from-left 1.7s .3s cubic-bezier(.16,.84,.3,1) both; will-change: transform, opacity; }
+.wl-left > span { display: flex; flex-direction: column; transform: rotate(-6deg); transform-origin: 100% 100%; white-space: nowrap; }
+.wl-left > span > span:last-child { padding-left: 1.2em; }
+.wl-right { position: relative; font-family: 'Playfair Display', 'Times New Roman', serif; font-weight: 400; font-size: clamp(112px, 33vw, 176px); line-height: .9; letter-spacing: -.02em; color: #66714F;
+  text-shadow: 0 0 14px rgba(255,255,255,.95), 0 0 34px rgba(255,255,255,.7);
+  animation: wl-from-right 1.7s .55s cubic-bezier(.16,.84,.3,1) both; will-change: transform, opacity; }
+@keyframes wl-from-left { from { opacity: 0; transform: translate3d(-58vw, 0, 0); } 35% { opacity: .6; } to { opacity: 1; transform: translate3d(0, 0, 0); } }
+@keyframes wl-from-right { from { opacity: 0; transform: translate3d(58vw, 0, 0); } 35% { opacity: .6; } to { opacity: 1; transform: translate3d(0, 0, 0); } }
+
+.hello-hint { position: relative; text-align: center; font-size: 15px; color: rgba(59,62,52,.72); padding-bottom: 8px; opacity: 0; animation: fade 1.2s 2.6s both, breathe 3.5s 3.8s ease-in-out infinite; }
+
+.invite-logo { width: 40px; height: 40px; margin: 0 auto 6px; }
+
+/* Giảm chuyển động: chữ không trượt, chỉ hiện dần. */
+@media (prefers-reduced-motion: reduce) {
+  .wl-left, .wl-right { animation-name: slowFade; }
+  .wl-glow { animation: wl-glow-in 1.6s 1s ease forwards; }
+  .meadow i { animation: none; opacity: .6; }
+  .hello-hint { animation: slowFade 1.2s 2s both; }
+}

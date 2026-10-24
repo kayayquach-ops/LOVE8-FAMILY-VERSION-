@@ -7,7 +7,7 @@ export type MascotMode = 'idle' | 'talk' | 'listen' | 'wave' | 'sleep' | 'happy'
 
 const still: React.RefObject<Drive> = { current: { talking: false, pulse: 0, level: 0 } };
 
-// "Mây", linh vật của Homeletter: tròn như viên kẹo dẻo tím lilac, mặt kem, ăng-ten có quả bi, tay chân ngắn mập.
+// "Mây", linh vật của Sweet Home: tròn như viên kẹo dẻo tím lilac, mặt kem, ăng-ten có quả bi, tay chân ngắn mập.
 // Dùng chung cả app: idle (chớp mắt, ăng-ten đung đưa), talk (miệng mở theo giọng), listen (nghiêng đầu, mắt to, nhún theo mic),
 // wave (vẫy tay, mắt cười), sleep (nằm ngủ), happy (cười híp mắt). Chỉ animate transform và opacity cho mượt trên iPhone.
 export function Mascot({ mode = 'idle', drive = still, size = 220, className = '' }: {
@@ -47,7 +47,7 @@ export function Mascot({ mode = 'idle', drive = still, size = 220, className = '
   }, [drive]);
 
   return (
-    <svg className={`mascot ${mode} ${className}`} viewBox="0 0 240 260" width={size} height={size * 260 / 240} role="img" aria-label="Homeletter">
+    <svg className={`mascot ${mode} ${className}`} viewBox="0 0 240 260" width={size} height={size * 260 / 240} role="img" aria-label="Sweet Home">
       <defs>
         <radialGradient id={g('body')} cx="36%" cy="26%" r="80%">
           <stop offset="0" stopColor="#E6DAFB" />

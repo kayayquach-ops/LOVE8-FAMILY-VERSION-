@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="116" fill="#F6EEE2"/><g transform="translate(-20.480000000000018 -11.840000000000018) scale(1.08)">
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#D9CBF7"/>
+      <stop offset="1" stop-color="#B9A4EA"/>
+    </linearGradient>
+    <linearGradient id="roof" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#B97A60"/>
+      <stop offset="1" stop-color="#9A5A44"/>
+    </linearGradient>
+    <linearGradient id="door" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFF8EA"/>
+      <stop offset="1" stop-color="#F7E6CC"/>
+    </linearGradient>
+  </defs>
+  <rect x="140" y="214" width="232" height="190" rx="40" fill="url(#wall)"/>
+  <path d="M256 116 L118 240 L394 240 Z" fill="url(#roof)" stroke="url(#roof)" stroke-width="40" stroke-linejoin="round"/>
+  <path d="M220 404 V338 a36 36 0 0 1 72 0 V404 Z" fill="url(#door)"/>
+  <path d="M256 372 c-9 -6 -16 -11 -16 -19 a8.5 8.5 0 0 1 16 -4 a8.5 8.5 0 0 1 16 4 c0 8 -7 13 -16 19 z" fill="#C97D72"/>
+
+</g></svg>

@@ -1,4 +1,4 @@
-// Cuộc gọi hằng tuần ngay trong app: Homeletter hỏi, người nghe kể bằng giọng nói.
+// Cuộc gọi hằng tuần ngay trong app: Mây của Sweet Home hỏi, người nghe kể bằng giọng nói.
 // Claude soạn câu hỏi riêng cho từng người; không có khoá thì dùng bộ câu soạn sẵn từ members.intro.
 // Gọi xong: rút ngày tháng quan trọng vào lịch, ảnh xưa vào kho, rồi ghép podcast.
 import express from 'express';
@@ -120,7 +120,7 @@ function templateScript(c: Ctx, week: string): CallScript {
   const loi = rotated.filter((x) => x.topic === 'loi-nhan').slice(0, 1);
   const questions = [...head, ...rotated.filter((x) => x.topic !== 'loi-nhan')].slice(0, 3).concat(loi);
   return {
-    greeting: parent ? `${call} ơi, con là Homeletter đây. Tuần này mình nói chuyện một lúc nhé.` : `${name} ơi, Homeletter đây. Mình nói chuyện một lúc nhé.`,
+    greeting: parent ? `${call} ơi, con là Mây đây. Tuần này mình nói chuyện một lúc nhé.` : `${name} ơi, Mây đây. Mình nói chuyện một lúc nhé.`,
     questions,
     goodbye: parent ? `Con cảm ơn ${self}. Con sẽ giữ lại để cả nhà cùng nghe.` : `Cảm ơn ${name}. Mình giữ lại để cả nhà cùng nghe nhé.`,
     source: 'template',
@@ -153,11 +153,12 @@ const SCRIPT_SCHEMA = {
   },
 };
 
-const SCRIPT_SYSTEM = `You write the script for a short weekly voice call inside Homeletter, a family app for Vietnamese families whose child studies abroad.
+const SCRIPT_SYSTEM = `You write the script for a short weekly voice call inside Sweet Home, a family app for Vietnamese families whose child studies abroad. The caller is Mây, the app's little mascot.
 The phone reads every line aloud with a Vietnamese text-to-speech voice, and the person answers by speaking.
 
 Write in Vietnamese, the way a warm, unhurried person really talks on the phone. Short sentences. No em dash or long dash, no emoji, no lists, no quotation marks.
-When talking to a parent (role bo or me), Homeletter calls itself "con" and addresses them as Bố or Mẹ. When talking to a child (role con), Homeletter calls itself "mình" and uses their name.
+When talking to a parent (role bo or me), Mây calls itself "con" and addresses them as Bố or Mẹ. When talking to a child (role con), Mây calls itself "mình" and uses their name.
+The lines are read aloud, so never write the English app name; if a name is needed, Mây calls itself Mây.
 
 Write a greeting (one or two sentences), 4 questions, and a goodbye (one or two sentences).
 Each question is one or two sentences, invites a story rather than a yes or no, and is easy to answer out loud.
@@ -189,7 +190,7 @@ async function aiScript(c: Ctx): Promise<CallScript | null> {
   return { greeting: clean(r.greeting), questions, goodbye: clean(r.goodbye), source: 'ai' };
 }
 
-const REPLY_SYSTEM = `You are Homeletter on a warm weekly voice call with a Vietnamese family member. They just answered a question out loud (speech recognition text, may have errors).
+const REPLY_SYSTEM = `You are Mây, the mascot of the family app Sweet Home, on a warm weekly voice call with a Vietnamese family member. They just answered a question out loud (speech recognition text, may have errors).
 Reply with ONE short spoken Vietnamese reaction, at most 12 words, like a caring person on the phone: acknowledge one concrete detail they said. Do not ask a new question. No em dash, no emoji, no quotation marks.
 If role is bo or me, call yourself con and address them as Bố or Mẹ, end politely with ạ when natural. If role is con, call yourself mình and use their name sparingly.`;
 
@@ -358,7 +359,7 @@ export function callRouter(upload: multer.Multer) {
     res.json({ text: await quickReply(call, q?.text ?? '', said, req.member.id) });
   }));
 
-  // Giọng đọc của Homeletter: trả về đường dẫn file âm thanh, chưa có khoá hay quá giới hạn thì url null để máy dùng giọng máy.
+  // Giọng đọc của Mây: trả về đường dẫn file âm thanh, chưa có khoá hay quá giới hạn thì url null để máy dùng giọng máy.
   r.post('/call/tts', h(async (req, res) => {
     const text = String(req.body.text || '').replace(/\s+/g, ' ').trim();
     if (!text || text.length > TTS_MAX) return res.json({ url: null });

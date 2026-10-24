@@ -6,20 +6,21 @@ import type { Role } from './shared';
 import { buzz, sfx, startMusic, stopMusic, tap } from './sound';
 import { Icon, toast, Typed } from './ui';
 import { VoiceNote } from './VoiceNote';
+import './onboarding.css';
 
 type Step = 'hello' | 'role' | 'kid' | 'name' | 'dob' | 'city' | 'seen' | 'hug' | 'food' | 'love' | 'voice' | 'unsaid' | 'story' | 'home' | 'code' | 'invite';
 const FLOW: Step[] = ['hello', 'role', 'kid', 'name', 'dob', 'city', 'seen', 'hug', 'food', 'love', 'voice', 'unsaid', 'story', 'home'];
 
-// Chuyện vì sao có Homeletter, kể chậm từng trang.
+// Chuyện vì sao có Sweet Home, kể chậm từng trang.
 const STORY: Array<{ art: string; lines: [string, string] }> = [
-  { art: 'room', lines: ['Homeletter bắt đầu từ một căn phòng trọ nhỏ ở Hàn Quốc.', 'Một bạn du học sinh, ngày đi học, tối đi làm thêm. Về đến phòng thì ở nhà đã ngủ.'] },
+  { art: 'room', lines: ['Sweet Home bắt đầu từ một căn phòng trọ nhỏ ở Hàn Quốc.', 'Một bạn du học sinh, ngày đi học, tối đi làm thêm. Về đến phòng thì ở nhà đã ngủ.'] },
   { art: 'room', lines: ['Nhớ bố mẹ lắm. Nhưng mỗi lần gọi về, bạn ấy chỉ nói được “con vẫn ổn”.', 'Chưa giúp được gì nhiều cho nhà, nên càng ngại kể chuyện mình.'] },
   { art: 'home', lines: ['Ở quê, bố mẹ cũng vậy. Nhớ con, mà sợ hỏi nhiều con lại lo.', 'Hai đầu nỗi nhớ, ai cũng giữ cho riêng mình.'] },
   { art: 'letter', lines: ['Rồi bạn ấy nghĩ: giá mỗi tuần có một lá thư đi về nhà.', 'Không cần dài. Một tấm ảnh, một câu hỏi, một giọng nói.'] },
-  { art: 'letter', lines: ['Homeletter là lá thư ấy.', 'Cho bạn, và cho những người đang chờ bạn ở nhà.'] },
+  { art: 'letter', lines: ['Sweet Home là lá thư ấy.', 'Cho bạn, và cho những người đang chờ bạn ở nhà.'] },
 ];
 
-// Vào app như một cuộc trò chuyện: bạn là ai, nhớ nhà thế nào, rồi nghe kể vì sao có Homeletter và vào nhà.
+// Vào app như một cuộc trò chuyện: bạn là ai, nhớ nhà thế nào, rồi nghe kể vì sao có Sweet Home và vào nhà.
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const invite = new URLSearchParams(location.search).get('join') ?? '';
   const [step, setStep] = useState<Step>('hello');
@@ -101,10 +102,17 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   if (step === 'hello') {
     return (
-      <button className="screen hello" onClick={() => { sfx('hello'); void startMusic(); setStep('role'); }} aria-label="Xin chào, chạm để bắt đầu">
-        <div className="center"><Hello /></div>
-        <div className="hello-hint">{inviteName ? `Bạn được mời vào ${inviteName}` : 'Chạm để bắt đầu'}</div>
-      </button>
+      <>
+        <Meadow />
+        <button className="screen hello" onClick={() => { sfx('hello'); void startMusic(); setStep('role'); }} aria-label="Chào mừng về nhà, chạm để bắt đầu">
+          <div className="hello-top" aria-hidden>
+            <img className="hello-logo" src="/logo.svg" alt="" />
+            <div className="hello-brand">sweet home</div>
+          </div>
+          <div className="center"><Welcome /></div>
+          <div className="hello-hint">{inviteName ? `Bạn được mời vào ${inviteName}` : 'Chạm để bắt đầu'}</div>
+        </button>
+      </>
     );
   }
 
@@ -121,7 +129,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   } : {
     'Nói thường xuyên': 'Bố mẹ chắc vui lắm mỗi lần nghe.',
     'Thỉnh thoảng': 'Lần tới, nói thêm một lần nữa nhé.',
-    'Chưa nói thành lời bao giờ': 'Không sao. Có những câu cần thời gian. Homeletter sẽ giúp bạn.',
+    'Chưa nói thành lời bao giờ': 'Không sao. Có những câu cần thời gian. Sweet Home sẽ giúp bạn.',
   };
 
   const dobValid = +dob.d >= 1 && +dob.d <= 31 && +dob.m >= 1 && +dob.m <= 12 && +dob.y >= 1920 && +dob.y <= new Date().getFullYear();
@@ -130,6 +138,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const T = { typed, onTyped: setTyped };
 
   return (
+    <>
+    <Meadow />
     <div className="screen">
       <div className="top">
         {step !== 'invite' ? <button className="icon-btn" onClick={back} aria-label="Quay lại"><Icon name="back" /></button> : <span style={{ width: 44 }} />}
@@ -224,7 +234,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
       {step === 'unsaid' && (
         <Ask key="unsaid" q={parent ? `Điều ${self} muốn nói với con mà chưa nói?` : 'Có điều gì bạn muốn nói với bố mẹ mà chưa nói?'}
-          echo={(a.unsaid ?? '').trim().length > 1 ? (parent ? 'Homeletter sẽ giữ câu ấy, chờ lúc hợp để con được nghe.' : 'Có những câu khó nói thành lời. Homeletter sẽ giữ giúp bạn.') : undefined} {...T}
+          echo={(a.unsaid ?? '').trim().length > 1 ? (parent ? 'Sweet Home sẽ giữ câu ấy, chờ lúc hợp để con được nghe.' : 'Có những câu khó nói thành lời. Sweet Home sẽ giữ giúp bạn.') : undefined} {...T}
           footer={<><button className="btn" disabled={!(a.unsaid ?? '').trim()} onClick={next}>Tiếp</button><button className="link" onClick={next}>Để sau</button></>}>
           <textarea className="field fade" rows={3} value={a.unsaid ?? ''} maxLength={200} onChange={(e) => setA({ ...a, unsaid: e.target.value })} placeholder="Viết ở đây, chỉ mình bạn thấy" />
         </Ask>
@@ -269,6 +279,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <button className="link" onClick={onDone}>Vào nhà trước</button>
           </>}>
           <div className="panel fade" style={{ alignSelf: 'center', width: '86%', textAlign: 'center' }}>
+            <img className="invite-logo" src="/logo.svg" alt="" />
             <div className="muted">Mã nhà {made.family}</div>
             <div className="code">{made.code}</div>
             <div className="muted">Gửi link qua Zalo, Messenger. Bố mẹ bấm vào là vào nhà.</div>
@@ -276,13 +287,14 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         </Ask>
       )}
     </div>
+    </>
   );
 }
 
 export function shareInvite(code: string, family: string) {
   const url = `${location.origin}/?join=${code}`;
-  const text = `Vào ${family} trên Homeletter với mình nhé. Mã nhà: ${code}`;
-  if (navigator.share) navigator.share({ title: 'Homeletter', text, url }).catch(() => {});
+  const text = `Vào ${family} trên Sweet Home với mình nhé. Mã nhà: ${code}`;
+  if (navigator.share) navigator.share({ title: 'Sweet Home', text, url }).catch(() => {});
   else navigator.clipboard?.writeText(`${text}\n${url}`).then(() => toast('Đã chép lời mời'));
 }
 
@@ -336,14 +348,19 @@ function Hold({ onDone }: { onDone: () => void }) {
   );
 }
 
-/** "xin chào" viết tay: nét chữ được vẽ dần như đang viết, rồi mực đầy lên. */
-function Hello() {
+/** Nền cánh đồng cỏ lau cho cả phần hỏi đầu: ảnh đứng yên, vài hạt lấp lánh nhấp nháy. */
+const SPARKS: Array<[number, number, number]> = [[12, 22, 0], [78, 14, 1.4], [64, 31, 2.6], [22, 47, 0.8], [88, 52, 3.2], [40, 63, 1.9], [9, 72, 2.9], [70, 70, 0.4], [52, 84, 3.6], [30, 90, 1.1]];
+function Meadow() {
+  return <div className="meadow" aria-hidden>{SPARKS.map(([x, y, d], i) => <i key={i} style={{ left: `${x}%`, top: `${y}%`, animationDelay: `${d}s` }} />)}</div>;
+}
+
+/** "chào mừng về nhà" trượt vào từ bên trái, chữ "bạn" từ bên phải, rồi đứng yên với quầng sáng thở nhẹ. */
+function Welcome() {
   return (
-    <div className="hello-wrap">
-      <i className="hello-glow" aria-hidden />
-      <svg className="hello-word" viewBox="0 0 600 220" role="img" aria-label="xin chào">
-        <text x="300" y="150" textAnchor="middle">xin chào</text>
-      </svg>
+    <div className="welcome" role="img" aria-label="Chào mừng về nhà, bạn">
+      <i className="wl-glow" />
+      <div className="wl-left"><span><span>chào mừng</span><span>về nhà</span></span></div>
+      <div className="wl-right">bạn</div>
     </div>
   );
 }

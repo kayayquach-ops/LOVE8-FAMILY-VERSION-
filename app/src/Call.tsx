@@ -49,7 +49,7 @@ const ACK = 'Ừm.';
 type Session = { id: string; script: CallScript };
 type Phase = 'ring' | 'talk' | 'photo' | 'bye';
 
-// Homeletter gọi: đổ chuông, nhấc máy, linh vật hỏi từng câu, tự nghe đến khi người kể ngừng, đáp lại rồi hỏi tiếp.
+// Sweet Home gọi: đổ chuông, nhấc máy, linh vật hỏi từng câu, tự nghe đến khi người kể ngừng, đáp lại rồi hỏi tiếp.
 export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => void }) {
   const [phase, setPhase] = useState<Phase>('ring');
   const [mode, setMode] = useState<MascotMode>('idle');
@@ -80,7 +80,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     slow: parent ? `${Self} cứ từ từ nhé, nhớ gì kể nấy.` : 'Cứ từ từ nhé, nhớ gì kể nấy.',
     busy: parent ? `Chắc ${self} đang bận. Tuần sau con gọi lại nhé.` : 'Chắc bạn đang bận. Tuần sau mình gọi lại nhé.',
     skip: parent ? 'Dạ, không sao. Mình nói chuyện khác nhé.' : 'Không sao. Mình nói chuyện khác nhé.',
-    photo: parent ? `${Self} có tấm ảnh nào ngày ấy không? Gửi con giữ giúp nhé.` : 'Có tấm ảnh nào ngày ấy không? Gửi Homeletter giữ giúp nhé.',
+    photo: parent ? `${Self} có tấm ảnh nào ngày ấy không? Gửi con giữ giúp nhé.` : 'Có tấm ảnh nào ngày ấy không? Gửi Mây giữ giúp nhé.',
     short: parent ? ['Dạ, con nghe rồi.', 'Dạ.', `Dạ, con cảm ơn ${self}.`] : ['Mình nghe rồi.', 'Ừ, vậy à.', 'Cảm ơn nhé.'],
     long: parent ? ['Nghe hay quá ạ.', `Con thích nghe ${self} kể lắm.`, 'Thương quá ạ.', 'Dạ, con nhớ rồi.', `Hay quá. Lần sau ${self} kể tiếp con nghe nhé.`]
       : ['Nghe hay quá.', 'Thương ghê.', 'Mình nhớ rồi nhé.', 'Nghe mà thấy ấm ghê.', 'Hay quá. Lần sau kể tiếp nhé.'],
@@ -140,7 +140,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
         analyser.current = a;
       }
     } catch {
-      toast('Cho Homeletter dùng micro để kể nhé');
+      toast('Cho Sweet Home dùng micro để kể nhé');
     }
     try {
       const s = session ?? (await prep.current!);
@@ -406,7 +406,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       {phase === 'ring' ? (
         <div className="call-ring fade">
           <div className="call-orb"><i /><i /><Mascot mode="wave" size={140} /></div>
-          <div className="call-who">Homeletter đang gọi</div>
+          <div className="call-who">Sweet Home đang gọi</div>
           <div className="call-sub">Cuộc gọi tuần này</div>
           <div style={{ flex: 1 }} />
           <div className="call-actions">

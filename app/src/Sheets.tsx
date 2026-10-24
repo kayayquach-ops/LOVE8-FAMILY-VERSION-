@@ -72,6 +72,7 @@ export function Family({ me, onClose, onChanged }: { me: Me; onClose: () => void
 
       <div className="h2">Mời thêm người</div>
       <div className="panel" style={{ textAlign: 'center' }}>
+        <img className="invite-logo" src="/logo.svg" alt="" />
         <div className="muted">Mã nhà</div>
         <div className="code">{me.family.code}</div>
         <button className="btn" onClick={() => shareInvite(me.family.code, me.family.name)}><Icon name="share" size={20} /> Gửi lời mời</button>
