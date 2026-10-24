@@ -6,13 +6,18 @@ const VOLUME: Record<Name, number> = { hello: 0.3, reveal: 0.12, pop: 0.16, tap:
 let ctx: AudioContext | null = null;
 const buffers: Partial<Record<Name, AudioBuffer>> = {};
 
+const loading = new Set<Name>();
+
 function unlock() {
   try {
     ctx ??= new AudioContext();
     if (ctx.state === 'suspended') void ctx.resume();
     for (const n of Object.keys(VOLUME) as Name[]) {
-      if (buffers[n]) continue;
-      fetch(`/sfx/${n}.mp3`).then((r) => r.arrayBuffer()).then((b) => ctx!.decodeAudioData(b)).then((buf) => { buffers[n] = buf; }).catch(() => {});
+      // Đang tải dở thì thôi, không tải lại mỗi lần chạm (trước đây mỗi cú chạm đầu tải lại cả 11 file).
+      if (buffers[n] || loading.has(n)) continue;
+      loading.add(n);
+      fetch(`/sfx/${n}.mp3`).then((r) => r.arrayBuffer()).then((b) => ctx!.decodeAudioData(b)).then((buf) => { buffers[n] = buf; })
+        .catch(() => {}).finally(() => loading.delete(n));
     }
   } catch {}
 }
@@ -23,7 +28,8 @@ if (typeof window !== 'undefined') {
 
 export function sfx(name: Name) {
   const buf = buffers[name];
-  if (!ctx || !buf) return;
+  // App đang ẩn thì im: tránh chuông dồn lại kêu một loạt khi mở lại.
+  if (!ctx || !buf || document.hidden) return;
   const src = ctx.createBufferSource();
   const gain = ctx.createGain();
   // Cắt bớt âm chói, nâng nhẹ âm trầm, vào êm rồi mới lên để nghe đằm, ấm như nhạc nền.

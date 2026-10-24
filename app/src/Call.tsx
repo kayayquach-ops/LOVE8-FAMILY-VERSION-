@@ -7,6 +7,7 @@ import { callLines, type CallScript, type Me } from './shared';
 import { buzz, sfx, tap } from './sound';
 import { playVoice, prefetchVoice, setVoiceContext, speak, stopSpeaking, unlockSpeech, voiceAvailable, voiceReady, warmVoice } from './speech';
 import { Icon, toast } from './ui';
+import { snooze } from './callSnooze';
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const t = token.get();
@@ -15,11 +16,6 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) throw new Error(data.error || 'Có lỗi, thử lại nhé');
   return data as T;
 }
-
-const SNOOZE = 'homeletter-call-snooze';
-export const snoozed = () => { try { return Number(localStorage.getItem(SNOOZE) || 0) > Date.now(); } catch { return false; } };
-/** "Để sau": ẩn lời mời gọi 1 ngày. */
-export const snooze = () => { try { localStorage.setItem(SNOOZE, String(Date.now() + 24 * 3600e3)); } catch {} };
 
 /** Máy có chép lời được không (Chrome, Safari mới có webkitSpeechRecognition). */
 function Recognition(): any {

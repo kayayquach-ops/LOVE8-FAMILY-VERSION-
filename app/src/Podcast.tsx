@@ -36,11 +36,13 @@ function Player({ ep, me }: { ep: Ep; me: Me }) {
   useEffect(() => {
     if (!want) return;
     let raf = 0;
+    let shown = -1;
     const tick = () => {
       const a = audio.current;
       if (a) {
         const t = a.currentTime;
-        setTime(t);
+        // Thanh tua chỉ cần vẽ lại 4 lần mỗi giây, không cần dựng lại cả màn 60 lần mỗi giây.
+        if (Math.abs(t - shown) >= 0.25) { shown = t; setTime(t); }
         ep.chapters.forEach((c, k) => {
           if (t >= c.at && !spoken.current.has(k)) {
             spoken.current.add(k);

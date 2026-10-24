@@ -6,7 +6,8 @@ import { hoursSince, localTime, weather } from './time';
 import { Avatar, Icon } from './ui';
 import { tap } from './sound';
 import { CallCard } from './CallCard';
-import { snooze, snoozed } from './Call';
+import { snooze, snoozed } from './callSnooze';
+import { shareInvite } from './Onboarding';
 
 type Screen = 'camera' | 'feed' | 'chat' | 'calendar' | 'jar' | 'family' | 'podcast' | 'recap';
 type Podcast = { id: string; title: string; topic: string; memberId: string; duration: number; cover?: string | null; createdAt: string };
@@ -43,13 +44,18 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
   const [later, setLater] = useState(false);
   const invite = callDue && !later && !snoozed();
   const [wx, setWx] = useState<Record<string, string | null>>({});
+  const [failed, setFailed] = useState(false);
+  const [tick, setTick] = useState(0);
+  const alone = me.members.length < 2;
 
   useEffect(() => {
-    const run = () => load().then(setData).catch(() => {});
-    run();
-    const t = setInterval(run, 30000);
-    return () => clearInterval(t);
-  }, []);
+    const run = () => load().then((d) => { setData(d); setFailed(false); }).catch(() => setFailed(true));
+    void run();
+    const t = setInterval(() => { if (!document.hidden) void run(); }, 30000);
+    const onVis = () => { if (!document.hidden) void run(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis); };
+  }, [tick]);
 
   useEffect(() => {
     let live = true;
@@ -94,6 +100,12 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
               </button>
             );
           })}
+          {/* Nhà mới chỉ có mình: gợi ý mời người thân ngay ở đây, không phải đi tìm trong mục Gia đình. */}
+          <button className={`home-mem home-invite${alone ? ' solo' : ''}`} onClick={() => { tap(); void shareInvite(me.family.code, me.family.name); }}>
+            <span className="home-plus" aria-hidden><Icon name="share" size={20} /></span>
+            <b>{alone ? (me.me.role === 'con' ? 'Mời bố mẹ vào nhà' : 'Mời con vào nhà') : 'Mời thêm người'}</b>
+            <span>{alone ? 'Nhà mới có mình bạn thôi' : `Mã nhà ${me.family.code}`}</span>
+          </button>
         </div>
       </section>
 
@@ -134,7 +146,13 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
         </section>
       )}
 
-      <section className="home-sec">
+      {!data && failed && (
+        <button className="home-retry" onClick={() => setTick((n) => n + 1)}>Chưa tải được tin nhà. Chạm để thử lại</button>
+      )}
+
+      {/* Phần dưới chỉ hiện khi đã có dữ liệu, hiện một lần cùng nhau, không chen dần làm trang nhảy. */}
+      {data && <>
+      <section className="home-sec fade-only">
         <h2 className="home-h">Podcast nhà mình{invite && <i className="home-dot" aria-label="Có cuộc gọi đang chờ" />}</h2>
         <div className="home-row">
           {shelf.length ? shelf.map((p) => (
@@ -152,13 +170,14 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
         </div>
       </section>
 
-      <button className="home-jar" onClick={go('jar')}>
+      <button className="home-jar fade-only" onClick={go('jar')}>
         <Icon name="jar" size={22} />
         <span className="home-jar-main">
-          <b>Lọ thương: {data?.jar.level ?? 0}/{data?.jar.capacity ?? 40} hạt</b>
+          <b>Lọ thương: {data.jar.level}/{data.jar.capacity} hạt</b>
           <i><u style={{ width: `${pct}%` }} /></i>
         </span>
       </button>
+      </>}
     </div>
   );
 }

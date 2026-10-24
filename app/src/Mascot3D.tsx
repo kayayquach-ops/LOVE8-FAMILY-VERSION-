@@ -88,12 +88,16 @@ function Mascot3D({ mode = 'idle', drive = still, size = 220, className = '', on
         // Trạng thái đang chạy, trượt dần về đích để đổi chế độ không bị giật.
         const s = { open: 1, tilt: 0, armL: 0, armR: 0, droop: 0, lean: 0, happy: 0, glow: 0, m: 0, lv: 0 };
         let nextBlink = 1500, blinkAt = -1;
-        const k = (a: number, b: number, r: number) => a + (b - a) * r;
+        // Hệ số trượt viết cho 60 hình/giây; vẽ 30 hình/giây thì mỗi hình đi bằng hai bước cũ để nhịp không chậm đi.
+        const k = (a: number, b: number, r: number) => a + (b - a) * (1 - (1 - r) * (1 - r));
         setReady(true);
 
+        // Vẽ khoảng 30 hình mỗi giây là đủ mượt cho linh vật; iPhone màn 120 Hz mà vẽ đủ thì nóng máy, giật cả phần chữ.
+        let last = 0;
         const frame = (t: number) => {
           raf = requestAnimationFrame(frame);
-          if (document.hidden) return;
+          if (document.hidden || t - last < 30) return;
+          last = t;
           const mo = modeRef.current, d = drive.current;
           const listen = mo === 'listen', sleep = mo === 'sleep', happy = mo === 'happy', wave = mo === 'wave';
 

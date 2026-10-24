@@ -1,5 +1,6 @@
 import './env.ts';
 import express from 'express';
+import compression from 'compression';
 import multer from 'multer';
 import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
@@ -21,6 +22,8 @@ mkdirSync(MEDIA_DIR, { recursive: true });
 
 const app = express();
 app.set('trust proxy', 1);
+// Nén chữ (JS, CSS, JSON) trước khi gửi: bản JS 400 kB còn khoảng 130 kB trên mạng 4G. Kênh SSE không nén để tin đến ngay.
+app.use(compression({ filter: (req, res) => !req.path.endsWith('/stream') && compression.filter(req, res) }));
 app.use(express.json({ limit: '1mb' }));
 
 const upload = multer({
@@ -331,6 +334,8 @@ app.use('/media', express.static(MEDIA_DIR, { maxAge: '30d', immutable: true }))
 // Bản build của giao diện; mọi đường dẫn khác trả về index.html để app tự mở đúng màn.
 const dist = path.resolve('dist');
 if (existsSync(dist)) {
+  // File trong assets có mã băm trong tên, giữ lâu được; các file khác giữ 1 giờ.
+  app.use('/assets', express.static(path.join(dist, 'assets'), { maxAge: '1y', immutable: true }));
   app.use(express.static(dist, { index: false, maxAge: '1h' }));
   app.get(/^(?!\/api|\/media).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
 }
