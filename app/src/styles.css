@@ -536,3 +536,9 @@ textarea.field { resize: none; text-align: left; line-height: 1.5; }
 .ft-themes::-webkit-scrollbar { display: none; }
 .ft-themes .chip { flex: none; white-space: nowrap; cursor: pointer; }
 .icon-btn.live { background: var(--accent); color: #fff; border-color: var(--accent); animation: breathe 2.4s ease-in-out infinite; }
+
+/* Linh vật 3D: khung chứa canvas WebGL, bóng đổ mềm dưới chân */
+.mascot3d { position: relative; }
+.mascot3d-gl { position: absolute; inset: 0; transition: opacity .5s; }
+.mascot3d-gl canvas { width: 100% !important; height: 100% !important; }
+.mascot3d-shadow { position: absolute; left: 22%; right: 22%; bottom: 3%; height: 7%; border-radius: 50%; background: radial-gradient(closest-side, rgba(90,70,130,.28), rgba(90,70,130,0)); transition: opacity .5s; }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { token } from './api';
-import { Mascot, type Drive, type MascotMode } from './Mascot';
+import { type Drive, type MascotMode } from './Mascot';
+import { MascotAny as Mascot } from './Mascot3D';
 import { AUDIO_TYPE, fileName, record, type Recording } from './media';
 import type { CallScript, Me } from './shared';
 import { buzz, sfx, tap } from './sound';
