@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Member } from './shared';
 import { sfx } from './sound';
 
@@ -54,18 +54,28 @@ export function Avatar({ m, size = 40 }: { m?: Member | null; size?: number }) {
   return <div className="avatar" style={{ width: size, height: size, fontSize: size * 0.42 }}>{(m?.name ?? '?').trim().split(/\s+/).pop()?.[0]?.toUpperCase()}</div>;
 }
 
-/** Chữ hiện dần từng từ: mờ thành rõ, nổi nhẹ lên, kèm tiếng chuông lật trang. Hiện xong gọi onDone. */
+export const SKIP_EVENT = 'hl-skip';
+
+/** Chữ hiện dần từng từ: mờ thành rõ, nổi nhẹ lên, kèm tiếng chuông lật trang. Hiện xong gọi onDone. Sự kiện SKIP_EVENT hiện đủ ngay. */
 export function Typed({ text, onDone }: { text: string; onDone?: () => void }) {
   const words = text.split(' ');
   const [done, setDone] = useState(false);
+  const fired = useRef(false);
   useEffect(() => {
     setDone(false);
+    fired.current = false;
     sfx('reveal');
     // Safari iOS đôi khi kẹt chữ ở trạng thái mờ, nên hết giờ thì ép về rõ hẳn.
     const t = setTimeout(() => setDone(true), 600 + words.length * 220 + 1700);
     // Đáp án bắt đầu hiện khi từ cuối đã hiện được nửa chừng, không đợi chữ rõ hẳn mới ra.
-    const early = setTimeout(() => onDone?.(), 600 + (words.length - 1) * 220 + 700);
-    return () => { clearTimeout(t); clearTimeout(early); };
+    const early = setTimeout(() => { fired.current = true; onDone?.(); }, 600 + (words.length - 1) * 220 + 700);
+    const skip = () => {
+      clearTimeout(t); clearTimeout(early);
+      setDone(true);
+      if (!fired.current) { fired.current = true; onDone?.(); }
+    };
+    window.addEventListener(SKIP_EVENT, skip);
+    return () => { clearTimeout(t); clearTimeout(early); window.removeEventListener(SKIP_EVENT, skip); };
   }, [text]);
   return (
     <span key={text}>

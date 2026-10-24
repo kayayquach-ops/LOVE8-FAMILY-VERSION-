@@ -4,37 +4,42 @@ import { tap } from './sound';
 
 type Hit = { name: string; lat: number; lon: number; tz: string; where: string };
 
-// Thành phố hay gặp, có sẵn toạ độ: chọn được ngay, gõ tắt như "hcm" hay "sài gòn" cũng ra, không phụ thuộc mạng.
+// Chọn nhanh khi ô còn trống. Cả bộ địa danh tĩnh (places.json) tải lười khi mở bước này.
 const VN = 'Asia/Ho_Chi_Minh';
-const LOCAL: (Hit & { alias?: string })[] = [
-  { name: 'Hà Nội', lat: 21.0285, lon: 105.8542, tz: VN, where: 'Việt Nam', alias: 'ha noi hn' },
-  { name: 'TP. Hồ Chí Minh', lat: 10.8231, lon: 106.6297, tz: VN, where: 'Việt Nam', alias: 'tp hcm hcm hcmc sai gon saigon ho chi minh tphcm' },
-  { name: 'Đà Nẵng', lat: 16.0544, lon: 108.2022, tz: VN, where: 'Việt Nam', alias: 'da nang' },
-  { name: 'Hải Phòng', lat: 20.8449, lon: 106.6881, tz: VN, where: 'Việt Nam', alias: 'hai phong' },
-  { name: 'Cần Thơ', lat: 10.0452, lon: 105.7469, tz: VN, where: 'Việt Nam', alias: 'can tho' },
-  { name: 'Huế', lat: 16.4637, lon: 107.5909, tz: VN, where: 'Việt Nam', alias: 'hue' },
-  { name: 'Seoul', lat: 37.5665, lon: 126.978, tz: 'Asia/Seoul', where: 'Hàn Quốc', alias: 'soul han quoc' },
-  { name: 'Busan', lat: 35.1796, lon: 129.0756, tz: 'Asia/Seoul', where: 'Hàn Quốc', alias: 'pusan han quoc' },
-  { name: 'Incheon', lat: 37.4563, lon: 126.7052, tz: 'Asia/Seoul', where: 'Hàn Quốc', alias: 'han quoc' },
-  { name: 'Tokyo', lat: 35.6762, lon: 139.6503, tz: 'Asia/Tokyo', where: 'Nhật Bản', alias: 'dong kinh nhat ban' },
-  { name: 'Osaka', lat: 34.6937, lon: 135.5023, tz: 'Asia/Tokyo', where: 'Nhật Bản', alias: 'nhat ban' },
-  { name: 'Đài Bắc', lat: 25.033, lon: 121.5654, tz: 'Asia/Taipei', where: 'Đài Loan', alias: 'taipei dai bac dai loan' },
-  { name: 'Singapore', lat: 1.3521, lon: 103.8198, tz: 'Asia/Singapore', where: 'Singapore', alias: 'sg' },
-  { name: 'Sydney', lat: -33.8688, lon: 151.2093, tz: 'Australia/Sydney', where: 'Úc', alias: 'uc australia' },
-  { name: 'London', lat: 51.5072, lon: -0.1276, tz: 'Europe/London', where: 'Anh', alias: 'luan don anh' },
-  { name: 'Paris', lat: 48.8566, lon: 2.3522, tz: 'Europe/Paris', where: 'Pháp', alias: 'phap' },
-  { name: 'Berlin', lat: 52.52, lon: 13.405, tz: 'Europe/Berlin', where: 'Đức', alias: 'duc' },
-  { name: 'New York', lat: 40.7128, lon: -74.006, tz: 'America/New_York', where: 'Mỹ', alias: 'ny nyc my usa' },
-  { name: 'Los Angeles', lat: 34.0522, lon: -118.2437, tz: 'America/Los_Angeles', where: 'Mỹ', alias: 'la my usa' },
-  { name: 'Toronto', lat: 43.6532, lon: -79.3832, tz: 'America/Toronto', where: 'Canada', alias: 'canada' },
+const QUICK: Hit[] = [
+  { name: 'Hà Nội', lat: 21.0245, lon: 105.8412, tz: VN, where: 'Việt Nam' },
+  { name: 'TP. Hồ Chí Minh', lat: 10.823, lon: 106.6296, tz: VN, where: 'Việt Nam' },
+  { name: 'Seoul', lat: 37.566, lon: 126.9784, tz: 'Asia/Seoul', where: 'Hàn Quốc' },
+  { name: 'Busan', lat: 35.1017, lon: 129.03, tz: 'Asia/Seoul', where: 'Hàn Quốc' },
+  { name: 'Tokyo', lat: 35.6895, lon: 139.6917, tz: 'Asia/Tokyo', where: 'Nhật Bản' },
 ];
-const QUICK = ['Hà Nội', 'TP. Hồ Chí Minh', 'Seoul', 'Busan', 'Tokyo'].map((n) => LOCAL.find((c) => c.name === n)!);
+const BY_COUNTRY = ['VN', 'KR', 'JP', 'US', 'AU', 'DE', 'CA'];
+
+type Place = Hit & { cc: string; n: string; k: string; w: string };
+type Data = { c: Record<string, string>; z: string[]; p: [string, string, number, number, number, string][] };
+let placesCache: Promise<{ list: Place[]; countries: Record<string, string> }> | undefined;
 
 const norm = (x: string) => x.toLowerCase().replace(/đ/g, 'd').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-function localHits(term: string): Hit[] {
+function loadPlaces() {
+  placesCache ??= import('./places.json').then((m) => {
+    const d = m.default as unknown as Data;
+    const list = d.p.map(([name, cc, lat, lon, z, k]) => ({ name, cc, lat, lon, tz: d.z[z], where: d.c[cc], n: norm(name), k, w: norm(d.c[cc]) }));
+    return { list, countries: d.c };
+  });
+  return placesCache;
+}
+
+const wordStart = (s: string, t: string) => s.startsWith(t) || s.includes(` ${t}`);
+/** Khớp tên, từ khoá, tên nước; khớp đầu chuỗi lên trước. */
+function search(list: Place[], term: string): Place[] {
   const t = norm(term);
   if (t.length < 2) return [];
-  return LOCAL.filter((c) => norm(`${c.name} ${c.alias ?? ''}`).includes(t)).slice(0, 5);
+  const scored: [number, Place][] = [];
+  for (const p of list) {
+    const s = p.n.startsWith(t) ? 0 : wordStart(p.n, t) ? 1 : wordStart(p.k, t) ? 2 : p.n.includes(t) ? 3 : p.k.includes(t) ? 4 : t.length >= 3 && p.w.includes(t) ? 5 : -1;
+    if (s >= 0) scored.push([s, p]);
+  }
+  return scored.sort((a, b) => a[0] - b[0]).map((x) => x[1]).slice(0, 8);
 }
 
 /** Gõ tên nơi đang ở, hiện danh sách gợi ý để chọn. Giá trị trả về là JSON của thành phố. */
@@ -43,11 +48,18 @@ export function CityPicker({ value, onChange }: { value: string; onChange: (v: s
   const [net, setNet] = useState<Hit[]>([]);
   const [open, setOpen] = useState(false);
   const [asked, setAsked] = useState(false);
-  const hits = [...localHits(q), ...net.filter((h) => !localHits(q).some((l) => l.name === h.name))].slice(0, 7);
+  const [data, setData] = useState<{ list: Place[]; countries: Record<string, string> }>();
+  const [by, setBy] = useState<string | null>(null);
+  useEffect(() => { loadPlaces().then(setData).catch(() => {}); }, []);
+  const local = data ? search(data.list, q) : [];
+  const dup = (h: Hit) => local.some((l) => norm(l.name) === norm(h.name) || (Math.abs(l.lat - h.lat) < 0.3 && Math.abs(l.lon - h.lon) < 0.3));
+  const hits: Hit[] = [...local, ...net.filter((h) => !dup(h))].slice(0, 8);
+  const short = q.trim().length < 2;
 
   useEffect(() => {
     const term = q.trim();
-    if (term.length < 2 || !open) { setNet([]); setAsked(false); return; }
+    // Bộ tĩnh có kết quả thì khỏi hỏi mạng, nhiễu từ mạng chỉ làm rối.
+    if (term.length < 2 || !open || !data || local.length > 0) { setNet([]); setAsked(false); return; }
     setAsked(false);
     const ctl = new AbortController();
     const t = setTimeout(() => {
@@ -60,31 +72,56 @@ export function CityPicker({ value, onChange }: { value: string; onChange: (v: s
         .catch(() => setAsked(true));
     }, 250);
     return () => { clearTimeout(t); ctl.abort(); };
-  }, [q, open]);
+  }, [q, open, data, local.length]);
 
   function pick(h: Hit) {
     tap();
     setQ(h.name);
     setOpen(false);
+    setBy(null);
     onChange(JSON.stringify({ name: h.name, lat: h.lat, lon: h.lon, tz: h.tz }));
   }
+
+  const inCountry = by && by !== 'other' && data ? data.list.filter((p) => p.cc === by).sort((a, b) => a.name.localeCompare(b.name, 'vi')) : [];
+  const others = data ? Object.keys(data.countries).filter((c) => !BY_COUNTRY.includes(c)).sort((a, b) => data.countries[a].localeCompare(data.countries[b], 'vi')) : [];
 
   return (
     <div style={{ width: '86%', maxWidth: 380, alignSelf: 'center', position: 'relative' }}>
       <input className="field" style={{ width: '100%' }} value={q} placeholder="Gõ tên thành phố, ví dụ: Busan"
-        onFocus={() => setOpen(true)} onChange={(e) => { setQ(e.target.value); setOpen(true); onChange(''); }} />
-      {open && (q.trim().length < 2 || (hits.length === 0 && asked)) && (
+        onFocus={() => setOpen(true)} onChange={(e) => { setQ(e.target.value); setOpen(true); setBy(null); onChange(''); }} />
+      {open && (short || (hits.length === 0 && asked)) && (
         <>
-          {q.trim().length >= 2 && <p className="sub" style={{ marginTop: 14 }}>Chưa thấy nơi này. Thử gõ tên khác, hoặc chọn nhanh:</p>}
+          {!short && <p className="sub" style={{ marginTop: 14 }}>Chưa thấy nơi này. Thử gõ tên khác, hoặc chọn nhanh:</p>}
           <div className="chips" style={{ marginTop: 14 }}>
             {QUICK.map((c) => <button key={c.name} className="chip" onClick={() => pick(c)}>{c.name}</button>)}
           </div>
+          {data && (
+            <>
+              <p className="sub" style={{ marginTop: 18, marginBottom: 0 }}>Theo nước</p>
+              <div className="chips" style={{ marginTop: 10 }}>
+                {BY_COUNTRY.map((c) => <button key={c} className={`chip ${by === c ? 'on' : ''}`} onClick={() => setBy(by === c ? null : c)}>{data.countries[c]}</button>)}
+                <button className={`chip ${by === 'other' ? 'on' : ''}`} onClick={() => setBy(by === 'other' ? null : 'other')}>Khác</button>
+              </div>
+              {by === 'other' && (
+                <div className="chips" style={{ marginTop: 10 }}>
+                  {others.map((c) => <button key={c} className="chip" onClick={() => setBy(c)}>{data.countries[c]}</button>)}
+                </div>
+              )}
+              {inCountry.length > 0 && (
+                <div className="city-list fade" style={{ maxHeight: '34vh', overflowY: 'auto', overscrollBehavior: 'contain' }}>
+                  {inCountry.map((h) => (
+                    <button key={`${h.lat},${h.lon},${h.name}`} className="city-item" onClick={() => pick(h)}><b>{h.name}</b></button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </>
       )}
-      {open && hits.length > 0 && (
+      {open && !short && hits.length > 0 && (
         <div className="city-list fade">
           {hits.map((h) => (
-            <button key={`${h.lat},${h.lon}`} className="city-item" onClick={() => pick(h)}>
+            <button key={`${h.lat},${h.lon},${h.name}`} className="city-item" onClick={() => pick(h)}>
               <b>{h.name}</b><span>{h.where}</span>
             </button>
           ))}

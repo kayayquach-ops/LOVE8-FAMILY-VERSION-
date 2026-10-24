@@ -3,8 +3,8 @@ import { api, token } from './api';
 import { CityPicker } from './CityPicker';
 import { fileName, type Recording } from './media';
 import type { Role } from './shared';
-import { buzz, sfx, startMusic, stopMusic, tap } from './sound';
-import { Icon, toast, Typed } from './ui';
+import { sfx, startMusic, stopMusic, tap } from './sound';
+import { Icon, SKIP_EVENT, toast, Typed } from './ui';
 import { VoiceNote } from './VoiceNote';
 import './onboarding.css';
 
@@ -46,6 +46,11 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const typedNow = `${step}:${page}`;
   const typed = typedKey === typedNow;
   const setTyped = () => setTypedKey(typedNow);
+  // Chạm màn hình khi chữ còn đang hiện: hiện đủ ngay, đáp án mờ nhanh không chờ.
+  const [fastKey, setFastKey] = useState('');
+  const fast = fastKey === typedNow;
+  const skip = () => { if (!typed) setFastKey(typedNow); window.dispatchEvent(new Event(SKIP_EVENT)); };
+  const [hint] = useState(() => { try { return !localStorage.getItem('hl-skip-hint'); } catch { return false; } });
 
   useEffect(() => { for (const a of ['room', 'home', 'letter']) new Image().src = `/art/story-${a}.png`; }, []);
   useEffect(() => { if (invite) api.familyName(invite).then((r) => setInviteName(r.name)).catch(() => {}); }, []);
@@ -136,12 +141,13 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const dobValid = +dob.d >= 1 && +dob.d <= 31 && +dob.m >= 1 && +dob.m <= 12 && +dob.y >= 1920 && +dob.y <= new Date().getFullYear();
   const dobIso = `${dob.y}-${dob.m.padStart(2, '0')}-${dob.d.padStart(2, '0')}`;
   const done = FLOW.indexOf(step === 'code' || step === 'invite' ? 'home' : step);
-  const T = { typed, onTyped: setTyped };
+  const T = { typed, onTyped: setTyped, fast };
 
   return (
     <>
     <Meadow />
-    <div className="screen">
+    <div className="screen" onPointerDownCapture={skip}>
+      {step === 'role' && hint && <div className="skip-hint" aria-hidden onAnimationStart={() => { try { localStorage.setItem('hl-skip-hint', '1'); } catch { /* bỏ qua */ } }}>Chạm để hiện nhanh</div>}
       <div className="top">
         {step !== 'invite' ? <button className="icon-btn" onClick={back} aria-label="Quay lại"><Icon name="back" /></button> : <span style={{ width: 44 }} />}
         <div className="progress"><i style={{ width: `${(done / (FLOW.length - 1)) * 100}%` }} /></div>
@@ -196,15 +202,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
       {step === 'hug' && (
         <Ask key="hug" q={parent ? `${Self} có muốn ôm ${kids} một cái ngay bây giờ không?` : 'Bạn có muốn ôm bố mẹ một cái ngay bây giờ không?'}
-          sub={wantHug && !a.hug ? 'Giữ ngón tay vào vòng tròn' : undefined}
-          echo={wantHug === false ? (parent ? `Không sao. Lúc nào nhớ ${kids}, mình ôm sau nhé.` : 'Không sao. Lúc nào nhớ nhà, mình ôm sau nhé.')
-            : a.hug ? (parent ? `${Kids} sẽ biết là có người đang ôm mình từ xa.` : 'Ở nhà sẽ biết là bạn đang nhớ.') : undefined} {...T}>
-          {wantHug
-            ? <div key="hold" className="slow-in"><Hold onDone={() => { sfx('hug'); setA({ ...a, hug: 'yes' }); setTimeout(next, 4200); }} /></div>
-            : [
-              <Opt key="yes" on={false} onClick={() => { if (wantHug !== null) return; tap(); setWantHug(true); }}>Có, rất muốn</Opt>,
-              <Opt key="no" on={wantHug === false} onClick={() => { if (wantHug !== null) return; tap(); setWantHug(false); setTimeout(next, 4200); }}>Để lúc khác</Opt>,
-            ]}
+          echo={wantHug === true ? (parent ? `Vậy lát nữa ${self} ôm ${kids} thật chặt nhé.` : 'Vậy lát nữa bạn ôm bố mẹ thật chặt nhé.')
+            : wantHug === false ? (parent ? `Không sao. Lúc nào nhớ ${kids}, mình ôm sau nhé.` : 'Không sao. Lúc nào nhớ nhà, mình ôm sau nhé.') : undefined} {...T}>
+          <Opt key="yes" on={wantHug === true} onClick={() => { if (wantHug !== null) return; tap(); setWantHug(true); setTimeout(next, 4200); }}>Có, rất muốn</Opt>
+          <Opt key="no" on={wantHug === false} onClick={() => { if (wantHug !== null) return; tap(); setWantHug(false); setTimeout(next, 4200); }}>Để lúc khác</Opt>
         </Ask>
       )}
 
@@ -247,9 +248,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             onError={(e) => { const el = e.currentTarget; if (!el.dataset.retry) { el.dataset.retry = '1'; el.src = `${el.src.split('?')[0]}?r=${Date.now()}`; } }}
             style={{ width: '100%', aspectRatio: '4 / 3', maxHeight: '36vh', objectFit: 'contain', marginTop: 10 }} />
           <h2 className="story-lead"><Typed text={STORY[page].lines[0]} onDone={setTyped} /></h2>
-          <p className={`story-line ${typed ? 'fade' : 'reserve'}`}>{STORY[page].lines[1]}</p>
+          <p className={`story-line ${typed ? (fast ? 'quick-in' : 'fade') : 'reserve'}`}>{STORY[page].lines[1]}</p>
           <div style={{ flex: 1 }} />
-          <button className={`btn ${typed ? 'fade' : 'reserve'}`} onClick={() => { sfx('button'); page < STORY.length - 1 ? setPage(page + 1) : setStep('home'); }}>{page < STORY.length - 1 ? 'Tiếp' : 'Viết lá thư đầu tiên'}</button>
+          <button className={`btn ${typed ? (fast ? 'quick-in' : 'fade') : 'reserve'}`} onClick={() => { sfx('button'); page < STORY.length - 1 ? setPage(page + 1) : setStep('home'); }}>{page < STORY.length - 1 ? 'Tiếp' : 'Viết lá thư đầu tiên'}</button>
         </div>
       )}
 
@@ -304,48 +305,20 @@ function Opt({ on, onClick, children }: { on: boolean; onClick: () => void; chil
 }
 
 /** Câu hỏi gõ từng chữ; gõ xong các đáp án hiện lên lần lượt với tiếng "bụp" nhẹ. */
-function Ask({ q, sub, echo, typed, onTyped, children, footer }: {
-  q: string; sub?: string; echo?: string | false; typed: boolean; onTyped: () => void; children?: React.ReactNode; footer?: React.ReactNode;
+function Ask({ q, sub, echo, typed, onTyped, fast, children, footer }: {
+  q: string; sub?: string; echo?: string | false; typed: boolean; onTyped: () => void; fast?: boolean; children?: React.ReactNode; footer?: React.ReactNode;
 }) {
   const items = Array.isArray(children) ? children : children ? [children] : [];
   return (
     <>
       <div className="center">
         <h1 className="q"><Typed text={q} onDone={onTyped} /></h1>
-        {sub && <p className={`sub ${typed ? 'slow-in' : 'reserve'}`}>{sub}</p>}
-        <div className="options">{items.map((c, i) => <div key={i} className={typed ? 'slow-in' : 'reserve'} style={{ animationDelay: `${i * 130}ms`, width: '100%', display: 'flex', justifyContent: 'center' }}>{c}</div>)}</div>
+        {sub && <p className={`sub ${typed ? (fast ? 'quick-in' : 'slow-in') : 'reserve'}`}>{sub}</p>}
+        <div className="options">{items.map((c, i) => <div key={i} className={typed ? (fast ? 'quick-in' : 'slow-in') : 'reserve'} style={{ animationDelay: fast ? undefined : `${i * 130}ms`, width: '100%', display: 'flex', justifyContent: 'center' }}>{c}</div>)}</div>
         <div className="echo">{echo && <span className="slow-in" key={echo} style={{ animationDelay: '300ms' }}>{echo}</span>}</div>
       </div>
-      <div className="slow-in" key={String(typed)} style={{ display: 'flex', flexDirection: 'column', minHeight: 56, animationDelay: "350ms" }}>{typed && footer}</div>
+      <div className={fast ? 'quick-in' : 'slow-in'} key={String(typed)} style={{ display: 'flex', flexDirection: 'column', minHeight: 56, animationDelay: fast ? undefined : "350ms" }}>{typed && footer}</div>
     </>
-  );
-}
-
-/** Giữ ngón tay để "ôm": vòng tròn đầy dần trong khoảng 1,6 giây, rung nhẹ theo từng nhịp. */
-function Hold({ onDone }: { onDone: () => void }) {
-  const [p, setP] = useState(0);
-  const [holding, setHolding] = useState(false);
-  useEffect(() => {
-    if (p >= 1) return;
-    if (!holding) {
-      if (p <= 0) return;
-      const t = setTimeout(() => setP(Math.max(0, p - 0.08)), 30);
-      return () => clearTimeout(t);
-    }
-    const t = setTimeout(() => {
-      const np = Math.min(1, p + 0.02);
-      if (Math.floor(np * 4) > Math.floor(p * 4)) buzz(12);
-      setP(np);
-      if (np >= 1) onDone();
-    }, 32);
-    return () => clearTimeout(t);
-  }, [p, holding]);
-  return (
-    <div className="hold" onPointerDown={() => setHolding(true)} onPointerUp={() => setHolding(false)} onPointerLeave={() => setHolding(false)}
-      onContextMenu={(e) => e.preventDefault()} role="button" aria-label="Giữ để ôm">
-      <i style={{ transform: `scale(${0.25 + p * 0.75})`, opacity: 0.25 + p * 0.75 }} />
-      <span style={{ color: p >= 1 ? '#fff' : 'var(--accent)', position: 'relative' }}><Icon name={p >= 1 ? 'heartFill' : 'heart'} size={46} /></span>
-    </div>
   );
 }
 
