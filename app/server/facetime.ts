@@ -1,6 +1,7 @@
 import express from 'express';
 import { randomUUID } from 'node:crypto';
 import { pool } from './db.ts';
+import { notifyCall } from './push.ts';
 
 // Gọi video cả nhà: mỗi nhà một phòng, máy chủ chỉ chuyển lời mời kết nối (SDP, ICE) giữa các máy qua SSE.
 // Hình và tiếng đi thẳng giữa các máy (WebRTC). Mạng di động thường cần TURN, đặt qua TURN_URL.
@@ -88,7 +89,7 @@ liveRouter.get('/live/room', (req: any, res) => { res.json({ room: view(rooms.ge
 liveRouter.post('/live/join', (req: any, res) => {
   const { id: mid, family_id: fid } = req.member;
   let r = rooms.get(fid);
-  if (!r) rooms.set(fid, (r = { id: randomUUID(), by: mid, members: new Set(), started: Date.now() }));
+  if (!r) { rooms.set(fid, (r = { id: randomUUID(), by: mid, members: new Set(), started: Date.now() })); notifyCall(fid, mid); }
   r.members.add(mid);
   toFamily(fid, { type: 'room', room: view(r) });
   res.json({ room: view(r) });

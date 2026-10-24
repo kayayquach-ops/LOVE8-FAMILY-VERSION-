@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { pool } from './db.ts';
+import { notifyChat } from './push.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -105,6 +106,7 @@ chatRouter.post('/chat', upload.single('file'), h(async (req, res) => {
   );
   await pool.query('insert into message_reads (member_id, at) values ($1, now()) on conflict (member_id) do update set at = now()', [req.member.id]);
   broadcast(req.member.family_id, rows[0]);
+  notifyChat(req.member.family_id, req.member.id, rows[0]);
   res.json(rows[0]);
 }));
 

@@ -14,6 +14,7 @@ import { migrateRecap, recapRouter, startRecapScheduler } from './recap.ts';
 import { callRouter, migrateCall } from './call.ts';
 import { buildFirstVoicePodcast, migratePodcast, podcastRouter } from './podcast.ts';
 import { liveRouter, liveStreamRouter } from './facetime.ts';
+import { migratePush, notifyPost, notifyReply, pushRouter, startPushScheduler } from './push.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -152,6 +153,7 @@ app.use('/api', recapRouter);
 app.use('/api', callRouter(upload));
 app.use('/api', podcastRouter);
 app.use('/api', liveRouter);
+app.use('/api', pushRouter);
 
 app.get('/api/me', h(async (req, res) => {
   const m = req.member!;
@@ -205,6 +207,7 @@ app.post('/api/posts', upload.single('file'), h(async (req, res) => {
     [id(), req.member!.family_id, req.member!.id, kind, media(req.file), String(b.caption || '').slice(0, 120) || null,
       b.meal === 'true', Number(b.seconds) || null, b.questionWeek || null],
   );
+  notifyPost(req.member!.family_id, req.member!.id, kind, b.caption);
   res.json({ ok: true });
 }));
 
@@ -220,6 +223,7 @@ app.post('/api/me/first-voice', upload.single('file'), h(async (req, res) => {
   const url = media(req.file)!;
   await pool.query('insert into posts (id, family_id, author_id, kind, media, caption, seconds) values ($1,$2,$3,$4,$5,$6,$7)',
     [id(), m.family_id, m.id, 'voice', url, caption, Math.min(20, Number(req.body.seconds) || 0) || null]);
+  notifyPost(m.family_id, m.id, 'voice', caption);
   void buildFirstVoicePodcast(m.family_id, m.id, me.name, url).catch((e) => console.error('[podcast] lời đầu tiên:', e));
   res.json({ ok: true });
 }));
@@ -231,6 +235,7 @@ app.post('/api/posts/:id/react', h(async (req, res) => {
     'insert into reactions (post_id, member_id, emoji) values ($1,$2,$3) on conflict (post_id, member_id) do update set emoji = excluded.emoji',
     [req.params.id, req.member!.id, emoji],
   );
+  if (emoji) notifyReply(req.params.id as string, req.member!.id, { emoji });
   res.json({ ok: true });
 }));
 
@@ -239,6 +244,7 @@ app.post('/api/posts/:id/replies', upload.single('file'), h(async (req, res) => 
     id(), req.params.id, req.member!.id, req.file ? 'voice' : 'text', media(req.file), String(req.body.text || '').slice(0, 300) || null,
     Number(req.body.seconds) || null,
   ]);
+  notifyReply(req.params.id as string, req.member!.id, { text: req.file ? 'Một lời nhắn bằng giọng' : String(req.body.text || '') });
   res.json({ ok: true });
 }));
 
@@ -337,5 +343,7 @@ await migrateChat(pool);
 await migrateRecap(pool);
 await migrateCall(pool);
 await migratePodcast(pool);
+await migratePush(pool);
 startRecapScheduler(pool);
+startPushScheduler();
 app.listen(port, () => console.log(`Homeletter chạy ở cổng ${port}`));

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, token } from './api';
 import { CityPicker } from './CityPicker';
+import { Notify } from './Notify';
 import { shareInvite } from './Onboarding';
 import { cityOf, ROLE_LABEL, SILENT_HOURS, type Me, type Week } from './shared';
 import { buzz, sfx, tap } from './sound';
@@ -98,6 +99,8 @@ export function Family({ me, onClose, onChanged }: { me: Me; onClose: () => void
         </div>
       )}
       <div className="muted" style={{ marginTop: 12 }}>Chạm vào ảnh đại diện để đổi ảnh. Ai {SILENT_HOURS / 24} ngày chưa mở app, cả nhà sẽ được nhắc hỏi thăm.</div>
+
+      <Notify />
 
       <button className="link" style={{ marginTop: 24 }} onClick={() => { if (confirm('Rời nhà trên máy này?')) { token.clear(); location.reload(); } }}>Rời nhà trên máy này</button>
     </Sheet>

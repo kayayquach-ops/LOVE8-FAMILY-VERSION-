@@ -15,6 +15,7 @@ import { Podcast } from './Podcast';
 import { Call, snoozed } from './Call';
 import { FaceTime, Incoming } from './FaceTime';
 import { connectLive, livePost, onLive, type LiveRoom } from './live';
+import { onPushOpen, syncPush } from './push';
 import { TabBar, type Tab } from './TabBar';
 import { Mesh, Toaster } from './ui';
 
@@ -61,6 +62,18 @@ export function App() {
       // Tải lại trang giữa cuộc gọi thì máy chủ còn giữ mình trong phòng: rời hẳn để chuông reo lại đúng.
       if (m.type === 'hello' && !inCall.current && m.room?.members.includes(me.me.id)) void livePost('leave').catch(() => {});
       setRoom(m.room);
+    });
+  }, [!!me]);
+
+  // Chạm vào thông báo: mở đúng màn. Cuộc gọi video thì để chuông hiện lại cho mình bấm vào.
+  useEffect(() => {
+    if (!me) return;
+    void syncPush();
+    return onPushOpen((o) => {
+      if (o === 'call') { setSkipRoom(null); setSheet(null); setTab('camera'); }
+      else if (o === 'weekly') setCalling(true);
+      else if (o === 'chat' || o === 'calendar') setSheet(o);
+      else if (o === 'post') setSheet('feed');
     });
   }, [!!me]);
 
