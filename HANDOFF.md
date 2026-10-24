@@ -1,55 +1,59 @@
-# Homeletter: bàn giao cho phiên làm việc tiếp theo
+# Sweet Home (tên cũ Homeletter): bàn giao cho phiên làm việc tiếp theo
 
-App gia đình cho du học sinh ở xa và bố mẹ. Bản thật đang chạy: **https://homeletter-production.up.railway.app**
+App gia đình cho du học sinh ở xa và bố mẹ. Bản thật: **https://homeletter-production.up.railway.app** (tên miền giữ tên cũ). Cập nhật lần cuối: 2026-10-25, commit `dafe118`, nhánh `ux-simple-poetic`, đã fast-forward vào `main`.
 
 ## Code ở đâu
 
-- Repo `C:\Users\YT KOREA\homeletter\LOVE8`, nhánh **`ux-simple-poetic`** (đã push, chưa gộp vào main).
+- Repo `C:\Users\YT KOREA\homeletter\LOVE8`, làm việc trên nhánh `ux-simple-poetic`, mỗi lần deploy xong thì `git push origin ux-simple-poetic:main` (fast-forward, không force).
 - App thật nằm trong **`app/`**: React 19 + Vite (`app/src`), Express 5 + Postgres (`app/server`), TypeScript chạy bằng tsx.
-- Thư mục `mobile/` là bản demo Expo cũ, **không dùng nữa**. Đừng sửa, đừng commit `mobile/src/components/Mesh.tsx` và `mobile/tsconfig.json` (đang sửa dở).
+- `mobile/` là bản Expo cũ, **không dùng**. Đừng sửa, đừng commit `mobile/src/components/Mesh.tsx` và `mobile/tsconfig.json` (luôn hiện "modified", để nguyên).
+- Ghi chú rà soát UX và danh sách thử trên iPhone: `app/docs/ux-audit.md`. Phân tích nền màn chào: `app/docs/bg-analysis.md`.
 
 ### Máy chủ (`app/server`)
-- `index.ts`: tạo nhà, vào nhà bằng mã 6 số (không mật khẩu, mỗi máy giữ token trong localStorage `homeletter-token`), tải media (multer → `MEDIA_DIR`, phục vụ ở `/media`), feed, cảm xúc, trả lời, ôm, `/api/week` (câu hỏi tuần, nhiệm vụ, tóm tắt), `/api/missions/:key`. Hàm `h()` bọc async, middleware `auth` đặt `req.member = {id, family_id}`.
-- Các router riêng, gắn sau `auth`: `calendar.ts` (sự kiện + sinh nhật từ `members.dob`, hàm `upcoming()`), `jar.ts` (lọ hạt, mỗi người một loại hạt, cửa hàng hạt chưa thu tiền), `home.ts` (`/api/home`, trường `podcasts: []` đang chờ), `chat.ts` (tin nhắn, sticker, SSE `/api/chat/stream?token=` gắn **trước** auth), `recap.ts` (phim tuần dựng bằng ffmpeg, tự chạy tối Chủ nhật).
-- `db.ts`: bảng families, members (có `intro` JSON câu trả lời lúc mới vào, `dob`, `city` dạng JSON), posts, reactions, replies, missions_done, seen.
+`index.ts` (nhà, vào nhà bằng mã 6 số, feed, cảm xúc, ôm, media qua multer vào `MEDIA_DIR`, phục vụ `/media`, `/api/survey/hug` và `/api/survey/voice` chỉ trả số đếm), `calendar.ts` (sự kiện, sinh nhật, lịch âm Việt Nam), `jar.ts` (lọ hạt), `home.ts`, `chat.ts` (SSE), `recap.ts` (phim tuần ffmpeg), `call.ts` + `voice.ts` + `ai.ts` (cuộc gọi AI hằng tuần, Gemini TTS/chép lời/soạn câu hỏi, có lớp lọc chống bịa), `podcast.ts`, `facetime.ts` (WebRTC, signaling SSE, phòng giữ trong bộ nhớ nên chỉ đúng khi Railway chạy 1 instance), `push.ts` (Web Push, khoá VAPID tự sinh lưu bảng `app_settings`), `db.ts`.
 
 ### Giao diện (`app/src`)
-- `App.tsx`: mở app vào camera; thanh dưới `TabBar.tsx` (Nhà · Chat · camera · Lịch · Lọ thương); các màn toàn màn hình là "sheet".
-- `Onboarding.tsx`: xin chào viết tay → bạn là ai → con trai/gái → tên → ngày sinh → nơi ở (gõ tìm, `CityPicker.tsx`) → bao lâu chưa gặp → giữ để ôm → món ăn (tự viết) → đã nói "thương" chưa → điều chưa nói (tự viết) → 5 trang kể chuyện → tạo nhà / vào nhà → mời. Chữ hiện dần từng từ (`Typed` trong `ui.tsx`), nhịp **chậm, đằm** cho bố mẹ, nhạc piano nền (`startMusic/stopMusic` trong `sound.ts`).
-- `Camera.tsx` (kiểu Locket: chạm chụp, giữ quay, giữ để nói; gửi xong hiện bản vẽ máy bay giấy `Letter.tsx`), `Feed.tsx` (tin nhà + thẻ Tuần này), `Home.tsx`, `Chat.tsx` + `stickers.tsx`, `Calendar.tsx`, `Jar.tsx`, `Recap.tsx`, `Sheets.tsx` (Gia đình).
-- Nền sương mờ (`Mesh` trong `ui.tsx`, CSS `.mist`) theo ảnh Pinterest người dùng gửi: trắng giữa, hồng đào dưới trái, xám tím dưới phải, hạt phim.
-- Âm thanh: `app/public/sfx/*.mp3` lấy từ Mixkit (miễn phí dùng trong app), phát bằng Web Audio trong `sound.ts`.
+`App.tsx`, `Onboarding.tsx` (màn chào kiểu cánh đồng có khung hoa văn chấm, các câu hỏi nhịp chậm đằm, chạm để hiện nhanh, thu "lời thương đầu tiên"), `Camera.tsx`, `Feed.tsx`, `Home.tsx` (thẻ mời gọi AI `CallCard.tsx`), `Chat.tsx`, `Calendar.tsx` (+ `lunar.ts`), `Jar.tsx`, `Recap.tsx`, `Podcast.tsx`, `Call.tsx` (cuộc gọi AI với linh vật), `Mascot.tsx` (SVG) và `Mascot3D.tsx` (three.js, model `public/mascot.glb` dựng bằng Blender, file nguồn `C:\Users\YT KOREA\homeletter\mascot.blend`), `FaceTime.tsx` (+ `strip.ts`, `booth.ts`, `booth.css`: photobooth dải ảnh 8 khung), `CityPicker.tsx` (+ `places.json` 506 nơi), `Notify.tsx`, `Sheets.tsx` (Gia đình), `sound.ts`.
 
 ## Deploy
 
 ```bash
 cd app
-export MSYS2_ARG_CONV_EXCL='*'   # bắt buộc trên Git Bash, nếu không /data bị đổi thành đường dẫn Windows
+export MSYS2_ARG_CONV_EXCL='*'   # bắt buộc trên Git Bash
 npx tsc --noEmit && npm run build
 railway up --service homeletter --ci
+git push origin ux-simple-poetic:main
 ```
-Railway project `homeletter`: service `homeletter` + Postgres + volume `/data` (`MEDIA_DIR=/data/media`), `RAILPACK_DEPLOY_APT_PACKAGES=ffmpeg`. Local: `app/.env` trỏ Postgres container `simshop-pg` cổng 5433, db `homeletter`; `npm run dev` (api 3010, web 5180). Commit message kết thúc bằng dòng `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`; git identity của repo đã đặt sẵn.
+Railway project `homeletter`: service `homeletter` + Postgres + volume `/data` (`MEDIA_DIR=/data/media`), `RAILPACK_DEPLOY_APT_PACKAGES=ffmpeg`. Biến đã đặt: `GEMINI_API_KEY` (lấy từ `topik-app/.env`), `MEDIA_DIR`. Local: `app/.env` trỏ Postgres container `simshop-pg` cổng 5433, db `homeletter`. Commit message kết thúc bằng dòng `Co-Authored-By: ...` theo model đang dùng.
+
+Dọn nhà thử trên live (CHỈ khi người dùng bảo, vì nay đã có người dùng thật): `railway ssh --service homeletter -- node scripts/cleanup-families.mjs` (liệt kê), thêm `--delete ID1,ID2` (xem trước) và `--yes` (xoá thật). Tuyệt đối không dùng `--delete all` nữa.
 
 ## Người dùng đã chốt
 
-- Giọng chữ trong app: tiếng Việt, ngắn, ấm, như người thật nói; **không dùng dấu gạch dài (—)**; không thuyết minh giao diện; không chữ có chân (trừ chữ "xin chào" viết tay).
-- Người dùng dễ chán khi app nhanh và nhí nhảnh: phần hỏi đầu phải chậm, đượm cảm xúc. Âm thanh phải ấm, sang, không meme.
-- **AI gọi điện làm ngay trong app** (không gọi số thật). Được mượn `ANTHROPIC_API_KEY` trong `C:\Users\YT KOREA\minhhieu-money\.env` (đặt vào Railway bằng `railway variables --set`, không in key ra chat).
-- Làm bằng subagent cho tiết kiệm: Sonnet việc dễ, Opus việc khó, mỗi agent làm trọn gói đến deploy.
-- Theo dõi giới hạn tuần, dừng khi chạm 90%.
+- Chữ trong app: tiếng Việt, ngắn, ấm, như người thật nói; **không dùng dấu gạch dài (—)**; không thuyết minh giao diện.
+- Nhịp phần hỏi đầu chậm, đằm, nhưng người dùng muốn chạm là hiện nhanh. Âm thanh ấm, không chói, không meme.
+- iPhone hay giật: chỉ animate opacity và transform; tránh filter, blur lớn, lớp gradient lớn chuyển động. Nếu iPhone bật "Giảm chuyển động" thì vẫn hiện dần bằng độ mờ.
+- AI gọi điện: **một giọng Gemini duy nhất** (Zephyr, đổi bằng `GEMINI_VOICE`), không trộn giọng máy; không tự đổ chuông khi vào app mà hiện thẻ mời nhẹ ở Trang chủ; người mới (dưới 24 giờ) không bị nhắc; cuộc gọi đầu chỉ chào hỏi và 3 câu đơn giản; AI không được bịa (chỉ dùng dữ liệu có thật).
+- Màn chào và nền theo ảnh thiết kế của chính người dùng (đã cho phép dùng trực tiếp); nếu họ gửi file gốc có lớp, chỉnh chữ "bạn" cho to và đậm đúng mẫu.
+- Ngôn ngữ: **làm khung tra bảng (i18n) với tiếng Việt, tiếng Anh, tiếng Hàn**; không làm nhiều hơn.
+- Không làm thanh toán hạt.
+
+## Việc người dùng tự làm
+
+- **TURN** cho gọi video qua 4G: đăng ký dịch vụ (Metered hoặc Cloudflare), đưa ba giá trị `TURN_URL`, `TURN_USERNAME`, `TURN_CREDENTIAL`, mình đặt lên Railway bằng `railway variables --service homeletter --set ...` (không in giá trị ra).
+- Kiểm hạn mức và bật thanh toán Gemini (đã gặp lỗi 429 khi thử).
+- Thử trên iPhone thật theo danh sách ở cuối `app/docs/ux-audit.md`.
 
 ## Còn phải làm
 
-### Đợt 3 (làm tiếp ngay)
-1. **AI gọi điện hằng tuần trong app.** Đến lịch, app hiện "Homeletter đang gọi". AI đọc câu hỏi bằng giọng tiếng Việt của máy (speechSynthesis vi-VN), người nghe trả lời bằng giọng nói; ghi âm từng câu trả lời + chép lời bằng Web Speech Recognition nếu máy hỗ trợ. Claude soạn **bộ câu hỏi riêng cho từng người** từ `members.intro`, lịch và câu chuyện cũ (ví dụ hỏi bố mẹ về ngày cưới, bảo kể lại ngày đó, xin gửi ảnh ngày xưa). Sau cuộc gọi Claude rút ra ngày tháng quan trọng (ngày cưới, số năm) → tự thêm vào lịch; ảnh xưa lưu vào kho.
-2. **Podcast từ các câu chuyện**: máy chủ ghép đoạn giọng thật + lời dẫn + nhạc nền (ffmpeg) thành tập ngắn; **album theo từng người và từng chủ đề**; điền `podcasts` trong `/api/home`; màn nghe podcast (sheet `podcast` trong App đang chưa có).
-3. Lỗi nhỏ: nút "Gửi lời chúc" ở Lịch (App đang chỉ đóng sheet) phải mở Chat hoặc camera; thêm nút xoá tin đã gửi (máy chủ có `DELETE /api/posts/:id`).
+### 1. Khung đa ngôn ngữ (i18n) vi, en, ko (việc kế tiếp)
+- Khoảng 450 câu chữ giao diện (`app/src`) và 210 câu phía máy chủ (`app/server`: lời cuộc gọi `callLines`, `firstScript`, thông báo đẩy, prompt AI). Chuyển thành khoá tra bảng; file `vi.json`, `en.json`, `ko.json`; hàm `t('khoá', {biến})`; lưu ngôn ngữ người dùng chọn (mặc định theo máy), chỗ chọn ngôn ngữ trong màn Gia đình và ở màn chào.
+- Máy chủ cần biết ngôn ngữ của từng người (cột `members.lang`) để gửi thông báo đẩy và nói chuyện đúng thứ tiếng; prompt AI viết tiếng Anh một lần kèm dòng "trả lời bằng {ngôn ngữ}"; chọn giọng Gemini và kiểm giọng cho từng thứ tiếng; Web Speech/chép lời theo ngôn ngữ.
+- Chia nhiều đợt: khung + tiếng Việt, thêm tiếng Anh, thêm tiếng Hàn; tên địa danh trong `places.json` thêm tên Anh/Hàn nếu cần.
 
-### Đợt 4
-4. **FaceTime cả nhà** (WebRTC, signaling qua máy chủ; cần TURN cho mạng di động) nối vào nút gọi trong Chat; **photobooth** nhiều chủ đề, nền phía sau, mỗi người một ô.
-
-### Sau đó
-5. Lịch âm quy đổi đúng (đang tính như dương).
-6. Thông báo đẩy; thanh toán hạt đẹp (cần dịch vụ ngoài, hỏi người dùng trước).
-7. Thử trên điện thoại thật: camera, mic, âm thanh, rung, nhạc phim tuần.
-8. Dọn: nhà thử "Test", "Nha thu", "Test2" trên máy chủ; link GitHub Pages cũ (bản Expo); gộp nhánh khi người dùng đồng ý.
+### 2. Sau đó
+- Thông báo đẩy: thử thật trên iPhone (PWA Màn hình chính, iOS 16.4+).
+- 7 việc "để sau" trong `app/docs/ux-audit.md` (đường vào nhà bằng link mời ngắn hơn cho bố mẹ, loại sự kiện mặc định ở Lịch, bỏ `user-scalable=no`, nén nhạc nền, blur nền thẻ Trang chủ, màu thanh trạng thái).
+- `npm audit` báo 1 lỗ hổng mức high chưa kiểm là có sẵn hay mới.
+- Gemini Live (nói chuyện thời gian thực) nếu muốn cuộc gọi tự nhiên hơn nữa.
+- Dịch tự động tin nhắn giữa các thành viên (tính năng riêng, tốn token theo số tin).
