@@ -7,7 +7,8 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } 
 import os from 'node:os';
 import path from 'node:path';
 import type pg from 'pg';
-import { TOPICS, type Chapter, type Podcast, type Topic } from '../src/shared.ts';
+import { isTopic, type Chapter, type Podcast, type Topic } from '../src/shared.ts';
+import { errorBody, tVi } from './i18n.ts';
 import { pool } from './db.ts';
 import { musicExpr, probe, run } from './recap.ts';
 
@@ -28,15 +29,9 @@ export async function migratePodcast(p: pg.Pool) {
   await p.query(`update podcasts set status = case when media is not null then 'ready' else 'failed' end where status = 'rendering'`);
 }
 
-const TITLE_OF: Record<Topic, string> = {
-  'ngay-cuoi': 'chuyện ngày cưới',
-  'tuoi-tho': 'chuyện ngày nhỏ',
-  'mon-an': 'chuyện món ăn',
-  'ky-niem': 'một kỷ niệm',
-  'cuoc-song': 'chuyện tuần này',
-  'loi-nhan': 'đôi lời nhắn',
-};
-const topicLabel = (t: string) => (TOPICS as Record<string, string>)[t] ?? 'Chuyện nhà';
+// Tiêu đề tập theo chủ đề và tên chủ đề nằm trong bảng chữ máy chủ (podcastGen.titleOf.<chủ đề>, topic.<chủ đề>).
+const titleOf = (t: string) => tVi(isTopic(t) ? `podcastGen.titleOf.${t}` : 'podcastGen.titleOf.fallback');
+const topicLabel = (t: string) => tVi(isTopic(t) ? `topic.${t}` : 'topic.fallback');
 const mediaFile = (m: string) => path.join(MEDIA_DIR, path.basename(m.split('?')[0]));
 /** Giọng máy đọc tiếng Việt chậm: ước chừng thời gian đọc để chừa đủ nhạc. */
 const sayTime = (s: string) => 1 + s.trim().split(/\s+/).length * 0.42;
@@ -152,9 +147,9 @@ export async function buildPodcastsForCall(callId: string) {
 
   const jobs: Job[] = [{
     fid: call.family_id, key: `call:${callId}`, kind: 'person', memberId: call.member_id, topic: first,
-    title: `${name} kể ${TITLE_OF[first] ?? 'chuyện nhà'}`, cover: await coverFor(call.family_id, call.member_id),
-    intro: `Mây đây. Tuần này, mình ngồi nghe ${name} kể chuyện.`,
-    outro: `Cảm ơn ${name} đã kể. Hẹn tuần sau nhé.`,
+    title: tVi('podcastGen.person.title', { name, what: titleOf(first) }), cover: await coverFor(call.family_id, call.member_id),
+    intro: tVi('podcastGen.person.intro', { name }),
+    outro: tVi('podcastGen.person.outro', { name }),
     clips: usable.map((a) => ({ file: mediaFile(a.media), who: a.who, question: a.question, transcript: a.transcript, say: a.question })),
   }];
 
@@ -169,8 +164,8 @@ export async function buildPodcastsForCall(callId: string) {
     const label = topicLabel(topic);
     jobs.push({
       fid: call.family_id, key: `topic:${topic}`, kind: 'topic', memberId: null, topic, title: label, cover: await coverFor(call.family_id, null),
-      intro: `${label}. Chuyện cả nhà cùng kể.`,
-      outro: 'Còn nhiều chuyện nữa. Hẹn lần sau nhé.',
+      intro: tVi('podcastGen.topic.intro', { label }),
+      outro: tVi('podcastGen.topic.outro'),
       clips: clips.map((a) => ({ file: mediaFile(a.media), who: a.who, question: a.question, transcript: a.transcript, say: `${a.who}. ${a.question}` })),
     });
   }
@@ -182,10 +177,10 @@ export async function buildFirstVoicePodcast(fid: string, memberId: string, name
   const file = mediaFile(media);
   if (!existsSync(file)) return;
   await enqueue({
-    fid, key: `first:${memberId}`, kind: 'person', memberId, topic: 'loi-nhan', title: 'Lời thương đầu tiên', cover: await coverFor(fid, memberId),
-    intro: `Mây đây. Ngày đầu vào nhà, ${name} có một câu muốn nói.`,
-    outro: 'Câu ấy, từ giờ nhà mình giữ.',
-    clips: [{ file, who: name, question: 'Lời thương đầu tiên', transcript: null, say: `Giọng ${name}.` }],
+    fid, key: `first:${memberId}`, kind: 'person', memberId, topic: 'loi-nhan', title: tVi('podcastGen.first.title'), cover: await coverFor(fid, memberId),
+    intro: tVi('podcastGen.first.intro', { name }),
+    outro: tVi('podcastGen.first.outro'),
+    clips: [{ file, who: name, question: tVi('podcastGen.first.title'), transcript: null, say: tVi('podcastGen.first.say', { name }) }],
   });
 }
 
@@ -208,5 +203,5 @@ export const podcastRouter = express.Router();
 
 podcastRouter.get('/podcasts', async (req: any, res) => {
   try { res.json(await listPodcasts(req.member.family_id)); }
-  catch (e) { console.error(e); res.status(500).json({ error: 'Lỗi máy chủ' }); }
+  catch (e) { console.error(e); res.status(500).json(errorBody('server')); }
 });

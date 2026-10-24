@@ -5,6 +5,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { pool } from './db.ts';
 import { notifyChat } from './push.ts';
+import { errorBody, tVi } from './i18n.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -51,7 +52,7 @@ function broadcast(familyId: string, msg: unknown) {
 const h = (fn: (req: any, res: express.Response) => Promise<unknown>) => (req: any, res: express.Response) =>
   fn(req, res).catch((err: Error) => {
     console.error(err);
-    res.status(500).json({ error: err.message || 'Lỗi máy chủ' });
+    res.status(500).json({ error: err.message || tVi('error.server') });
   });
 
 const COLS = 'id, author_id, kind, text, media, sticker, seconds, reply_to, created_at';
@@ -60,9 +61,9 @@ const COLS = 'id, author_id, kind, text, media, sticker, seconds, reply_to, crea
 export const chatStreamRouter = express.Router();
 chatStreamRouter.get('/chat/stream', h(async (req, res) => {
   const token = String(req.query.token || String(req.headers.authorization ?? '').replace(/^Bearer /, ''));
-  if (!token) return res.status(401).json({ error: 'Chưa vào nhà' });
+  if (!token) return res.status(401).json(errorBody('not_signed_in'));
   const { rows } = await pool.query('select id, family_id from members where token = $1', [token]);
-  if (!rows[0]) return res.status(401).json({ error: 'Chưa vào nhà' });
+  if (!rows[0]) return res.status(401).json(errorBody('not_signed_in'));
   const fid: string = rows[0].family_id;
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();
@@ -96,9 +97,9 @@ chatRouter.post('/chat', upload.single('file'), h(async (req, res) => {
   const kind = ['text', 'sticker', 'photo', 'voice'].includes(b.kind) ? b.kind : 'text';
   const text = String(b.text || '').trim().slice(0, 2000) || null;
   const sticker = String(b.sticker || '').slice(0, 40) || null;
-  if (kind === 'text' && !text) return res.status(400).json({ error: 'Chưa có chữ' });
-  if (kind === 'sticker' && !sticker) return res.status(400).json({ error: 'Chưa chọn hình' });
-  if ((kind === 'photo' || kind === 'voice') && !req.file) return res.status(400).json({ error: 'Thiếu ảnh hoặc ghi âm' });
+  if (kind === 'text' && !text) return res.status(400).json(errorBody('chat_no_text'));
+  if (kind === 'sticker' && !sticker) return res.status(400).json(errorBody('chat_no_sticker'));
+  if ((kind === 'photo' || kind === 'voice') && !req.file) return res.status(400).json(errorBody('missing_media'));
   const { rows } = await pool.query(
     `insert into messages (id, family_id, author_id, kind, text, media, sticker, seconds, reply_to) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning ${COLS}`,
     [randomUUID(), req.member.family_id, req.member.id, kind, text, req.file ? `/media/${req.file.filename}` : null, sticker,

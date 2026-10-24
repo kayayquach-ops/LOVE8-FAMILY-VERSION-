@@ -5,6 +5,7 @@ import express from 'express';
 import type pg from 'pg';
 import webpush from 'web-push';
 import { pool } from './db.ts';
+import { errorBody, tVi } from './i18n.ts';
 import { upcoming } from './calendar.ts';
 import { weekKey } from './recap.ts';
 
@@ -103,7 +104,7 @@ export function notifyMembers(memberIds: string[], payload: PushPayload) {
 
 async function nameOf(memberId: string) {
   const { rows } = await pool.query('select name from members where id = $1', [memberId]);
-  return (rows[0]?.name as string) || 'Ai đó';
+  return (rows[0]?.name as string) || tVi('push.someone');
 }
 
 const short = (s: string, n = 90) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
@@ -113,18 +114,16 @@ const short = (s: string, n = 90) => (s.length > n ? `${s.slice(0, n - 1).trimEn
 /** Có người mở cuộc gọi video cả nhà. */
 export function notifyCall(familyId: string, memberId: string) {
   void nameOf(memberId).then((name) => notifyFamily(familyId, memberId, {
-    kind: 'call', title: `${name} đang gọi cả nhà`, body: 'Vào gọi cùng nhé', tag: 'call', open: 'call', ttl: 45, urgency: 'high',
+    kind: 'call', title: tVi('push.call.title', { name }), body: tVi('push.call.body'), tag: 'call', open: 'call', ttl: 45, urgency: 'high',
   })).catch((e) => console.error('[push]', e));
 }
 
-const POST_TEXT: Record<string, string> = {
-  photo: 'vừa gửi một tấm ảnh', video: 'vừa gửi một đoạn video', voice: 'vừa gửi một lời nhắn bằng giọng', hug: 'vừa ôm cả nhà một cái',
-};
+const POST_KINDS = ['photo', 'video', 'voice', 'hug'];
 
 /** Bài mới trong Tin nhà (ảnh, video, giọng nói, cái ôm). */
 export function notifyPost(familyId: string, memberId: string, kind: string, caption?: string | null) {
   void nameOf(memberId).then((name) => notifyFamily(familyId, memberId, {
-    kind: 'post', title: `${name} ${POST_TEXT[kind] ?? POST_TEXT.photo}`, body: caption ? short(caption) : undefined,
+    kind: 'post', title: tVi(`push.post.${POST_KINDS.includes(kind) ? kind : 'photo'}`, { name }), body: caption ? short(caption) : undefined,
     tag: kind === 'hug' ? 'hug' : `post-${memberId}`, open: 'post',
   })).catch((e) => console.error('[push]', e));
 }
@@ -136,7 +135,7 @@ export function notifyReply(postId: string, memberId: string, what: { text?: str
     const author = rows[0]?.author_id;
     if (!author || author === memberId) return;
     const name = await nameOf(memberId);
-    const title = what.emoji ? `${name} thả ${what.emoji} vào tin của bạn` : `${name} vừa trả lời tin của bạn`;
+    const title = what.emoji ? tVi('push.reply.emoji', { name, emoji: what.emoji }) : tVi('push.reply.text', { name });
     await notifyMembers([author], { kind: 'post', title, body: what.text ? short(what.text) : undefined, tag: `reply-${postId}`, open: 'post' });
   })().catch((e) => console.error('[push]', e));
 }
@@ -146,9 +145,9 @@ const CHAT_QUIET = 4000, CHAT_MAX = 12000;
 const pending = new Map<string, { fid: string; mid: string; n: number; last: string; first: number; timer: ReturnType<typeof setTimeout> }>();
 
 function chatLine(m: { kind: string; text?: string | null }) {
-  if (m.kind === 'sticker') return 'Gửi một hình dán';
-  if (m.kind === 'photo') return 'Gửi một tấm ảnh';
-  if (m.kind === 'voice') return 'Gửi một tin nhắn thoại';
+  if (m.kind === 'sticker') return tVi('push.chat.sticker');
+  if (m.kind === 'photo') return tVi('push.chat.photo');
+  if (m.kind === 'voice') return tVi('push.chat.voice');
   return short(String(m.text || ''), 120);
 }
 
@@ -161,7 +160,7 @@ export function notifyChat(familyId: string, memberId: string, m: { kind: string
     if (!q) return;
     pending.delete(key);
     void nameOf(q.mid).then((name) => notifyFamily(q.fid, q.mid, {
-      kind: 'chat', title: q.n > 1 ? `${name} gửi ${q.n} tin nhắn` : name, body: q.last, tag: `chat-${q.mid}`, open: 'chat', ttl: 24 * 3600,
+      kind: 'chat', title: q.n > 1 ? tVi('push.chat.many', { name, n: q.n }) : name, body: q.last, tag: `chat-${q.mid}`, open: 'chat', ttl: 24 * 3600,
     })).catch((e) => console.error('[push]', e));
   };
   if (p) {
@@ -194,13 +193,15 @@ async function calendarTick() {
     for (const e of await upcoming(pool, fid, 1)) {
       if (e.inDays > 1) continue;
       if (!(await once(`cal:${fid}:${e.id}:${e.date}:${e.inDays}`))) continue;
-      const birthday = e.kind === 'birthday' && e.title.startsWith('Sinh nhật ');
-      const who = birthday ? e.title.slice('Sinh nhật '.length) : '';
-      const when = e.inDays === 0 ? 'Hôm nay' : 'Mai';
-      const title = `${when} là ${lower(e.title)}`;
+      // Tên sinh nhật có dạng "Sinh nhật <tên>" (calendarGen.dobTitle): tách lấy tên.
+      const pre = tVi('calendarGen.dobTitle', { name: '' });
+      const birthday = e.kind === 'birthday' && e.title.startsWith(pre);
+      const who = birthday ? e.title.slice(pre.length) : '';
+      const when = tVi(e.inDays === 0 ? 'push.cal.today' : 'push.cal.tomorrow');
+      const title = tVi('push.cal.title', { when, what: lower(e.title) });
       const body = birthday
-        ? (e.inDays === 0 ? `Nhắn cho ${who} một câu thương nhé` : 'Nhớ chuẩn bị một lời chúc nhé')
-        : e.years ? `Tròn ${e.years} năm rồi` : undefined;
+        ? (e.inDays === 0 ? tVi('push.cal.wishToday', { who }) : tVi('push.cal.wishTomorrow'))
+        : e.years ? tVi('push.cal.years', { n: e.years }) : undefined;
       // Sinh nhật của ai thì không báo cho chính người đó.
       const except = e.id.startsWith('dob-') ? e.id.slice(4) : null;
       await notifyFamily(fid, except, { kind: 'calendar', title, body, tag: `cal-${e.id}`, open: 'calendar', ttl: 12 * 3600 });
@@ -225,7 +226,7 @@ async function weeklyTick() {
   for (const { member_id: mid } of rows) {
     if (!(await once(`weekly:${mid}:${week}`))) continue;
     await notifyMembers([mid], {
-      kind: 'weekly', title: 'Sweet Home đang gọi bạn', body: 'Kể cả nhà nghe chuyện tuần này nhé', tag: 'weekly', open: 'weekly', ttl: 6 * 3600,
+      kind: 'weekly', title: tVi('push.weekly.title'), body: tVi('push.weekly.body'), tag: 'weekly', open: 'weekly', ttl: 6 * 3600,
     });
   }
 }
@@ -251,7 +252,7 @@ export function startPushScheduler() {
 const hh = (fn: (req: any, res: express.Response) => Promise<unknown>) => (req: any, res: express.Response) =>
   fn(req, res).catch((err: Error) => {
     console.error(err);
-    res.status(500).json({ error: err.message || 'Lỗi máy chủ' });
+    res.status(500).json({ error: err.message || tVi('error.server') });
   });
 
 export const pushRouter = express.Router();
@@ -262,7 +263,7 @@ pushRouter.post('/push/subscribe', hh(async (req, res) => {
   const s = req.body?.subscription ?? req.body;
   const endpoint = String(s?.endpoint || '');
   const p256dh = String(s?.keys?.p256dh || ''), authKey = String(s?.keys?.auth || '');
-  if (!/^https:\/\//.test(endpoint) || !p256dh || !authKey) return res.status(400).json({ error: 'Đăng ký chưa đúng' });
+  if (!/^https:\/\//.test(endpoint) || !p256dh || !authKey) return res.status(400).json(errorBody('push_bad_subscription'));
   await pool.query(
     `insert into push_subs (endpoint, member_id, family_id, p256dh, auth, ua) values ($1,$2,$3,$4,$5,$6)
      on conflict (endpoint) do update set member_id = excluded.member_id, family_id = excluded.family_id,

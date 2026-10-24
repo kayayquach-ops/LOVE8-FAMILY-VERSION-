@@ -2,6 +2,7 @@ import express from 'express';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { nextOccurrence } from '../src/lunar.ts';
+import { errorBody, tVi } from './i18n.ts';
 
 const KINDS = ['birthday', 'wedding', 'anniversary', 'memory', 'other'];
 
@@ -44,7 +45,7 @@ async function listEvents(pool: Pool, familyId: string): Promise<CalEvent[]> {
     note: r.note, photo: r.photo, memberId: r.member_id, createdBy: r.created_by,
   }));
   const dobs: CalEvent[] = ms.rows.map((r) => ({
-    id: `dob-${r.id}`, kind: 'birthday', title: `Sinh nhật ${r.name}`, day: r.d, month: r.m, year: r.y, lunar: false, leap: false,
+    id: `dob-${r.id}`, kind: 'birthday', title: tVi('calendarGen.dobTitle', { name: r.name }), day: r.d, month: r.m, year: r.y, lunar: false, leap: false,
     note: null, photo: null, memberId: r.id, createdBy: null, virtual: true,
   }));
   return [...dobs, ...real];
@@ -74,7 +75,7 @@ type Fn = (req: any, res: express.Response) => Promise<unknown>;
 const h = (fn: Fn) => (req: any, res: express.Response) =>
   fn(req, res).catch((err: Error) => {
     console.error(err);
-    res.status(500).json({ error: err.message || 'Lỗi máy chủ' });
+    res.status(500).json({ error: err.message || tVi('error.server') });
   });
 
 import { pool } from './db.ts';
@@ -90,12 +91,12 @@ calendarRouter.post('/calendar', h(async (req, res) => {
   const day = Number(b.day), month = Number(b.month);
   const year = b.year ? Number(b.year) : null;
   const title = String(b.title || '').trim().slice(0, 80);
-  if (!KINDS.includes(b.kind)) return res.status(400).json({ error: 'Chọn loại ngày nhé' });
-  if (!title) return res.status(400).json({ error: 'Đặt tên cho ngày này nhé' });
+  if (!KINDS.includes(b.kind)) return res.status(400).json(errorBody('calendar_kind'));
+  if (!title) return res.status(400).json(errorBody('calendar_title'));
   if (!Number.isInteger(day) || !Number.isInteger(month) || month < 1 || month > 12 || day < 1 || day > 31) {
-    return res.status(400).json({ error: 'Ngày tháng chưa đúng' });
+    return res.status(400).json(errorBody('calendar_date'));
   }
-  if (year !== null && (!Number.isInteger(year) || year < 1900 || year > 2100)) return res.status(400).json({ error: 'Năm chưa đúng' });
+  if (year !== null && (!Number.isInteger(year) || year < 1900 || year > 2100)) return res.status(400).json(errorBody('calendar_year'));
   const eid = randomUUID();
   await pool.query(
     `insert into events (id, family_id, member_id, kind, title, day, month, year, lunar, leap, note, created_by)
@@ -113,7 +114,7 @@ calendarRouter.delete('/calendar/:id', h(async (req, res) => {
 
 calendarRouter.put('/me/dob', h(async (req, res) => {
   const dob = String(req.body?.dob ?? '');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || Number.isNaN(Date.parse(dob))) return res.status(400).json({ error: 'Ngày sinh chưa đúng' });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || Number.isNaN(Date.parse(dob))) return res.status(400).json(errorBody('dob_invalid'));
   await pool.query('update members set dob = $2 where id = $1', [req.member.id, dob]);
   res.json({ ok: true });
 }));

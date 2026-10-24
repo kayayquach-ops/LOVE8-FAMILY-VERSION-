@@ -2,6 +2,7 @@ import express from 'express';
 import { randomUUID } from 'node:crypto';
 import { pool } from './db.ts';
 import { notifyCall } from './push.ts';
+import { errorBody, tVi } from './i18n.ts';
 
 // Gọi video cả nhà: mỗi nhà một phòng, máy chủ chỉ chuyển lời mời kết nối (SDP, ICE) giữa các máy qua SSE.
 // Hình và tiếng đi thẳng giữa các máy (WebRTC). Mạng di động thường cần TURN, đặt qua TURN_URL.
@@ -49,16 +50,16 @@ export function iceServers() {
 const h = (fn: (req: any, res: express.Response) => Promise<unknown>) => (req: any, res: express.Response) =>
   fn(req, res).catch((err: Error) => {
     console.error(err);
-    res.status(500).json({ error: err.message || 'Lỗi máy chủ' });
+    res.status(500).json({ error: err.message || tVi('error.server') });
   });
 
 /** Luồng sự kiện gọi video. Gắn TRƯỚC auth, tự kiểm tra ?token= vì EventSource không gửi được header. */
 export const liveStreamRouter = express.Router();
 liveStreamRouter.get('/live/stream', h(async (req, res) => {
   const token = String(req.query.token || '');
-  if (!token) return res.status(401).json({ error: 'Chưa vào nhà' });
+  if (!token) return res.status(401).json(errorBody('not_signed_in'));
   const { rows } = await pool.query('select id, family_id from members where token = $1', [token]);
-  if (!rows[0]) return res.status(401).json({ error: 'Chưa vào nhà' });
+  if (!rows[0]) return res.status(401).json(errorBody('not_signed_in'));
   const mid: string = rows[0].id, fid: string = rows[0].family_id;
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();

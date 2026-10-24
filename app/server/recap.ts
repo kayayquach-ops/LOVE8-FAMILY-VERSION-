@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 import { pool as db } from './db.ts';
+import { errorBody, tVi } from './i18n.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
@@ -36,13 +37,12 @@ export function weekKey(d = new Date()) {
 function weekLabel(week: string) {
   const a = new Date(`${week}T00:00:00Z`), b = new Date(a.getTime() + 6 * 86400e3);
   const am = a.getUTCMonth() + 1, bm = b.getUTCMonth() + 1;
-  return am === bm ? `Tuần ${a.getUTCDate()} - ${b.getUTCDate()}/${bm}` : `Tuần ${a.getUTCDate()}/${am} - ${b.getUTCDate()}/${bm}`;
+  return am === bm ? tVi('recapVideo.weekSame', { a: a.getUTCDate(), b: b.getUTCDate(), bm }) : tVi('recapVideo.weekCross', { a: a.getUTCDate(), am, b: b.getUTCDate(), bm });
 }
 
-const DAYS = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
 function dayLabel(at: Date) {
   const t = new Date(at.getTime() + 7 * 3600e3);
-  return `${DAYS[t.getUTCDay()]}, ${t.getUTCDate()}/${t.getUTCMonth() + 1}`;
+  return `${tVi(`recapVideo.day.${t.getUTCDay()}`)}, ${t.getUTCDate()}/${t.getUTCMonth() + 1}`;
 }
 const dayKey = (at: Date) => new Date(at.getTime() + 7 * 3600e3).toISOString().slice(0, 10);
 
@@ -252,11 +252,11 @@ export async function buildRecapVideo(input: RecapInput, outFile: string) {
     if (segs.length < 2) throw new Error('Không dựng được tấm ảnh nào');
 
     const c = input.counts;
-    const lines = [c.photos && `${c.photos} tấm ảnh`, c.videos && `${c.videos} đoạn video`, c.hugs && `${c.hugs} cái ôm`].filter(Boolean) as string[];
+    const lines = [c.photos && tVi('recapVideo.photos', { n: c.photos }), c.videos && tVi('recapVideo.videos', { n: c.videos }), c.hugs && tVi('recapVideo.hugs', { n: c.hugs })].filter(Boolean) as string[];
     const top = 860 - lines.length * 45;
     await titleCard('close.mp4', 3.4, [
       ...lines.map((l, i) => draw(l, 64, '0x2B2723', top + i * 92, 0.15 + i * 0.25)),
-      draw('Hẹn tuần sau', 44, '0x9A5A44', top + lines.length * 92 + 70, 0.4 + lines.length * 0.25),
+      draw(tVi('recapVideo.bye'), 44, '0x9A5A44', top + lines.length * 92 + 70, 0.4 + lines.length * 0.25),
       draw(input.family, 34, '0x8A8278', 1640, 0.6),
     ]);
 
@@ -352,7 +352,7 @@ async function renderFamilyWeek(p: pg.Pool, fid: string, week: string) {
       .filter((i) => existsSync(i.file));
     if (!items.length) throw new Error('Không còn file ảnh nào trên ổ đĩa');
     const out = path.join(MEDIA_DIR, 'recaps', `${fid}-${week}.mp4`);
-    await buildRecapVideo({ family: fam.rows[0]?.name ?? 'Nhà mình', week, items, counts: { photos: n('photo'), videos: n('video'), hugs: n('hug') } }, out);
+    await buildRecapVideo({ family: fam.rows[0]?.name ?? tVi('family.defaultName'), week, items, counts: { photos: n('photo'), videos: n('video'), hugs: n('hug') } }, out);
     await p.query(`update recaps set status = 'ready', media = $3, posts_count = $4, created_at = now() where family_id = $1 and week = $2`,
       [fid, week, `/media/recaps/${fid}-${week}.mp4?v=${Date.now()}`, items.length]);
     console.log(`[recap] xong ${fid} ${week}`);
@@ -383,7 +383,7 @@ recapRouter.get('/recaps', async (req: any, res) => {
   try {
     const { rows } = await db.query('select * from recaps where family_id = $1 order by week desc limit 52', [req.member.family_id]);
     res.json(rows.map(row));
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Lỗi máy chủ' }); }
+  } catch (e) { console.error(e); res.status(500).json(errorBody('server')); }
 });
 
 recapRouter.post('/recaps/render', async (req: any, res) => {
@@ -392,12 +392,12 @@ recapRouter.post('/recaps/render', async (req: any, res) => {
     const week = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.week ?? '')) ? String(req.body.week) : weekKey();
     const n = await countPosts(db, fid, week);
     if (n < MIN_POSTS) {
-      return res.json({ skipped: true, message: n ? `Tuần này mới có ${n} ảnh. Gửi thêm vài tấm nữa là đủ làm video nhé.` : 'Tuần này chưa có ảnh nào. Chụp vài tấm gửi cả nhà trước nhé.' });
+      return res.json({ skipped: true, code: n ? 'recap_few' : 'recap_none', n, message: n ? tVi('recap.few', { n }) : tVi('recap.none') });
     }
     await enqueue(db, fid, week, n);
     const { rows } = await db.query('select * from recaps where family_id = $1 and week = $2', [fid, week]);
     res.json(row(rows[0]));
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Lỗi máy chủ' }); }
+  } catch (e) { console.error(e); res.status(500).json(errorBody('server')); }
 });
 
 /** Mỗi giờ kiểm tra: từ 19 giờ tối Chủ nhật (giờ Việt Nam), nhà nào có từ 3 ảnh/video và chưa có video tuần này thì dựng. */

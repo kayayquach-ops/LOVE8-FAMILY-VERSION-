@@ -21,9 +21,12 @@ const CACHE_VER = 'v2';
 const STT_MODEL = () => process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 // Model 2.5 hiểu lời dặn giọng đặt trước câu; các model TTS mới hơn lại đọc to cả lời dặn, nên chỉ gửi câu.
 // Đổi lời dặn bằng GEMINI_TTS_STYLE, không cần sửa code.
+// TODO(i18n đợt 3): giọng đọc và lời dặn cách đọc theo ngôn ngữ của người nghe. Đợt này giữ nguyên tiếng Việt.
+// i18n-ok-begin
 const STYLE_DEFAULT = 'Nói tiếng Việt tự nhiên, rõ ràng, tươi và thân thiện, như người thân đang nói chuyện bình thường qua điện thoại. '
   + 'Âm lượng và cao độ bình thường, tốc độ vừa phải hơi nhanh một chút, nhịp tự nhiên có nhấn nhá. '
   + 'Không thì thầm, không kéo dài chữ, không giọng kể chuyện ru ngủ. Câu cần nói: ';
+// i18n-ok-end
 const STYLE = () => process.env.GEMINI_TTS_STYLE || STYLE_DEFAULT;
 
 export const hasVoice = () => useGemini();
@@ -161,9 +164,12 @@ function withWavHeader(pcm: Buffer, rate: number) {
 
 // ---------- Chép lời ----------
 
+// TODO(i18n đợt 3): chép lời theo ngôn ngữ người nói (members.lang). Đợt này giữ nguyên.
+// i18n-ok-begin
 const STT_PROMPT = `Chép lại nguyên văn lời nói tiếng Việt trong đoạn ghi âm này.
 Giữ đúng từng chữ người nói, có dấu, không thêm, không bớt, không sửa câu, không tóm tắt, không giải thích.
 Bỏ qua tiếng ồn. Nếu không nghe thấy lời nói nào thì trả về chuỗi rỗng.`;
+// i18n-ok-end
 
 /** Chép lời một file ghi âm trong MEDIA_DIR. Quá hạn hoặc lỗi thì trả null, không làm chậm cuộc gọi. */
 export async function transcribe(file: string, who: string, timeoutMs = 8000): Promise<string | null> {

@@ -3,6 +3,7 @@ import { pool } from './db.ts';
 import { upcoming } from './calendar.ts';
 import { JAR_CAPACITY } from './jar.ts';
 import { listPodcasts } from './podcast.ts';
+import { tVi } from './i18n.ts';
 
 export const homeRouter = express.Router();
 
@@ -32,10 +33,10 @@ homeRouter.get('/home', async (req: any, res: any) => {
       jar: { level: total.rows[0].n % JAR_CAPACITY, capacity: JAR_CAPACITY },
       week: counts,
       podcasts: pods.filter((p) => p.status === 'ready').slice(0, 8)
-        .map((p) => ({ id: p.id, title: p.title, topic: p.kind === 'topic' ? 'Cả nhà kể' : p.topic, memberId: p.memberId, duration: p.duration, cover: p.cover, createdAt: p.createdAt })),
+        .map((p) => ({ id: p.id, title: p.title, topic: p.kind === 'topic' ? tVi('podcastGen.familyTells') : p.topic, memberId: p.memberId, duration: p.duration, cover: p.cover, createdAt: p.createdAt })),
     });
   } catch (err: any) {
     console.error(err);
-    res.status(500).json({ error: err.message || 'Lỗi máy chủ' });
+    res.status(500).json({ error: err.message || tVi('error.server') });
   }
 });

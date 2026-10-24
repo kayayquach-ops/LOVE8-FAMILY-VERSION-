@@ -2,6 +2,7 @@ import pg from 'pg';
 
 export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
+// members.lang: ngôn ngữ của từng người (vi, en, ko); null là tiếng Việt như bản cũ.
 export async function migrate() {
   await pool.query(`
     create table if not exists families (
@@ -33,6 +34,7 @@ export async function migrate() {
       primary key (member_id, mission, week)
     );
     alter table members add column if not exists intro text;
+    alter table members add column if not exists lang text;
     create table if not exists seen (member_id text primary key references members(id), at timestamptz not null default now());
   `);
 }
