@@ -1,16 +1,17 @@
 /* Màn chào và nền cánh đồng cho phần hỏi đầu. Chữ tự host qua Vite, có bộ tiếng Việt; trình duyệt chỉ tải tệp chữ khi màn này vẽ đến. */
-@import '@fontsource/pinyon-script/400.css';
-@import '@fontsource/mea-culpa/400.css';
+@import '@fontsource/ms-madi/400.css';
+@import '@fontsource/corinthia/400.css';
+@import '@fontsource-variable/noto-serif-display/wdth.css';
 @import '@fontsource/playfair-display/400.css';
 
 /* Nền cánh đồng cỏ lau: một lớp ảnh đứng yên, phủ sữa mỏng cho chữ dễ đọc. Không filter, không lớp lớn chuyển động. */
 .meadow {
   position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; background-color: #F3F4EE;
-  background-image: linear-gradient(180deg, rgba(250,250,245,.5) 0%, rgba(250,250,245,.46) 45%, rgba(248,248,242,.6) 100%), url('/art/bg-meadow.webp');
+  background-image: linear-gradient(180deg, rgba(250,250,245,.1) 0%, rgba(250,250,245,.08) 45%, rgba(248,248,242,.14) 100%), url('/art/bg-meadow.webp');
   background-size: cover; background-position: center;
 }
 @media (min-aspect-ratio: 4/5) {
-  .meadow { background-image: linear-gradient(180deg, rgba(250,250,245,.5), rgba(248,248,242,.6)), url('/art/bg-meadow-wide.webp'); background-position: center bottom; }
+  .meadow { background-image: linear-gradient(180deg, rgba(250,250,245,.1), rgba(248,248,242,.14)), url('/art/bg-meadow-wide.webp'); background-position: center bottom; }
 }
 /* Vài hạt lấp lánh, chỉ nhấp nháy bằng độ mờ. */
 .meadow i { position: absolute; width: 6px; height: 6px; margin: -3px; border-radius: 50%; opacity: 0;
@@ -22,44 +23,39 @@
 
 /* Màn chào: "sweet home" nhỏ ở đỉnh, khung hoa văn chấm, giữa là "chào mừng về nhà" viết tay và chữ "bạn" lớn. */
 .hello { align-items: stretch; color: var(--ink); background: transparent; }
-.hello-top { position: relative; display: flex; justify-content: center; padding-top: 22px; opacity: 0; animation: slowFade 1.6s .2s forwards; }
-.hello-brand { font-family: 'Pinyon Script', cursive; font-size: 17px; line-height: 1.2; letter-spacing: .04em; color: #7C8078; }
-.hello .center { position: relative; }
 
-/* Khung chấm: ảnh tĩnh, hiện dần bằng độ mờ. */
-.hello-frame { position: absolute; inset: calc(var(--safe-top) + 10px) 10px calc(var(--safe-bottom) + 10px); pointer-events: none; opacity: 0; animation: slowFade 2s .3s forwards; }
-.orn-c { position: absolute; width: min(29vw, 124px); height: auto; opacity: .62; }
-.orn-c.tl { left: 6px; top: 6px; }
-.orn-c.tr { right: 6px; top: 6px; transform: scaleX(-1); }
-.orn-c.bl { left: 6px; bottom: 6px; transform: scaleY(-1); }
-.orn-c.br { right: 6px; bottom: 6px; transform: scale(-1, -1); }
-.orn-s { position: absolute; top: 54%; width: min(8vw, 32px); height: auto; margin-top: -14vw; opacity: .45; }
-.orn-s.l { left: 2px; }
-.orn-s.r { right: 2px; transform: scaleX(-1); }
-.crop { position: absolute; width: 9px; height: 9px; border: 0 solid rgba(112,116,110,.55); }
-.crop.tl { left: 0; top: 0; border-width: 1px 0 0 1px; }
-.crop.tr { right: 0; top: 0; border-width: 1px 1px 0 0; }
-.crop.bl { left: 0; bottom: 0; border-width: 0 0 1px 1px; }
-.crop.br { right: 0; bottom: 0; border-width: 0 1px 1px 0; }
+/* Khung chấm và bướm tách từ ảnh mẫu 1080x1920. --rw là bề rộng khung mẫu trên màn (điện thoại: cả bề ngang; màn rộng: cột 9:16 ở giữa).
+   Toạ độ trong .ref-box tính theo phần trăm của khung mẫu, cỡ chữ theo --rw/1080. */
+.hello { --rw: min(100vw, 56.25vh); }
+.hello-frame { position: absolute; inset: 0; pointer-events: none; opacity: 0; animation: slowFade 2s .3s forwards; }
+.orn-band { position: absolute; left: 50%; width: var(--rw); height: auto; transform: translateX(-50%); }
+.orn-band.top { top: calc(var(--safe-top) + var(--rw) * 40 / 1080); }
+.orn-band.bot { bottom: calc(var(--safe-bottom) + var(--rw) * 20 / 1080); }
+.ref-box { position: absolute; left: 50%; top: 50%; width: var(--rw); height: calc(var(--rw) * 1920 / 1080); transform: translate(-50%, -50%); pointer-events: none; }
+.orn-s { position: absolute; top: 44.27%; width: 14.815%; height: auto; }
+.orn-s.l { left: 0; }
+.orn-s.r { right: 0; }
+.hello-top { position: absolute; left: 0; right: 0; top: calc(var(--safe-top) + var(--rw) * 98 / 1080); display: flex; justify-content: center; opacity: 0; animation: slowFade 1.6s .2s forwards; }
+.hello-brand { font-family: 'Ms Madi', cursive; font-size: calc(var(--rw) * 41 / 1080); line-height: 1.2; letter-spacing: .04em; color: #6E716B; }
 
-/* Cả khối chữ nằm khoảng 55 đến 60 phần trăm chiều cao. */
-.welcome { position: relative; display: flex; align-items: flex-end; justify-content: center; width: 100%; margin-top: 10vh; }
-.wl-glow { position: absolute; right: 2%; top: 50%; width: 58%; height: 120%; transform: translate3d(0, -46%, 0); border-radius: 50%; pointer-events: none;
+/* Khối chữ giữa: vị trí, cỡ chữ đo trên ảnh mẫu. */
+.welcome { z-index: 0; }
+.wl-glow { position: absolute; left: 47%; top: 44%; width: 46%; height: 21%; border-radius: 50%; pointer-events: none;
   background: radial-gradient(closest-side, rgba(140,158,116,.62), rgba(154,170,130,.32) 55%, rgba(170,182,150,0));
   opacity: 0; will-change: opacity; animation: wl-glow-in 1.6s 1.6s ease forwards, wl-glow 6s 3.2s ease-in-out infinite; }
 @keyframes wl-glow-in { to { opacity: .8; } }
 @keyframes wl-glow { 0%, 100% { opacity: .8; } 50% { opacity: 1; } }
-/* Bướm chấm lớn, mờ, nằm sau chữ. */
-.wl-bfly { position: absolute; left: 50%; top: -44%; width: min(48vw, 210px); height: auto; margin-left: -24%; transform: rotate(-12deg); pointer-events: none;
+/* Bướm chấm tách từ ảnh mẫu, nằm sau chữ. */
+.wl-bfly { position: absolute; left: 32.41%; top: 38.02%; width: 48.15%; height: auto; pointer-events: none;
   opacity: 0; animation: wl-bfly-in 2s 1.2s ease forwards; }
-@keyframes wl-bfly-in { to { opacity: .42; } }
+@keyframes wl-bfly-in { to { opacity: 1; } }
 
-.wl-left { position: relative; z-index: 1; margin-right: -.2em; padding-bottom: .9em;
-  font-family: 'Mea Culpa', cursive; font-size: clamp(34px, 11vw, 54px); line-height: .95; color: #4C584E;
+.wl-left { position: absolute; z-index: 1; left: 17.1%; top: 47.4%;
+  font-family: 'Corinthia', cursive; font-size: calc(var(--rw) * 140 / 1080); line-height: .8; color: #56604F;
   animation: wl-from-left 1.7s .3s cubic-bezier(.16,.84,.3,1) both; will-change: transform, opacity; }
 .wl-left > span { display: flex; flex-direction: column; transform: rotate(-3deg); transform-origin: 100% 100%; white-space: nowrap; }
-.wl-left > span > span:last-child { padding-left: 1.7em; }
-.wl-right { position: relative; z-index: 1; font-family: 'Playfair Display', 'Times New Roman', serif; font-weight: 400; font-size: clamp(96px, 27vw, 150px); line-height: .9; letter-spacing: -.03em; color: #FBF9EF;
+.wl-left > span > span:last-child { padding-left: .3em; }
+.wl-right { position: absolute; z-index: 1; left: 50%; top: 46.9%; font-family: 'Noto Serif Display Variable', 'Times New Roman', serif; font-weight: 400; font-stretch: 68%; font-size: calc(var(--rw) * 252 / 1080); line-height: 1; letter-spacing: -.02em; color: #FBF9EF;
   text-shadow: 0 0 1px rgba(70,84,58,.55), 0 1px 3px rgba(70,84,58,.35), 0 0 16px rgba(108,126,86,.55), 0 0 36px rgba(118,136,96,.35);
   animation: wl-from-right 1.7s .55s cubic-bezier(.16,.84,.3,1) both; will-change: transform, opacity; }
 @keyframes wl-from-left { from { opacity: 0; transform: translate3d(-58vw, 0, 0); } 35% { opacity: .6; } to { opacity: 1; transform: translate3d(0, 0, 0); } }

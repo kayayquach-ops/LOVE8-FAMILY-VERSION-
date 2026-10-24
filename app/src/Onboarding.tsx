@@ -109,7 +109,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <div className="hello-top" aria-hidden>
             <div className="hello-brand">sweet home</div>
           </div>
-          <div className="center"><Welcome /></div>
+          <Welcome />
+          <div className="center" />
           <div className="hello-hint">{inviteName ? `Bạn được mời vào ${inviteName}` : 'Chạm để bắt đầu'}</div>
         </button>
       </>
@@ -355,13 +356,16 @@ function Meadow() {
   return <div className="meadow" aria-hidden>{SPARKS.map(([x, y, d], i) => <i key={i} style={{ left: `${x}%`, top: `${y}%`, animationDelay: `${d}s` }} />)}</div>;
 }
 
-/** Khung chấm chỉ ở màn chào: bốn góc lật gương từ một ảnh, hai dải mờ giữa cạnh, bốn dấu cắt. Ảnh tĩnh, chỉ hiện dần. */
+/** Khung chấm chỉ ở màn chào, tách từ ảnh mẫu: dải trên và dải dưới bám mép màn, hai hoa văn bên theo khung 9:16 ở giữa. Ảnh tĩnh, chỉ hiện dần. */
 function HelloFrame() {
   return (
     <div className="hello-frame" aria-hidden>
-      {['tl', 'tr', 'bl', 'br'].map((c) => <img key={c} className={`orn-c ${c}`} src="/art/orn-corner.png" alt="" />)}
-      {['l', 'r'].map((c) => <img key={c} className={`orn-s ${c}`} src="/art/orn-side.png" alt="" />)}
-      {['tl', 'tr', 'bl', 'br'].map((c) => <i key={c} className={`crop ${c}`} />)}
+      <img className="orn-band top" src="/art/orn-top.png" alt="" />
+      <img className="orn-band bot" src="/art/orn-bottom.png" alt="" />
+      <div className="ref-box">
+        <img className="orn-s l" src="/art/orn-side-l.png" alt="" />
+        <img className="orn-s r" src="/art/orn-side-r.png" alt="" />
+      </div>
     </div>
   );
 }
@@ -369,7 +373,7 @@ function HelloFrame() {
 /** "chào mừng về nhà" trượt vào từ bên trái, chữ "bạn" từ bên phải, rồi đứng yên với quầng sáng thở nhẹ. */
 function Welcome() {
   return (
-    <div className="welcome" role="img" aria-label="Chào mừng về nhà, bạn">
+    <div className="welcome ref-box" role="img" aria-label="Chào mừng về nhà, bạn">
       <i className="wl-glow" />
       <img className="wl-bfly" src="/art/orn-butterfly.png" alt="" />
       <div className="wl-left"><span><span>chào mừng</span><span>về nhà</span></span></div>
