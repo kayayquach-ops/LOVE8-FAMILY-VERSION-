@@ -1,7 +1,7 @@
 // Âm thanh từ Mixkit (giấy phép miễn phí dùng trong app): chuông, lật trang, nhịp tim, lấp lánh. Phát bằng Web Audio để không trễ và chồng được lên nhau
 // (tiếng gõ phím nhanh). iPhone chỉ cho phát sau lần chạm đầu tiên, nên âm thanh mở khoá ở đó.
 type Name = 'hello' | 'reveal' | 'pop' | 'tap' | 'button' | 'shutter' | 'send' | 'arrive' | 'sparkle' | 'hug' | 'rec';
-const VOLUME: Record<Name, number> = { hello: 0.5, reveal: 0.22, pop: 0.3, tap: 0.3, button: 0.3, shutter: 0.55, send: 0.5, arrive: 0.5, sparkle: 0.45, hug: 0.7, rec: 0.4 };
+const VOLUME: Record<Name, number> = { hello: 0.3, reveal: 0.12, pop: 0.16, tap: 0.14, button: 0.16, shutter: 0.35, send: 0.3, arrive: 0.28, sparkle: 0.2, hug: 0.5, rec: 0.25 };
 
 let ctx: AudioContext | null = null;
 const buffers: Partial<Record<Name, AudioBuffer>> = {};
@@ -26,9 +26,20 @@ export function sfx(name: Name) {
   if (!ctx || !buf) return;
   const src = ctx.createBufferSource();
   const gain = ctx.createGain();
-  gain.gain.value = VOLUME[name];
+  // Cắt bớt âm chói, nâng nhẹ âm trầm, vào êm rồi mới lên để nghe đằm, ấm như nhạc nền.
+  const soft = ctx.createBiquadFilter();
+  soft.type = 'lowpass';
+  soft.frequency.value = 2400;
+  soft.Q.value = 0.4;
+  const warm = ctx.createBiquadFilter();
+  warm.type = 'lowshelf';
+  warm.frequency.value = 300;
+  warm.gain.value = 3;
+  const t = ctx.currentTime;
+  gain.gain.setValueAtTime(0, t);
+  gain.gain.linearRampToValueAtTime(VOLUME[name], t + 0.03);
   src.buffer = buf;
-  src.connect(gain).connect(ctx.destination);
+  src.connect(soft).connect(warm).connect(gain).connect(ctx.destination);
   src.start();
 }
 
