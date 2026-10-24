@@ -46,6 +46,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const typed = typedKey === typedNow;
   const setTyped = () => setTypedKey(typedNow);
 
+  useEffect(() => { for (const a of ['room', 'home', 'letter']) new Image().src = `/art/story-${a}.png`; }, []);
   useEffect(() => { if (invite) api.familyName(invite).then((r) => setInviteName(r.name)).catch(() => {}); }, []);
   // Quay lại câu ôm thì hỏi lại từ đầu.
   useEffect(() => { if (step === 'hug') { setWantHug(null); setA((x) => { const { hug: _, ...r } = x; return r; }); } }, [step]);
@@ -231,7 +232,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
       {step === 'story' && (
         <div key={page} className="center fade" style={{ justifyContent: 'flex-start' }}>
-          <img src={`/art/story-${STORY[page].art}.png`} alt="" style={{ width: '100%', maxHeight: '36vh', objectFit: 'contain', marginTop: 10 }} />
+          <img src={`/art/story-${STORY[page].art}.png`} alt="" decoding="async"
+            onError={(e) => { const el = e.currentTarget; if (!el.dataset.retry) { el.dataset.retry = '1'; el.src = `${el.src.split('?')[0]}?r=${Date.now()}`; } }}
+            style={{ width: '100%', aspectRatio: '4 / 3', maxHeight: '36vh', objectFit: 'contain', marginTop: 10 }} />
           <h2 className="story-lead"><Typed text={STORY[page].lines[0]} onDone={setTyped} /></h2>
           <p className={`story-line ${typed ? 'fade' : 'reserve'}`}>{STORY[page].lines[1]}</p>
           <div style={{ flex: 1 }} />
