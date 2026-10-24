@@ -542,3 +542,6 @@ textarea.field { resize: none; text-align: left; line-height: 1.5; }
 .mascot3d-gl { position: absolute; inset: 0; transition: opacity .5s; }
 .mascot3d-gl canvas { width: 100% !important; height: 100% !important; }
 .mascot3d-shadow { position: absolute; left: 22%; right: 22%; bottom: 3%; height: 7%; border-radius: 50%; background: radial-gradient(closest-side, rgba(90,70,130,.28), rgba(90,70,130,0)); transition: opacity .5s; }
+
+/* Giữ chỗ cho phần chưa hiện, để câu hỏi không bị nhảy khi đáp án xuất hiện */
+.reserve { opacity: 0; visibility: hidden; pointer-events: none; }

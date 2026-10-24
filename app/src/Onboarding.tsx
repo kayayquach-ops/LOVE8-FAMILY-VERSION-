@@ -34,10 +34,13 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [inviteName, setInviteName] = useState('');
   const [made, setMade] = useState<{ code: string; family: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [typed, setTyped] = useState(false);
+  // Chữ đã hiện xong hay chưa tính theo từng câu (step và page), để khi sang câu mới không còn sót trạng thái cũ.
+  const [typedKey, setTypedKey] = useState('');
+  const typedNow = `${step}:${page}`;
+  const typed = typedKey === typedNow;
+  const setTyped = () => setTypedKey(typedNow);
 
   useEffect(() => { if (invite) api.familyName(invite).then((r) => setInviteName(r.name)).catch(() => {}); }, []);
-  useEffect(() => setTyped(false), [step, page]);
   // Quay lại câu ôm thì hỏi lại từ đầu.
   useEffect(() => { if (step === 'hug') { setWantHug(null); setA((x) => { const { hug: _, ...r } = x; return r; }); } }, [step]);
 
@@ -103,7 +106,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const dobValid = +dob.d >= 1 && +dob.d <= 31 && +dob.m >= 1 && +dob.m <= 12 && +dob.y >= 1920 && +dob.y <= new Date().getFullYear();
   const dobIso = `${dob.y}-${dob.m.padStart(2, '0')}-${dob.d.padStart(2, '0')}`;
   const done = FLOW.indexOf(step === 'code' || step === 'invite' ? 'home' : step);
-  const T = { typed, onTyped: () => setTyped(true) };
+  const T = { typed, onTyped: setTyped };
 
   return (
     <div className="screen">
@@ -198,10 +201,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       {step === 'story' && (
         <div key={page} className="center fade" style={{ justifyContent: 'flex-start' }}>
           <img src={`/art/story-${STORY[page].art}.png`} alt="" style={{ width: '100%', maxHeight: '36vh', objectFit: 'contain', marginTop: 10 }} />
-          <h2 className="story-lead"><Typed text={STORY[page].lines[0]} onDone={() => setTyped(true)} /></h2>
-          {typed && <p className="story-line fade">{STORY[page].lines[1]}</p>}
+          <h2 className="story-lead"><Typed text={STORY[page].lines[0]} onDone={setTyped} /></h2>
+          <p className={`story-line ${typed ? 'fade' : 'reserve'}`}>{STORY[page].lines[1]}</p>
           <div style={{ flex: 1 }} />
-          {typed && <button className="btn fade" onClick={() => { sfx('button'); page < STORY.length - 1 ? setPage(page + 1) : setStep('home'); }}>{page < STORY.length - 1 ? 'Tiếp' : 'Viết lá thư đầu tiên'}</button>}
+          <button className={`btn ${typed ? 'fade' : 'reserve'}`} onClick={() => { sfx('button'); page < STORY.length - 1 ? setPage(page + 1) : setStep('home'); }}>{page < STORY.length - 1 ? 'Tiếp' : 'Viết lá thư đầu tiên'}</button>
         </div>
       )}
 
@@ -262,8 +265,8 @@ function Ask({ q, sub, echo, typed, onTyped, children, footer }: {
     <>
       <div className="center">
         <h1 className="q"><Typed text={q} onDone={onTyped} /></h1>
-        {typed && sub && <p className="sub slow-in">{sub}</p>}
-        <div className="options">{typed && items.map((c, i) => <div key={i} className="slow-in" style={{ animationDelay: `${500 + i * 380}ms`, width: '100%', display: 'flex', justifyContent: 'center' }}>{c}</div>)}</div>
+        {sub && <p className={`sub ${typed ? 'slow-in' : 'reserve'}`}>{sub}</p>}
+        <div className="options">{items.map((c, i) => <div key={i} className={typed ? 'slow-in' : 'reserve'} style={{ animationDelay: `${500 + i * 380}ms`, width: '100%', display: 'flex', justifyContent: 'center' }}>{c}</div>)}</div>
         <div className="echo">{echo && <span className="slow-in" key={echo} style={{ animationDelay: '300ms' }}>{echo}</span>}</div>
       </div>
       <div className="slow-in" key={String(typed)} style={{ display: 'flex', flexDirection: 'column', minHeight: 56, animationDelay: '900ms' }}>{typed && footer}</div>
