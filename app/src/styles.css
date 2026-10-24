@@ -183,7 +183,7 @@ img, video { display: block; }
 @keyframes write { to { stroke-dashoffset: 0; } }
 @keyframes ink { to { fill-opacity: 1; stroke-opacity: .2; } }
 .hello-hint { font-size: 15px; color: rgba(59,54,49,.7); opacity: 0; animation: fade .8s 3.2s both; padding-bottom: 8px; }
-@media (prefers-reduced-motion: reduce) { .hello::before, .hello::after { animation: none; } .hello-word text { animation: none; fill-opacity: 1; stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .hello::before, .hello::after { animation: none; } }
 
 .story-lead { font-size: 23px; line-height: 1.45; font-weight: 400; margin: 18px 0 0; letter-spacing: -.2px; }
 .story-line { font-size: 17px; line-height: 1.65; color: var(--soft); margin: 12px 0 0; }
@@ -247,7 +247,9 @@ textarea.field { resize: none; text-align: left; line-height: 1.5; }
 /* Chỉ opacity và transform: filter blur trên từng từ làm Safari vẽ lại chữ mỗi khung hình. */
 .word { display: inline-block; opacity: 0; transform: translate3d(0, 8px, 0); will-change: opacity, transform; animation: word .9s cubic-bezier(.2,.7,.2,1) forwards; white-space: pre; }
 @keyframes word { from { opacity: 0; transform: translate3d(0, 10px, 0); } to { opacity: 1; transform: translate3d(0, 0, 0); } }
-@media (prefers-reduced-motion: reduce) { .word { animation: none; opacity: 1; transform: none; } }
+/* Khi iPhone bật Giảm chuyển động: vẫn hiện dần bằng độ mờ, chỉ bỏ phần nổi lên. */
+@media (prefers-reduced-motion: reduce) { .word { animation-name: wordFade; transform: none; } }
+@keyframes wordFade { from { opacity: 0; } to { opacity: 1; } }
 .story-lead { font-weight: 300; font-size: 25px; }
 
 .dob { display: flex; gap: 10px; width: 86%; max-width: 380px; align-self: center; }
@@ -385,7 +387,8 @@ textarea.field { resize: none; text-align: left; line-height: 1.5; }
 @keyframes glow { 0%, 100% { opacity: .7; } 50% { opacity: 1; } }
 .hello-hint { animation: fade 1.2s 4s both, breathe 3.5s 5.2s ease-in-out infinite; }
 @keyframes breathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .hello-word, .hello-word text, .hello-hint { animation: none; } .hello-glow { animation: none; opacity: .7; } .slow-in { animation: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .hello-word, .hello-hint { animation: none; } .hello-glow { animation: none; opacity: .7; } .slow-in { animation-name: slowFade; } .fade { animation-name: slowFade; } }
+@keyframes slowFade { from { opacity: 0; } to { opacity: 1; } }
 
 /* Cuộc gọi tuần: chuông nhẹ, chữ lớn, nhịp chậm. */
 .call { z-index: 30; background: linear-gradient(180deg, #ECEAE8 0%, #EFE6E0 55%, #F1E2D8 100%); animation: fade .6s ease both; }
