@@ -2,6 +2,7 @@
 //
 //   (không tham số)          liệt kê mọi nhà, chỉ ĐỌC
 //   --delete ID1,ID2         xem trước những gì sẽ xoá (chưa xoá gì)
+//   --delete all             như trên nhưng cho TẤT CẢ các nhà (dùng khi toàn bộ là nhà thử)
 //   --delete ID1,ID2 --yes   xoá thật (một giao dịch, lỗi thì không xoá gì), rồi xoá luôn file ảnh, giọng nói, podcast của các nhà đó
 //
 // ID là 8 ký tự đầu của id nhà (cột "id" khi liệt kê). Không xoá được nhà nào không có trong danh sách.
@@ -35,8 +36,10 @@ async function list() {
 }
 
 async function removeFamilies(prefixes) {
-  const { rows: fams } = await pool.query('select id, name from families where left(id, 8) = any($1)', [prefixes]);
-  const missing = prefixes.filter((p) => !fams.some((f) => f.id.startsWith(p)));
+  const all = prefixes.length === 1 && prefixes[0] === 'all';
+  const { rows: fams } = all ? await pool.query('select id, name from families') : await pool.query('select id, name from families where left(id, 8) = any($1)', [prefixes]);
+  if (all && !fams.length) { console.log('Không có nhà nào.'); return; }
+  const missing = all ? [] : prefixes.filter((p) => !fams.some((f) => f.id.startsWith(p)));
   if (missing.length) { console.log('Không thấy nhà có id:', missing.join(', ')); process.exit(1); }
   const famIds = fams.map((f) => f.id);
   console.log('Sẽ xoá các nhà:', fams.map((f) => `${f.name} (${f.id.slice(0, 8)})`).join('; '));
