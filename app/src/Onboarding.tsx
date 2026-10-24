@@ -105,8 +105,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       <>
         <Meadow />
         <button className="screen hello" onClick={() => { sfx('hello'); void startMusic(); setStep('role'); }} aria-label="Chào mừng về nhà, chạm để bắt đầu">
+          <HelloFrame />
           <div className="hello-top" aria-hidden>
-            <img className="hello-logo" src="/logo.svg" alt="" />
             <div className="hello-brand">sweet home</div>
           </div>
           <div className="center"><Welcome /></div>
@@ -349,9 +349,21 @@ function Hold({ onDone }: { onDone: () => void }) {
 }
 
 /** Nền cánh đồng cỏ lau cho cả phần hỏi đầu: ảnh đứng yên, vài hạt lấp lánh nhấp nháy. */
-const SPARKS: Array<[number, number, number]> = [[12, 22, 0], [78, 14, 1.4], [64, 31, 2.6], [22, 47, 0.8], [88, 52, 3.2], [40, 63, 1.9], [9, 72, 2.9], [70, 70, 0.4], [52, 84, 3.6], [30, 90, 1.1]];
+const SPARKS: Array<[number, number, number]> = [[12, 22, 0], [78, 14, 1.4], [64, 31, 2.6], [22, 47, 0.8], [88, 52, 3.2], [40, 63, 1.9], [9, 72, 2.9], [70, 70, 0.4], [52, 84, 3.6], [30, 90, 1.1],
+  [46, 18, 2.2], [33, 36, 3.9], [84, 38, 0.6], [58, 58, 2.9], [16, 82, 1.7], [90, 86, 4.3]];
 function Meadow() {
   return <div className="meadow" aria-hidden>{SPARKS.map(([x, y, d], i) => <i key={i} style={{ left: `${x}%`, top: `${y}%`, animationDelay: `${d}s` }} />)}</div>;
+}
+
+/** Khung chấm chỉ ở màn chào: bốn góc lật gương từ một ảnh, hai dải mờ giữa cạnh, bốn dấu cắt. Ảnh tĩnh, chỉ hiện dần. */
+function HelloFrame() {
+  return (
+    <div className="hello-frame" aria-hidden>
+      {['tl', 'tr', 'bl', 'br'].map((c) => <img key={c} className={`orn-c ${c}`} src="/art/orn-corner.png" alt="" />)}
+      {['l', 'r'].map((c) => <img key={c} className={`orn-s ${c}`} src="/art/orn-side.png" alt="" />)}
+      {['tl', 'tr', 'bl', 'br'].map((c) => <i key={c} className={`crop ${c}`} />)}
+    </div>
+  );
 }
 
 /** "chào mừng về nhà" trượt vào từ bên trái, chữ "bạn" từ bên phải, rồi đứng yên với quầng sáng thở nhẹ. */
@@ -359,6 +371,7 @@ function Welcome() {
   return (
     <div className="welcome" role="img" aria-label="Chào mừng về nhà, bạn">
       <i className="wl-glow" />
+      <img className="wl-bfly" src="/art/orn-butterfly.png" alt="" />
       <div className="wl-left"><span><span>chào mừng</span><span>về nhà</span></span></div>
       <div className="wl-right">bạn</div>
     </div>
