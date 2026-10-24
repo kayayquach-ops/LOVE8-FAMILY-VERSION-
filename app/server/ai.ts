@@ -6,6 +6,25 @@ let client: Anthropic | null = null;
 
 export const hasAI = () => !!process.env.ANTHROPIC_API_KEY;
 
+/** Câu ngắn cần nhanh (đáp lời trong cuộc gọi): model nhỏ, không thử lại, quá hạn thì trả null. */
+export async function askQuick(system: string, user: string, timeoutMs = 1800): Promise<string | null> {
+  if (!hasAI()) return null;
+  try {
+    client ??= new Anthropic({ timeout: 90_000, maxRetries: 1 });
+    const res = await client.messages.create({
+      model: 'claude-haiku-5-5',
+      max_tokens: 80,
+      system,
+      messages: [{ role: 'user', content: user }],
+    }, { timeout: timeoutMs, maxRetries: 0 });
+    const text = res.content.map((b) => (b.type === 'text' ? b.text : '')).join('').trim();
+    return text || null;
+  } catch (err) {
+    console.error('[ai] đáp nhanh lỗi:', (err as Error).message);
+    return null;
+  }
+}
+
 /** Hỏi Claude, nhận về JSON đúng schema. Lỗi gì cũng trả null để máy chủ không sập. */
 export async function askJSON<T>(system: string, user: string, schema: Record<string, unknown>, maxTokens = 4000): Promise<T | null> {
   if (!hasAI()) return null;

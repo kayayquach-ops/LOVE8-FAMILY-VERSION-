@@ -19,8 +19,8 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 const json = (body: unknown) => ({ method: 'POST', body: JSON.stringify(body) });
 
 export const api = {
-  create: (b: { family: string; name: string; role: string; city: string; intro?: Record<string, string> }) => call<{ token: string }>('/api/families', json(b)),
-  join: (b: { code: string; name: string; role: string; city: string; intro?: Record<string, string> }) => call<{ token: string }>('/api/join', json(b)),
+  create: (b: { family: string; name: string; role: string; city: string; intro?: Record<string, string | boolean> }) => call<{ token: string }>('/api/families', json(b)),
+  join: (b: { code: string; name: string; role: string; city: string; intro?: Record<string, string | boolean> }) => call<{ token: string }>('/api/join', json(b)),
   familyName: (code: string) => call<{ name: string }>(`/api/family/${code}`),
   me: () => call<Me>('/api/me'),
   updateMe: (f: FormData) => call('/api/me', { method: 'PATCH', body: f }),

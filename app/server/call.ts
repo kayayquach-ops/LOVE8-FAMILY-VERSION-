@@ -6,7 +6,7 @@ import type multer from 'multer';
 import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { EVENT_HINTS, TOPICS, type CallQuestion, type CallScript, type Topic } from '../src/shared.ts';
-import { askJSON } from './ai.ts';
+import { askJSON, askQuick } from './ai.ts';
 import { pool } from './db.ts';
 import { weekKey } from './recap.ts';
 import { buildPodcastsForCall } from './podcast.ts';
@@ -185,6 +185,10 @@ async function aiScript(c: Ctx): Promise<CallScript | null> {
   return { greeting: clean(r.greeting), questions, goodbye: clean(r.goodbye), source: 'ai' };
 }
 
+const REPLY_SYSTEM = `You are Homeletter on a warm weekly voice call with a Vietnamese family member. They just answered a question out loud (speech recognition text, may have errors).
+Reply with ONE short spoken Vietnamese reaction, at most 12 words, like a caring person on the phone: acknowledge one concrete detail they said. Do not ask a new question. No em dash, no emoji, no quotation marks.
+If role is bo or me, call yourself con and address them as Bố or Mẹ, end politely with ạ when natural. If role is con, call yourself mình and use their name sparingly.`;
+
 // ---------- Rút ngày tháng sau cuộc gọi ----------
 
 type Found = { kind: string; title: string; day: number; month: number; year: number | null; note: string };
@@ -319,6 +323,18 @@ export function callRouter(upload: multer.Multer) {
         String(req.body.transcript || '').trim().slice(0, 4000) || null, Number(req.body.seconds) || null],
     );
     res.json({ ok: true });
+  }));
+
+  // Nghe xong một câu: Claude đáp một câu ngắn theo điều vừa kể. Không có khoá hay quá 2 giây thì máy khách dùng câu mẫu.
+  r.post('/call/:id/reply', h(async (req, res) => {
+    const said = String(req.body.transcript || '').trim().slice(0, 1500);
+    if (!said) return res.json({ text: null });
+    const { rows: [call] } = await pool.query('select c.script, m.name, m.role from calls c join members m on m.id = c.member_id where c.id = $1 and c.member_id = $2', [req.params.id, req.member.id]);
+    if (!call) return res.status(404).json({ error: 'Không thấy cuộc gọi' });
+    const q = (JSON.parse(call.script) as CallScript).questions[Number(req.body.idx)];
+    const text = await askQuick(REPLY_SYSTEM, JSON.stringify({ person: { name: call.name, role: call.role }, question: q?.text ?? '', answer: said }), 1800);
+    const clean = text?.replace(/\s*[—–]\s*/g, ', ').replace(/["“”]/g, '').split('\n')[0].trim().slice(0, 140);
+    res.json({ text: clean || null });
   }));
 
   r.post('/call/:id/photo', upload.single('file'), h(async (req, res) => {

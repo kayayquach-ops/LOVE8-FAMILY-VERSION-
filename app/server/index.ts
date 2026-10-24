@@ -76,6 +76,13 @@ async function newCode() {
 
 async function addMember(familyId: string, b: any) {
   const token = randomBytes(24).toString('base64url');
+  // Khảo sát lúc mới vào: wantHug chỉ nhận true/false, bản cũ không có trường này.
+  if (b.intro && typeof b.intro === 'object' && 'wantHug' in b.intro) {
+    const w = b.intro.wantHug;
+    if (w === true || w === 'true') b.intro.wantHug = true;
+    else if (w === false || w === 'false') b.intro.wantHug = false;
+    else delete b.intro.wantHug;
+  }
   await pool.query('insert into members (id, family_id, name, role, token, city, intro) values ($1,$2,$3,$4,$5,$6,$7)', [
     id(), familyId, String(b.name || '').slice(0, 30) || 'Mình', ['bo', 'me', 'con'].includes(b.role) ? b.role : 'con', token,
     b.city ? String(b.city).slice(0, 300) : null, b.intro ? JSON.stringify(b.intro).slice(0, 4000) : null,
@@ -99,6 +106,22 @@ app.get('/api/family/:code', h(async (req, res) => {
   const { rows } = await pool.query('select name from families where code = $1', [req.params.code]);
   if (!rows[0]) return res.status(404).json({ error: 'Không tìm thấy nhà' });
   res.json({ name: rows[0].name });
+}));
+
+// Số liệu gộp câu hỏi "có muốn ôm ngay không" lúc mới vào. Chỉ đếm, không lộ ai trả lời gì.
+app.get('/api/survey/hug', h(async (_req, res) => {
+  const { rows } = await pool.query(`select role, intro from members where intro like '%"wantHug"%'`);
+  const out = { yes: 0, no: 0, total: 0, parent: { yes: 0, no: 0 }, child: { yes: 0, no: 0 } };
+  for (const r of rows) {
+    let w: unknown;
+    try { w = JSON.parse(r.intro).wantHug; } catch { continue; }
+    if (typeof w !== 'boolean') continue;
+    const k = w ? 'yes' : 'no';
+    out[k]++;
+    out.total++;
+    out[r.role === 'bo' || r.role === 'me' ? 'parent' : 'child'][k]++;
+  }
+  res.json({ ...out, rate: out.total ? Math.round((out.yes / out.total) * 100) / 100 : null });
 }));
 
 app.use('/api', chatStreamRouter);

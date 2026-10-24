@@ -27,6 +27,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [city, setCity] = useState('');
   const [dob, setDob] = useState({ d: '', m: '', y: '' });
   const [a, setA] = useState<Record<string, string>>({});
+  const [wantHug, setWantHug] = useState<boolean | null>(null);
   const [page, setPage] = useState(0);
   const [family, setFamily] = useState('Nhà mình');
   const [code, setCode] = useState(invite);
@@ -37,10 +38,14 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   useEffect(() => { if (invite) api.familyName(invite).then((r) => setInviteName(r.name)).catch(() => {}); }, []);
   useEffect(() => setTyped(false), [step, page]);
+  // Quay lại câu ôm thì hỏi lại từ đầu.
+  useEffect(() => { if (step === 'hug') { setWantHug(null); setA((x) => { const { hug: _, ...r } = x; return r; }); } }, [step]);
 
   const parent = role === 'bo' || role === 'me';
   const self = role === 'bo' ? 'bố' : role === 'me' ? 'mẹ' : 'bạn';
   const Self = self[0].toUpperCase() + self.slice(1);
+  const kids = kid === 'Cả trai lẫn gái' ? 'các con' : 'con';
+  const Kids = kids[0].toUpperCase() + kids.slice(1);
   const go = (s: Step) => { sfx('button'); setStep(s); };
   const next = () => go(FLOW[FLOW.indexOf(step) + 1]);
   const back = () => {
@@ -53,7 +58,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   async function finish(join: boolean) {
     setBusy(true);
     try {
-      const body = { name: name.trim(), role: role!, city, intro: { ...a, kid } };
+      const body = { name: name.trim(), role: role!, city, intro: { ...a, kid, ...(wantHug === null ? {} : { wantHug }) } };
       const r = join ? await api.join({ ...body, code: code.trim() }) : await api.create({ ...body, family: family.trim() || 'Nhà mình' });
       token.set(r.token);
       if (dobValid) await fetch('/api/me/dob', { method: 'PUT', headers: { 'content-type': 'application/json', authorization: `Bearer ${r.token}` }, body: JSON.stringify({ dob: dobIso }) }).catch(() => {});
@@ -155,9 +160,16 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       )}
 
       {step === 'hug' && (
-        <Ask key="hug" q={parent ? 'Nhớ con thì ôm một cái.' : 'Nhớ bố mẹ thì ôm một cái.'} sub="Giữ ngón tay vào vòng tròn"
-          echo={a.hug && (parent ? 'Con sẽ biết là có người đang ôm mình từ xa.' : 'Ở nhà sẽ biết là bạn đang nhớ.')} {...T}>
-          <Hold onDone={() => { sfx('hug'); setA({ ...a, hug: 'yes' }); setTimeout(next, 4200); }} />
+        <Ask key="hug" q={parent ? `${Self} có muốn ôm ${kids} một cái ngay bây giờ không?` : 'Bạn có muốn ôm bố mẹ một cái ngay bây giờ không?'}
+          sub={wantHug && !a.hug ? 'Giữ ngón tay vào vòng tròn' : undefined}
+          echo={wantHug === false ? (parent ? `Không sao. Lúc nào nhớ ${kids}, mình ôm sau nhé.` : 'Không sao. Lúc nào nhớ nhà, mình ôm sau nhé.')
+            : a.hug ? (parent ? `${Kids} sẽ biết là có người đang ôm mình từ xa.` : 'Ở nhà sẽ biết là bạn đang nhớ.') : undefined} {...T}>
+          {wantHug
+            ? <div key="hold" className="slow-in"><Hold onDone={() => { sfx('hug'); setA({ ...a, hug: 'yes' }); setTimeout(next, 4200); }} /></div>
+            : [
+              <Opt key="yes" on={false} onClick={() => { if (wantHug !== null) return; tap(); setWantHug(true); }}>Có, rất muốn</Opt>,
+              <Opt key="no" on={wantHug === false} onClick={() => { if (wantHug !== null) return; tap(); setWantHug(false); setTimeout(next, 4200); }}>Để lúc khác</Opt>,
+            ]}
         </Ask>
       )}
 
@@ -290,8 +302,11 @@ function Hold({ onDone }: { onDone: () => void }) {
 /** "xin chào" viết tay: nét chữ được vẽ dần như đang viết, rồi mực đầy lên. */
 function Hello() {
   return (
-    <svg className="hello-word" viewBox="0 0 600 220" role="img" aria-label="xin chào">
-      <text x="300" y="150" textAnchor="middle">xin chào</text>
-    </svg>
+    <div className="hello-wrap">
+      <i className="hello-glow" aria-hidden />
+      <svg className="hello-word" viewBox="0 0 600 220" role="img" aria-label="xin chào">
+        <text x="300" y="150" textAnchor="middle">xin chào</text>
+      </svg>
+    </div>
   );
 }
