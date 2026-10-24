@@ -220,6 +220,7 @@ async function weeklyTick() {
   const week = weekKey();
   const { rows } = await pool.query(
     `select distinct s.member_id from push_subs s
+     join members m on m.id = s.member_id and m.created_at < now() - interval '24 hours'
      where not exists (select 1 from calls c where c.member_id = s.member_id and c.week = $1 and c.status = 'done')`, [week]);
   for (const { member_id: mid } of rows) {
     if (!(await once(`weekly:${mid}:${week}`))) continue;

@@ -1,0 +1,9 @@
+.callcard { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 12px 14px; padding: 16px 18px; border-radius: 26px; background: rgba(255,255,255,.72); border: 1px solid rgba(255,255,255,.85); }
+.callcard-ico { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: rgba(154,90,68,.12); color: var(--accent); }
+.callcard p { margin: 0; font-size: 15.5px; line-height: 1.4; color: var(--ink); }
+.callcard-btns { grid-column: 1 / -1; display: flex; gap: 10px; }
+.callcard-btns button { min-height: 44px; padding: 0 22px; border-radius: 999px; font-size: 15px; text-align: center; }
+.callcard-yes { background: var(--accent); color: #fff; font-weight: 500; }
+.callcard-later { background: transparent; color: var(--soft); }
+.callcard-btns button:active { transform: scale(.97); }
+.home-dot { display: inline-block; width: 8px; height: 8px; margin-left: 8px; border-radius: 50%; background: var(--accent); vertical-align: middle; }

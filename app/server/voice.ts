@@ -1,5 +1,6 @@
 // Giọng nói của Homeletter bằng Gemini: đọc câu thành tiếng (TTS) và chép lời câu trả lời (STT).
 // Âm thanh đọc ra lưu theo hash(chữ + giọng + model) trong MEDIA_DIR/tts, câu lặp lại không phải gọi lần nữa.
+import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -13,7 +14,10 @@ const API = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 export const TTS_MAX = 300;
 const TTS_MODEL = () => process.env.GEMINI_TTS_MODEL || 'gemini-2.5-flash-preview-tts';
-const VOICE = () => process.env.GEMINI_VOICE || 'Zephyr';
+// Một giọng duy nhất cho cả cuộc gọi: đổi giọng bằng GEMINI_VOICE, cache khoá theo tên giọng.
+export const VOICE = () => process.env.GEMINI_VOICE || 'Zephyr';
+// Tăng số này khi đổi cách xử lý âm thanh để bỏ cache cũ.
+const CACHE_VER = 'v2';
 const STT_MODEL = () => process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 // Model 2.5 hiểu lời dặn giọng đặt trước câu; các model TTS mới hơn lại đọc to cả lời dặn, nên chỉ gửi câu.
 // Đổi lời dặn bằng GEMINI_TTS_STYLE, không cần sửa code.
@@ -51,7 +55,7 @@ async function slot<T>(fn: () => Promise<T>): Promise<T> {
 const inflight = new Map<string, Promise<string | null>>();
 
 function keyOf(text: string) {
-  return createHash('sha1').update(`${TTS_MODEL()}|${VOICE()}|${styled() ? STYLE() : ''}|${text}`).digest('hex').slice(0, 24);
+  return createHash('sha1').update(`${CACHE_VER}|${TTS_MODEL()}|${VOICE()}|${styled() ? STYLE() : ''}|${text}`).digest('hex').slice(0, 24);
 }
 
 /** Đường dẫn /media/tts/<hash>.mp3 nếu đã có sẵn trong kho. */
@@ -85,6 +89,13 @@ async function synth(text: string, k: string): Promise<string | null> {
   return save(part, text, k, t0);
 }
 
+/** Chạy ffmpeg và lấy nhật ký stderr (đo âm lượng nằm ở đó). */
+function ffmpegErr(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(FFMPEG, args, { timeout: 30_000, maxBuffer: 4_000_000, windowsHide: true }, (err, _out, stderr) => (err ? reject(err) : resolve(String(stderr))));
+  });
+}
+
 async function askAudio(text: string) {
   const model = TTS_MODEL();
   const res = await fetch(`${API}/${model}:generateContent`, {
@@ -114,9 +125,18 @@ async function save(part: { mimeType: string; data: string }, text: string, k: s
   writeFileSync(tmp + '.wav', wav);
   let url: string;
   try {
-    // Mono 48 kbps: một câu chừng 30 đến 60 KB, mở nhanh trên mạng điện thoại.
-    await run(FFMPEG, ['-y', '-hide_banner', '-loglevel', 'error', '-i', tmp + '.wav', '-af', 'silenceremove=start_periods=1:start_threshold=-50dB,areverse,silenceremove=start_periods=1:start_threshold=-50dB,areverse',
-      '-ac', '1', '-c:a', 'libmp3lame', '-b:a', '48k', tmp + '.mp3'], TTS_DIR, 30_000);
+    // Cắt im lặng hai đầu, chuẩn hoá về cùng độ to (loudnorm hai lượt), mono 48 kbps: một câu chừng 30 đến 60 KB.
+    const trim = 'silenceremove=start_periods=1:start_threshold=-50dB,areverse,silenceremove=start_periods=1:start_threshold=-50dB,areverse';
+    const T = 'I=-18:TP=-2:LRA=9';
+    let af = `${trim},loudnorm=${T}`;
+    try {
+      const log = await ffmpegErr(['-hide_banner', '-nostats', '-i', tmp + '.wav', '-af', `${trim},loudnorm=${T}:print_format=json`, '-f', 'null', '-']);
+      const m = JSON.parse(log.slice(log.lastIndexOf('{'), log.lastIndexOf('}') + 1));
+      const ok = [m.input_i, m.input_tp, m.input_lra, m.input_thresh, m.target_offset].every((v: string) => Number.isFinite(Number(v)));
+      if (ok) af = `${trim},loudnorm=${T}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`;
+    } catch {}
+    await run(FFMPEG, ['-y', '-hide_banner', '-loglevel', 'error', '-i', tmp + '.wav', '-af', af,
+      '-ac', '1', '-ar', '24000', '-c:a', 'libmp3lame', '-b:a', '48k', tmp + '.mp3'], TTS_DIR, 30_000);
     renameSync(tmp + '.mp3', path.join(TTS_DIR, k + '.mp3'));
     rmSync(tmp + '.wav', { force: true });
     url = `/media/tts/${k}.mp3`;

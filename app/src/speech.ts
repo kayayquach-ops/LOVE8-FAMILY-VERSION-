@@ -1,5 +1,5 @@
 // Giọng tiếng Việt của máy (speechSynthesis). iPhone chỉ cho nói sau một lần chạm, nên mở khoá ở nút bấm.
-// Có giọng Gemini thì cuộc gọi dùng giọng ấy (playVoice), giọng máy chỉ để dự phòng.
+// Một cuộc gọi chỉ dùng MỘT giọng: Gemini nếu kiểm ngay lúc đổ chuông được (voiceAvailable), không thì giọng máy từ đầu đến cuối.
 import { token } from './api';
 
 let voice: SpeechSynthesisVoice | null | undefined;
@@ -73,6 +73,25 @@ export function prefetchVoice(text: string) {
   }
 }
 
+/** Kiểm giọng Gemini còn dùng được không bằng một câu đã nạp sẵn: có âm thanh trong ms thì true. Lỗi thì thử thêm một lần. */
+export async function voiceAvailable(text: string, ms = 12_000): Promise<boolean> {
+  const k = text.trim();
+  const t0 = Date.now();
+  for (let tries = 0; tries < 2; tries++) {
+    if (off) return false;
+    prefetchVoice(k);
+    const p = clips.get(k);
+    if (!p) return false;
+    let t = 0;
+    const data = await Promise.race([p, new Promise<null>((r) => { t = window.setTimeout(() => r(null), Math.max(500, ms - (Date.now() - t0))); })]);
+    clearTimeout(t);
+    if (data) return true;
+    if (Date.now() - t0 >= ms - 1500) return false;
+    await new Promise((r) => setTimeout(r, 1200));
+  }
+  return false;
+}
+
 /** Câu này đã có âm thanh sẵn trong máy chưa (để chọn câu đáp mẫu khi câu đáp mới đến muộn). */
 export function voiceReady(text: string) { return decoded.has(text.trim()); }
 
@@ -104,8 +123,8 @@ function stopVoice() {
   if (p) { try { p.src.stop(); } catch {} p.done(); }
 }
 
-/** Phát câu bằng giọng Gemini. Quá ms chưa có âm thanh thì trả false để nơi gọi dùng giọng máy. level nhận âm lượng thật 0..1. */
-export async function playVoice(text: string, level: (v: number) => void, ms = 4000): Promise<boolean> {
+/** Phát câu bằng giọng Gemini. Quá ms chưa có âm thanh thì trả false (nơi gọi chờ thêm, không đổi sang giọng máy giữa chừng). level nhận âm lượng thật 0..1. */
+export async function playVoice(text: string, level: (v: number) => void, ms = 4000, onStart?: () => void): Promise<boolean> {
   if (!ctx || !out || off) return false;
   const b = await bufferOf(text, ms);
   if (!b || !ctx || !out) return false;
@@ -139,6 +158,7 @@ export async function playVoice(text: string, level: (v: number) => void, ms = 4
     src.onended = done;
     playing = { src, done };
     src.start();
+    onStart?.();
     raf = requestAnimationFrame(tick);
   });
 }

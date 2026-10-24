@@ -12,7 +12,7 @@ import { Home } from './Home';
 import { Chat } from './Chat';
 import { Recap } from './Recap';
 import { Podcast } from './Podcast';
-import { Call, snoozed } from './Call';
+import { Call } from './Call';
 import { FaceTime, Incoming } from './FaceTime';
 import { connectLive, livePost, onLive, type LiveRoom } from './live';
 import { onPushOpen, syncPush } from './push';
@@ -31,6 +31,8 @@ export function App() {
   const [chatUnread, setChatUnread] = useState(0);
   const [podcastId, setPodcastId] = useState<string | null>(null);
   const [calling, setCalling] = useState(false);
+  // Đến lịch gọi thì chỉ hiện thẻ mời trên Trang chủ; màn đổ chuông chỉ mở khi người dùng bấm Nghe máy.
+  const [callDue, setCallDue] = useState(false);
   // Gọi video cả nhà: phòng đang mở, mình có đang trong cuộc gọi không, cuộc nào mình đã từ chối hoặc vừa rời.
   const [room, setRoom] = useState<LiveRoom>(null);
   const [facetime, setFacetime] = useState(false);
@@ -40,9 +42,8 @@ export function App() {
   const [hug, setHug] = useState(() => { try { return localStorage.getItem(HUG_KEY) !== today(); } catch { return false; } });
 
   const loadUnread = () => fetch('/api/chat/unread', { headers: { authorization: `Bearer ${token.get()}` } }).then((r) => r.json()).then((d) => setChatUnread(d.n ?? 0)).catch(() => {});
-  // Tới lịch gọi tuần mà chưa gọi thì đổ chuông (trừ khi vừa bấm Để sau).
   const checkCall = () => fetch('/api/call/due', { headers: { authorization: `Bearer ${token.get()}` } }).then((r) => r.json())
-    .then((d) => { if (d.due && !snoozed()) setCalling(true); }).catch(() => {});
+    .then((d) => setCallDue(!!d.due)).catch(() => {});
   const load = () => { void loadUnread(); void checkCall(); return api.me().then(setMe).catch(() => { token.clear(); setMe(null); }).finally(() => setReady(true)); };
   useEffect(() => {
     if (token.get()) void load(); else setReady(true);
@@ -86,7 +87,7 @@ export function App() {
   else body = (
     <>
       {tab === 'home'
-        ? <Home me={me} onOpen={(s, arg) => { if (s === 'camera') return setTab('camera'); if (s === 'podcast') setPodcastId(arg ?? null); setSheet(s); }} />
+        ? <Home me={me} callDue={callDue && !calling} onCall={() => setCalling(true)} onOpen={(s, arg) => { if (s === 'camera') return setTab('camera'); if (s === 'podcast') setPodcastId(arg ?? null); setSheet(s); }} />
         : <Camera me={me} onOpen={setSheet} onSent={load} />}
       {!sheet && <TabBar active={tab} unread={chatUnread} onSelect={(t: Tab) => {
         if (t === 'home' || t === 'camera') { setSheet(null); setTab(t); } else setSheet(t);
@@ -102,7 +103,7 @@ export function App() {
       {!facetime && !calling && room && !room.members.includes(me.me.id) && skipRoom !== room.id && (
         <Incoming me={me} room={room} onAccept={() => setFacetime(true)} onDecline={() => setSkipRoom(room.id)} />
       )}
-      {calling && <Call me={me} onClose={(done) => { setCalling(false); if (done) { setPodcastId(null); setSheet('podcast'); } }} />}
+      {calling && <Call me={me} onClose={(done) => { setCalling(false); if (done) setCallDue(false); void checkCall(); if (done) { setPodcastId(null); setSheet('podcast'); } }} />}
     </>
   );
 

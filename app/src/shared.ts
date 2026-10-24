@@ -32,7 +32,25 @@ export const TOPICS = {
 export type Topic = keyof typeof TOPICS;
 export const EVENT_HINTS = ['none', 'wedding', 'anniversary', 'birthday', 'memory'] as const;
 export type CallQuestion = { text: string; topic: Topic; photo: boolean; event: (typeof EVENT_HINTS)[number] };
-export type CallScript = { greeting: string; questions: CallQuestion[]; goodbye: string; source: 'ai' | 'template' };
+export type CallScript = { greeting: string; questions: CallQuestion[]; goodbye: string; source: 'ai' | 'template' | 'first' };
+
+/** Câu cố định trong cuộc gọi (chào, đáp mẫu, nhắc, tạm biệt). Máy chủ nạp sẵn giọng Gemini cho từng câu, nên chỉ phụ thuộc vai, không phụ thuộc tên. */
+export function callLines(role: string) {
+  const parent = role === 'bo' || role === 'me';
+  const self = role === 'bo' ? 'bố' : role === 'me' ? 'mẹ' : '';
+  const Self = self ? self[0].toUpperCase() + self.slice(1) : '';
+  return {
+    ack: parent ? 'Dạ, con nghe đây ạ.' : 'Ừm, mình nghe đây.',
+    slow: parent ? `${Self} cứ từ từ nhé, nhớ gì kể nấy.` : 'Cứ từ từ nhé, nhớ gì kể nấy.',
+    busy: parent ? `Chắc ${self} đang bận. Tuần sau con gọi lại nhé.` : 'Chắc bạn đang bận. Tuần sau mình gọi lại nhé.',
+    skip: parent ? 'Dạ, không sao. Mình nói chuyện khác nhé.' : 'Không sao. Mình nói chuyện khác nhé.',
+    photo: parent ? `${Self} có tấm ảnh nào muốn kể cho con nghe không? Gửi con giữ giúp nhé.` : 'Bạn có tấm ảnh nào muốn kể cho mình nghe không? Gửi Homeletter giữ giúp nhé.',
+    short: parent ? ['Dạ, con hiểu rồi ạ.', 'Dạ, con nghe rồi ạ.', `Dạ, con cảm ơn ${self}.`] : ['Dạ, mình hiểu rồi.', 'Ừ, mình nghe rồi nhé.', 'Cảm ơn bạn đã kể nhé.'],
+    long: parent ? ['Nghe hay quá ạ.', `Con thích nghe ${self} kể lắm.`, 'Thương quá ạ.', 'Dạ, con nhớ rồi.', `Hay quá. Lần sau ${self} kể tiếp con nghe nhé.`]
+      : ['Nghe hay quá.', 'Thương ghê.', 'Mình nhớ rồi nhé.', 'Nghe mà thấy ấm ghê.', 'Hay quá. Lần sau kể tiếp nhé.'],
+  };
+}
+export const CALL_ROLES = ['bo', 'me', 'con'] as const;
 
 export type Chapter = { at: number; until: number; say: string; who?: string; question?: string; transcript?: string | null };
 export type Podcast = {

@@ -3,9 +3,9 @@ import { token } from './api';
 import { type Drive, type MascotMode } from './Mascot';
 import { MascotAny as Mascot } from './Mascot3D';
 import { AUDIO_TYPE, fileName, record, type Recording } from './media';
-import type { CallScript, Me } from './shared';
+import { callLines, type CallScript, type Me } from './shared';
 import { buzz, sfx, tap } from './sound';
-import { playVoice, prefetchVoice, setVoiceContext, speak, stopSpeaking, unlockSpeech, voiceReady, warmVoice } from './speech';
+import { playVoice, prefetchVoice, setVoiceContext, speak, stopSpeaking, unlockSpeech, voiceAvailable, voiceReady, warmVoice } from './speech';
 import { Icon, toast } from './ui';
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -18,7 +18,8 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 const SNOOZE = 'homeletter-call-snooze';
 export const snoozed = () => { try { return Number(localStorage.getItem(SNOOZE) || 0) > Date.now(); } catch { return false; } };
-const snooze = () => { try { localStorage.setItem(SNOOZE, String(Date.now() + 3 * 3600e3)); } catch {} };
+/** "Để sau": ẩn lời mời gọi 1 ngày. */
+export const snooze = () => { try { localStorage.setItem(SNOOZE, String(Date.now() + 24 * 3600e3)); } catch {} };
 
 /** Máy có chép lời được không (Chrome, Safari mới có webkitSpeechRecognition). */
 function Recognition(): any {
@@ -44,8 +45,6 @@ const FILLER = /(?:^|\s)(ờ|ừ|ừm|à|ơ|thì|là|mà|và|với|nhưng|rồi|
 
 type Heard = { recording: Recording | null; transcript: string; speechMs: number };
 type Saved = { transcript?: string | null; reply?: string | null } | null;
-// Tiếng "ừm" phát ngay khi người kể vừa ngừng, trong lúc chờ câu đáp thật.
-const ACK = 'Ừm.';
 type Session = { id: string; script: CallScript };
 type Phase = 'ring' | 'talk' | 'photo' | 'bye';
 
@@ -73,18 +72,9 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
   const photoDone = useRef<(() => void) | null>(null);
 
   const role = me.me.role;
-  const parent = role === 'bo' || role === 'me';
-  const self = role === 'bo' ? 'bố' : role === 'me' ? 'mẹ' : me.me.name;
-  const Self = self[0].toUpperCase() + self.slice(1);
-  const lines = {
-    slow: parent ? `${Self} cứ từ từ nhé, nhớ gì kể nấy.` : 'Cứ từ từ nhé, nhớ gì kể nấy.',
-    busy: parent ? `Chắc ${self} đang bận. Tuần sau con gọi lại nhé.` : 'Chắc bạn đang bận. Tuần sau mình gọi lại nhé.',
-    skip: parent ? 'Dạ, không sao. Mình nói chuyện khác nhé.' : 'Không sao. Mình nói chuyện khác nhé.',
-    photo: parent ? `${Self} có tấm ảnh nào ngày ấy không? Gửi con giữ giúp nhé.` : 'Có tấm ảnh nào ngày ấy không? Gửi Homeletter giữ giúp nhé.',
-    short: parent ? ['Dạ, con nghe rồi.', 'Dạ.', `Dạ, con cảm ơn ${self}.`] : ['Mình nghe rồi.', 'Ừ, vậy à.', 'Cảm ơn nhé.'],
-    long: parent ? ['Nghe hay quá ạ.', `Con thích nghe ${self} kể lắm.`, 'Thương quá ạ.', 'Dạ, con nhớ rồi.', `Hay quá. Lần sau ${self} kể tiếp con nghe nhé.`]
-      : ['Nghe hay quá.', 'Thương ghê.', 'Mình nhớ rồi nhé.', 'Nghe mà thấy ấm ghê.', 'Hay quá. Lần sau kể tiếp nhé.'],
-  };
+  const lines = callLines(role);
+  // Một giọng cho cả cuộc gọi: Gemini, hoặc giọng máy nếu Gemini không dùng được ngay từ đầu.
+  const machine = useRef(false);
 
   // Chuẩn bị câu hỏi ngay khi chuông reo để nhấc máy là nói được.
   useEffect(() => {
@@ -96,7 +86,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
   // Có bộ câu hỏi là xin trước giọng đọc lời chào và câu đầu, chuông còn reo thì giọng đã sẵn.
   useEffect(() => {
     if (!session) return;
-    [session.script.greeting, session.script.questions[0]?.text, ACK, lines.slow].forEach((t) => t && prefetchVoice(t));
+    [session.script.greeting, session.script.questions[0]?.text, lines.ack, lines.slow].forEach((t) => t && prefetchVoice(t));
   }, [session]);
 
   useEffect(() => {
@@ -153,20 +143,30 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
   }
 
   /** Linh vật nói một câu, phụ đề hiện bên dưới. Lúc này không nghe để tiếng loa không lọt vào.
-   * Ưu tiên giọng Gemini, miệng mở theo âm lượng thật; quá 4 giây chưa có tiếng thì đọc câu mẫu alt (nếu đã sẵn giọng) hoặc giọng máy. */
+   * Cả cuộc gọi một giọng: Gemini thì chờ tới khi có tiếng (tối đa khoảng 12 giây, linh vật chớp mắt), không rơi sang giọng máy;
+   * giọng máy chỉ khi ngay từ lúc đổ chuông đã biết Gemini không dùng được. */
   async function say(text: string, alt?: string) {
     if (!live.current || !text) return;
-    setMode('talk');
     setCaption(text);
     const d = drive.current;
-    d.talking = true;
     d.voice = 0;
-    const level = (v: number) => { d.voice = v; };
-    let ok = await playVoice(text, level, 4000);
-    if (!ok && alt && voiceReady(alt) && live.current) { setCaption(alt); ok = await playVoice(alt, level, 500); }
-    if (!ok && live.current) {
+    if (machine.current) {
+      setMode('talk');
+      d.talking = true;
       d.voice = null;
       await speak(text, { start: () => { d.talking = true; }, boundary: () => { d.pulse = performance.now(); } });
+    } else {
+      setMode('idle');
+      d.talking = false;
+      const level = (v: number) => { d.voice = v; };
+      const start = () => { d.talking = true; setMode('talk'); };
+      let ok = await playVoice(text, level, 4000, start);
+      // Chưa kịp thì dùng câu mẫu cùng giọng Gemini nếu đã sẵn, không thì chờ tiếp.
+      if (!ok && alt && voiceReady(alt) && live.current) { setCaption(alt); ok = await playVoice(alt, level, 500, start); }
+      if (!ok && live.current) ok = await playVoice(text, level, 8000, start);
+      // Vẫn không có tiếng: để chữ trên màn hình đủ lâu để đọc, rồi đi tiếp. Tuyệt đối không chen giọng máy vào.
+      if (!ok && live.current) await wait(Math.min(5000, 1200 + text.split(/\s+/).length * 350));
+      d.talking = false;
     }
     d.voice = null;
     d.talking = false;
@@ -299,6 +299,9 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
 
   async function run(s: Session) {
     const qs = s.script.questions;
+    // Kiểm giọng Gemini một lần ngay lúc nhấc máy bằng câu đã nạp sẵn; hỏng thì cả cuộc gọi dùng giọng máy.
+    machine.current = !audio.current || !(await voiceAvailable(lines.ack));
+    if (!live.current) return;
     await say(s.script.greeting);
     let silentRow = 0;
     for (let n = 0; n < qs.length; n++) {
@@ -309,7 +312,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       // Câu đáp mẫu chọn trước; giọng của chúng và của câu hỏi kế tiếp được xin sẵn trong lúc người kể đang nói.
       const fallback = { short: pickOne(lines.short), long: pickOne(lines.long) };
       const next = qs[n + 1]?.text ?? s.script.goodbye;
-      [fallback.short, fallback.long, next, ACK, lines.slow].forEach(warmVoice);
+      if (!machine.current) [fallback.short, fallback.long, next, lines.ack, lines.slow, lines.skip, lines.busy].forEach(warmVoice);
       await say(qs[n].text);
       await wait(250);
       let h = await hear();
@@ -331,16 +334,15 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
         continue;
       }
       silentRow = 0;
-      if (qs[n].photo) warmVoice(lines.photo);
+      if (qs[n].photo && !machine.current) warmVoice(lines.photo);
       const reply = replyFor(s, n, h, upload(s, n, h));
       setMode('idle');
-      // Giọng Gemini sẵn thì "ừm" một tiếng ngay cho khỏi im, rồi mới đáp.
-      const acked = voiceReady(ACK);
-      if (acked) await say(ACK);
+      // Câu đáp chưa kịp về thì "ừm, mình nghe đây" một tiếng (đúng giọng Gemini) cho khỏi im.
+      const early = await Promise.race([reply, wait(900).then(() => undefined)]);
+      if (early === undefined && !machine.current && voiceReady(lines.ack)) await say(lines.ack);
       const local = h.speechMs < 3000 ? fallback.short : fallback.long;
       const text = (await reply) || local;
-      const trim = (t: string) => (acked ? t.replace(/^Ừm[,.]?\s*/i, '').replace(/^./, (c) => c.toUpperCase()) : t) || t;
-      await say(trim(text), text === local ? undefined : local);
+      await say(text, text === local ? undefined : local);
       if (qs[n].photo && live.current) {
         setPhase('photo');
         const picked = new Promise<void>((r) => { photoDone.current = r; });

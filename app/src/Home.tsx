@@ -5,6 +5,8 @@ import { SILENT_HOURS } from './shared';
 import { hoursSince, localTime, weather } from './time';
 import { Avatar, Icon } from './ui';
 import { tap } from './sound';
+import { CallCard } from './CallCard';
+import { snooze, snoozed } from './Call';
 
 type Screen = 'camera' | 'feed' | 'chat' | 'calendar' | 'jar' | 'family' | 'podcast' | 'recap';
 type Podcast = { id: string; title: string; topic: string; memberId: string; duration: number; cover?: string | null; createdAt: string };
@@ -36,8 +38,10 @@ function Thumb({ src }: { src: string }) {
     : <img src={src} alt="" loading="lazy" />;
 }
 
-export function Home({ me, onOpen }: { me: Me; onOpen: (s: Screen, arg?: string) => void }) {
+export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean; onCall: () => void; onOpen: (s: Screen, arg?: string) => void }) {
   const [data, setData] = useState<HomeData | null>(null);
+  const [later, setLater] = useState(false);
+  const invite = callDue && !later && !snoozed();
   const [wx, setWx] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
@@ -72,6 +76,8 @@ export function Home({ me, onOpen }: { me: Me; onOpen: (s: Screen, arg?: string)
           {me.members.slice(0, 4).map((m) => <Avatar key={m.id} m={m} size={34} />)}
         </button>
       </header>
+
+      {invite && <CallCard role={me.me.role} onAnswer={onCall} onLater={() => { snooze(); setLater(true); }} />}
 
       <section className="home-sec">
         <h2 className="home-h">Cả nhà lúc này</h2>
@@ -129,7 +135,7 @@ export function Home({ me, onOpen }: { me: Me; onOpen: (s: Screen, arg?: string)
       )}
 
       <section className="home-sec">
-        <h2 className="home-h">Podcast nhà mình</h2>
+        <h2 className="home-h">Podcast nhà mình{invite && <i className="home-dot" aria-label="Có cuộc gọi đang chờ" />}</h2>
         <div className="home-row">
           {shelf.length ? shelf.map((p) => (
             <button key={p.id} className="home-album" onClick={go('podcast', p.id)}>
