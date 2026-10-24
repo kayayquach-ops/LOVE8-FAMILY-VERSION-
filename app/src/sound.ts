@@ -67,6 +67,15 @@ export async function startMusic() {
   music = { src, gain };
 }
 
+/** Hạ nhạc nền xuống gần như im khi đang thu giọng (nhạc ra loa sẽ lọt vào mic), rồi trả lại. */
+export function duckMusic(on: boolean) {
+  if (!ctx || !music) return;
+  const g = music.gain.gain;
+  g.cancelScheduledValues(ctx.currentTime);
+  g.setValueAtTime(g.value, ctx.currentTime);
+  g.linearRampToValueAtTime(on ? 0.0001 : 0.32, ctx.currentTime + (on ? 0.1 : 1.5));
+}
+
 export function stopMusic(seconds = 3) {
   if (!ctx || !music) return;
   const m = music;

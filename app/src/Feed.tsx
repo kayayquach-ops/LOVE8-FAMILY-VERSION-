@@ -159,6 +159,7 @@ function PostCard({ p, active, name }: { p: Post; active: boolean; name: string 
     return (
       <div className="card voice-card">
         {p.questionWeek && <div className="muted" style={{ color: '#6B5544' }}>Trả lời câu hỏi tuần</div>}
+        {p.caption && <div className="muted" style={{ color: '#6B5544' }}>{p.caption}</div>}
         <VoiceDot url={p.media!} seconds={p.seconds} />
       </div>
     );

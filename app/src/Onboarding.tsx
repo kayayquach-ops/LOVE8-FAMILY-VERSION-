@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, token } from './api';
 import { CityPicker } from './CityPicker';
+import { fileName, type Recording } from './media';
 import type { Role } from './shared';
 import { buzz, sfx, startMusic, stopMusic, tap } from './sound';
 import { Icon, toast, Typed } from './ui';
+import { VoiceNote } from './VoiceNote';
 
-type Step = 'hello' | 'role' | 'kid' | 'name' | 'dob' | 'city' | 'seen' | 'hug' | 'food' | 'love' | 'unsaid' | 'story' | 'home' | 'code' | 'invite';
-const FLOW: Step[] = ['hello', 'role', 'kid', 'name', 'dob', 'city', 'seen', 'hug', 'food', 'love', 'unsaid', 'story', 'home'];
+type Step = 'hello' | 'role' | 'kid' | 'name' | 'dob' | 'city' | 'seen' | 'hug' | 'food' | 'love' | 'voice' | 'unsaid' | 'story' | 'home' | 'code' | 'invite';
+const FLOW: Step[] = ['hello', 'role', 'kid', 'name', 'dob', 'city', 'seen', 'hug', 'food', 'love', 'voice', 'unsaid', 'story', 'home'];
 
 // Chuyện vì sao có Homeletter, kể chậm từng trang.
 const STORY: Array<{ art: string; lines: [string, string] }> = [
@@ -28,12 +30,16 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [dob, setDob] = useState({ d: '', m: '', y: '' });
   const [a, setA] = useState<Record<string, string>>({});
   const [wantHug, setWantHug] = useState<boolean | null>(null);
+  // Câu "thương" đầu tiên bằng giọng mình: chỉ giữ trong máy, tạo nhà xong mới gửi lên.
+  const [voice, setVoice] = useState<Recording | null>(null);
+  const [micDenied, setMicDenied] = useState(false);
   const [page, setPage] = useState(0);
   const [family, setFamily] = useState('Nhà mình');
   const [code, setCode] = useState(invite);
   const [inviteName, setInviteName] = useState('');
   const [made, setMade] = useState<{ code: string; family: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const choosing = useRef(false);
   // Chữ đã hiện xong hay chưa tính theo từng câu (step và page), để khi sang câu mới không còn sót trạng thái cũ.
   const [typedKey, setTypedKey] = useState('');
   const typedNow = `${step}:${page}`;
@@ -56,14 +62,28 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     setStep(step === 'code' ? 'home' : FLOW[Math.max(0, FLOW.indexOf(step) - 1)]);
   };
   // Chọn xong thì để lời đáp hiện một lúc rồi tự sang câu sau.
-  const choose = (k: string, v: string) => { if (a[k]) return; tap(); setA({ ...a, [k]: v }); setTimeout(next, 4200); };
+  // Quay lại câu đã trả lời thì vẫn chọn lại được; chỉ chặn bấm thêm trong lúc đang chờ sang câu sau.
+  const choose = (k: string, v: string) => {
+    if (choosing.current) return;
+    choosing.current = true;
+    tap();
+    setA({ ...a, [k]: v });
+    setTimeout(() => { choosing.current = false; next(); }, 4200);
+  };
 
   async function finish(join: boolean) {
     setBusy(true);
     try {
-      const body = { name: name.trim(), role: role!, city, intro: { ...a, kid, ...(wantHug === null ? {} : { wantHug }) } };
+      const body = { name: name.trim(), role: role!, city, intro: { ...a, kid, ...(wantHug === null ? {} : { wantHug }), loveVoice: !!voice } };
       const r = join ? await api.join({ ...body, code: code.trim() }) : await api.create({ ...body, family: family.trim() || 'Nhà mình' });
       token.set(r.token);
+      if (voice) {
+        // Gửi lỗi thì thôi, không chặn việc vào nhà.
+        const f = new FormData();
+        f.set('file', voice.blob, fileName(voice.blob, 'first-voice'));
+        f.set('seconds', String(voice.seconds));
+        await api.firstVoice(f).catch(() => {});
+      }
       if (dobValid) await fetch('/api/me/dob', { method: 'PUT', headers: { 'content-type': 'application/json', authorization: `Bearer ${r.token}` }, body: JSON.stringify({ dob: dobIso }) }).catch(() => {});
       sfx('arrive');
       stopMusic(4);
@@ -187,6 +207,17 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       {step === 'love' && (
         <Ask key="love" q={parent ? `${Self} đã bao giờ nói “${self} thương con” chưa?` : 'Bạn đã bao giờ nói “con thương bố mẹ” chưa?'} echo={a.love && loveOpts[a.love]} {...T}>
           {Object.keys(loveOpts).map((k) => <Opt key={k} on={a.love === k} onClick={() => choose('love', k)}>{k}</Opt>)}
+        </Ask>
+      )}
+
+      {step === 'voice' && (
+        <Ask key="voice" q={parent ? `${Self} nói một câu thôi, giờ luôn nhé.` : 'Nói một câu thôi, giờ luôn nhé.'}
+          sub={`Như là: “${parent ? `${Self} thương ${kids}.` : 'Con thương bố mẹ.'}”`}
+          echo={voice ? 'Câu ấy sẽ là lá thư đầu tiên trong nhà.' : micDenied ? 'Máy chưa cho dùng micro. Không sao, mình nói sau nhé.' : undefined} {...T}
+          footer={voice
+            ? <><button className="btn" onClick={next}>Giữ câu này</button><button className="link" onClick={() => { tap(); URL.revokeObjectURL(voice.url); setVoice(null); }}>Thu lại</button></>
+            : <button className="link" onClick={next}>Để sau</button>}>
+          <VoiceNote value={voice} onChange={(r) => { setMicDenied(false); setVoice(r); }} onDenied={() => setMicDenied(true)} />
         </Ask>
       )}
 

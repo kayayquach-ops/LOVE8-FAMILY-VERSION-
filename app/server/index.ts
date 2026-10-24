@@ -12,7 +12,7 @@ import { homeRouter } from './home.ts';
 import { chatRouter, chatStreamRouter, migrateChat } from './chat.ts';
 import { migrateRecap, recapRouter, startRecapScheduler } from './recap.ts';
 import { callRouter, migrateCall } from './call.ts';
-import { migratePodcast, podcastRouter } from './podcast.ts';
+import { buildFirstVoicePodcast, migratePodcast, podcastRouter } from './podcast.ts';
 import { liveRouter, liveStreamRouter } from './facetime.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
@@ -76,12 +76,13 @@ async function newCode() {
 
 async function addMember(familyId: string, b: any) {
   const token = randomBytes(24).toString('base64url');
-  // Khảo sát lúc mới vào: wantHug chỉ nhận true/false, bản cũ không có trường này.
-  if (b.intro && typeof b.intro === 'object' && 'wantHug' in b.intro) {
-    const w = b.intro.wantHug;
-    if (w === true || w === 'true') b.intro.wantHug = true;
-    else if (w === false || w === 'false') b.intro.wantHug = false;
-    else delete b.intro.wantHug;
+  // Khảo sát lúc mới vào: wantHug (muốn ôm) và loveVoice (có thu câu thương đầu tiên) chỉ nhận true/false, bản cũ không có các trường này.
+  for (const k of ['wantHug', 'loveVoice']) {
+    if (!b.intro || typeof b.intro !== 'object' || !(k in b.intro)) continue;
+    const w = b.intro[k];
+    if (w === true || w === 'true') b.intro[k] = true;
+    else if (w === false || w === 'false') b.intro[k] = false;
+    else delete b.intro[k];
   }
   await pool.query('insert into members (id, family_id, name, role, token, city, intro) values ($1,$2,$3,$4,$5,$6,$7)', [
     id(), familyId, String(b.name || '').slice(0, 30) || 'Mình', ['bo', 'me', 'con'].includes(b.role) ? b.role : 'con', token,
@@ -115,6 +116,22 @@ app.get('/api/survey/hug', h(async (_req, res) => {
   for (const r of rows) {
     let w: unknown;
     try { w = JSON.parse(r.intro).wantHug; } catch { continue; }
+    if (typeof w !== 'boolean') continue;
+    const k = w ? 'yes' : 'no';
+    out[k]++;
+    out.total++;
+    out[r.role === 'bo' || r.role === 'me' ? 'parent' : 'child'][k]++;
+  }
+  res.json({ ...out, rate: out.total ? Math.round((out.yes / out.total) * 100) / 100 : null });
+}));
+
+// Số liệu gộp: bao nhiêu người thu câu "thương" đầu tiên bằng giọng mình, bao nhiêu người để sau. Chỉ đếm.
+app.get('/api/survey/voice', h(async (_req, res) => {
+  const { rows } = await pool.query(`select role, intro from members where intro like '%"loveVoice"%'`);
+  const out = { yes: 0, no: 0, total: 0, parent: { yes: 0, no: 0 }, child: { yes: 0, no: 0 } };
+  for (const r of rows) {
+    let w: unknown;
+    try { w = JSON.parse(r.intro).loveVoice; } catch { continue; }
     if (typeof w !== 'boolean') continue;
     const k = w ? 'yes' : 'no';
     out[k]++;
@@ -188,6 +205,22 @@ app.post('/api/posts', upload.single('file'), h(async (req, res) => {
     [id(), req.member!.family_id, req.member!.id, kind, media(req.file), String(b.caption || '').slice(0, 120) || null,
       b.meal === 'true', Number(b.seconds) || null, b.questionWeek || null],
   );
+  res.json({ ok: true });
+}));
+
+// Câu "thương" đầu tiên thu lúc mới vào, gửi ngay sau khi tạo hoặc vào nhà: thành một tin giọng nói trong nhà
+// và tập mở đầu trong album podcast của người đó. Mỗi người chỉ một lần.
+app.post('/api/me/first-voice', upload.single('file'), h(async (req, res) => {
+  const m = req.member!;
+  if (!req.file || !req.file.mimetype.startsWith('audio/')) return res.status(400).json({ error: 'Thiếu ghi âm' });
+  const { rows: [me] } = await pool.query('select name from members where id = $1', [m.id]);
+  const caption = `Lời đầu tiên của ${me.name}`;
+  const { rowCount } = await pool.query(`select 1 from posts where author_id = $1 and kind = 'voice' and caption = $2`, [m.id, caption]);
+  if (rowCount) return res.json({ ok: true });
+  const url = media(req.file)!;
+  await pool.query('insert into posts (id, family_id, author_id, kind, media, caption, seconds) values ($1,$2,$3,$4,$5,$6,$7)',
+    [id(), m.family_id, m.id, 'voice', url, caption, Math.min(20, Number(req.body.seconds) || 0) || null]);
+  void buildFirstVoicePodcast(m.family_id, m.id, me.name, url).catch((e) => console.error('[podcast] lời đầu tiên:', e));
   res.json({ ok: true });
 }));
 

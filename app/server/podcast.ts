@@ -177,6 +177,18 @@ export async function buildPodcastsForCall(callId: string) {
   for (const j of jobs) await enqueue(j);
 }
 
+/** Tập mở đầu trong album của một người: câu "thương" đầu tiên thu lúc mới vào nhà. */
+export async function buildFirstVoicePodcast(fid: string, memberId: string, name: string, media: string) {
+  const file = mediaFile(media);
+  if (!existsSync(file)) return;
+  await enqueue({
+    fid, key: `first:${memberId}`, kind: 'person', memberId, topic: 'loi-nhan', title: 'Lời thương đầu tiên', cover: await coverFor(fid, memberId),
+    intro: `Đây là Homeletter. Ngày đầu vào nhà, ${name} có một câu muốn nói.`,
+    outro: 'Câu ấy, từ giờ nhà mình giữ.',
+    clips: [{ file, who: name, question: 'Lời thương đầu tiên', transcript: null, say: `Giọng ${name}.` }],
+  });
+}
+
 function row(r: any): Podcast {
   let chapters: Chapter[] = [];
   try { chapters = JSON.parse(r.chapters); } catch {}

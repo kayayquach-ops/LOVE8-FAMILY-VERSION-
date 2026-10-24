@@ -29,6 +29,7 @@ export const api = {
   hug: () => { const f = new FormData(); f.set('kind', 'hug'); return call('/api/posts', { method: 'POST', body: f }); },
   react: (id: string, emoji: string) => call(`/api/posts/${id}/react`, json({ emoji })),
   reply: (id: string, f: FormData) => call(`/api/posts/${id}/replies`, { method: 'POST', body: f }),
+  firstVoice: (f: FormData) => call('/api/me/first-voice', { method: 'POST', body: f }),
   remove: (id: string) => call(`/api/posts/${id}`, { method: 'DELETE' }),
   week: () => call<Week>('/api/week'),
   mission: (key: string) => call(`/api/missions/${key}`, { method: 'POST' }),
