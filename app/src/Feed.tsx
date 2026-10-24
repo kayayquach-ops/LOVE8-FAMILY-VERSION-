@@ -1,66 +1,79 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from './api';
 import { VoiceDot } from './Camera';
-import { AUDIO_TYPE, fileName, record, type Recording } from './media';
+import { fileName, useHoldMic, type Recording } from './media';
 import { cityOf, type Me, type Post, type Week } from './shared';
-import { buzz, tap } from './sound';
+import { tap } from './sound';
 import { ago, localTime } from './time';
 import { Avatar, Icon, toast } from './ui';
 
 const EMOJIS = ['❤️', '🥺', '😂', '🙏'];
 
 // Tin nhà: mỗi trang một tin, vuốt lên xem tin tiếp. Trang đầu là chuyện của tuần này.
-export function Feed({ me, onClose }: { me: Me; onClose: () => void }) {
+// start: mở thẳng tới tin này (bấm ảnh ở Trang chủ).
+export function Feed({ me, start, onClose }: { me: Me; start?: string | null; onClose: () => void }) {
   const [posts, setPosts] = useState<Post[] | null>(null);
   const [week, setWeek] = useState<Week | null>(null);
   const [index, setIndex] = useState(0);
   const [text, setText] = useState('');
-  const [rec, setRec] = useState(false);
-  const stop = useRef<(() => Promise<Recording>) | null>(null);
+  const [busy, setBusy] = useState(false);
+  const sendingRef = useRef(false);
   const pager = useRef<HTMLDivElement>(null);
+  const jumped = useRef(false);
 
   const load = () => Promise.all([api.feed().then(setPosts), api.week().then(setWeek)]).catch((e) => toast(e.message));
-  useEffect(() => { void load(); const t = setInterval(load, 20000); return () => clearInterval(t); }, []);
+  useEffect(() => { void load(); const t = setInterval(() => { if (!document.hidden) void load(); }, 20000); return () => clearInterval(t); }, []);
+  useEffect(() => {
+    if (jumped.current || !start || !posts || !pager.current) return;
+    jumped.current = true;
+    const i = posts.findIndex((p) => p.id === start);
+    if (i >= 0) { pager.current.scrollTop = (i + 1) * pager.current.clientHeight; setIndex(i + 1); }
+  }, [posts, start]);
 
   const member = (id: string) => me.members.find((m) => m.id === id);
   // Trang 0 là "Tuần này"; trang i là tin i - 1.
   const current = index > 0 ? posts?.[index - 1] : undefined;
 
-  async function voiceDown() {
-    const s = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
-    if (!s) return toast('Cho phép micro để nói nhé');
-    stop.current = record(s, AUDIO_TYPE());
-    setRec(true);
-    buzz(20);
-  }
-  async function voiceUp(questionWeek?: string) {
-    if (!rec) return;
-    setRec(false);
-    const r = await stop.current?.();
-    if (!r || r.seconds < 1) return toast('Giữ lâu hơn một chút để nói');
+  // Giữ để nói: ở trang Tuần này là trả lời câu hỏi tuần, ở trang tin là trả lời tin đó.
+  const target = useRef<{ week?: string; post?: string }>({});
+  const voice = useHoldMic(async (r: Recording) => {
     const f = new FormData();
     f.set('file', r.blob, fileName(r.blob, 'voice'));
     f.set('seconds', String(r.seconds));
-    if (current && !questionWeek) await api.reply(current.id, f);
-    else { f.set('kind', 'voice'); if (questionWeek) f.set('questionWeek', questionWeek); await api.post(f); }
-    tap();
-    toast('Đã gửi');
-    void load();
-  }
+    try {
+      const t = target.current;
+      if (t.post) await api.reply(t.post, f);
+      else { f.set('kind', 'voice'); if (t.week) f.set('questionWeek', t.week); await api.post(f); }
+      tap();
+      toast('Đã gửi');
+      void load();
+    } catch (e) { toast((e as Error).message); }
+  });
+  const voiceDown = (t: { week?: string; post?: string }) => { target.current = t; void voice.down(); };
+  const voiceUp = () => { void voice.up(); };
 
   async function sendText() {
-    if (!current || !text.trim()) return;
-    const f = new FormData();
-    f.set('text', text.trim());
-    await api.reply(current.id, f);
-    setText('');
-    tap();
-    void load();
+    const t = text.trim();
+    // Khoá bằng ref: hai lần bấm sát nhau vẫn chỉ gửi một lần (state chưa kịp đổi giữa hai lần).
+    if (!current || !t || sendingRef.current) return;
+    sendingRef.current = true;
+    setBusy(true);
+    try {
+      const f = new FormData();
+      f.set('text', t);
+      await api.reply(current.id, f);
+      setText('');
+      tap();
+      void load();
+    } catch (e) { toast((e as Error).message); } finally { sendingRef.current = false; setBusy(false); }
   }
 
   async function react(p: Post, e: string) {
     tap();
-    await api.react(p.id, p.reactions[me.me.id] === e ? '' : e);
+    const next = p.reactions[me.me.id] === e ? '' : e;
+    // Hiện ngay trên màn, máy chủ trả lời sau.
+    setPosts((l) => l && l.map((x) => (x.id === p.id ? { ...x, reactions: { ...x.reactions, [me.me.id]: next } } : x)));
+    try { await api.react(p.id, next); } catch (err) { toast((err as Error).message); }
     void load();
   }
 
@@ -82,7 +95,7 @@ export function Feed({ me, onClose }: { me: Me; onClose: () => void }) {
 
       <div className="pager" ref={pager} onScroll={(e) => setIndex(Math.round(e.currentTarget.scrollTop / e.currentTarget.clientHeight))}>
         <div className="page">
-          {week ? <WeekCard week={week} me={me} recording={rec} onDown={voiceDown} onUp={() => voiceUp(week.week)} /> : <div className="muted" style={{ textAlign: 'center' }}>Đang mở thư nhà...</div>}
+          {week ? <WeekCard week={week} me={me} recording={voice.rec && !!target.current.week} onDown={() => voiceDown({ week: week.week })} onUp={voiceUp} /> : <div className="muted" style={{ textAlign: 'center' }}>Đang mở thư nhà...</div>}
           {posts && posts.length > 0 && <div className="muted" style={{ textAlign: 'center', marginTop: 18 }}>Vuốt lên để xem tin nhà</div>}
         </div>
         {posts?.length === 0 && (
@@ -103,7 +116,7 @@ export function Feed({ me, onClose }: { me: Me; onClose: () => void }) {
                   <b>{a?.id === me.me.id ? 'Bạn' : a?.name}</b>
                   <div><span>{ago(p.createdAt)}{t && a?.city ? ` · ${cityOf(a.city)?.name} ${t}` : ''}</span></div>
                 </div>
-                {p.authorId === me.me.id && <button className="link" style={{ marginLeft: 'auto', padding: '8px 4px' }} onClick={() => remove(p)}>Xoá</button>}
+                {p.authorId === me.me.id && <button className="link" style={{ marginLeft: 'auto', padding: '0 6px', minHeight: 44, minWidth: 44 }} onClick={() => remove(p)}>Xoá</button>}
               </div>
               <PostCard p={p} active={current?.id === p.id} name={a?.name ?? ''} />
               <div className="reacts">
@@ -127,14 +140,15 @@ export function Feed({ me, onClose }: { me: Me; onClose: () => void }) {
         })}
       </div>
 
+      {/* Thanh trả lời nằm đè lên đáy, không chiếm chỗ: hiện ra hay ẩn đi đều không làm các trang co giãn và nhảy. */}
       {current && (
-        <div className="reply-bar">
-          <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendText()}
-            placeholder={`Trả lời ${current.authorId === me.me.id ? 'cả nhà' : member(current.authorId)?.name}...`} />
+        <div className="reply-bar fade-only">
+          <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) void sendText(); }}
+            enterKeyHint="send" placeholder={`Trả lời ${current.authorId === me.me.id ? 'cả nhà' : member(current.authorId)?.name}...`} />
           {text.trim() ? (
-            <button className="round dark" onClick={sendText} aria-label="Gửi"><Icon name="send" /></button>
+            <button className="round dark" onClick={sendText} disabled={busy} aria-label="Gửi"><Icon name="send" /></button>
           ) : (
-            <button className={`round ${rec ? 'rec' : ''}`} onPointerDown={voiceDown} onPointerUp={() => voiceUp()} onPointerLeave={() => voiceUp()}
+            <button className={`round ${voice.rec && target.current.post ? 'rec' : ''}`} onPointerDown={() => voiceDown({ post: current.id })} onPointerUp={voiceUp} onPointerLeave={voiceUp} onPointerCancel={voiceUp}
               onContextMenu={(e) => e.preventDefault()} aria-label="Giữ để trả lời bằng giọng nói"><Icon name="mic" /></button>
           )}
         </div>
@@ -177,8 +191,8 @@ function MiniVoice({ url, seconds }: { url: string; seconds?: number | null }) {
   const a = useRef<HTMLAudioElement>(null);
   const [on, setOn] = useState(false);
   return (
-    <button onClick={() => { if (on) a.current?.pause(); else void a.current?.play(); setOn(!on); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-      <audio ref={a} src={url} onEnded={() => setOn(false)} />
+    <button onClick={() => { if (on) a.current?.pause(); else void a.current?.play().catch(() => {}); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minHeight: 32 }}>
+      <audio ref={a} src={url} preload="none" onPlay={() => setOn(true)} onPause={() => setOn(false)} onEnded={() => setOn(false)} />
       <Icon name={on ? 'pause' : 'play'} size={14} /> {seconds ? `${Math.round(seconds)}s` : 'Nghe'}
     </button>
   );
@@ -191,7 +205,7 @@ function WeekCard({ week, me, recording, onDown, onUp }: { week: Week; me: Me; r
     <div className="panel">
       <div className="muted">Câu hỏi tuần này</div>
       <div style={{ fontSize: 22, lineHeight: 1.4, margin: '6px 0 14px' }}>{week.question}</div>
-      <button className={`talk ${recording ? 'rec' : ''}`} style={{ marginTop: 0 }} onPointerDown={onDown} onPointerUp={onUp} onPointerLeave={onUp} onContextMenu={(e) => e.preventDefault()}>
+      <button className={`talk ${recording ? 'rec' : ''}`} style={{ marginTop: 0 }} onPointerDown={onDown} onPointerUp={onUp} onPointerLeave={onUp} onPointerCancel={onUp} onContextMenu={(e) => e.preventDefault()}>
         <Icon name="mic" size={20} /> {recording ? 'Đang nghe...' : 'Giữ để trả lời bằng giọng nói'}
       </button>
       <div className="h2" style={{ marginTop: 22 }}>Tuần này nhà mình</div>

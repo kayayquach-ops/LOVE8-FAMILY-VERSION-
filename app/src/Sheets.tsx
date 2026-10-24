@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { api, token } from './api';
 import { CityPicker } from './CityPicker';
 import { Notify } from './Notify';
-import { shareInvite } from './Onboarding';
+import { copyCode, shareInvite } from './Onboarding';
+import { shrinkImage } from './media';
 import { cityOf, ROLE_LABEL, SILENT_HOURS, type Me, type Week } from './shared';
 import { buzz, sfx, tap } from './sound';
 import { ago, hoursSince, localTime, weather } from './time';
@@ -33,18 +34,29 @@ export function Family({ me, onClose, onChanged }: { me: Me; onClose: () => void
     for (const m of me.members) weather(m.city).then((t) => t && setWx((w) => ({ ...w, [m.id]: t })));
   }, [me.members]);
 
+  const [busy, setBusy] = useState(false);
   async function save(avatar?: File) {
-    const f = new FormData();
-    f.set('name', name.trim()); f.set('city', city); f.set('phone', phone.trim());
-    if (avatar) f.set('avatar', avatar);
-    await api.updateMe(f).catch((e) => toast(e.message));
-    tap(); toast('Đã lưu'); setEdit(false); onChanged();
+    if (busy) return;
+    if (!name.trim()) return toast('Điền tên mọi người gọi bạn nhé');
+    setBusy(true);
+    try {
+      const f = new FormData();
+      f.set('name', name.trim()); f.set('city', city); f.set('phone', phone.trim());
+      if (avatar) f.set('avatar', await shrinkImage(avatar, 800), 'avatar.jpg');
+      await api.updateMe(f);
+      tap(); toast('Đã lưu'); setEdit(false); onChanged();
+    } catch (e) {
+      // Lưu lỗi thì giữ nguyên ô đang sửa để bấm lưu lại.
+      toast((e as Error).message);
+    } finally { setBusy(false); }
   }
 
+  const [hugged, setHugged] = useState(false);
   async function hug() {
+    if (hugged) return;
+    setHugged(true);
     buzz(40); sfx('hug');
-    await api.hug();
-    toast('Đã ôm cả nhà');
+    try { await api.hug(); toast('Đã ôm cả nhà'); } catch (e) { toast((e as Error).message); setHugged(false); }
   }
 
   return (
@@ -74,8 +86,9 @@ export function Family({ me, onClose, onChanged }: { me: Me; onClose: () => void
       <div className="panel" style={{ textAlign: 'center' }}>
         <img className="invite-logo" src="/logo.svg" alt="" />
         <div className="muted">Mã nhà</div>
-        <div className="code">{me.family.code}</div>
-        <button className="btn" onClick={() => shareInvite(me.family.code, me.family.name)}><Icon name="share" size={20} /> Gửi lời mời</button>
+        <button className="code" onClick={() => void copyCode(me.family.code)} aria-label={`Mã nhà ${me.family.code}, chạm để chép`}>{me.family.code}</button>
+        <div className="code-hint">Chạm vào mã để chép</div>
+        <button className="btn" onClick={() => void shareInvite(me.family.code, me.family.name)}><Icon name="share" size={20} /> Gửi lời mời</button>
       </div>
 
       <div className="h2">Thông tin của bạn</div>
@@ -84,13 +97,13 @@ export function Family({ me, onClose, onChanged }: { me: Me; onClose: () => void
           <input className="field" style={{ width: '100%' }} value={name} onChange={(e) => setName(e.target.value)} placeholder="Tên mọi người gọi" />
           <input className="field" style={{ width: '100%' }} value={phone} inputMode="tel" onChange={(e) => setPhone(e.target.value)} placeholder="Số điện thoại (để cả nhà bấm gọi)" />
           <CityPicker value={city} onChange={(v) => v && setCity(v)} />
-          <button className="btn" onClick={() => save()}>Lưu</button>
+          <button className="btn" disabled={busy} onClick={() => save()}>{busy ? 'Đang lưu...' : 'Lưu'}</button>
         </div>
       ) : (
         <div className="panel row">
           <label style={{ position: 'relative' }} aria-label="Đổi ảnh">
             <Avatar m={me.me} size={56} />
-            <input type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && save(e.target.files[0])} />
+            <input type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void save(f); }} />
           </label>
           <div style={{ flex: 1 }}>
             <div className="name" style={{ fontSize: 17 }}>{me.me.name}</div>

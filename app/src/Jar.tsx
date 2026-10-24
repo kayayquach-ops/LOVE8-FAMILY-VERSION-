@@ -118,6 +118,7 @@ export function Jar({ me, onClose }: { me: Me; onClose: () => void }) {
   const [w, setW] = useState<Week | null>(null);
   const [j, setJ] = useState<JarData | null>(null);
   const [soon, setSoon] = useState<SeedDef | null>(null);
+  const [doing, setDoing] = useState<string | null>(null);
   const load = () => {
     api.week().then(setW).catch((e) => toast(e.message));
     jfetch<JarData>('/api/jar').then(setJ).catch((e) => toast(e.message));
@@ -178,8 +179,12 @@ export function Jar({ me, onClose }: { me: Me; onClose: () => void }) {
               <div>{m.text}</div>
               <div className="pts">+1 hạt{m.doneBy.length ? ` · ${m.doneBy.length} người đã làm` : ''}</div>
             </div>
-            <button className={`done-btn ${m.done ? 'done' : ''}`} disabled={m.done}
-              onClick={async () => { tap(); buzz(30); await api.mission(m.key).catch((e) => toast(e.message)); sfx('sparkle'); toast('+1 hạt vào lọ'); load(); }}>
+            <button className={`done-btn ${m.done ? 'done' : ''}`} disabled={m.done || doing === m.key}
+              onClick={async () => {
+                if (doing) return;
+                setDoing(m.key); tap(); buzz(30);
+                try { await api.mission(m.key); sfx('sparkle'); toast('+1 hạt vào lọ'); load(); } catch (e) { toast((e as Error).message); } finally { setDoing(null); }
+              }}>
               {m.done ? 'Đã làm' : 'Xong'}
             </button>
           </div>

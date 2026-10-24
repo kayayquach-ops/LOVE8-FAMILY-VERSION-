@@ -5,15 +5,37 @@ const KEY = 'homeletter-token';
 export const token = {
   get: () => { try { return localStorage.getItem(KEY); } catch { return null; } },
   set: (t: string) => { try { localStorage.setItem(KEY, t); } catch {} },
-  clear: () => { try { localStorage.removeItem(KEY); } catch {} },
+  clear: () => { try { localStorage.removeItem(KEY); localStorage.removeItem('homeletter-me'); } catch {} },
 };
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const t = token.get();
   const res = await fetch(path, { ...init, headers: { ...(init.body instanceof FormData ? {} : { 'content-type': 'application/json' }), ...(t ? { authorization: `Bearer ${t}` } : {}), ...init.headers } });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Có lỗi, thử lại nhé');
+  if (!res.ok) throw Object.assign(new Error(data.error || 'Có lỗi, thử lại nhé'), { status: res.status });
   return data as T;
+}
+
+/** Máy chủ nói thẳng là mã của máy này không còn dùng được (khác với mất mạng hay máy chủ đang khởi động lại). */
+export const isSignedOut = (e: unknown) => (e as { status?: number })?.status === 401;
+
+/** Gửi ảnh, video kèm tiến độ (fetch chưa báo được tiến độ tải lên). */
+export function upload<T>(path: string, form: FormData, onProgress?: (p: number) => void): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', path);
+    const t = token.get();
+    if (t) x.setRequestHeader('authorization', `Bearer ${t}`);
+    x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(e.loaded / e.total); };
+    x.onload = () => {
+      let data: { error?: string } = {};
+      try { data = JSON.parse(x.responseText); } catch {}
+      if (x.status >= 200 && x.status < 300) resolve(data as T);
+      else reject(Object.assign(new Error(data.error || 'Có lỗi, thử lại nhé'), { status: x.status }));
+    };
+    x.onerror = () => reject(new Error('Mạng đang chập chờn, gửi lại nhé'));
+    x.send(form);
+  });
 }
 
 const json = (body: unknown) => ({ method: 'POST', body: JSON.stringify(body) });

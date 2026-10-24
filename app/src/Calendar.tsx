@@ -47,6 +47,7 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
   const [year, setYear] = useState('');
   const [lunar, setLunar] = useState(false);
   const [leap, setLeap] = useState(false);
+  const [saving, setSaving] = useState(false);
   const touchX = useRef<number | null>(null);
 
   const load = () => call<CalEvent[]>('/api/calendar').then(setEvents).catch((e) => toast(e.message));
@@ -91,12 +92,14 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
   const add = async () => {
     const t = title.trim() || (kind === 'birthday' ? 'Sinh nhật' : '');
     if (!t) return toast('Đặt tên cho ngày này nhé');
+    if (saving) return;
+    setSaving(true);
     try {
       await call('/api/calendar', { method: 'POST', body: JSON.stringify({ kind, title: t, day: Number(day), month: Number(month), year: year ? Number(year) : undefined, lunar, leap: lunar && leap }) });
       setTitle(''); setDay(''); setMonth(''); setYear(''); setLunar(false); setLeap(false); setAdding(false);
       toast('Đã thêm vào lịch');
       void load();
-    } catch (e) { toast((e as Error).message); }
+    } catch (e) { toast((e as Error).message); } finally { setSaving(false); }
   };
 
   const preview = useMemo(() => {
@@ -108,6 +111,7 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
   }, [lunar, leap, day, month]);
 
   const del = async (id: string) => {
+    if (!confirm('Xoá ngày này khỏi lịch nhà mình?')) return;
     try { await call(`/api/calendar/${id}`, { method: 'DELETE' }); void load(); } catch (e) { toast((e as Error).message); }
   };
 
@@ -197,12 +201,13 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
               <button key={k} className={`chip ${kind === k ? 'on' : ''}`} style={{ minHeight: 44 }} onClick={() => { tap(); setKind(k); }}>{label}</button>
             ))}
           </div>
-          <input className="field" placeholder="Tên ngày này" value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} />
+          <input className="field cal-title" placeholder={kind === 'birthday' ? 'Sinh nhật ai?' : 'Tên ngày này'} value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} />
           <div style={{ display: 'flex', gap: 8 }}>
-            <input className="field" inputMode="numeric" placeholder={lunar ? 'Ngày âm' : 'Ngày'} value={day} maxLength={2} onChange={(e) => setDay(e.target.value.replace(/\D/g, ''))} style={{ minWidth: 0 }} />
-            <input className="field" inputMode="numeric" placeholder={lunar ? 'Tháng âm' : 'Tháng'} value={month} maxLength={2} onChange={(e) => setMonth(e.target.value.replace(/\D/g, ''))} style={{ minWidth: 0 }} />
-            <input className="field" inputMode="numeric" placeholder={lunar ? 'Năm âm (không bắt buộc)' : 'Năm (không bắt buộc)'} value={year} maxLength={4} onChange={(e) => setYear(e.target.value.replace(/\D/g, ''))} style={{ minWidth: 0 }} />
+            <input className="field cal-field" inputMode="numeric" placeholder="Ngày" aria-label={lunar ? 'Ngày âm' : 'Ngày'} value={day} maxLength={2} onChange={(e) => setDay(e.target.value.replace(/\D/g, ''))} />
+            <input className="field cal-field" inputMode="numeric" placeholder="Tháng" aria-label={lunar ? 'Tháng âm' : 'Tháng'} value={month} maxLength={2} onChange={(e) => setMonth(e.target.value.replace(/\D/g, ''))} />
+            <input className="field cal-field" inputMode="numeric" placeholder="Năm" aria-label="Năm, không bắt buộc" value={year} maxLength={4} onChange={(e) => setYear(e.target.value.replace(/\D/g, ''))} style={{ flex: 1.3 }} />
           </div>
+          <div className="muted" style={{ fontSize: 13, marginTop: -4 }}>{lunar ? 'Ngày tháng âm lịch. ' : ''}Năm không bắt buộc, có thì biết bao nhiêu tuổi, bao nhiêu năm.</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             <button className={`chip ${lunar ? 'on' : ''}`} style={{ minHeight: 44 }} onClick={() => { tap(); setLunar(!lunar); if (lunar) setLeap(false); }}>Âm lịch</button>
             {lunar && <button className={`chip ${leap ? 'on' : ''}`} style={{ minHeight: 44 }} onClick={() => { tap(); setLeap(!leap); }}>Tháng nhuận</button>}
@@ -210,7 +215,7 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
           {lunar && preview && <div className="muted" style={{ fontSize: 13 }}>{preview}</div>}
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn ghost" style={{ flex: 1, minHeight: 48 }} onClick={() => setAdding(false)}>Thôi</button>
-            <button className="btn" style={{ flex: 1, minHeight: 48 }} disabled={!day || !month} onClick={() => { tap(); void add(); }}>Lưu</button>
+            <button className="btn" style={{ flex: 1, minHeight: 48 }} disabled={!day || !month || saving} onClick={() => { tap(); void add(); }}>Lưu</button>
           </div>
         </div>
       )}

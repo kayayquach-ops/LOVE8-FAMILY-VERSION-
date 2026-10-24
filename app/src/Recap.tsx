@@ -48,13 +48,16 @@ export function Recap({ me, onClose }: { me: Me; onClose: () => void }) {
   const shown = ready.find((r) => r.week === sel) ?? ready[0];
   const thisWeek = list?.find((r) => r.week === week);
 
+  const [asking, setAsking] = useState(false);
   async function make() {
+    if (asking) return;
     tap();
+    setAsking(true);
     try {
       const r = await call<RecapRow & { skipped?: boolean; message?: string }>('/api/recaps/render', { method: 'POST', body: JSON.stringify({ week }) });
       if (r.skipped) return toast(r.message ?? 'Chưa đủ ảnh');
       void load();
-    } catch (e) { toast((e as Error).message); }
+    } catch (e) { toast((e as Error).message); } finally { setAsking(false); }
   }
 
   function toggle() {
@@ -100,8 +103,8 @@ export function Recap({ me, onClose }: { me: Me; onClose: () => void }) {
         {rendering ? (
           <div className="recap-busy"><i />Đang dựng video...</div>
         ) : list && (
-          <button className={`btn${thisWeek?.status === 'ready' ? ' ghost' : ''}`} style={{ marginTop: 18 }} onClick={make}>
-            {thisWeek?.status === 'ready' ? 'Làm lại tuần này' : 'Làm recap tuần này'}
+          <button className={`btn${thisWeek?.status === 'ready' ? ' ghost' : ''}`} style={{ marginTop: 18 }} onClick={make} disabled={asking}>
+            {thisWeek?.status === 'ready' ? 'Làm lại phim tuần này' : 'Làm phim tuần này'}
           </button>
         )}
         {thisWeek?.status === 'failed' && !rendering && <div className="recap-note">Lần trước chưa dựng được, thử lại nhé.</div>}

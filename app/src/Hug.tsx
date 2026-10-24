@@ -34,17 +34,16 @@ export function Hug({ name, onDone }: { name: string; onDone: () => void }) {
     <div className="screen">
       <div className="center">
         <h1 className="q"><Typed text={done ? 'Cả nhà đã nhận được cái ôm.' : `Nhớ nhà thì ôm một cái, ${name}.`} onDone={() => setTyped(true)} /></h1>
-        {typed && !done && <p className="sub fade">Giữ ngón tay vào vòng tròn</p>}
+        {/* Giữ sẵn chỗ cho dòng gợi ý và vòng tròn, để câu chữ không bị đẩy lên khi chúng hiện ra. */}
+        <p className={`sub ${typed ? 'fade' : 'reserve'}`} style={{ visibility: done ? 'hidden' : undefined }}>Giữ ngón tay vào vòng tròn</p>
         <div style={{ height: 40 }} />
-        {typed && (
-          <div className="hold fade" onPointerDown={() => setHolding(true)} onPointerUp={() => setHolding(false)} onPointerLeave={() => setHolding(false)}
-            onContextMenu={(e) => e.preventDefault()} role="button" aria-label="Giữ để ôm">
-            <i style={{ transform: `scale(${0.25 + p * 0.75})`, opacity: 0.25 + p * 0.75 }} />
-            <span style={{ color: done ? '#fff' : 'var(--accent)', position: 'relative' }}><Icon name={done ? 'heartFill' : 'heart'} size={46} /></span>
-          </div>
-        )}
+        <div className={`hold ${typed ? 'fade' : 'reserve'}`} onPointerDown={() => setHolding(true)} onPointerUp={() => setHolding(false)} onPointerLeave={() => setHolding(false)} onPointerCancel={() => setHolding(false)}
+          onContextMenu={(e) => e.preventDefault()} role="button" aria-label="Giữ để ôm">
+          <i style={{ transform: `scale(${0.25 + p * 0.75})`, opacity: 0.25 + p * 0.75 }} />
+          <span style={{ color: done ? '#fff' : 'var(--accent)', position: 'relative' }}><Icon name={done ? 'heartFill' : 'heart'} size={46} /></span>
+        </div>
       </div>
-      {!done && <button className="link" onClick={onDone}>Để sau</button>}
+      <button className="link" onClick={onDone} style={{ visibility: done ? 'hidden' : undefined }}>Để sau</button>
     </div>
   );
 }

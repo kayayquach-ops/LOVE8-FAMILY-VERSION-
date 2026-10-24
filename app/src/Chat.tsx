@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Me, Member } from './shared';
 import { token } from './api';
-import { AUDIO_TYPE, fileName, record } from './media';
+import { fileName, shrinkImage, useHoldMic } from './media';
 import { Avatar, Icon, toast } from './ui';
-import { sfx, buzz } from './sound';
+import { sfx } from './sound';
 import { STICKER_LIST, Sticker } from './stickers';
 
 type Msg = {
@@ -33,10 +33,11 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState('');
   const [tray, setTray] = useState(false);
-  const [rec, setRec] = useState(false);
   const [vh, setVh] = useState<number | null>(null);
+  // Số ảnh, đoạn nói đang gửi: hiện một dòng nhỏ cuối khung để biết là máy đang gửi.
+  const [pending, setPending] = useState(0);
+  const [viewer, setViewer] = useState<string | null>(null);
   const list = useRef<HTMLDivElement>(null);
-  const stop = useRef<(() => Promise<{ blob: Blob; seconds: number }>) | null>(null);
   const stick = useRef(true);
   const meId = me.me.id;
   const member = (id: string): Member | undefined => me.members.find((m) => m.id === id);
@@ -61,6 +62,7 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
     let alive = true;
     call<Msg[]>('/api/chat').then((r) => { if (alive) { setMsgs(r); markRead(); } }).catch((e) => toast(e.message));
     const poll = setInterval(() => {
+      if (document.hidden) return;
       const q = latest.current ? `?after=${encodeURIComponent(latest.current)}` : '';
       call<Msg[]>(`/api/chat${q}`).then((r) => alive && merge(r)).catch(() => {});
     }, 8000);
@@ -85,19 +87,25 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
 
   useLayoutEffect(() => {
     if (stick.current && list.current) list.current.scrollTop = list.current.scrollHeight;
-  }, [msgs, tray, vh]);
+  }, [msgs, tray, vh, pending]);
 
   async function send(f: FormData) {
+    const slow = f.has('file');
+    if (slow) { stick.current = true; setPending((n) => n + 1); }
     try {
       const m = await call<Msg>('/api/chat', { method: 'POST', body: f });
       stick.current = true;
       setMsgs((p) => (p.some((x) => x.id === m.id) ? p : [...p, m]));
       sfx('send');
     } catch (e) { toast((e as Error).message); }
+    finally { if (slow) setPending((n) => n - 1); }
   }
+  const lastSent = useRef({ t: '', at: 0 });
   function sendText() {
     const t = text.trim();
-    if (!t) return;
+    // Hai lần bấm gửi sát nhau (state chưa kịp xoá ô chữ) thì chỉ gửi một lần.
+    if (!t || (lastSent.current.t === t && Date.now() - lastSent.current.at < 800)) return;
+    lastSent.current = { t, at: Date.now() };
     setText('');
     const f = new FormData(); f.set('kind', 'text'); f.set('text', t);
     void send(f);
@@ -107,29 +115,26 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
     const f = new FormData(); f.set('kind', 'sticker'); f.set('sticker', id);
     void send(f);
   }
-  function sendPhoto(file?: File) {
+  async function sendPhoto(file?: File) {
     if (!file) return;
-    const f = new FormData(); f.set('kind', 'photo'); f.set('file', file, file.name);
+    setPending((n) => n + 1);
+    const blob = await shrinkImage(file);
+    setPending((n) => n - 1);
+    const f = new FormData(); f.set('kind', 'photo'); f.set('file', blob, blob === file ? file.name : 'photo.jpg');
     void send(f);
   }
 
-  async function micDown(e: React.PointerEvent) {
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    const s = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
-    if (!s) return toast('Cho phép micro để nói nhé');
-    const stopRec = record(s, AUDIO_TYPE());
-    stop.current = async () => { const r = await stopRec(); s.getTracks().forEach((t) => t.stop()); return r; };
-    setRec(true); sfx('rec'); buzz(20);
-  }
-  async function micUp() {
-    if (!stop.current) return;
-    const go = stop.current; stop.current = null;
-    setRec(false);
-    const r = await go();
-    if (r.seconds < 1) return toast('Giữ lâu hơn một chút để nói');
+  // Giữ để nói: thả tay trước khi micro kịp mở thì không ghi, micro luôn tắt khi thả.
+  const mic = useHoldMic((r) => {
     const f = new FormData(); f.set('kind', 'voice'); f.set('seconds', String(r.seconds)); f.set('file', r.blob, fileName(r.blob, 'voice'));
     void send(f);
+  });
+  const rec = mic.rec;
+  function micDown(e: React.PointerEvent) {
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    void mic.down();
   }
+  const micUp = () => { void mic.up(); };
 
   const rows: Array<{ type: 'day'; label: string; key: string } | { type: 'msg'; m: Msg; first: boolean; last: boolean }> = [];
   const near = (a: Msg, b: Msg) => a.author_id === b.author_id && dayLabel(a.created_at) === dayLabel(b.created_at) && Math.abs(+new Date(b.created_at) - +new Date(a.created_at)) < 5 * 60e3;
@@ -163,13 +168,14 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
               <div className="chat-col">
                 {!mine && first && <small className="chat-name">{who?.name ?? 'Ai đó'}</small>}
                 {m.kind === 'sticker' ? <div className="chat-sticker"><Sticker id={m.sticker ?? ''} size={120} /></div>
-                  : m.kind === 'photo' ? <a href={m.media!} target="_blank" rel="noreferrer"><img className="chat-photo" src={m.media!} alt="" loading="lazy" onLoad={() => { if (stick.current && list.current) list.current.scrollTop = list.current.scrollHeight; }} /></a>
+                  : m.kind === 'photo' ? <button className="chat-photo-btn" onClick={() => setViewer(m.media!)} aria-label="Xem ảnh"><img className="chat-photo" src={m.media!} alt="" loading="lazy" onLoad={() => { if (stick.current && list.current) list.current.scrollTop = list.current.scrollHeight; }} /></button>
                   : <div className={`bubble ${mine ? 'mine' : ''}`}>{m.kind === 'voice' ? <Voice url={m.media!} seconds={m.seconds} /> : m.text}</div>}
                 {last && <small className="chat-time">{hm(m.created_at)}</small>}
               </div>
             </div>
           );
         })}
+        {pending > 0 && <div className="chat-day chat-sending">Đang gửi...</div>}
       </div>
 
       {tray && (
@@ -184,7 +190,7 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
         <button className={`icon-btn ${tray ? 'on' : ''}`} onClick={() => setTray(!tray)} aria-label="Hình dán"><Icon name="heart" /></button>
         <label className="icon-btn" aria-label="Gửi ảnh">
           <Icon name="image" />
-          <input type="file" accept="image/*" hidden onChange={(e) => { sendPhoto(e.target.files?.[0]); e.target.value = ''; }} />
+          <input type="file" accept="image/*" hidden onChange={(e) => { void sendPhoto(e.target.files?.[0]); e.target.value = ''; }} />
         </label>
         <input className="chat-input" value={text} placeholder={rec ? 'Đang nghe...' : 'Nhắn cho cả nhà'} disabled={rec}
           onChange={(e) => setText(e.target.value)} onFocus={() => { setTray(false); stick.current = true; }}
@@ -193,6 +199,14 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
           ? <button className="icon-btn dark" onClick={sendText} aria-label="Gửi"><Icon name="send" /></button>
           : <button className={`icon-btn mic ${rec ? 'rec' : 'dark'}`} onPointerDown={micDown} onPointerUp={micUp} onPointerCancel={micUp} onContextMenu={(e) => e.preventDefault()} aria-label="Giữ để nói"><Icon name="mic" /></button>}
       </div>
+
+      {/* Xem ảnh ngay trong app (mở tab mới thì app thêm vào màn hình chính bị văng ra Safari). Chụm hai ngón để phóng to. */}
+      {viewer && (
+        <div className="viewer" onClick={() => setViewer(null)} role="dialog" aria-label="Ảnh">
+          <img src={viewer} alt="" />
+          <button className="icon-btn viewer-close" aria-label="Đóng"><Icon name="close" /></button>
+        </div>
+      )}
     </div>
   );
 }

@@ -64,7 +64,12 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const Kids = kids[0].toUpperCase() + kids.slice(1);
   const go = (s: Step) => { sfx('button'); setStep(s); };
   const next = () => go(FLOW[FLOW.indexOf(step) + 1]);
+  const auto = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const later = (f: () => void, ms: number) => { clearTimeout(auto.current); auto.current = setTimeout(f, ms); };
+  useEffect(() => () => clearTimeout(auto.current), []);
   const back = () => {
+    // Đang chờ tự sang câu sau mà bấm quay lại thì huỷ, không bị đẩy tới câu khác.
+    clearTimeout(auto.current); choosing.current = false;
     if (step === 'story' && page > 0) return setPage(page - 1);
     setStep(step === 'code' ? 'home' : FLOW[Math.max(0, FLOW.indexOf(step) - 1)]);
   };
@@ -75,7 +80,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     choosing.current = true;
     tap();
     setA({ ...a, [k]: v });
-    setTimeout(() => { choosing.current = false; next(); }, 4200);
+    later(() => { choosing.current = false; next(); }, 4200);
   };
 
   async function finish(join: boolean) {
@@ -95,7 +100,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       sfx('arrive');
       stopMusic(4);
       if (join) return onDone();
-      const me = await api.me();
+      // Nhà đã tạo xong; chưa lấy được mã thì cứ vào nhà (mã có trong mục Gia đình), không để bấm Tạo nhà lần nữa thành hai nhà.
+      const me = await api.me().catch(() => null);
+      if (!me) return onDone();
       setMade({ code: me.family.code, family: me.family.name });
       setStep('invite');
     } catch (e) {
@@ -157,7 +164,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       {step === 'role' && (
         <Ask key="role" q="Bạn là ai trong gia đình?" {...T}>
           {([['bo', 'Là bố'], ['me', 'Là mẹ'], ['con', 'Là con']] as const).map(([k, label]) => (
-            <Opt key={k} on={role === k} onClick={() => { tap(); setRole(k); setName(k === 'bo' ? 'Bố' : k === 'me' ? 'Mẹ' : ''); setTimeout(next, 250); }}>{label}</Opt>
+            <Opt key={k} on={role === k} onClick={() => { tap(); setRole(k); setName(k === 'bo' ? 'Bố' : k === 'me' ? 'Mẹ' : ''); later(next, 250); }}>{label}</Opt>
           ))}
         </Ask>
       )}
@@ -165,7 +172,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       {step === 'kid' && (
         <Ask key="kid" q={parent ? `Con của ${self} là trai hay gái?` : 'Bạn là con trai hay con gái của bố mẹ?'} {...T}>
           {(parent ? ['Con trai', 'Con gái', 'Cả trai lẫn gái'] : ['Con trai', 'Con gái']).map((k) => (
-            <Opt key={k} on={kid === k} onClick={() => { tap(); setKid(k); setTimeout(next, 250); }}>{k}</Opt>
+            <Opt key={k} on={kid === k} onClick={() => { tap(); setKid(k); later(next, 250); }}>{k}</Opt>
           ))}
         </Ask>
       )}
@@ -204,8 +211,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         <Ask key="hug" q={parent ? `${Self} có muốn ôm ${kids} một cái ngay bây giờ không?` : 'Bạn có muốn ôm bố mẹ một cái ngay bây giờ không?'}
           echo={wantHug === true ? (parent ? `Vậy lát nữa ${self} ôm ${kids} thật chặt nhé.` : 'Vậy lát nữa bạn ôm bố mẹ thật chặt nhé.')
             : wantHug === false ? (parent ? `Không sao. Lúc nào nhớ ${kids}, mình ôm sau nhé.` : 'Không sao. Lúc nào nhớ nhà, mình ôm sau nhé.') : undefined} {...T}>
-          <Opt key="yes" on={wantHug === true} onClick={() => { if (wantHug !== null) return; tap(); setWantHug(true); setTimeout(next, 4200); }}>Có, rất muốn</Opt>
-          <Opt key="no" on={wantHug === false} onClick={() => { if (wantHug !== null) return; tap(); setWantHug(false); setTimeout(next, 4200); }}>Để lúc khác</Opt>
+          <Opt key="yes" on={wantHug === true} onClick={() => { if (wantHug !== null) return; tap(); setWantHug(true); later(next, 4200); }}>Có, rất muốn</Opt>
+          <Opt key="no" on={wantHug === false} onClick={() => { if (wantHug !== null) return; tap(); setWantHug(false); later(next, 4200); }}>Để lúc khác</Opt>
         </Ask>
       )}
 
@@ -270,20 +277,22 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       {step === 'code' && (
         <Ask key="code" q="Mã nhà là gì?" sub="Người tạo nhà có mã 6 số trong mục Gia đình." {...T}
           footer={<button className="btn" disabled={busy || code.trim().length !== 6} onClick={() => finish(true)}>Vào nhà</button>}>
-          <input className="field fade" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} placeholder="123456" style={{ letterSpacing: 6, fontSize: 24 }} />
+          {/* Không đặt maxLength: dán cả câu mời ("Mã nhà: 123456") vẫn lấy được đủ 6 số. */}
+          <input className="field fade" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => { const six = e.target.value.match(/\d{6}/g); setCode(six ? six[six.length - 1] : e.target.value.replace(/\D/g, '').slice(0, 6)); }} placeholder="123456" style={{ letterSpacing: 6, fontSize: 24 }} />
         </Ask>
       )}
 
       {step === 'invite' && made && (
         <Ask key="invite" q="Giờ mời cả nhà vào nhé." {...T}
           footer={<>
-            <button className="btn" onClick={() => { sfx('button'); shareInvite(made.code, made.family); }}><Icon name="share" size={20} /> Gửi lời mời</button>
+            <button className="btn" onClick={() => { sfx('button'); void shareInvite(made.code, made.family); }}><Icon name="share" size={20} /> Gửi lời mời</button>
             <button className="link" onClick={onDone}>Vào nhà trước</button>
           </>}>
           <div className="panel fade" style={{ alignSelf: 'center', width: '86%', textAlign: 'center' }}>
             <img className="invite-logo" src="/logo.svg" alt="" />
-            <div className="muted">Mã nhà {made.family}</div>
-            <div className="code">{made.code}</div>
+            <div className="muted">Mã của {made.family}</div>
+            <button className="code" onClick={() => void copyCode(made.code)} aria-label={`Mã nhà ${made.code}, chạm để chép`}>{made.code}</button>
+            <div className="code-hint">Chạm vào mã để chép</div>
             <div className="muted">Gửi link qua Zalo, Messenger. Bố mẹ bấm vào là vào nhà.</div>
           </div>
         </Ask>
@@ -293,11 +302,33 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   );
 }
 
-export function shareInvite(code: string, family: string) {
+/** Chép chữ vào bộ nhớ tạm. Máy chặn clipboard thì dùng cách cũ qua ô chữ ẩn. */
+export async function copyText(text: string) {
+  try { await navigator.clipboard.writeText(text); return true; } catch {}
+  try {
+    const t = document.createElement('textarea');
+    t.value = text; t.setAttribute('readonly', ''); t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select(); t.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    t.remove();
+    return ok;
+  } catch { return false; }
+}
+
+export async function shareInvite(code: string, family: string) {
   const url = `${location.origin}/?join=${code}`;
   const text = `Vào ${family} trên Sweet Home với mình nhé. Mã nhà: ${code}`;
-  if (navigator.share) navigator.share({ title: 'Sweet Home', text, url }).catch(() => {});
-  else navigator.clipboard?.writeText(`${text}\n${url}`).then(() => toast('Đã chép lời mời'));
+  if (navigator.share) {
+    try { await navigator.share({ title: 'Sweet Home', text, url }); return; } catch (e) {
+      // Tự đóng bảng chia sẻ thì thôi; máy không cho chia sẻ thì chép lời mời.
+      if ((e as Error).name === 'AbortError') return;
+    }
+  }
+  toast(await copyText(`${text}\n${url}`) ? 'Đã chép lời mời, dán vào Zalo gửi nhà nhé' : `Mã nhà: ${code}`);
+}
+
+export async function copyCode(code: string) {
+  toast(await copyText(code) ? `Đã chép mã ${code}` : `Mã nhà: ${code}`);
 }
 
 function Opt({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
