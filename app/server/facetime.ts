@@ -5,7 +5,7 @@ import { notifyCall } from './push.ts';
 import { errorBody, tReq } from './i18n.ts';
 
 // Gọi video cả nhà: mỗi nhà một phòng, máy chủ chỉ chuyển lời mời kết nối (SDP, ICE) giữa các máy qua SSE.
-// Hình và tiếng đi thẳng giữa các máy (WebRTC). Mạng di động thường cần TURN, đặt qua TURN_URL.
+// Hình và tiếng đi thẳng giữa các máy (WebRTC). Mạng di động thường cần TURN, đặt CF_TURN_KEY_ID và CF_TURN_API_TOKEN (Cloudflare) hoặc TURN_URL.
 
 type Room = { id: string; by: string; members: Set<string>; started: number };
 export type LiveRoom = { id: string; by: string; members: string[]; started: number } | null;
@@ -34,7 +34,39 @@ function leave(fid: string, memberId: string) {
   toFamily(fid, { type: 'room', room: view(rooms.get(fid)) });
 }
 
-export function iceServers() {
+type Ice = { urls: string[] | string; username?: string; credential?: string };
+let cf: { at: number; list: Ice[] } | null = null;
+
+/** Cloudflare Realtime TURN: xin mật khẩu ngắn hạn (6 giờ), nhớ 1 giờ. Lỗi thì dùng cấu hình tĩnh. */
+async function cloudflareIce(): Promise<Ice[] | null> {
+  const id = process.env.CF_TURN_KEY_ID, token = process.env.CF_TURN_API_TOKEN;
+  if (!id || !token) return null;
+  if (cf && Date.now() - cf.at < 3600_000) return cf.list;
+  try {
+    const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${id}/credentials/generate-ice-servers`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ttl: 21600 }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!r.ok) throw new Error(`Cloudflare TURN ${r.status}`);
+    const j = (await r.json()) as { iceServers?: Ice[] };
+    if (!j.iceServers?.length) throw new Error('Cloudflare TURN trả rỗng');
+    cf = { at: Date.now(), list: j.iceServers };
+    return cf.list;
+  } catch (e) {
+    console.error('[facetime]', (e as Error).message);
+    return cf?.list ?? null;
+  }
+}
+
+export async function iceServers() {
+  const viaCf = await cloudflareIce();
+  if (viaCf) return viaCf;
+  return staticIce();
+}
+
+function staticIce() {
   const stun = (process.env.STUN_URL || 'stun:stun.l.google.com:19302,stun:stun.cloudflare.com:3478').split(',').map((s) => s.trim()).filter(Boolean);
   const list: Array<{ urls: string[]; username?: string; credential?: string }> = [{ urls: stun }];
   if (process.env.TURN_URL) {
@@ -83,7 +115,7 @@ liveStreamRouter.get('/live/stream', h(async (req, res) => {
 
 export const liveRouter = express.Router();
 
-liveRouter.get('/live/config', (_req, res) => { res.json({ iceServers: iceServers() }); });
+liveRouter.get('/live/config', h(async (_req, res) => { res.json({ iceServers: await iceServers() }); }));
 
 liveRouter.get('/live/room', (req: any, res) => { res.json({ room: view(rooms.get(req.member.family_id)) }); });
 
