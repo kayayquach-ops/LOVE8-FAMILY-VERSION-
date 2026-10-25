@@ -30,8 +30,12 @@ if (typeof window !== 'undefined') {
   window.addEventListener('keydown', unlock, { capture: true });
 }
 
+/** Người dùng bật trong Cài đặt thì tiếng chạm nút phát lại; mặc định im như QUIET_UI. */
+export const uiSoundsOn = () => { try { return localStorage.getItem('hl-ui-sound') === '1'; } catch { return false; } };
+export const setUiSounds = (on: boolean) => { try { localStorage.setItem('hl-ui-sound', on ? '1' : '0'); } catch {} };
+
 export function sfx(name: Name, always = false) {
-  if (QUIET_UI && !always && UI_SOUNDS.includes(name)) return;
+  if (QUIET_UI && !always && UI_SOUNDS.includes(name) && !uiSoundsOn()) return;
   const buf = buffers[name];
   // App đang ẩn thì im: tránh chuông dồn lại kêu một loạt khi mở lại.
   if (!ctx || !buf || document.hidden) return;

@@ -658,5 +658,13 @@
 
   "letters.cut.label": "Cut out",
   "letters.cut.busy": "Cutting...",
-  "letters.cut.fail": "Couldn't cut it out, using the original photo"
+  "letters.cut.fail": "Couldn't cut it out, using the original photo",
+
+  "settings.title": "Settings",
+  "settings.profileEdit": "Edit profile",
+  "settings.sound": "Sound",
+  "settings.soundTap": "Sound when tapping",
+  "settings.app": "App",
+  "settings.reload": "Reload app",
+  "settings.reloadHint": "Use it if the app doesn't look up to date"
 }

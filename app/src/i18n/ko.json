@@ -644,5 +644,13 @@
 
   "letters.cut.label": "배경 제거",
   "letters.cut.busy": "자르는 중...",
-  "letters.cut.fail": "배경을 지우지 못해 원본 사진을 써요"
+  "letters.cut.fail": "배경을 지우지 못해 원본 사진을 써요",
+
+  "settings.title": "설정",
+  "settings.profileEdit": "프로필 고치기",
+  "settings.sound": "소리",
+  "settings.soundTap": "누를 때 소리",
+  "settings.app": "앱",
+  "settings.reload": "앱 새로고침",
+  "settings.reloadHint": "앱이 최신 버전이 아닌 것 같을 때 눌러 보세요"
 }

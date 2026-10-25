@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { api, token } from './api';
+import { api } from './api';
 import { CityPicker } from './CityPicker';
-import { Notify } from './Notify';
 import { copyCode, shareInvite } from './Onboarding';
 import { shrinkImage } from './media';
 import { cityOf, SILENT_HOURS, type Me, type Week } from './shared';
-import { LANG_NAMES, LANGS, setLang, t, useLang } from './i18n';
+import { t, useLang } from './i18n';
 import { buzz, sfx, tap } from './sound';
 import { ago, hoursSince, localTime, weather } from './time';
 import { Avatar, Icon, toast } from './ui';
@@ -24,7 +23,7 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 // Gia đình: từng người với giờ, thời tiết bên đó, lần hoạt động cuối; mời người mới; sửa thông tin của mình.
-export function Family({ me, onClose, onChanged }: { me: Me; onClose: () => void; onChanged: () => void }) {
+export function Family({ me, onClose, onChanged, onSettings }: { me: Me; onClose: () => void; onChanged: () => void; onSettings: () => void }) {
   const lang = useLang();
   const [wx, setWx] = useState<Record<string, string>>({});
   const [edit, setEdit] = useState(false);
@@ -116,16 +115,7 @@ export function Family({ me, onClose, onChanged }: { me: Me; onClose: () => void
       )}
       <div className="muted" style={{ marginTop: 12 }}>{t('family.note', { n: SILENT_HOURS / 24 })}</div>
 
-      <div className="h2">{t('family.language')}</div>
-      <div className="panel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {LANGS.map((l) => (
-          <button key={l} className={`chip ${lang === l ? 'on' : ''}`} style={{ minHeight: 44 }} lang={l} aria-pressed={lang === l} onClick={() => { tap(); setLang(l); }}>{LANG_NAMES[l]}</button>
-        ))}
-      </div>
-
-      <Notify />
-
-      <button className="link" style={{ marginTop: 24 }} onClick={() => { if (confirm(t('family.leaveConfirm'))) { token.clear(); location.reload(); } }}>{t('family.leave')}</button>
+      <button className="link" style={{ marginTop: 24 }} onClick={onSettings}>{t('settings.title')}</button>
     </Sheet>
   );
 }

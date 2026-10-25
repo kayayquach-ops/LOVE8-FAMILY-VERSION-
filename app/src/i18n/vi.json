@@ -644,5 +644,13 @@
 
   "letters.cut.label": "Tách nền",
   "letters.cut.busy": "Đang tách...",
-  "letters.cut.fail": "Chưa tách được nền, mình dùng ảnh gốc nhé"
+  "letters.cut.fail": "Chưa tách được nền, mình dùng ảnh gốc nhé",
+
+  "settings.title": "Cài đặt",
+  "settings.profileEdit": "Sửa hồ sơ",
+  "settings.sound": "Âm thanh",
+  "settings.soundTap": "Tiếng khi chạm nút",
+  "settings.app": "Ứng dụng",
+  "settings.reload": "Tải lại app",
+  "settings.reloadHint": "Dùng khi app có vẻ chưa cập nhật bản mới"
 }

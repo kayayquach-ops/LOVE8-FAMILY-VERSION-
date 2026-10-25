@@ -20,9 +20,11 @@ import { t, useLang } from './i18n';
 // Màn ít dùng tải sau, để lần mở app đầu tiên nhẹ hơn. Rảnh thì tải sẵn, lúc bấm vào là có ngay.
 const loadRecap = () => import('./Recap');
 const loadLetters = () => import('./Letters');
+const loadSettings = () => import('./Settings');
 const loadPodcast = () => import('./Podcast');
 const loadCall = () => import('./Call');
 const loadFaceTime = () => import('./FaceTime');
+const Settings = lazy(() => loadSettings().then((m) => ({ default: m.Settings })));
 const Letters = lazy(() => loadLetters().then((m) => ({ default: m.Letters })));
 const Recap = lazy(() => loadRecap().then((m) => ({ default: m.Recap })));
 const Podcast = lazy(() => loadPodcast().then((m) => ({ default: m.Podcast })));
@@ -39,7 +41,7 @@ export function App() {
   // Mở app là hiện ngay bản lưu lần trước (tên nhà, cả nhà), máy chủ trả lời thì thay bằng bản mới. Không còn màn trống lúc chờ mạng.
   const [me, setMe] = useState<Me | null>(() => { if (!token.get()) return null; try { return JSON.parse(localStorage.getItem(ME_KEY) ?? 'null'); } catch { return null; } });
   const [ready, setReady] = useState(() => !!me);
-  const [sheet, setSheet] = useState<'feed' | 'jar' | 'family' | 'calendar' | 'chat' | 'recap' | 'podcast' | 'letters' | null>(null);
+  const [sheet, setSheet] = useState<'feed' | 'jar' | 'family' | 'calendar' | 'chat' | 'recap' | 'podcast' | 'letters' | 'settings' | null>(null);
   // Mở app là vào camera như Locket; Trang chủ là một tab.
   const [tab, setTab] = useState<'home' | 'camera'>('camera');
   const [chatUnread, setChatUnread] = useState(0);
@@ -85,7 +87,7 @@ export function App() {
     // Màn gọi video tải sau cùng, lúc rảnh hẳn: chỉ là mã và khai báo chữ, tệp phông của phần chụp chung chỉ tải khi vẽ đến.
     const w = window as Window & { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number };
     const idle = (f: () => void) => (w.requestIdleCallback ? w.requestIdleCallback(f, { timeout: 4000 }) : f());
-    const warm = () => { void loadCall(); void loadPodcast(); void loadRecap(); void loadLetters(); idle(() => void loadFaceTime()); };
+    const warm = () => { void loadCall(); void loadPodcast(); void loadRecap(); void loadLetters(); void loadSettings(); idle(() => void loadFaceTime()); };
     const t = setTimeout(() => idle(warm), 2500);
     return () => clearTimeout(t);
   }, []);
@@ -152,9 +154,10 @@ export function App() {
       {sheet === 'calendar' && <Calendar me={me} onClose={() => setSheet(null)} onWish={() => setSheet('chat')} />}
       {sheet === 'chat' && <Chat me={me} live={!!room} onClose={() => { setSheet(null); void loadUnread(); }} onCall={() => setFacetime(true)} />}
       <Suspense fallback={null}>
+      {sheet === 'settings' && <Settings me={me} onClose={() => setSheet(null)} onProfile={() => setSheet('family')} />}
       {sheet === 'letters' && <Letters me={me} onClose={() => setSheet(null)} />}
       {sheet === 'recap' && <Recap me={me} onClose={() => setSheet(null)} />}
-      {sheet === 'family' && <Family me={me} onClose={() => setSheet(null)} onChanged={load} />}
+      {sheet === 'family' && <Family me={me} onClose={() => setSheet(null)} onChanged={load} onSettings={() => setSheet('settings')} />}
       {sheet === 'podcast' && <Podcast me={me} start={podcastId} onClose={() => setSheet(null)} onCall={() => setCalling(true)} />}
       {facetime && <FaceTime me={me} onClose={() => { setFacetime(false); setSkipRoom(room?.id ?? null); }} />}
       {!facetime && !calling && room && !room.members.includes(me.me.id) && skipRoom !== room.id && (

@@ -11,7 +11,7 @@ import { snooze, snoozed } from './callSnooze';
 import { shareInvite } from './Onboarding';
 import { t } from './i18n';
 
-type Screen = 'camera' | 'feed' | 'chat' | 'calendar' | 'jar' | 'family' | 'podcast' | 'recap' | 'letters';
+type Screen = 'camera' | 'feed' | 'chat' | 'calendar' | 'jar' | 'family' | 'podcast' | 'recap' | 'letters' | 'settings';
 type Podcast = { id: string; title: string; topic: string; memberId: string; duration: number; cover?: string | null; createdAt: string };
 type HomeData = {
   letters?: number;
@@ -84,9 +84,12 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
           <h1 className="home-hi">{t('home.hi', { greet: greet(), name: first as string })}</h1>
           <div className="muted home-fam">{me.family.name}</div>
         </div>
-        <button className="home-stack" onClick={go('family')} aria-label={t('home.familyAria')}>
-          {me.members.slice(0, 4).map((m) => <Avatar key={m.id} m={m} size={34} />)}
-        </button>
+        <div className="home-right">
+          <button className="home-stack" onClick={go('family')} aria-label={t('home.familyAria')}>
+            {me.members.slice(0, 4).map((m) => <Avatar key={m.id} m={m} size={34} />)}
+          </button>
+          <button className="icon-btn home-set" onClick={go('settings')} aria-label={t('settings.title')}><Icon name="sliders" /></button>
+        </div>
       </header>
 
       {invite && <CallCard role={me.me.role} onAnswer={onCall} onLater={() => { snooze(); setLater(true); }} />}
