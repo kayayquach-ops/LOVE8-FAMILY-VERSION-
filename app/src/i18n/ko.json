@@ -640,5 +640,9 @@
   "letters.tpl.sky": "푸른 하늘",
   "letters.tpl.summer": "여름",
   "letters.tpl.night": "별밤",
-  "letters.bg.crimson": "진홍"
+  "letters.bg.crimson": "진홍",
+
+  "letters.cut.label": "배경 제거",
+  "letters.cut.busy": "자르는 중...",
+  "letters.cut.fail": "배경을 지우지 못해 원본 사진을 써요"
 }

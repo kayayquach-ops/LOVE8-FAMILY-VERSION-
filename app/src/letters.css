@@ -138,6 +138,14 @@ input.lp-footer::placeholder { color: var(--lp-ink); opacity: .4; }
     radial-gradient(circle at 100% 50%, #0000 var(--r), #000 calc(var(--r) + .5px)) 0 0 / 100% var(--s) repeat-y;
   mask-composite: intersect; }
 .lp-photo.stamp::before { display: none; }
+.lp-photo.cutout { background: none; padding: 0; }
+.lp-photo.cutout::before { display: none; }
+.lp-photo.cutout img { aspect-ratio: auto; object-fit: contain; background: none; }
+.lt-cut { flex: none; width: 64px; height: 64px; border-radius: 16px; border: 1.5px solid var(--line); background: rgba(255, 255, 255, .7); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.lt-cut i { font-style: normal; font-size: 20px; line-height: 1; }
+.lt-cut small { font-size: 11px; color: var(--soft); max-width: 60px; text-align: center; }
+.lt-cut.on { border-color: #6FA314; background: #EEF8CF; }
+.lt-cut:disabled { opacity: .6; }
 
 /* Phong bì có dấu sáp: thư chưa đọc nằm trong đó, chạm để mở */
 .lt-reading { position: relative; overflow: hidden; }

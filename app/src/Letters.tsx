@@ -12,10 +12,10 @@ import './letters.css';
 
 // Hình dán và ảnh trên thư: x, y là tâm (phần trăm tờ giấy), w là bề rộng (phần trăm bề rộng giấy), rot là độ.
 type Pos = { x: number; y: number; w: number; rot: number };
-type Item = Pos & ({ type: 'photo'; media: string; shape?: 'polaroid' | 'stamp' } | { type: 'sticker'; sticker: string });
+type Item = Pos & ({ type: 'photo'; media: string; shape?: 'polaroid' | 'stamp' | 'cutout' } | { type: 'sticker'; sticker: string });
 type Letter = { id: string; fromId: string; toId: string; body: string; style: LetterStyle; items: Item[]; title?: string | null; footer?: string | null; createdAt: string; readAt: string | null };
 /** Món đang soạn: ảnh chưa tải lên thì chưa có `media`, tạm hiện bằng `preview`. */
-type Draft = Pos & { key: string; type: 'photo' | 'sticker'; media?: string; preview?: string; sticker?: string; shape?: 'polaroid' | 'stamp' };
+type Draft = Pos & { key: string; type: 'photo' | 'sticker'; media?: string; preview?: string; sticker?: string; shape?: 'polaroid' | 'stamp' | 'cutout' };
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const tk = token.get();
@@ -78,12 +78,13 @@ function ItemView({ it, edit, selected, onSelect, onMove }: { it: { type: string
     else start.current = null;
   };
 
-  const src = it.media ? thumb(it.media, 1080) : it.preview;
+  // Miếng dán đã tách nền là PNG trong suốt: dùng bản gốc, bản thu nhỏ của máy chủ là JPEG sẽ mất nền trong suốt.
+  const src = it.media ? (it.shape === 'cutout' ? it.media : thumb(it.media, 1080)) : it.preview;
   return (
     <div className={`lp-item${edit ? ' edit' : ''}${selected ? ' sel' : ''}`} style={{ left: `${it.x}%`, top: `${it.y}%`, width: `${it.w}%`, transform: `translate(-50%, -50%) rotate(${it.rot}deg)` }}
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
       {it.type === 'photo'
-        ? <div className={`lp-photo${it.shape === 'stamp' ? ' stamp' : ''}`}><img src={src} alt="" draggable={false} decoding="async" /></div>
+        ? <div className={`lp-photo${it.shape === 'stamp' ? ' stamp' : it.shape === 'cutout' ? ' cutout' : ''}`}><img src={src} alt="" draggable={false} decoding="async" /></div>
         : it.sticker?.startsWith('stamp-') ? <div className="lp-stamp"><StampArt id={it.sticker} /></div>
         : <Sticker id={it.sticker ?? 'heart'} size={100} />}
     </div>
@@ -289,6 +290,8 @@ function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Memb
   const [items, setItems] = useState<Draft[]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [uploading, setUploading] = useState(0);
+  const [cut, setCut] = useState(false);
+  const [cutting, setCutting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [vh, setVh] = useState<number | null>(null);
   const area = useRef<HTMLTextAreaElement>(null);
@@ -339,18 +342,30 @@ function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Memb
     tap();
     drop({ type: 'sticker', sticker: id, w: 24 });
   };
-  async function addPhoto(file?: File) {
-    if (!file) return;
+  async function addPhoto(input?: File) {
+    if (!input) return;
     if (photos >= MAX_PHOTOS || items.length >= MAX_ITEMS) return toast(t('letters.scrap.full'));
+    let file: Blob = input;
+    let cutout = false;
+    if (cut) {
+      // Tách người khỏi nền; lỗi thì giữ ảnh gốc làm ảnh thường. Lần đầu phải tải mô hình nên hơi lâu.
+      setCutting(true);
+      try {
+        file = await (await import('./cutout')).cutOut(input);
+        cutout = true;
+      } catch {
+        toast(t('letters.cut.fail'));
+      } finally { setCutting(false); }
+    }
     const preview = URL.createObjectURL(file);
-    const postage = style.layout === 'postage';
+    const postage = style.layout === 'postage' && !cutout;
     const slot = postage ? [{ x: 65, y: 24 }, { x: 86, y: 24 }][photos % 2] : {};
-    const key = drop({ type: 'photo', preview, w: postage ? 20 : 46, shape: postage ? 'stamp' : 'polaroid', ...slot, ...(postage ? { rot: 0 } : {}) });
+    const key = drop({ type: 'photo', preview, w: cutout ? 38 : postage ? 20 : 46, shape: cutout ? 'cutout' : postage ? 'stamp' : 'polaroid', ...slot, ...(postage ? { rot: 0 } : {}) });
     setUploading((n) => n + 1);
     try {
-      const blob = await shrinkImage(file, 1600);
+      const blob = cutout ? file : await shrinkImage(file as File, 1600);
       const f = new FormData();
-      f.set('file', blob, fileName(blob, 'letter-photo'));
+      f.set('file', blob, cutout ? 'cutout.png' : fileName(blob, 'letter-photo'));
       const r = await call<{ media: string }>('/api/letters/photo', { method: 'POST', body: f });
       setItems((a) => a.map((x) => (x.key === key ? { ...x, media: r.media } : x)));
     } catch (e) {
@@ -413,7 +428,7 @@ function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Memb
             <button onClick={() => nudge({ w: clamp(cur.w * 1.14, 8, 80) })} aria-label={t('letters.scrap.bigger')}>+</button>
             <button onClick={() => nudge({ rot: ((cur.rot - 12 + 540) % 360) - 180 })} aria-label={t('letters.scrap.rotL')}>↶</button>
             <button onClick={() => nudge({ rot: ((cur.rot + 12 + 540) % 360) - 180 })} aria-label={t('letters.scrap.rotR')}>↷</button>
-            {cur.type === 'photo' && <button onClick={() => setItems((a) => a.map((x) => (x.key === cur.key ? { ...x, shape: x.shape === 'stamp' ? 'polaroid' : 'stamp' } : x)))} aria-label={t('letters.scrap.shape')}>▣</button>}
+            {cur.type === 'photo' && cur.shape !== 'cutout' && <button onClick={() => setItems((a) => a.map((x) => (x.key === cur.key ? { ...x, shape: x.shape === 'stamp' ? 'polaroid' : 'stamp' } : x)))} aria-label={t('letters.scrap.shape')}>▣</button>}
             <button className="del" onClick={() => { setItems((a) => a.filter((x) => x.key !== cur.key)); setSel(null); }} aria-label={t('letters.scrap.delete')}><Icon name="trash" size={18} /></button>
           </div>
         )}
@@ -424,6 +439,9 @@ function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Memb
         </div>
         {tab === 'scrap' ? (
           <div className="lt-opts scrap">
+            <button className={`lt-cut${cut ? ' on' : ''}`} role="switch" aria-checked={cut} onClick={() => { tap(); setCut(!cut); }} disabled={cutting}>
+              <i aria-hidden>✂</i><small>{cutting ? t('letters.cut.busy') : t('letters.cut.label')}</small>
+            </button>
             <label className="lt-photo-btn">
               <Icon name="image" size={22} /><small>{t('letters.photo.take')}</small>
               <input type="file" accept="image/*" capture="user" hidden onChange={(e) => { void addPhoto(e.target.files?.[0]); e.target.value = ''; }} />

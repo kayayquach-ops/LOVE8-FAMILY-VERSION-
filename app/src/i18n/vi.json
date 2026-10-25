@@ -640,5 +640,9 @@
   "letters.tpl.sky": "Trời xanh",
   "letters.tpl.summer": "Mùa hè",
   "letters.tpl.night": "Đêm sao",
-  "letters.bg.crimson": "Đỏ thẫm"
+  "letters.bg.crimson": "Đỏ thẫm",
+
+  "letters.cut.label": "Tách nền",
+  "letters.cut.busy": "Đang tách...",
+  "letters.cut.fail": "Chưa tách được nền, mình dùng ảnh gốc nhé"
 }

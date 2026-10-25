@@ -72,7 +72,7 @@ function cleanItems(raw: unknown) {
     const pos = { x: num(o.x, -5, 105, 50), y: num(o.y, -5, 105, 50), w: num(o.w, 8, 80, 30), rot: num(o.rot, -180, 180, 0) };
     if (o.type === 'photo' && typeof o.media === 'string' && /^\/media\/[0-9a-f-]{36}\.(jpg|png|webp)$/.test(o.media) && photos < MAX_PHOTOS) {
       photos++;
-      out.push({ type: 'photo', media: o.media, shape: o.shape === 'stamp' ? 'stamp' : 'polaroid', ...pos });
+      out.push({ type: 'photo', media: o.media, shape: o.shape === 'stamp' ? 'stamp' : o.shape === 'cutout' ? 'cutout' : 'polaroid', ...pos });
     } else if (o.type === 'sticker' && typeof o.sticker === 'string' && /^[a-z0-9-]{1,24}$/.test(o.sticker)) {
       out.push({ type: 'sticker', sticker: o.sticker, ...pos });
     }

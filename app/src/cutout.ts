@@ -52,13 +52,13 @@ function makeCanvas(w: number, h: number): { c: AnyCanvas; ctx: Ctx } {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   const ctx = c.getContext('2d');
-  if (!ctx) throw new Error('Không tạo được canvas');
+  if (!ctx) throw new Error('Không tạo được canvas'); // i18n-ok: lỗi nội bộ
   return { c, ctx };
 }
 
 function toPng(c: AnyCanvas): Promise<Blob> {
   if ('convertToBlob' in c) return c.convertToBlob({ type: 'image/png' });
-  return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Không xuất được PNG'))), 'image/png'));
+  return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Không xuất được PNG'))), 'image/png')); // i18n-ok: lỗi nội bộ
 }
 
 // Giải mã ảnh, xoay theo EXIF, rồi thu nhỏ ngay để không giữ bitmap lớn.
@@ -77,7 +77,7 @@ async function loadScaled(file: Blob, maxSide: number): Promise<{ c: AnyCanvas; 
       src = img; sw = img.naturalWidth; sh = img.naturalHeight;
     } finally { URL.revokeObjectURL(url); }
   }
-  if (!sw || !sh) throw new Error('Không đọc được ảnh');
+  if (!sw || !sh) throw new Error('Không đọc được ảnh'); // i18n-ok: lỗi nội bộ
   const k = Math.min(1, maxSide / Math.max(sw, sh));
   const w = Math.max(1, Math.round(sw * k)), h = Math.max(1, Math.round(sh * k));
   const { c, ctx } = makeCanvas(w, h);
@@ -104,9 +104,9 @@ async function personProb(img: AnyCanvas, n: number): Promise<Float32Array> {
   }
   try {
     const masks = res.confidenceMasks;
-    if (!masks?.length) throw new Error('Mô hình không trả về mặt nạ');
+    if (!masks?.length) throw new Error('Mô hình không trả về mặt nạ'); // i18n-ok: lỗi nội bộ
     const m = masks[0].getAsFloat32Array();
-    if (m.length !== n) throw new Error('Mặt nạ sai kích thước');
+    if (m.length !== n) throw new Error('Mặt nạ sai kích thước'); // i18n-ok: lỗi nội bộ
     const out = new Float32Array(n);
     // Mô hình nhiều lớp: lớp 0 là nền. Mô hình một lớp: chính là người.
     if (masks.length > 1) for (let i = 0; i < n; i++) out[i] = 1 - m[i];
@@ -306,7 +306,7 @@ export async function cutOut(file: Blob, opts: CutOutOptions = {}): Promise<Blob
   const bin = new Uint8Array(n);
   let total = 0;
   for (let i = 0; i < n; i++) if (prob[i] >= 0.5) { bin[i] = 1; total++; }
-  if (total < n * 0.02) throw new Error('Không thấy người trong ảnh');
+  if (total < n * 0.02) throw new Error('Không thấy người trong ảnh'); // i18n-ok: lỗi nội bộ, giao diện chỉ hiện letters.cut.fail
 
   // Mở hình thái (co rồi nở) để bỏ dải mảnh dính theo người, như khung cửa, mép ghế.
   const open = Math.max(2, Math.round(long * 0.008)) * 3;
@@ -319,7 +319,7 @@ export async function cutOut(file: Blob, opts: CutOutOptions = {}): Promise<Blob
 
   // 2. Giữ thành phần lớn nhất (và các thành phần gần to bằng nó, cho ảnh hai người đứng tách nhau).
   const comps = label(bin, w, h, 1);
-  if (!comps.areas.length) throw new Error('Không thấy người trong ảnh');
+  if (!comps.areas.length) throw new Error('Không thấy người trong ảnh'); // i18n-ok: lỗi nội bộ, giao diện chỉ hiện letters.cut.fail
   const maxA = Math.max(...comps.areas);
   const keepC = comps.areas.map((a) => a >= maxA * 0.3);
   let area = 0;
@@ -327,8 +327,8 @@ export async function cutOut(file: Blob, opts: CutOutOptions = {}): Promise<Blob
     if (bin[i] && !keepC[comps.lab[i]]) bin[i] = 0;
     if (bin[i]) area++;
   }
-  if (area < n * 0.02) throw new Error('Phần người tách được quá nhỏ');
-  if (area > n * 0.92) throw new Error('Không tách được nền: mặt nạ phủ gần cả khung');
+  if (area < n * 0.02) throw new Error('Phần người tách được quá nhỏ'); // i18n-ok: lỗi nội bộ, giao diện chỉ hiện letters.cut.fail
+  if (area > n * 0.92) throw new Error('Không tách được nền: mặt nạ phủ gần cả khung'); // i18n-ok: lỗi nội bộ, giao diện chỉ hiện letters.cut.fail
   await tick();
 
   // 3. Lấp lỗ nhỏ trong người (khe tay, chỗ sáng lóa).

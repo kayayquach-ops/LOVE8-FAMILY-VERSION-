@@ -654,5 +654,9 @@
   "letters.tpl.sky": "Blue sky",
   "letters.tpl.summer": "Summer",
   "letters.tpl.night": "Starry night",
-  "letters.bg.crimson": "Crimson"
+  "letters.bg.crimson": "Crimson",
+
+  "letters.cut.label": "Cut out",
+  "letters.cut.busy": "Cutting...",
+  "letters.cut.fail": "Couldn't cut it out, using the original photo"
 }
