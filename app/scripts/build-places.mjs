@@ -1,4 +1,4 @@
-// Chạy một lần: node scripts/build-places.mjs  ->  src/places.json
+// Chạy một lần: node scripts/build-places.mjs  ->  src/places.json (xong chạy tiếp node scripts/places-en.mjs để thêm tên tiếng Anh)
 // Lấy toạ độ và múi giờ từ Open-Meteo geocoding, kiểm đúng nước rồi ghi tĩnh. App không gọi API cho các địa danh này.
 import { writeFileSync, existsSync, readFileSync } from 'node:fs';
 

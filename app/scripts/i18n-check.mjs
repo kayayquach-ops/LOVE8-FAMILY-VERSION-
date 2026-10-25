@@ -6,7 +6,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { scan } from './i18n-scan.mjs';
+import { scan, VI as VI_CHARS } from './i18n-scan.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(path.join(root, p), 'utf8');
@@ -22,7 +22,13 @@ const warns = [];
 
 // ---- Bảng chữ ----
 for (const k of Object.keys(dict.client.vi)) if (k in dict.server.vi) errors.push(`khoá "${k}" nằm ở cả bảng máy khách lẫn máy chủ`);
-const vars = (s) => [...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
+// Biến chỉ là chữ xưng hô theo vai (self, Self, kids, call, other) thì tiếng Anh được bỏ hoặc thêm tuỳ câu; mọi biến khác ({name}, {n}...) phải khớp tiếng Việt.
+const ROLE_VARS = new Set(['self', 'Self', 'kids', 'call', 'other']);
+// Dạng số ít (.one) được bỏ {n} ("tomorrow", "1 day").
+const vars = (s, one = false) => [...new Set([...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]))].filter((v) => !ROLE_VARS.has(v) && !(one && v === 'n')).sort().join(',');
+// Tên riêng được giữ nguyên trong bản dịch (chứa chữ có dấu tiếng Việt).
+const PROPER = ['Mây'];
+const stripProper = (s) => PROPER.reduce((x, p) => x.split(p).join(''), String(s));
 const missing = {};
 for (const side of ['client', 'server']) {
   for (const l of ['en', 'ko']) {
@@ -30,7 +36,8 @@ for (const side of ['client', 'server']) {
     for (const [k, v] of Object.entries(d)) {
       const base = k.replace(/\.(zero|one|two|few|many|other)$/, '');
       if (!(k in dict[side].vi) && !(base in dict[side].vi)) { errors.push(`${side}/${l}.json: khoá thừa "${k}"`); continue; }
-      if (v && vars(v) !== vars(dict[side].vi[k] ?? dict[side].vi[base])) errors.push(`${side}/${l}.json: biến trong "${k}" khác tiếng Việt (${vars(v) || 'không có'} / ${vars(dict[side].vi[k] ?? dict[side].vi[base]) || 'không có'})`);
+      if (l === 'en' && VI_CHARS.test(stripProper(v))) errors.push(`${side}/en.json: "${k}" còn chữ có dấu tiếng Việt: ${v.slice(0, 60)}`);
+      if (v && vars(v, k.endsWith('.one') && !(k in dict[side].vi)) !== vars(dict[side].vi[k] ?? dict[side].vi[base], k.endsWith('.one') && !(k in dict[side].vi))) errors.push(`${side}/${l}.json: biến trong "${k}" khác tiếng Việt (${vars(v) || 'không có'} / ${vars(dict[side].vi[k] ?? dict[side].vi[base]) || 'không có'})`);
     }
     missing[`${side}/${l}`] = Object.keys(dict[side].vi).filter((k) => !d[k]);
   }
