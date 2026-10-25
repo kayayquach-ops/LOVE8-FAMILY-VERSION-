@@ -173,13 +173,13 @@ export function drawBooth(c: Ctx, themeId: string, tiles: Tile[], title: string,
     if (v && v.videoWidth && v.readyState >= 2) cover(c, v, v.videoWidth, v.videoHeight, r.x, r.y, r.w, r.h, tile.mirror);
     else {
       c.fillStyle = '#F1E2D8';
-      c.font = `500 ${Math.round(side * 0.28)}px BVP, system-ui, sans-serif`;
+      c.font = `500 ${Math.round(side * 0.28)}px BVP, "Noto Sans KR", system-ui, sans-serif`;
       c.textAlign = 'center'; c.textBaseline = 'middle';
       c.fillText((tile.name.trim().split(/\s+/).pop()?.[0] ?? '?').toUpperCase(), r.x + r.w / 2, r.y + r.h / 2);
     }
     // Tên nằm trong ô, góc dưới, trên một dải mờ.
     const fs = Math.round(Math.max(24, Math.min(34, side * 0.075)));
-    c.font = `500 ${fs}px BVP, system-ui, sans-serif`;
+    c.font = `500 ${fs}px BVP, "Noto Sans KR", system-ui, sans-serif`;
     const tw = c.measureText(tile.name).width + fs * 1.2;
     const tx = round ? r.x + (r.w - tw) / 2 : r.x + pad + 16;
     const ty = r.y + r.h - pad - fs * 1.7 - (round ? side * 0.08 : 14);
@@ -193,9 +193,9 @@ export function drawBooth(c: Ctx, themeId: string, tiles: Tile[], title: string,
   });
   c.fillStyle = t.ink;
   c.textAlign = 'center'; c.textBaseline = 'alphabetic';
-  c.font = '500 64px BVP, system-ui, sans-serif';
+  c.font = '500 64px BVP, "Noto Sans KR", system-ui, sans-serif';
   c.fillText(title, W / 2, H - 112);
-  c.font = '400 32px BVP, system-ui, sans-serif';
+  c.font = '400 32px BVP, "Noto Sans KR", system-ui, sans-serif';
   c.globalAlpha = 0.75;
   c.fillText(new Date().toLocaleDateString(locale(), { day: 'numeric', month: 'long', year: 'numeric' }), W / 2, H - 60);
   c.restore();

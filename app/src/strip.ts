@@ -19,14 +19,15 @@ type StripTheme = {
 
 export const SW = 600;
 export const stripH = (n: number) => (n === 4 ? 2200 : 1800);
-const F = 'BVP, system-ui, sans-serif';
+const KS = '"Noto Sans KR"', KR = '"Noto Serif KR"'; // phông Hàn, chỉ có khi đang tiếng Hàn (xem loadKoFonts)
+const F = `BVP, ${KS}, system-ui, sans-serif`;
 const TAU = Math.PI * 2;
 
 function rand(seed: number) {
   return () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
 }
 
-import { shownLang, t } from './i18n';
+import { loadKoFonts, shownLang, t } from './i18n';
 
 const two = (x: number) => String(x).padStart(2, '0');
 const WD = (d: Date) => t(`strip.weekday.${d.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6}`);
@@ -48,8 +49,8 @@ function text(c: Ctx, s: string, x: number, y: number, color: string, size: numb
 
 // ---------- Chữ riêng từng khung ----------
 
-const PF = '"Playfair Display", serif', OS = 'Oswald, sans-serif', SM = '"Space Mono", monospace', IN = 'Inter, sans-serif';
-const BA = 'Bangers, sans-serif', PA = 'Pacifico, cursive', DS = '"Dancing Script", cursive', LO = 'Lobster, cursive', PH = '"Patrick Hand", cursive';
+const PF = `"Playfair Display", ${KR}, serif`, OS = `Oswald, ${KS}, sans-serif`, SM = `"Space Mono", ${KS}, monospace`, IN = `Inter, ${KS}, sans-serif`;
+const BA = `Bangers, ${KS}, sans-serif`, PA = `Pacifico, ${KS}, cursive`, DS = `"Dancing Script", ${KR}, cursive`, LO = `Lobster, ${KS}, cursive`, PH = `"Patrick Hand", ${KS}, cursive`;
 
 const STRIP_FONTS: Record<string, string[]> = {
   mist: [`700 40px ${DS}`, `400 40px ${PH}`],
@@ -68,7 +69,11 @@ const VI = 'Cả nhà mình, Hồ Chí Minh, Đà Nẵng, Tết ăâêôơưđ �
 export function loadStripFonts(ids: string[] = Object.keys(STRIP_FONTS), extra = '') {
   const f = (document as Document & { fonts?: FontFaceSet }).fonts;
   if (!f) return Promise.resolve();
-  return Promise.all(ids.flatMap((id) => STRIP_FONTS[id] ?? []).map((spec) => f.load(spec, VI + extra).catch(() => []))).then(() => {});
+  const load = () => Promise.all(ids.flatMap((id) => STRIP_FONTS[id] ?? []).map((spec) => f.load(spec, VI + extra).catch(() => []))).then(() => {});
+  if (shownLang() !== 'ko') return load();
+  // Tiếng Hàn: nạp thêm phông Hàn với đúng chữ sẽ vẽ (tiêu đề, thứ, chữ trong khung), không thì tấm đầu rơi về phông hệ thống.
+  const ko = extra + [0, 1, 2, 3, 4, 5, 6].map((d) => t(`strip.weekday.${d as 0}`)).join('') + ['ticket.row', 'ticket.seat', 'ticket.show', 'ticket.keep', 'music.playing', 'music.by', 'tet.title', 'tet.stamp', 'tet.luck', 'xmas.title', 'pair.back'].map((k) => t(`strip.${k}` as 'strip.pair.back')).join('') + '0123456789월일년';
+  return loadKoFonts().then(() => Promise.all([`400 40px ${KS}`, `500 40px ${KS}`, `700 40px ${KS}`, `700 40px ${KR}`].map((spec) => f.load(spec, ko).catch(() => [])))).then(load);
 }
 
 /** Chữ cong theo cung tròn: tâm (cx, cy) ở dưới, chữ chạy trên đỉnh cung. */

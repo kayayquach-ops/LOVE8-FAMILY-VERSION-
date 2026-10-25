@@ -48,11 +48,22 @@ const plurals = new Map<Lang, Intl.PluralRules>();
 
 /** `<html lang>` theo thứ tiếng của chữ đang hiện: chưa có bản dịch nào thì vẫn là tiếng Việt. */
 function apply() {
+  if (lang === 'ko') void loadKoFonts();
   dict = dicts[lang] ?? VI;
   version++;
   shown = Object.values(dict).some(Boolean) ? lang : 'vi';
   if (typeof document !== 'undefined') document.documentElement.lang = shown;
   listeners.forEach((f) => f());
+}
+
+let koFonts: Promise<void> | undefined;
+/** Phông Hàn (Noto Sans/Serif KR) chỉ tải khi dùng tiếng Hàn; CSS chia lát theo unicode-range nên chỉ lát có chữ mới tải. */
+export function loadKoFonts() {
+  koFonts ??= Promise.all([
+    import('@fontsource/noto-sans-kr/400.css'), import('@fontsource/noto-sans-kr/500.css'), import('@fontsource/noto-sans-kr/700.css'),
+    import('@fontsource/noto-serif-kr/700.css'),
+  ]).then(() => {}).catch(() => { koFonts = undefined; });
+  return koFonts;
 }
 
 async function load(l: Lang) {
