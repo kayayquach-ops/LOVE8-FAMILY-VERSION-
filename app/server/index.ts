@@ -17,6 +17,7 @@ import { callRouter, migrateCall } from './call.ts';
 import { buildFirstVoicePodcast, migratePodcast, podcastRouter } from './podcast.ts';
 import { liveRouter, liveStreamRouter } from './facetime.ts';
 import { migratePush, notifyPost, notifyReply, pushRouter, startPushScheduler } from './push.ts';
+import { thumbRoute, warmThumbs } from './thumb.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -181,6 +182,7 @@ app.patch('/api/me', upload.single('avatar'), h(async (req, res) => {
      phone = coalesce($5, phone), avatar = coalesce($6, avatar) where id = $1`,
     [req.member!.id, b.name || null, ['bo', 'me', 'con'].includes(b.role) ? b.role : null, b.city || null, b.phone ?? null, media(req.file)],
   );
+  warmThumbs(MEDIA_DIR, media(req.file), [160]);
   res.json({ ok: true });
 }));
 
@@ -221,6 +223,7 @@ app.post('/api/posts', upload.single('file'), h(async (req, res) => {
     [id(), req.member!.family_id, req.member!.id, kind, media(req.file), String(b.caption || '').slice(0, 120) || null,
       b.meal === 'true', Number(b.seconds) || null, b.questionWeek || null],
   );
+  if (kind === 'photo' || kind === 'video') warmThumbs(MEDIA_DIR, media(req.file));
   notifyPost(req.member!.family_id, req.member!.id, kind, b.caption);
   res.json({ ok: true });
 }));
@@ -331,6 +334,8 @@ app.post('/api/missions/:key', h(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Ảnh thu nhỏ đứng trước kho gốc: /media/w/360/<tệp>.
+app.get('/media/w/:size/:file', thumbRoute(MEDIA_DIR));
 app.use('/media', express.static(MEDIA_DIR, { maxAge: '30d', immutable: true }));
 
 // Bản build của giao diện; mọi đường dẫn khác trả về index.html để app tự mở đúng màn.

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { pool } from './db.ts';
 import { notifyChat } from './push.ts';
 import { errorBody, tReq } from './i18n.ts';
+import { warmThumbs } from './thumb.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -106,6 +107,7 @@ chatRouter.post('/chat', upload.single('file'), h(async (req, res) => {
       Number(b.seconds) || null, b.reply_to ? String(b.reply_to) : null],
   );
   await pool.query('insert into message_reads (member_id, at) values ($1, now()) on conflict (member_id) do update set at = now()', [req.member.id]);
+  if (kind === 'photo') warmThumbs(MEDIA_DIR, rows[0].media, [1080]);
   broadcast(req.member.family_id, rows[0]);
   notifyChat(req.member.family_id, req.member.id, rows[0]);
   res.json(rows[0]);

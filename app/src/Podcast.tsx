@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { errorText, token } from './api';
 import { t } from './i18n';
-import type { Me, Podcast as Ep } from './shared';
+import { thumb, type Me, type Podcast as Ep } from './shared';
 import { tap } from './sound';
 import { speak, stopSpeaking, unlockSpeech } from './speech';
 import { Avatar, Icon, toast } from './ui';
@@ -96,7 +96,7 @@ function Player({ ep, me }: { ep: Ep; me: Me }) {
   const c = ep.chapters[cur];
   return (
     <div className="pod-player fade" key={ep.id}>
-      <div className="pod-cover">{ep.cover ? <img src={ep.cover} alt="" /> : <Icon name="mic" size={44} />}</div>
+      <div className="pod-cover">{ep.cover ? <img src={thumb(ep.cover, 1080)} alt="" decoding="async" /> : <Icon name="mic" size={44} />}</div>
       <div className="pod-title">{ep.title}</div>
       <div className="pod-meta">{who ? who.name : t('podcast.family')} · {mmss(ep.duration)}</div>
       <audio ref={audio} src={ep.media ?? undefined} preload="metadata"
@@ -121,7 +121,7 @@ function Shelf({ list, sel, onPick }: { list: Ep[]; sel?: string; onPick: (id: s
     <div className="pod-shelf">
       {list.map((e) => (
         <button key={e.id} className={`pod-ep${e.id === sel ? ' on' : ''}`} onClick={() => { tap(); onPick(e.id); }} disabled={e.status !== 'ready'}>
-          <span className="pod-thumb">{e.cover ? <img src={e.cover} alt="" /> : <Icon name="mic" size={22} />}</span>
+          <span className="pod-thumb">{e.cover ? <img src={thumb(e.cover, 360)} alt="" loading="lazy" decoding="async" /> : <Icon name="mic" size={22} />}</span>
           <b>{e.title}</b>
           <span className="muted">{e.status === 'ready' ? mmss(e.duration) : t('podcast.rendering')}</span>
         </button>
@@ -185,7 +185,7 @@ export function Podcast({ me, start, onClose, onCall }: { me: Me; start?: string
           <section>
             <div className="h2">{t('podcast.photos')}</div>
             <div className="pod-photos">
-              {photos.map((p) => <img key={p.id} src={p.media} alt={p.caption ?? ''} loading="lazy" />)}
+              {photos.map((p) => <img key={p.id} src={thumb(p.media, 360)} alt={p.caption ?? ''} loading="lazy" decoding="async" />)}
             </div>
           </section>
         )}

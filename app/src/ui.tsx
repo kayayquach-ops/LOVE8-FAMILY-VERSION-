@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { Member } from './shared';
+import { thumb, type Member } from './shared';
 import { sfx } from './sound';
 
 // Icon nét mảnh tự vẽ, một bộ duy nhất cho cả app.
@@ -50,7 +50,8 @@ export function Mesh() {
 }
 
 export function Avatar({ m, size = 40 }: { m?: Member | null; size?: number }) {
-  if (m?.avatar) return <img className="avatar" src={m.avatar} alt={m.name} style={{ width: size, height: size }} />;
+  // Ảnh đại diện hiện tối đa vài chục px: dùng bản 160 px thay ảnh gốc 800 px.
+  if (m?.avatar) return <img className="avatar" src={size <= 60 ? thumb(m.avatar, 160) : m.avatar} alt={m.name} decoding="async" style={{ width: size, height: size }} />;
   return <div className="avatar" style={{ width: size, height: size, fontSize: size * 0.42 }}>{(m?.name ?? '?').trim().split(/\s+/).pop()?.[0]?.toUpperCase()}</div>;
 }
 

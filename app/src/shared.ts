@@ -89,3 +89,7 @@ export function cityOf(v?: string | null): City | undefined {
 
 /** Bao lâu không mở app thì báo cho cả nhà. */
 export const SILENT_HOURS = 48;
+
+/** Ảnh thu nhỏ máy chủ dựng sẵn (cạnh ngắn bằng size px); video thì là khung đầu dạng ảnh. Đường dẫn khác (ảnh tạm, link ngoài) giữ nguyên. */
+export const thumb = (url: string | null | undefined, size: 160 | 360 | 1080) =>
+  url && /^\/media\/[\w-]+\.(jpe?g|png|webp|mp4|webm|mov)$/i.test(url) ? `/media/w/${size}/${url.slice(7)}` : url ?? '';

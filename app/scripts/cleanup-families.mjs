@@ -102,6 +102,11 @@ async function removeFamilies(prefixes) {
       const p = path.resolve(base, rel);
       if (!p.startsWith(base + path.sep)) continue; // không ra ngoài thư mục media
       try { fs.unlinkSync(p); removed++; } catch {}
+      // Ảnh thu nhỏ máy chủ dựng từ tệp này (server/thumb.ts): media/w<cỡ>/<tên>.jpg.
+      for (const s of [160, 360, 1080]) {
+        const th = path.resolve(base, `w${s}`, path.basename(rel).replace(/\.\w+$/, '.jpg'));
+        if (th.startsWith(base + path.sep)) try { fs.unlinkSync(th); } catch {}
+      }
     }
     console.log(`\nĐã xoá xong. Đã xoá ${removed}/${files.size} file media.`);
   } catch (e) {
