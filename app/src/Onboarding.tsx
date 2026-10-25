@@ -376,6 +376,32 @@ function HelloFrame() {
   );
 }
 
+/** Mỗi lần mở app: màn "chào mừng về nhà" hiện vài giây (chạm để vào ngay), mờ đi rồi mới vào app. */
+export function Greeting({ onDone }: { onDone: () => void }) {
+  const [out, setOut] = useState(false);
+  const closed = useRef(false);
+  const close = () => {
+    if (closed.current) return;
+    closed.current = true;
+    setOut(true);
+    setTimeout(onDone, 500);
+  };
+  useEffect(() => {
+    const id = setTimeout(close, 3600);
+    return () => clearTimeout(id);
+  }, []);
+  return (
+    <div className={`greet${out ? ' out' : ''}`}>
+      <Meadow />
+      <button className="screen hello" onClick={close} aria-label={t('onboarding.hello.aria')}>
+        <HelloFrame />
+        <div className="hello-top" aria-hidden><div className="hello-brand">sweet home</div></div>
+        <Welcome />
+      </button>
+    </div>
+  );
+}
+
 /** "chào mừng về nhà" trượt vào từ bên trái, chữ "bạn" từ bên phải, rồi đứng yên với quầng sáng thở nhẹ. */
 function Welcome() {
   return (

@@ -3,7 +3,7 @@ import { api, isSignedOut, token } from './api';
 import { Camera } from './Camera';
 import { Feed } from './Feed';
 import { Hug } from './Hug';
-import { Onboarding } from './Onboarding';
+import { Greeting, Onboarding } from './Onboarding';
 import type { Me } from './shared';
 import { Calendar } from './Calendar';
 import { Jar } from './Jar';
@@ -54,6 +54,7 @@ export function App() {
   const inCall = useRef(false);
   inCall.current = facetime;
   const [skipRoom, setSkipRoom] = useState<string | null>(null);
+  const [greet, setGreet] = useState(true);
   const [hug, setHug] = useState(() => { try { return localStorage.getItem(HUG_KEY) !== today(); } catch { return false; } });
 
   const loadUnread = () => fetch('/api/chat/unread', { headers: { authorization: `Bearer ${token.get()}` } }).then((r) => r.json()).then((d) => setChatUnread(d.n ?? 0)).catch(() => {});
@@ -120,6 +121,7 @@ export function App() {
     </div></div>
   );
   else if (!me) body = <Onboarding onDone={() => { history.replaceState(null, '', '/'); doneHug(); void load(); }} />;
+  else if (greet) body = <Greeting onDone={() => setGreet(false)} />;
   else if (hug) body = <Hug name={me.me.name} onDone={doneHug} />;
   else body = (
     <>

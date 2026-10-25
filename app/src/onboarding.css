@@ -90,3 +90,7 @@
 /* 한국어: 필기체 대신 Noto, 한글은 글자 폭이 넓어 크기를 줄이고 줄 간격을 늘린다 */
 html[lang="ko"] .wl-left { font-family: 'Noto Sans KR', sans-serif; font-weight: 500; font-size: calc(var(--rw) * 78 / 1080); line-height: 1.25; }
 html[lang="ko"] .wl-right { font-family: 'Noto Serif KR', serif; font-weight: 700; font-stretch: 100%; font-size: calc(var(--rw) * 120 / 1080); white-space: nowrap; letter-spacing: -.04em; }
+
+/* Màn chào mỗi lần mở app: phủ kín, mờ đi bằng opacity */
+.greet { position: fixed; inset: 0; z-index: 60; opacity: 1; transition: opacity .5s ease; will-change: opacity; }
+.greet.out { opacity: 0; pointer-events: none; }
