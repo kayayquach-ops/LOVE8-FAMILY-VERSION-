@@ -605,5 +605,17 @@
   "letters.bg.meadow": "들판",
   "letters.bg.night": "별밤",
   "letters.bg.dots": "분홍 점",
-  "letters.bg.grid": "격자"
+  "letters.bg.grid": "격자",
+
+  "letters.tab.scrap": "꾸미기",
+  "letters.photo.take": "사진 찍기",
+  "letters.photo.pick": "사진 고르기",
+  "letters.photoOnly": "사진으로 보낸 편지",
+  "letters.scrap.full": "더 붙일 수 없어요, 하나를 빼 주세요",
+  "letters.scrap.edit": "선택한 그림 고치기",
+  "letters.scrap.smaller": "작게",
+  "letters.scrap.bigger": "크게",
+  "letters.scrap.rotL": "왼쪽으로 돌리기",
+  "letters.scrap.rotR": "오른쪽으로 돌리기",
+  "letters.scrap.delete": "떼기"
 }

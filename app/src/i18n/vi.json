@@ -605,5 +605,17 @@
   "letters.bg.meadow": "Đồng cỏ",
   "letters.bg.night": "Đêm sao",
   "letters.bg.dots": "Chấm hồng",
-  "letters.bg.grid": "Kẻ ô"
+  "letters.bg.grid": "Kẻ ô",
+
+  "letters.tab.scrap": "Dán",
+  "letters.photo.take": "Chụp ảnh",
+  "letters.photo.pick": "Chọn ảnh",
+  "letters.photoOnly": "Một lá thư bằng hình",
+  "letters.scrap.full": "Thư đã đầy, bớt một món nhé",
+  "letters.scrap.edit": "Chỉnh hình đang chọn",
+  "letters.scrap.smaller": "Nhỏ lại",
+  "letters.scrap.bigger": "To lên",
+  "letters.scrap.rotL": "Xoay trái",
+  "letters.scrap.rotR": "Xoay phải",
+  "letters.scrap.delete": "Bỏ hình này"
 }

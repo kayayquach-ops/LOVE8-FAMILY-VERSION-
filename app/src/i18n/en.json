@@ -619,5 +619,17 @@
   "letters.bg.meadow": "Meadow",
   "letters.bg.night": "Starry night",
   "letters.bg.dots": "Pink dots",
-  "letters.bg.grid": "Grid"
+  "letters.bg.grid": "Grid",
+
+  "letters.tab.scrap": "Stick",
+  "letters.photo.take": "Take photo",
+  "letters.photo.pick": "Choose photo",
+  "letters.photoOnly": "A letter in pictures",
+  "letters.scrap.full": "The letter is full, remove one first",
+  "letters.scrap.edit": "Edit selected sticker",
+  "letters.scrap.smaller": "Smaller",
+  "letters.scrap.bigger": "Bigger",
+  "letters.scrap.rotL": "Rotate left",
+  "letters.scrap.rotR": "Rotate right",
+  "letters.scrap.delete": "Remove"
 }
