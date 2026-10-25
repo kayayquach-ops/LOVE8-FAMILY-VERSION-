@@ -57,7 +57,8 @@ export function App() {
   inCall.current = facetime;
   const [skipRoom, setSkipRoom] = useState<string | null>(null);
   const [greet, setGreet] = useState(true);
-  const [hug, setHug] = useState(() => { try { return localStorage.getItem(HUG_KEY) !== today(); } catch { return false; } });
+  // Màn "giữ để ôm" mỗi ngày đã bỏ theo yêu cầu: mở app là vào thẳng Trang chủ sau màn chào. Đặt lại thành kiểm HUG_KEY để bật lại.
+  const [hug, setHug] = useState(false);
 
   const loadUnread = () => fetch('/api/chat/unread', { headers: { authorization: `Bearer ${token.get()}` } }).then((r) => r.json()).then((d) => setChatUnread(d.n ?? 0)).catch(() => {});
   const checkCall = () => fetch('/api/call/due', { headers: { authorization: `Bearer ${token.get()}` } }).then((r) => r.json())
