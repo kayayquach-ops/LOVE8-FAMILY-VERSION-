@@ -15,6 +15,15 @@ App gia đình cho du học sinh ở xa và bố mẹ. Bản thật: **https://h
 ### Giao diện (`app/src`)
 `App.tsx`, `Onboarding.tsx` (màn chào kiểu cánh đồng có khung hoa văn chấm, các câu hỏi nhịp chậm đằm, chạm để hiện nhanh, thu "lời thương đầu tiên"), `Camera.tsx`, `Feed.tsx`, `Home.tsx` (thẻ mời gọi AI `CallCard.tsx`), `Chat.tsx`, `Calendar.tsx` (+ `lunar.ts`), `Jar.tsx`, `Recap.tsx`, `Podcast.tsx`, `Call.tsx` (cuộc gọi AI với linh vật), `Mascot.tsx` (SVG) và `Mascot3D.tsx` (three.js, model `public/mascot.glb` dựng bằng Blender, file nguồn `C:\Users\YT KOREA\homeletter\mascot.blend`), `FaceTime.tsx` (+ `strip.ts`, `booth.ts`, `booth.css`: photobooth dải ảnh 8 khung), `CityPicker.tsx` (+ `places.json` 506 nơi), `Notify.tsx`, `Sheets.tsx` (Gia đình), `sound.ts`.
 
+## Cuộc gọi AI hằng tuần: cơ chế (đọc trước khi sửa call.ts, voice.ts, ttsgate.ts, Call.tsx, speech.ts)
+
+Ba bộ phận độc lập, đừng nhầm:
+1. **Nghe** (chữ từ lời nói): máy khách ghi âm (VAD tự biết khi nói xong) và chép bằng Web Speech nếu có; không có thì máy chủ đổi file sang mp3 16 kHz và nhờ **Gemini** chép (`transcribe`, tối đa 8 giây). Hạn mức rộng.
+2. **Hiểu và nghĩ** (soạn câu hỏi `aiScript`, câu đáp `quickReply`, rút ngày tháng `saveDates`): **Gemini văn bản** (`GEMINI_MODEL`, mặc định gemini-2.5-flash), hạn mức rộng (Tier 1: 1000 RPM, 10000 RPD). Dữ liệu đưa vào chỉ là sự thật có trong DB; prompt có luật cấm bịa và lớp lọc `suspect()`. Cuộc gọi đầu của mỗi người là bộ câu soạn sẵn (`firstScript`, không gọi AI). Người không dùng tiếng Việt tạm dùng bộ câu mẫu (đợt 3 i18n sẽ làm AI cho en/ko).
+3. **Nói** (đọc câu ra tiếng): **Gemini TTS** (`gemini-2.5-flash-preview-tts`, giọng Zephyr, `GEMINI_VOICE`). Đây là chỗ DUY NHẤT bị giới hạn thấp: Tier 1 chỉ **10 yêu cầu mỗi phút và 100 mỗi ngày** (reset nửa đêm giờ Thái Bình Dương). Vì vậy: hàng đợi `ttsgate.ts` tối đa 8 yêu cầu mỗi 60 giây, ngân sách ngày `GEMINI_TTS_DAILY` (mặc định 70, lưu `app_settings.tts_budget`), cache bền ở `/data/media/tts` (khoá không đổi, đừng bump `CACHE_VER` nếu không cần), câu cố định chỉ lấy từ kho. Lúc nhấc máy máy khách hỏi `GET /api/call/tts-status`: `ok=false` thì CẢ cuộc gọi dùng giọng máy (`speechSynthesis`), không trộn giọng; hết hạn mức giữa chừng thì hiện phụ đề chữ + chuông nhẹ.
+Luồng: thẻ mời ở Trang chủ (`CallCard.tsx`, không tự đổ chuông, người mới dưới 24 giờ không bị nhắc) → "Nghe máy" → `/api/call/start` → chào + câu 1 (một file TTS) → mic mở sau khi Mây nói xong → trả lời → chép lời → câu đáp ngắn → câu kế (xin trước đúng một câu) → tạm biệt ngay → máy chủ làm nền: ngày tháng vào lịch, ảnh vào kho, ghép podcast bằng ffmpeg.
+**Hướng lâu dài cho giọng:** chuyển sang **Google Cloud Text-to-Speech** (Chirp 3 HD, có vi/en/ko, hạn mức rộng hơn nhiều, không phụ thuộc bậc chi tiêu); người dùng bật API trong Google Cloud Console rồi đưa khoá, chỉ thay phần "Nói", phần nghe và nghĩ vẫn là Gemini. Lên Tier 2 của Gemini cần khoảng 250 đô chi tiêu cộng 30 ngày nên không thực tế.
+
 ## Deploy
 
 ```bash
