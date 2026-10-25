@@ -652,5 +652,7 @@
   "settings.soundTap": "Tiếng khi chạm nút",
   "settings.app": "Ứng dụng",
   "settings.reload": "Tải lại app",
-  "settings.reloadHint": "Dùng khi app có vẻ chưa cập nhật bản mới"
+  "settings.reloadHint": "Dùng khi app có vẻ chưa cập nhật bản mới",
+
+  "letters.toSelf": "Cho mình"
 }

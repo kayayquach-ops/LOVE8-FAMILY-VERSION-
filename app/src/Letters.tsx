@@ -154,7 +154,8 @@ export function Letters({ me, start, onClose }: { me: Me; start?: string | null;
   const [view, setView] = useState<{ type: 'box' } | { type: 'write'; to?: string } | { type: 'read'; letter: Letter; fresh: boolean }>({ type: 'box' });
   const [box, setBox] = useState<'in' | 'out'>('in');
   const [lists, setLists] = useState<Record<'in' | 'out', Letter[] | null>>({ in: null, out: null });
-  const others = me.members.filter((m) => m.id !== me.me.id);
+  // Người nhận: cả nhà, mình đứng cuối (gửi thư cho chính mình cũng được, và để dùng khi nhà mới có một người).
+  const others = [...me.members.filter((m) => m.id !== me.me.id), me.me];
   const byId = (id: string): Member | undefined => me.members.find((m) => m.id === id);
 
   useEffect(() => { void loadLetterFonts(getLang() === 'ko'); }, []);
@@ -245,8 +246,7 @@ export function Letters({ me, start, onClose }: { me: Me; start?: string | null;
         })}
       </div>
       <div className="lt-foot">
-        {others.length ? <button className="btn" onClick={() => { tap(); setView({ type: 'write' }); }}>{t('letters.write')}</button>
-          : <div className="muted lt-alone">{t('letters.alone')}</div>}
+        <button className="btn" onClick={() => { tap(); setView({ type: 'write' }); }}>{t('letters.write')}</button>
       </div>
     </div>
   );
@@ -279,7 +279,7 @@ function TplChip({ s }: { s: Required<LetterStyle> }) {
 }
 
 function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Member[]; to?: string; onBack: () => void; onSent: (l: Letter) => void }) {
-  const [to, setTo] = useState<string | null>(first ?? (others.length === 1 ? others[0].id : null));
+  const [to, setTo] = useState<string | null>(first ?? (others.length <= 2 ? others[0].id : null));
   const [text, setText] = useState('');
   const [style, setStyle] = useState<Required<LetterStyle>>(() => {
     try { return { ...DEFAULT_STYLE, ...JSON.parse(localStorage.getItem('hl-letter-style') || '{}') }; } catch { return DEFAULT_STYLE; }
@@ -409,7 +409,7 @@ function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Memb
       <div className="lt-to" role="radiogroup" aria-label={t('letters.pickTo')}>
         {others.map((m) => (
           <button key={m.id} role="radio" aria-checked={to === m.id} className={to === m.id ? 'on' : ''} onClick={() => { tap(); setTo(m.id); }}>
-            <Avatar m={m} size={26} /><span>{m.name}</span>
+            <Avatar m={m} size={26} /><span>{m.id === me.me.id ? t('letters.toSelf') : m.name}</span>
           </button>
         ))}
       </div>

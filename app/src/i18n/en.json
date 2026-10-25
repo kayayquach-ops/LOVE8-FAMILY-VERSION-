@@ -666,5 +666,7 @@
   "settings.soundTap": "Sound when tapping",
   "settings.app": "App",
   "settings.reload": "Reload app",
-  "settings.reloadHint": "Use it if the app doesn't look up to date"
+  "settings.reloadHint": "Use it if the app doesn't look up to date",
+
+  "letters.toSelf": "Myself"
 }

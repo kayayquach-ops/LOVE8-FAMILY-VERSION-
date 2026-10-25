@@ -108,7 +108,7 @@ lettersRouter.post('/letters', h(async (req, res) => {
   const items = cleanItems(req.body?.items);
   if (!body && !items.length) return res.status(400).json(errorBody('letter_empty'));
   const to = String(req.body?.to ?? '');
-  const { rows: t } = await pool.query('select id from members where id = $1 and family_id = $2 and id <> $3', [to, req.member.family_id, req.member.id]);
+  const { rows: t } = await pool.query('select id from members where id = $1 and family_id = $2', [to, req.member.family_id]);
   if (!t[0]) return res.status(400).json(errorBody('letter_to'));
   const id = randomUUID();
   const { rows } = await pool.query(

@@ -652,5 +652,7 @@
   "settings.soundTap": "누를 때 소리",
   "settings.app": "앱",
   "settings.reload": "앱 새로고침",
-  "settings.reloadHint": "앱이 최신 버전이 아닌 것 같을 때 눌러 보세요"
+  "settings.reloadHint": "앱이 최신 버전이 아닌 것 같을 때 눌러 보세요",
+
+  "letters.toSelf": "나에게"
 }
