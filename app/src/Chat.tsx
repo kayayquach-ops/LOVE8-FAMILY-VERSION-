@@ -42,6 +42,8 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
   const list = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const meId = me.me.id;
+  // me được tải lại mỗi lần mở chat (đối tượng mới): chỉ dựng lại danh sách khi thông tin thành viên thật sự đổi.
+  const membersKey = JSON.stringify(me.members);
   const member = (id: string): Member | undefined => me.members.find((m) => m.id === id);
 
   const markRead = useCallback(() => { call('/api/chat/read', { method: 'POST' }).catch(() => {}); }, []);
@@ -186,7 +188,7 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
       );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [msgs, me]);
+  }, [msgs, membersKey]);
 
   return (
     <div className="chat" style={vh ? { height: vh } : undefined}>
