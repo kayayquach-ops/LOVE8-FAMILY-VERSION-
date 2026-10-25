@@ -86,3 +86,7 @@
 .quick-in { opacity: 0; animation: slowFade .2s ease-out forwards; }
 .skip-hint { position: absolute; left: 0; right: 0; bottom: calc(var(--safe-bottom) + 22px); text-align: center; font-size: 13px; color: rgba(59,62,52,.5); pointer-events: none; opacity: 0; animation: skipHint 5s 2.5s ease-in-out both; }
 @keyframes skipHint { 0%, 100% { opacity: 0; transform: translate3d(0, 4px, 0); } 25%, 75% { opacity: 1; transform: none; } }
+
+/* 한국어: 필기체 대신 Noto, 한글은 글자 폭이 넓어 크기를 줄이고 줄 간격을 늘린다 */
+html[lang="ko"] .wl-left { font-family: 'Noto Sans KR', sans-serif; font-weight: 500; font-size: calc(var(--rw) * 78 / 1080); line-height: 1.25; }
+html[lang="ko"] .wl-right { font-family: 'Noto Serif KR', serif; font-weight: 700; font-stretch: 100%; font-size: calc(var(--rw) * 120 / 1080); white-space: nowrap; letter-spacing: -.04em; }
