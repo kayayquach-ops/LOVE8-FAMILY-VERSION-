@@ -565,4 +565,13 @@ button.code { display: block; width: 100%; min-height: 56px; }
 .viewer-close { position: absolute; top: calc(var(--safe-top) + 10px); right: 14px; background: rgba(255,255,255,.85); }
 
 @media (prefers-reduced-motion: reduce) { .sheet, .chat, .toast { animation-name: slowFade; } }
+
+/* Chạm là thấy ngay: mọi nút mờ nhẹ khi đang chạm, không chờ hiệu ứng chuyển (lúc nhả tay mới chuyển mềm về).
+   Bỏ qua nút giữ để quay, giữ để nói: chúng có trạng thái riêng khi đang giữ. */
+:where(button, [role="button"]):not(:disabled):not(.shutter):not(.talk):not(.hold):not(.mic):active { opacity: .72; transition-duration: 0s; }
+:where(.icon-btn, .react, .round, .chip, .done-btn, .jar-seed, .tool, .call-btn, .ft-btn, .news-pill, .home-retry, .recap-list button, .pod-ep, .tab):not(:disabled):active { transform: scale(.94); transition-duration: 0s; }
+.home-mem:active, .home-album:active, .home-ev:active, .home-jar:active, .home-cta:active, .opt:active, .btn:active { transition-duration: 0s; }
+
+/* Tin nhà: trang ngoài màn hình không vẽ (mỗi trang cao đúng một màn nên không nhảy chỗ khi cuộn). */
+.pager .page { content-visibility: auto; contain-intrinsic-size: auto 100dvh; }
 html[lang="ko"] .bubble { word-break: keep-all; overflow-wrap: anywhere; }
