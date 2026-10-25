@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, errorText, token } from './api';
-import { t, type Key } from './i18n';
+import { locale, t, type Key } from './i18n';
 import type { Me, Week } from './shared';
 import { buzz, sfx, tap } from './sound';
 import { Avatar, Icon, toast } from './ui';
@@ -26,7 +26,7 @@ const CATALOG: SeedDef[] = [
 ];
 const seedOf = (id: string) => CATALOG.find((s) => s.id === id) ?? CATALOG[0];
 const seedName = (s: SeedDef) => t(`jar.seed.${s.id}` as Key);
-const money = (n: number) => `${n.toLocaleString('vi-VN')}₫`;
+const money = (n: number) => `${n.toLocaleString(locale())}₫`;
 
 async function jfetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const tk = token.get();

@@ -26,11 +26,11 @@ function rand(seed: number) {
   return () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
 }
 
-import { t } from './i18n';
+import { shownLang, t } from './i18n';
 
 const two = (x: number) => String(x).padStart(2, '0');
 const WD = (d: Date) => t(`strip.weekday.${d.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6}`);
-const dmy = (d: Date, s = '.') => `${two(d.getDate())}${s}${two(d.getMonth() + 1)}${s}${d.getFullYear()}`;
+const dmy = (d: Date, s = '.') => (shownLang() === 'en' ? `${two(d.getMonth() + 1)}${s}${two(d.getDate())}${s}${d.getFullYear()}` : `${two(d.getDate())}${s}${two(d.getMonth() + 1)}${s}${d.getFullYear()}`);
 const hm = (d: Date) => `${two(d.getHours())}:${two(d.getMinutes())}`;
 
 /** Đặt cỡ chữ lớn nhất mà vẫn vừa bề ngang. */

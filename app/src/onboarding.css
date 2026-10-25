@@ -61,6 +61,10 @@
 @keyframes wl-from-left { from { opacity: 0; transform: translate3d(-58vw, 0, 0); } 35% { opacity: .6; } to { opacity: 1; transform: translate3d(0, 0, 0); } }
 @keyframes wl-from-right { from { opacity: 0; transform: translate3d(58vw, 0, 0); } 35% { opacity: .6; } to { opacity: 1; transform: translate3d(0, 0, 0); } }
 
+.hello-lang { position: fixed; z-index: 30; top: calc(var(--safe-top) + 2px); right: 6px; display: flex; align-items: center; font-size: 11px; letter-spacing: .14em; color: rgba(59,62,52,.6); opacity: 0; animation: slowFade 1.6s 1.4s forwards; }
+.hello-lang button { padding: 14px 6px; font: inherit; letter-spacing: inherit; color: inherit; background: none; border: 0; font-weight: 300; cursor: pointer; }
+.hello-lang button.on { font-weight: 700; color: #3B3E34; }
+.hello-lang i { font-style: normal; opacity: .5; }
 .hello-hint { position: relative; text-align: center; font-size: 15px; color: rgba(59,62,52,.72); padding-bottom: 8px; opacity: 0; animation: fade 1.2s 2.6s both, breathe 3.5s 3.8s ease-in-out infinite; }
 
 .invite-logo { width: 40px; height: 40px; margin: 0 auto 6px; }
@@ -71,7 +75,11 @@
   .wl-glow { animation: wl-glow-in 1.6s 1s ease forwards; }
   .wl-bfly { animation-delay: .6s; }
   .meadow i { animation: none; opacity: .6; }
-  .hello-hint { animation: slowFade 1.2s 2s both; }
+  .hello-lang { position: fixed; z-index: 30; top: calc(var(--safe-top) + 2px); right: 6px; display: flex; align-items: center; font-size: 11px; letter-spacing: .14em; color: rgba(59,62,52,.6); opacity: 0; animation: slowFade 1.6s 1.4s forwards; }
+.hello-lang button { padding: 14px 6px; font: inherit; letter-spacing: inherit; color: inherit; background: none; border: 0; font-weight: 300; cursor: pointer; }
+.hello-lang button.on { font-weight: 700; color: #3B3E34; }
+.hello-lang i { font-style: normal; opacity: .5; }
+.hello-hint { animation: slowFade 1.2s 2s both; }
 }
 
 /* Chạm để hiện nhanh: đáp án mờ hiện trong 0,2 giây; gợi ý chỉ thoáng qua ở lần đầu. */

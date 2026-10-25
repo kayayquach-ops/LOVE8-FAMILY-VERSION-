@@ -1,15 +1,21 @@
 // Giọng tiếng Việt của máy (speechSynthesis). iPhone chỉ cho nói sau một lần chạm, nên mở khoá ở nút bấm.
 // Một cuộc gọi chỉ dùng MỘT giọng: Gemini nếu kiểm ngay lúc đổ chuông được (voiceAvailable), không thì giọng máy từ đầu đến cuối.
 import { token } from './api';
+import { speechLang } from './i18n';
 
-let voice: SpeechSynthesisVoice | null | undefined;
+// Giọng máy theo ngôn ngữ đang hiện (vi-VN, en-US, ko-KR); tìm đúng vùng trước, không có thì giọng cùng ngôn ngữ.
+const voices = new Map<string, SpeechSynthesisVoice | null>();
 function viVoice() {
-  if (voice !== undefined && voice) return voice;
+  const loc = speechLang();
+  const hit = voices.get(loc);
+  if (hit) return hit;
   const all = typeof speechSynthesis !== 'undefined' ? speechSynthesis.getVoices() : [];
-  voice = all.find((v) => v.lang.toLowerCase().replace('_', '-') === 'vi-vn') ?? all.find((v) => v.lang.toLowerCase().startsWith('vi')) ?? null;
-  return voice;
+  const norm = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().replace('_', '-');
+  const v = all.find((x) => norm(x) === loc.toLowerCase()) ?? all.find((x) => norm(x).startsWith(loc.slice(0, 2).toLowerCase())) ?? null;
+  voices.set(loc, v);
+  return v;
 }
-if (typeof speechSynthesis !== 'undefined') speechSynthesis.addEventListener?.('voiceschanged', () => { voice = undefined; viVoice(); });
+if (typeof speechSynthesis !== 'undefined') speechSynthesis.addEventListener?.('voiceschanged', () => { voices.clear(); });
 
 export const canSpeak = () => typeof speechSynthesis !== 'undefined';
 
@@ -168,7 +174,7 @@ export function speak(text: string, on: { start?: () => void; boundary?: () => v
   return new Promise((resolve) => {
     if (!canSpeak() || !text.trim()) return resolve();
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'vi-VN';
+    u.lang = speechLang();
     const v = viVoice();
     if (v) u.voice = v;
     u.rate = 0.88;

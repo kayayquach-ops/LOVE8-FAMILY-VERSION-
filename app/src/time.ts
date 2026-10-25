@@ -1,5 +1,5 @@
 import { cityOf } from './shared';
-import { locale, t } from './i18n';
+import { fmtDate, fmtTime, t } from './i18n';
 
 export function ago(iso: string) {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -7,7 +7,7 @@ export function ago(iso: string) {
   if (s < 3600) return t('time.minutesAgo', { n: Math.floor(s / 60) });
   if (s < 86400) return t('time.hoursAgo', { n: Math.floor(s / 3600) });
   if (s < 7 * 86400) return t('time.daysAgo', { n: Math.floor(s / 86400) });
-  return new Date(iso).toLocaleDateString(locale());
+  return fmtDate(new Date(iso));
 }
 
 export function hoursSince(iso: string) {
@@ -18,7 +18,7 @@ export function hoursSince(iso: string) {
 export function localTime(city?: string | null) {
   const c = cityOf(city);
   if (!c) return null;
-  return new Intl.DateTimeFormat(locale(), { hour: '2-digit', minute: '2-digit', timeZone: c.tz, hour12: false }).format(new Date());
+  return fmtTime(new Date(), c.tz);
 }
 
 const WEATHER = [

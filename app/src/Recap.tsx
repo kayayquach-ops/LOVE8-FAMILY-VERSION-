@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { errorText, token } from './api';
-import { t } from './i18n';
+import { fmtDayMonth, shownLang, t } from './i18n';
 import type { Me } from './shared';
 import { tap } from './sound';
 import { Icon, toast } from './ui';
@@ -24,6 +24,7 @@ function currentWeek() {
 function label(week: string) {
   const a = new Date(`${week}T00:00:00Z`), b = new Date(a.getTime() + 6 * 86400e3);
   const am = a.getUTCMonth() + 1, bm = b.getUTCMonth() + 1;
+  if (shownLang() !== 'vi') return `${fmtDayMonth(a.getUTCDate(), am)} - ${fmtDayMonth(b.getUTCDate(), bm)}`;
   return am === bm ? `${a.getUTCDate()} - ${b.getUTCDate()}/${bm}` : `${a.getUTCDate()}/${am} - ${b.getUTCDate()}/${bm}`;
 }
 

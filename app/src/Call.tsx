@@ -8,7 +8,7 @@ import { buzz, sfx, tap } from './sound';
 import { playVoice, prefetchVoice, setVoiceContext, speak, stopSpeaking, unlockSpeech, voiceAvailable, voiceReady, warmVoice } from './speech';
 import { Icon, toast } from './ui';
 import { snooze } from './callSnooze';
-import { t, type Key } from './i18n';
+import { speechLang, t, type Key } from './i18n';
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const t = token.get();
@@ -191,7 +191,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       if (R) {
         try {
           r = new R();
-          r.lang = 'vi-VN'; // TODO(i18n đợt 3): chép lời theo ngôn ngữ người nói
+          r.lang = speechLang();
           r.continuous = true;
           r.interimResults = true;
           let final = '';

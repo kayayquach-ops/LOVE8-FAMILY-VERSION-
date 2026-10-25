@@ -26,7 +26,8 @@ export type Topic = (typeof TOPICS)[number];
 export const isTopic = (v: unknown): v is Topic => (TOPICS as readonly unknown[]).includes(v);
 export const EVENT_HINTS = ['none', 'wedding', 'anniversary', 'birthday', 'memory'] as const;
 export type CallQuestion = { text: string; topic: Topic; photo: boolean; event: (typeof EVENT_HINTS)[number] };
-export type CallScript = { greeting: string; questions: CallQuestion[]; goodbye: string; source: 'ai' | 'template' | 'first' };
+/** `lang`: thứ tiếng của bộ câu (bản cũ không có là tiếng Việt). */
+export type CallScript = { greeting: string; questions: CallQuestion[]; goodbye: string; source: 'ai' | 'template' | 'first'; lang?: 'vi' | 'en' | 'ko' };
 
 /** Hàm tra chữ: máy khách truyền `t`, máy chủ truyền `tServer` theo ngôn ngữ của người nghe. */
 export type Tr = (key: string, vars?: Record<string, string | number>) => string;

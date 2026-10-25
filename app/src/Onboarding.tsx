@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, token } from './api';
 import { CityPicker } from './CityPicker';
-import { getLang, t } from './i18n';
+import { getLang, LANGS, rememberLang, setLang, t, useLang } from './i18n';
 import { fileName, type Recording } from './media';
 import type { Role } from './shared';
 import { sfx, startMusic, stopMusic, tapSoft } from './sound';
@@ -23,6 +23,7 @@ type Kid = 'son' | 'daughter' | 'both';
 
 // Vào app như một cuộc trò chuyện: bạn là ai, nhớ nhà thế nào, rồi nghe kể vì sao có Sweet Home và vào nhà.
 export function Onboarding({ onDone }: { onDone: () => void }) {
+  const lang = useLang();
   const invite = new URLSearchParams(location.search).get('join') ?? '';
   const [step, setStep] = useState<Step>('hello');
   const [role, setRole] = useState<Role | null>(null);
@@ -36,7 +37,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [voice, setVoice] = useState<Recording | null>(null);
   const [micDenied, setMicDenied] = useState(false);
   const [page, setPage] = useState(0);
-  const [family, setFamily] = useState(() => t('onboarding.home.default'));
+  // null: chưa sửa, hiện tên nhà mặc định theo ngôn ngữ đang chọn (đổi ngôn ngữ ở màn chào vẫn đúng).
+  const [family, setFamily] = useState<string | null>(null);
+  const familyName = family ?? t('onboarding.home.default');
   const [code, setCode] = useState(invite);
   const [inviteName, setInviteName] = useState('');
   const [made, setMade] = useState<{ code: string; family: string } | null>(null);
@@ -90,8 +93,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     setBusy(true);
     try {
       const body = { name: name.trim(), role: role!, city, lang: getLang(), intro: { ...a, kid, ...(wantHug === null ? {} : { wantHug }), loveVoice: !!voice } };
-      const r = join ? await api.join({ ...body, code: code.trim() }) : await api.create({ ...body, family: family.trim() || t('onboarding.home.default') });
+      const r = join ? await api.join({ ...body, code: code.trim() }) : await api.create({ ...body, family: familyName.trim() || t('onboarding.home.default') });
       token.set(r.token);
+      // Từ giờ máy này có mã: ghi nhớ ngôn ngữ đang dùng để lần mở sau không bị coi là người cũ của bản tiếng Việt.
+      rememberLang();
       if (voice) {
         // Gửi lỗi thì thôi, không chặn việc vào nhà.
         const f = new FormData();
@@ -128,6 +133,14 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <div className="center" />
           <div className="hello-hint">{inviteName ? t('onboarding.hello.invited', { family: inviteName }) : t('onboarding.hello.tap')}</div>
         </button>
+        <div className="hello-lang" role="group" aria-label="Language">
+          {LANGS.map((l, i) => (
+            <span key={l}>
+              {i > 0 && <i aria-hidden>·</i>}
+              <button className={l === lang ? 'on' : ''} lang={l} aria-pressed={l === lang} onClick={() => setLang(l)}>{l.toUpperCase()}</button>
+            </span>
+          ))}
+        </div>
       </>
     );
   }
@@ -256,10 +269,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       ) : (
         <Ask key="home" q={t('onboarding.home.q')} sub={t('onboarding.home.sub')} {...T}
           footer={<>
-            <button className="btn" disabled={busy || !family.trim()} onClick={() => finish(false)}>{t('onboarding.home.create')}</button>
+            <button className="btn" disabled={busy || !familyName.trim()} onClick={() => finish(false)}>{t('onboarding.home.create')}</button>
             <button className="link" onClick={() => go('code')}>{t('onboarding.home.haveCode')}</button>
           </>}>
-          <input className="field fade" value={family} maxLength={40} onChange={(e) => setFamily(e.target.value)} />
+          <input className="field fade" value={familyName} maxLength={40} onChange={(e) => setFamily(e.target.value)} />
         </Ask>
       ))}
 

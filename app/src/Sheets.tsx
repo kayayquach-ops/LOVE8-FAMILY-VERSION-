@@ -5,7 +5,7 @@ import { Notify } from './Notify';
 import { copyCode, shareInvite } from './Onboarding';
 import { shrinkImage } from './media';
 import { cityOf, SILENT_HOURS, type Me, type Week } from './shared';
-import { t } from './i18n';
+import { LANG_NAMES, LANGS, setLang, t, useLang } from './i18n';
 import { buzz, sfx, tap } from './sound';
 import { ago, hoursSince, localTime, weather } from './time';
 import { Avatar, Icon, toast } from './ui';
@@ -25,6 +25,7 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
 
 // Gia đình: từng người với giờ, thời tiết bên đó, lần hoạt động cuối; mời người mới; sửa thông tin của mình.
 export function Family({ me, onClose, onChanged }: { me: Me; onClose: () => void; onChanged: () => void }) {
+  const lang = useLang();
   const [wx, setWx] = useState<Record<string, string>>({});
   const [edit, setEdit] = useState(false);
   const [name, setName] = useState(me.me.name);
@@ -114,6 +115,13 @@ export function Family({ me, onClose, onChanged }: { me: Me; onClose: () => void
         </div>
       )}
       <div className="muted" style={{ marginTop: 12 }}>{t('family.note', { n: SILENT_HOURS / 24 })}</div>
+
+      <div className="h2">{t('family.language')}</div>
+      <div className="panel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {LANGS.map((l) => (
+          <button key={l} className={`chip ${lang === l ? 'on' : ''}`} style={{ minHeight: 44 }} lang={l} aria-pressed={lang === l} onClick={() => { tap(); setLang(l); }}>{LANG_NAMES[l]}</button>
+        ))}
+      </div>
 
       <Notify />
 

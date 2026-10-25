@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { errorText, token } from './api';
-import { t } from './i18n';
+import { fmtDate, fmtDayMonth, monthLabel, t } from './i18n';
 import type { Me } from './shared';
 import { tap } from './sound';
 import { Icon, toast } from './ui';
@@ -107,7 +107,7 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
     const d = Number(day), m = Number(month);
     if (!lunar || !d || !m || d > 30 || m > 12) return '';
     const o = nextOccurrence({ day: d, month: m, lunar: true, leap }, { day: now.getDate(), month: now.getMonth() + 1, year: now.getFullYear() });
-    return o ? t('calendar.preview', { d: o.day, m: o.month, y: o.year }) : '';
+    return o ? t('calendar.preview', { date: fmtDate(new Date(o.year, o.month - 1, o.day)) }) : '';
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lunar, leap, day, month]);
 
@@ -136,7 +136,7 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '6px 0 10px' }}>
           <button className="icon-btn" onClick={() => { tap(); move(-1); }} aria-label={t('calendar.prev')}><Icon name="back" /></button>
-          <div className="h1" style={{ flex: 1, textAlign: 'center', margin: 0 }}>{t('calendar.month', { m: ym.m + 1, y: ym.y })}</div>
+          <div className="h1" style={{ flex: 1, textAlign: 'center', margin: 0 }}>{t('calendar.month', { m: monthLabel(ym.m), y: ym.y })}</div>
           <button className="icon-btn" onClick={() => { tap(); move(1); }} aria-label={t('calendar.next')} style={{ transform: 'scaleX(-1)' }}><Icon name="back" /></button>
         </div>
         <div className="panel" style={{ padding: '12px 8px' }}>
@@ -156,7 +156,7 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
                     background: today ? 'var(--accent)' : 'transparent', color: today ? '#fff' : 'var(--ink)', fontWeight: today ? 600 : 400,
                   }}>{d}</div>
                   <div style={{ fontSize: 10, lineHeight: '11px', height: 11, color: 'var(--muted)', fontWeight: mark ? 700 : 400, opacity: mark ? 1 : 0.7 }}>
-                    {mark ? `${l.day}/${l.month}${l.leap ? 'n' : ''}` : l.day}
+                    {mark ? `${l.day}/${l.month}${l.leap ? t('calendar.leapMark') : ''}` : l.day}
                   </div>
                   <div style={{ height: 5, display: 'flex', gap: 3 }}>
                     {Array.from({ length: Math.min(n, 3) }, (_, k) => <span key={k} style={{ width: 5, height: 5, borderRadius: 3, background: 'var(--accent)' }} />)}
@@ -182,7 +182,7 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div>{e.title}</div>
                   <div className="muted" style={{ fontSize: 13 }}>
-                    {e.lunar ? t('calendar.row.lunar', { d: e.day, m: e.month, leap: e.leap ? t('calendar.row.leap') : '', od: occ.day, om: occ.month, oy: occ.year }) : `${e.day}/${e.month}`} · {inDays === 0 ? t('calendar.row.today') : t('calendar.row.inDays', { n: inDays })}{years !== null ? ` · ${sub(e, years)}` : ''}
+                    {e.lunar ? t('calendar.row.lunar', { d: e.day, m: e.month, leap: e.leap ? t('calendar.row.leap') : '', date: fmtDate(new Date(occ.year, occ.month - 1, occ.day)) }) : fmtDayMonth(e.day, e.month)} · {inDays === 0 ? t('calendar.row.today') : t('calendar.row.inDays', { n: inDays })}{years !== null ? ` · ${sub(e, years)}` : ''}
                   </div>
                 </div>
                 {wish && <button className="chip" style={{ minHeight: 44 }} onClick={() => { tap(); onWish!(e); }}>{t('calendar.wish')}</button>}

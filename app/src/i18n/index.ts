@@ -10,7 +10,10 @@ export type Vars = Record<string, string | number>;
 type Dict = Record<string, string>;
 
 export const LANGS: readonly Lang[] = ['vi', 'en', 'ko'];
+/** Tên mỗi thứ tiếng viết bằng chính nó (không dịch). */
+export const LANG_NAMES: Record<Lang, string> = { vi: 'Tiếng Việt', en: 'English', ko: '한국어' };
 const STORE = 'sh-lang';
+const TOKEN = 'homeletter-token';
 const VI: Dict = vi;
 const dicts: Partial<Record<Lang, Dict>> = { vi: VI };
 const loaders: Record<Exclude<Lang, 'vi'>, () => Promise<{ default: Dict }>> = {
@@ -21,7 +24,12 @@ const loaders: Record<Exclude<Lang, 'vi'>, () => Promise<{ default: Dict }>> = {
 export const isLang = (v: unknown): v is Lang => v === 'vi' || v === 'en' || v === 'ko';
 
 function detect(): Lang {
-  try { const s = localStorage.getItem(STORE); if (isLang(s)) return s; } catch {}
+  try {
+    const s = localStorage.getItem(STORE);
+    if (isLang(s)) return s;
+    // Người đã vào nhà từ bản tiếng Việt cũ (có mã máy, chưa từng chọn ngôn ngữ): giữ tiếng Việt, không đổi bất ngờ theo máy.
+    if (localStorage.getItem(TOKEN)) return 'vi';
+  } catch {}
   const n = (typeof navigator !== 'undefined' ? navigator.language || '' : '').toLowerCase();
   if (!n) return 'vi';
   if (n.startsWith('vi')) return 'vi';
@@ -68,9 +76,28 @@ export function t(key: Key, vars?: Vars): string {
 export const hasKey = (key: string): key is Key => key in VI;
 
 export const getLang = () => lang;
+/** Thứ tiếng của chữ đang hiện (ngôn ngữ chọn chưa có bản dịch thì là tiếng Việt). */
+export const shownLang = () => shown;
 /** Locale để hiện ngày giờ, theo thứ tiếng của chữ đang hiện. */
 export const locale = () => ({ vi: 'vi-VN', en: 'en-US', ko: 'ko-KR' })[shown];
 const getVersion = () => version;
+
+// ---- Ngày giờ theo ngôn ngữ đang hiện ----
+/** Ngày đầy đủ dạng số, ví dụ 12/3/2026 (vi), 3/12/2026 (en), 2026. 3. 12. (ko). */
+export const fmtDate = (d: Date, o?: Intl.DateTimeFormatOptions) => d.toLocaleDateString(locale(), o);
+/** Giờ:phút. */
+export const fmtTime = (d: Date, tz?: string) => new Intl.DateTimeFormat(locale(), { hour: '2-digit', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) }).format(d);
+/** Ngày và tháng không có năm: 12/3 (vi), Mar 12 (en). */
+export const fmtDayMonth = (day: number, month: number) => (shown === 'vi' ? `${day}/${month}` : new Date(2024, month - 1, day).toLocaleDateString(locale(), { month: 'short', day: 'numeric' }));
+/** Tên tháng (m0 từ 0): vi chỉ hiện số tháng vì khoá `calendar.month` đã có chữ "Tháng". */
+export const monthLabel = (m0: number) => (shown === 'vi' ? String(m0 + 1) : new Date(2024, m0, 1).toLocaleDateString(locale(), { month: 'long' }));
+/** Tên các thứ tiếng của trình chép lời và giọng đọc của trình duyệt. */
+export const speechLang = () => ({ vi: 'vi-VN', en: 'en-US', ko: 'ko-KR' })[shown];
+
+/** Ghi nhớ ngôn ngữ đang dùng (kể cả khi nó là mặc định theo máy), để lần mở sau không bị coi là người cũ của bản tiếng Việt. */
+export function rememberLang() {
+  try { localStorage.setItem(STORE, lang); } catch {}
+}
 
 export function setLang(l: Lang) {
   if (!isLang(l)) return;

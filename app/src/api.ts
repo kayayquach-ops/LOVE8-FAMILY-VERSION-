@@ -1,4 +1,4 @@
-import { hasKey, onLangChange, t } from './i18n';
+import { getLang, hasKey, onLangChange, t } from './i18n';
 import type { Me, Post, Week } from './shared';
 
 // Mã riêng của máy này, có được khi tạo nhà hoặc vào nhà. Không có mật khẩu.
@@ -17,7 +17,7 @@ export function errorText(data: { error?: string; code?: string }) {
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const tk = token.get();
-  const res = await fetch(path, { ...init, headers: { ...(init.body instanceof FormData ? {} : { 'content-type': 'application/json' }), ...(tk ? { authorization: `Bearer ${tk}` } : {}), ...init.headers } });
+  const res = await fetch(path, { ...init, headers: { ...(init.body instanceof FormData ? {} : { 'content-type': 'application/json' }), ...(tk ? { authorization: `Bearer ${tk}` } : {}), 'x-lang': getLang(), ...init.headers } });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw Object.assign(new Error(errorText(data)), { status: res.status });
   return data as T;
@@ -33,6 +33,7 @@ export function upload<T>(path: string, form: FormData, onProgress?: (p: number)
     x.open('POST', path);
     const tk = token.get();
     if (tk) x.setRequestHeader('authorization', `Bearer ${tk}`);
+    x.setRequestHeader('x-lang', getLang());
     x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(e.loaded / e.total); };
     x.onload = () => {
       let data: { error?: string; code?: string } = {};
@@ -64,6 +65,20 @@ export const api = {
   mission: (key: string) => call(`/api/missions/${key}`, { method: 'POST' }),
   lang: (lang: string) => call('/api/me/lang', { method: 'PUT', body: JSON.stringify({ lang }) }),
 };
+
+// Mọi yêu cầu tới /api/ mang theo ngôn ngữ đang chọn (header x-lang), để lời báo lỗi và chữ máy chủ soạn đúng thứ tiếng
+// kể cả ở các màn tự gọi fetch riêng. Máy chủ ưu tiên x-lang, rồi tới ngôn ngữ đã lưu của người dùng (members.lang).
+if (typeof window !== 'undefined' && !(window as { __langFetch?: boolean }).__langFetch) {
+  (window as { __langFetch?: boolean }).__langFetch = true;
+  const native = window.fetch.bind(window);
+  window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+    if (!url.startsWith('/api/')) return native(input, init);
+    const h = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+    if (!h.has('x-lang')) h.set('x-lang', getLang());
+    return native(input, { ...init, headers: h });
+  };
+}
 
 // Đổi ngôn ngữ thì báo máy chủ, để thông báo đẩy và lời AI sau này nói đúng thứ tiếng.
 onLangChange((l) => { if (token.get()) void api.lang(l).catch(() => {}); });
