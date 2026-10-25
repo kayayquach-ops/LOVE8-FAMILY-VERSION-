@@ -617,5 +617,28 @@
   "letters.scrap.bigger": "To lên",
   "letters.scrap.rotL": "Xoay trái",
   "letters.scrap.rotR": "Xoay phải",
-  "letters.scrap.delete": "Bỏ hình này"
+  "letters.scrap.delete": "Bỏ hình này",
+
+  "letters.tab.layout": "Mẫu",
+  "letters.layout.plain": "Trơn",
+  "letters.layout.postage": "Bưu điện",
+  "letters.tpl.title": "THƯ TAY",
+  "letters.tpl.titleLabel": "Tên lá thư",
+  "letters.tpl.to": "Gửi:",
+  "letters.tpl.from": "Từ:",
+  "letters.tpl.footerPh": "Một lời chúc nhỏ",
+  "letters.tpl.footerLabel": "Lời chúc cuối thư",
+  "letters.tpl.postmark": "GỬI CẢ TẤM LÒNG",
+  "letters.open": "Chạm để mở thư",
+  "letters.stamp": "Tem",
+  "letters.scrap.shape": "Đổi khung ảnh",
+
+  "letters.tpl.love": "Thư tình",
+  "letters.tpl.stamp": "Bưu điện",
+  "letters.tpl.rose": "Hồng phấn",
+  "letters.tpl.kraft": "Giấy nâu",
+  "letters.tpl.sky": "Trời xanh",
+  "letters.tpl.summer": "Mùa hè",
+  "letters.tpl.night": "Đêm sao",
+  "letters.bg.crimson": "Đỏ thẫm"
 }

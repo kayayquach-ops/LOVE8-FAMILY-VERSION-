@@ -10,7 +10,7 @@ import { errorBody, tReq, tServer } from './i18n.ts';
 
 // Thư gửi riêng một người trong nhà. Kiểu giấy, khung, chữ, màu chữ, nền lưu dưới dạng mã ngắn; máy khách tự dựng lại giao diện,
 // mã lạ thì máy khách dùng kiểu mặc định nên máy chủ chỉ cần kiểm dạng mã, không giữ danh sách.
-const STYLE_KEYS = ['paper', 'frame', 'font', 'ink', 'bg'] as const;
+const STYLE_KEYS = ['layout', 'paper', 'frame', 'font', 'ink', 'bg'] as const;
 const MAX_BODY = 1500;
 const MAX_ITEMS = 12;
 const MAX_PHOTOS = 3;
@@ -33,6 +33,8 @@ export async function migrateLetters(db: { query: (q: string, v?: any[]) => Prom
       created_at timestamptz not null default now(), read_at timestamptz
     );
     alter table letters add column if not exists items jsonb not null default '[]'::jsonb;
+    alter table letters add column if not exists title text;
+    alter table letters add column if not exists footer text;
     create index if not exists letters_to on letters (to_id, created_at desc);
     create index if not exists letters_from on letters (from_id, created_at desc);
   `);
@@ -44,8 +46,8 @@ const h = (fn: (req: any, res: express.Response) => Promise<unknown>) => (req: a
     res.status(500).json({ error: err.message || tReq('error.server') });
   });
 
-const COLS = 'id, from_id, to_id, body, style, items, created_at, read_at';
-const view = (r: any) => ({ id: r.id, fromId: r.from_id, toId: r.to_id, body: r.body, style: r.style ?? {}, items: r.items ?? [], createdAt: r.created_at, readAt: r.read_at });
+const COLS = 'id, from_id, to_id, body, style, items, title, footer, created_at, read_at';
+const view = (r: any) => ({ id: r.id, fromId: r.from_id, toId: r.to_id, body: r.body, style: r.style ?? {}, items: r.items ?? [], title: r.title ?? null, footer: r.footer ?? null, createdAt: r.created_at, readAt: r.read_at });
 
 function cleanStyle(raw: unknown) {
   const out: Record<string, string> = {};
@@ -70,7 +72,7 @@ function cleanItems(raw: unknown) {
     const pos = { x: num(o.x, -5, 105, 50), y: num(o.y, -5, 105, 50), w: num(o.w, 8, 80, 30), rot: num(o.rot, -180, 180, 0) };
     if (o.type === 'photo' && typeof o.media === 'string' && /^\/media\/[0-9a-f-]{36}\.(jpg|png|webp)$/.test(o.media) && photos < MAX_PHOTOS) {
       photos++;
-      out.push({ type: 'photo', media: o.media, ...pos });
+      out.push({ type: 'photo', media: o.media, shape: o.shape === 'stamp' ? 'stamp' : 'polaroid', ...pos });
     } else if (o.type === 'sticker' && typeof o.sticker === 'string' && /^[a-z0-9-]{1,24}$/.test(o.sticker)) {
       out.push({ type: 'sticker', sticker: o.sticker, ...pos });
     }
@@ -110,8 +112,9 @@ lettersRouter.post('/letters', h(async (req, res) => {
   if (!t[0]) return res.status(400).json(errorBody('letter_to'));
   const id = randomUUID();
   const { rows } = await pool.query(
-    `insert into letters (id, family_id, from_id, to_id, body, style, items) values ($1,$2,$3,$4,$5,$6,$7) returning ${COLS}`,
-    [id, req.member.family_id, req.member.id, to, body, JSON.stringify(cleanStyle(req.body?.style)), JSON.stringify(items)]);
+    `insert into letters (id, family_id, from_id, to_id, body, style, items, title, footer) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning ${COLS}`,
+    [id, req.member.family_id, req.member.id, to, body, JSON.stringify(cleanStyle(req.body?.style)), JSON.stringify(items),
+      String(req.body?.title ?? '').trim().slice(0, 40) || null, String(req.body?.footer ?? '').trim().slice(0, 40) || null]);
   const { rows: me } = await pool.query('select name from members where id = $1', [req.member.id]);
   const name = String(me[0]?.name || '');
   // Chạy nền; nội dung thư không nằm trong thông báo.

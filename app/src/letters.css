@@ -98,3 +98,66 @@ html[lang="ko"] .lp-text { word-break: keep-all; }
 .lt-photo-btn { flex: none; width: 64px; height: 64px; border-radius: 16px; border: 1.5px dashed var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; background: rgba(255,255,255,.7); cursor: pointer; }
 .lt-photo-btn small { font-size: 11px; color: var(--soft); }
 .lt-stk { width: 56px; height: 56px; padding: 4px; border: 0; background: transparent; }
+
+/* Mẫu bưu điện: giấy viền lượn sóng, tiêu đề, ô TO/FROM, tem và dấu bưu điện */
+.lp-postage { background: transparent; box-shadow: none; border-radius: 0; filter: drop-shadow(0 6px 12px rgba(40, 30, 20, .22)); }
+.lp-shape { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+.lp-in.postage { padding: 11cqw 10cqw 8cqw; gap: 2.2cqw; }
+.lp-title { flex: none; width: 100%; padding: 0; background: transparent; border: 0; outline: 0; text-align: center; text-transform: uppercase; color: var(--lp-ink);
+  font-family: 'Playfair Display', 'Noto Serif KR', serif; font-size: 8.4cqw; line-height: 1.12; letter-spacing: -.01em; }
+input.lp-title::placeholder { color: var(--lp-ink); opacity: .7; }
+.lp-meta { flex: none; width: 47%; display: flex; flex-direction: column; gap: 2.2cqw; margin-top: 1.5cqw; }
+.lp-row { display: flex; align-items: baseline; gap: 2cqw; border-bottom: .5cqw solid var(--lp-ink); min-height: 7cqw; font-size: calc(var(--lp-n) / 340 * 100cqw); line-height: 1.2; }
+.lp-row small { flex: none; font-family: ui-monospace, 'Courier New', monospace; font-size: 3cqw; letter-spacing: .06em; text-transform: uppercase; }
+.lp-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lp-dear { flex: none; text-align: center; font-size: calc(var(--lp-n) / 340 * 100cqw * 1.45); line-height: 1.15; margin: 1.5cqw 0 .5cqw; }
+.lp-in.postage .lp-text { text-align: justify; }
+.lp-foot { flex: none; display: flex; align-items: center; gap: 3cqw; padding-right: 30cqw; min-height: 9cqw; }
+.lp-date { flex: none; font-size: 6.4cqw; }
+.lp-footer { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; padding: 0; color: inherit; font: inherit; font-size: calc(var(--lp-n) / 340 * 100cqw); text-align: center; }
+input.lp-footer::placeholder { color: var(--lp-ink); opacity: .4; }
+.lp-postmark { position: absolute; right: -1cqw; bottom: 2.5cqw; width: 38cqw; z-index: 1; pointer-events: none; color: var(--lp-ink); transform: rotate(-6deg); }
+
+/* Tem và ảnh trong khung tem răng cưa */
+.lp-item { filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .25)); }
+.lp-item svg { filter: none; }
+.lp-photo { box-shadow: none; }
+.lp-stamp { color: var(--lp-ink); }
+.lp-stamp svg { width: 100%; height: auto; display: block; }
+.lp-photo.stamp { padding: 3.2cqw; --s: 3.2cqw; --r: .9cqw;
+  -webkit-mask:
+    radial-gradient(circle at 50% 0, #0000 var(--r), #000 calc(var(--r) + .5px)) 0 0 / var(--s) 100% repeat-x,
+    radial-gradient(circle at 50% 100%, #0000 var(--r), #000 calc(var(--r) + .5px)) 0 0 / var(--s) 100% repeat-x,
+    radial-gradient(circle at 0 50%, #0000 var(--r), #000 calc(var(--r) + .5px)) 0 0 / 100% var(--s) repeat-y,
+    radial-gradient(circle at 100% 50%, #0000 var(--r), #000 calc(var(--r) + .5px)) 0 0 / 100% var(--s) repeat-y;
+  -webkit-mask-composite: source-in;
+  mask:
+    radial-gradient(circle at 50% 0, #0000 var(--r), #000 calc(var(--r) + .5px)) 0 0 / var(--s) 100% repeat-x,
+    radial-gradient(circle at 50% 100%, #0000 var(--r), #000 calc(var(--r) + .5px)) 0 0 / var(--s) 100% repeat-x,
+    radial-gradient(circle at 0 50%, #0000 var(--r), #000 calc(var(--r) + .5px)) 0 0 / 100% var(--s) repeat-y,
+    radial-gradient(circle at 100% 50%, #0000 var(--r), #000 calc(var(--r) + .5px)) 0 0 / 100% var(--s) repeat-y;
+  mask-composite: intersect; }
+.lp-photo.stamp::before { display: none; }
+
+/* Phong bì có dấu sáp: thư chưa đọc nằm trong đó, chạm để mở */
+.lt-reading { position: relative; overflow: hidden; }
+.lt-rise { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; transition: opacity .5s ease .12s, transform .6s cubic-bezier(.2, .9, .3, 1) .08s; will-change: transform, opacity; }
+.lt-reading:not(.opened) .lt-rise { opacity: 0; transform: translate3d(0, 18%, 0) scale(.96); }
+.lt-env { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: transparent; border: 0; transition: opacity .4s ease, transform .5s ease; will-change: transform, opacity; }
+.lt-reading.opened .lt-env { opacity: 0; transform: translate3d(0, 26%, 0); pointer-events: none; }
+.lt-env-body { position: relative; display: block; width: min(84cqw, 340px); aspect-ratio: 4 / 3; border-radius: 8px; background: #E8E2D9; box-shadow: 0 12px 30px rgba(0, 0, 0, .28); }
+.lt-env-body::before { content: ''; position: absolute; inset: 0; border-radius: 8px; background: linear-gradient(to bottom right, transparent 49.6%, rgba(0, 0, 0, .07) 50%) left bottom / 50% 62% no-repeat, linear-gradient(to bottom left, transparent 49.6%, rgba(0, 0, 0, .07) 50%) right bottom / 50% 62% no-repeat; }
+.lt-env-flap { position: absolute; left: 0; top: 0; width: 100%; height: 62%; background: #DAD3C8; clip-path: polygon(0 0, 100% 0, 50% 100%); border-radius: 8px 8px 0 0; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .15)); }
+.lt-seal { position: absolute; left: 50%; top: 60%; width: 24%; transform: translate(-50%, -50%); filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .35)); }
+.lt-env small { font-size: 14px; color: rgba(40, 30, 20, .6); animation: breathe 3.5s ease-in-out infinite; }
+
+/* Ô chọn mẫu và tem trong khay */
+.lt-lay { display: block; width: 38px; height: 50px; border-radius: 4px; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .2); }
+.lt-lay.postage { border-radius: 12px; border: 3px dotted var(--ink); background: #FFF8EE; box-shadow: none; }
+.lt-stk.stamp { width: 44px; height: 56px; padding: 0; color: var(--ink); }
+.lt-stk.stamp svg { width: 100%; height: 100%; }
+
+/* Ô xem trước mẫu */
+.lt-tpl { display: grid; place-items: center; width: 44px; height: 56px; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
+.lt-tpl i { display: block; width: 28px; height: 38px; border: 1.5px solid; border-radius: 2px; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
+.lt-tpl i.post { border-radius: 8px; border-style: dotted; border-width: 2.5px; }

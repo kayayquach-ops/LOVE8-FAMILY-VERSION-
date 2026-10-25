@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { errorText, token } from './api';
-import { fmtDate, getLang, t, type Key } from './i18n';
-import { BGS, DEFAULT_STYLE, FONTS, FRAMES, INKS, PAPERS, loadLetterFonts, resolveStyle, type LetterStyle } from './letterStyle';
+import { fmtDate, getLang, locale, t, type Key } from './i18n';
+import { Postmark, STAMPS, StampArt, WaxSeal } from './letterArt';
+import { BGS, DEFAULT_STYLE, FONTS, FRAMES, INKS, PAPERS, TEMPLATES, loadLetterFonts, resolveStyle, scallopPath, type LetterStyle } from './letterStyle';
 import { fileName, shrinkImage } from './media';
 import { thumb, type Me, type Member } from './shared';
 import { STICKER_LIST, Sticker } from './stickers';
@@ -11,10 +12,10 @@ import './letters.css';
 
 // Hình dán và ảnh trên thư: x, y là tâm (phần trăm tờ giấy), w là bề rộng (phần trăm bề rộng giấy), rot là độ.
 type Pos = { x: number; y: number; w: number; rot: number };
-type Item = Pos & ({ type: 'photo'; media: string } | { type: 'sticker'; sticker: string });
-type Letter = { id: string; fromId: string; toId: string; body: string; style: LetterStyle; items: Item[]; createdAt: string; readAt: string | null };
+type Item = Pos & ({ type: 'photo'; media: string; shape?: 'polaroid' | 'stamp' } | { type: 'sticker'; sticker: string });
+type Letter = { id: string; fromId: string; toId: string; body: string; style: LetterStyle; items: Item[]; title?: string | null; footer?: string | null; createdAt: string; readAt: string | null };
 /** Món đang soạn: ảnh chưa tải lên thì chưa có `media`, tạm hiện bằng `preview`. */
-type Draft = Pos & { key: string; type: 'photo' | 'sticker'; media?: string; preview?: string; sticker?: string };
+type Draft = Pos & { key: string; type: 'photo' | 'sticker'; media?: string; preview?: string; sticker?: string; shape?: 'polaroid' | 'stamp' };
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const tk = token.get();
@@ -32,7 +33,7 @@ const MAX_ITEMS = 12;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 /** Một món dán lên giấy. Sửa được thì kéo để di chuyển, hai ngón để phóng to và xoay. */
-function ItemView({ it, edit, selected, onSelect, onMove }: { it: { type: string; media?: string; preview?: string; sticker?: string } & Pos; edit?: boolean; selected?: boolean; onSelect?: () => void; onMove?: (p: Partial<Pos>) => void }) {
+function ItemView({ it, edit, selected, onSelect, onMove }: { it: { type: string; media?: string; preview?: string; sticker?: string; shape?: string } & Pos; edit?: boolean; selected?: boolean; onSelect?: () => void; onMove?: (p: Partial<Pos>) => void }) {
   const ptrs = useRef(new Map<number, { x: number; y: number }>());
   const start = useRef<{ it: Pos; d: number; a: number; c: { x: number; y: number }; box: DOMRect } | null>(null);
 
@@ -82,21 +83,74 @@ function ItemView({ it, edit, selected, onSelect, onMove }: { it: { type: string
     <div className={`lp-item${edit ? ' edit' : ''}${selected ? ' sel' : ''}`} style={{ left: `${it.x}%`, top: `${it.y}%`, width: `${it.w}%`, transform: `translate(-50%, -50%) rotate(${it.rot}deg)` }}
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
       {it.type === 'photo'
-        ? <div className="lp-photo"><img src={src} alt="" draggable={false} decoding="async" /></div>
+        ? <div className={`lp-photo${it.shape === 'stamp' ? ' stamp' : ''}`}><img src={src} alt="" draggable={false} decoding="async" /></div>
+        : it.sticker?.startsWith('stamp-') ? <div className="lp-stamp"><StampArt id={it.sticker} /></div>
         : <Sticker id={it.sticker ?? 'heart'} size={100} />}
     </div>
   );
 }
 
 /** Tờ giấy: dùng chung cho bản xem trước khi viết, khi đọc và ô nhỏ trong danh sách. Tỉ lệ cố định để vị trí món dán giống nhau trên mọi máy. */
+const SCALLOP = scallopPath();
 function Paper({ style, children, className = '', paperRef }: { style: LetterStyle; children: React.ReactNode; className?: string; paperRef?: React.Ref<HTMLDivElement> }) {
   const s = resolveStyle(style);
+  const postage = s.layout === 'postage';
   const vars = { '--lp-paper': s.paper.c, '--lp-ink': s.ink.c, '--lp-font': s.font.css, '--lp-n': s.font.size } as CSSProperties;
-  return <div ref={paperRef} className={`lp lp-f-${s.frame} ${className}`} style={vars}>{children}</div>;
+  return (
+    <div ref={paperRef} className={`lp lp-f-${postage ? 'none' : s.frame}${postage ? ' lp-postage' : ''} ${className}`} style={vars}>
+      {postage && <svg className="lp-shape" viewBox="0 0 300 400" preserveAspectRatio="none" aria-hidden><path d={SCALLOP} fill="var(--lp-paper)" /></svg>}
+      {children}
+    </div>
+  );
+}
+
+const dayMonth = (d: Date) => d.toLocaleDateString(locale(), { day: '2-digit', month: '2-digit' });
+
+/** Mặt thư: mẫu trơn hoặc mẫu bưu điện. Viết thì ô chữ sửa được, đọc thì chữ tĩnh. */
+function Face({ layout, mode, to, from, date, body, onBody, title, onTitle, footer, onFooter, area, onFocusBody }: {
+  layout: string; mode: 'read' | 'write'; to: string; from: string; date: Date; body: string; onBody?: (v: string) => void;
+  title: string; onTitle?: (v: string) => void; footer: string; onFooter?: (v: string) => void; area?: React.Ref<HTMLTextAreaElement>; onFocusBody?: () => void;
+}) {
+  const write = mode === 'write';
+  const ph = t('letters.placeholder', { name: to });
+  const text = write
+    ? <textarea ref={area} className="lp-text" value={body} maxLength={MAX} onChange={(e) => onBody?.(e.target.value)} placeholder={ph} aria-label={t('letters.new')} />
+    : <div className="lp-text">{body}</div>;
+  if (layout === 'postage') {
+    return (
+      <>
+        <div className="lp-in postage" onClick={write ? onFocusBody : undefined}>
+          {write
+            ? <input className="lp-title" value={title} maxLength={40} onChange={(e) => onTitle?.(e.target.value)} placeholder={t('letters.tpl.title')} aria-label={t('letters.tpl.titleLabel')} />
+            : <div className="lp-title">{title || t('letters.tpl.title')}</div>}
+          <div className="lp-meta">
+            <div className="lp-row"><small>{t('letters.tpl.to')}</small><span>{to}</span></div>
+            <div className="lp-row"><small>{t('letters.tpl.from')}</small><span>{from}</span></div>
+          </div>
+          <div className="lp-dear">{to ? t('letters.dear', { name: to }) : ' '}</div>
+          {text}
+          <div className="lp-foot">
+            <span className="lp-date">{dayMonth(date)}</span>
+            {write
+              ? <input className="lp-footer" value={footer} maxLength={40} onChange={(e) => onFooter?.(e.target.value)} placeholder={t('letters.tpl.footerPh')} aria-label={t('letters.tpl.footerLabel')} />
+              : <span className="lp-footer">{footer}</span>}
+          </div>
+        </div>
+        <Postmark text={t('letters.tpl.postmark')} />
+      </>
+    );
+  }
+  return (
+    <div className="lp-in" onClick={write ? onFocusBody : undefined}>
+      <div className="lp-to">{to ? t('letters.dear', { name: to }) : ' '}</div>
+      {text}
+      <div className="lp-sign"><span>{from}</span><small>{fmtDate(date, { day: 'numeric', month: 'long', year: 'numeric' })}</small></div>
+    </div>
+  );
 }
 
 export function Letters({ me, start, onClose }: { me: Me; start?: string | null; onClose: () => void }) {
-  const [view, setView] = useState<{ type: 'box' } | { type: 'write'; to?: string } | { type: 'read'; letter: Letter }>({ type: 'box' });
+  const [view, setView] = useState<{ type: 'box' } | { type: 'write'; to?: string } | { type: 'read'; letter: Letter; fresh: boolean }>({ type: 'box' });
   const [box, setBox] = useState<'in' | 'out'>('in');
   const [lists, setLists] = useState<Record<'in' | 'out', Letter[] | null>>({ in: null, out: null });
   const others = me.members.filter((m) => m.id !== me.me.id);
@@ -110,7 +164,7 @@ export function Letters({ me, start, onClose }: { me: Me; start?: string | null;
 
   function open(l: Letter) {
     tap();
-    setView({ type: 'read', letter: l });
+    setView({ type: 'read', letter: l, fresh: l.toId === me.me.id && !l.readAt });
     if (l.toId === me.me.id && !l.readAt) {
       const at = new Date().toISOString();
       setLists((p) => ({ ...p, in: p.in?.map((x) => (x.id === l.id ? { ...x, readAt: at } : x)) ?? null }));
@@ -139,16 +193,12 @@ export function Letters({ me, start, onClose }: { me: Me; start?: string | null;
           <button className="icon-btn" onClick={() => setView({ type: 'box' })} aria-label={t('common.back')}><Icon name="back" /></button>
           <div className="chat-title"><b>{mine ? t('letters.toName', { name: to?.name ?? t('common.someone') }) : t('letters.fromName', { name: from?.name ?? t('common.someone') })}</b></div>
         </header>
-        <div className="lt-stage" style={{ background: s.bg.css }}>
+        <Reading letter={l} fresh={view.fresh} bg={s.bg.css}>
           <Paper style={l.style} className="lt-read">
-            <div className="lp-in">
-              <div className="lp-to">{t('letters.dear', { name: (mine ? to : me.me)?.name ?? '' })}</div>
-              <div className="lp-text">{l.body}</div>
-              <div className="lp-sign"><span>{from?.name ?? ''}</span><small>{fmtDate(new Date(l.createdAt), { day: 'numeric', month: 'long', year: 'numeric' })}</small></div>
-            </div>
+            <Face layout={s.layout} mode="read" to={(mine ? to : me.me)?.name ?? ''} from={from?.name ?? ''} date={new Date(l.createdAt)} body={l.body} title={l.title ?? ''} footer={l.footer ?? ''} />
             <div className="lp-items">{l.items?.map((it, i) => <ItemView key={i} it={it} />)}</div>
           </Paper>
-        </div>
+        </Reading>
         {!mine && from && (
           <div className="lt-foot">
             <button className="btn" onClick={() => setView({ type: 'write', to: from.id })}>{t('letters.reply')}</button>
@@ -201,8 +251,31 @@ export function Letters({ me, start, onClose }: { me: Me; start?: string | null;
   );
 }
 
-type Tab = 'paper' | 'frame' | 'font' | 'ink' | 'bg' | 'scrap';
+/** Màn đọc: thư chưa đọc thì nằm trong phong bì có dấu sáp, chạm để mở; mở xong thư trượt lên. Chỉ animate opacity và transform. */
+function Reading({ letter, fresh, bg, children }: { letter: Letter; fresh: boolean; bg: string; children: React.ReactNode }) {
+  const [opened, setOpened] = useState(!fresh);
+  useEffect(() => { setOpened(!fresh); }, [letter.id]);
+  return (
+    <div className={`lt-stage lt-reading${opened ? ' opened' : ''}`} style={{ background: bg }}>
+      <div className="lt-rise">{children}</div>
+      {fresh && (
+        <button className="lt-env" onClick={() => { tap(); setOpened(true); }} disabled={opened} aria-label={t('letters.open')}>
+          <span className="lt-env-body"><i className="lt-env-flap" /><WaxSeal /></span>
+          <small>{t('letters.open')}</small>
+        </button>
+      )}
+    </div>
+  );
+}
+
+type Tab = 'layout' | 'paper' | 'frame' | 'font' | 'ink' | 'bg' | 'scrap';
 const uid = () => Math.random().toString(36).slice(2, 9);
+
+/** Ô xem trước của một mẫu: nền, tờ giấy (bo tròn nếu là mẫu bưu điện), màu viền theo màu chữ. */
+function TplChip({ s }: { s: Required<LetterStyle> }) {
+  const r = resolveStyle(s);
+  return <span className="lt-tpl" style={{ background: r.bg.css }}><i className={r.layout === 'postage' ? 'post' : ''} style={{ background: r.paper.c, borderColor: r.ink.c }} /></span>;
+}
 
 function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Member[]; to?: string; onBack: () => void; onSent: (l: Letter) => void }) {
   const [to, setTo] = useState<string | null>(first ?? (others.length === 1 ? others[0].id : null));
@@ -210,7 +283,9 @@ function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Memb
   const [style, setStyle] = useState<Required<LetterStyle>>(() => {
     try { return { ...DEFAULT_STYLE, ...JSON.parse(localStorage.getItem('hl-letter-style') || '{}') }; } catch { return DEFAULT_STYLE; }
   });
-  const [tab, setTab] = useState<Tab>('paper');
+  const [tab, setTab] = useState<Tab>('layout');
+  const [title, setTitle] = useState('');
+  const [footer, setFooter] = useState('');
   const [items, setItems] = useState<Draft[]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [uploading, setUploading] = useState(0);
@@ -233,7 +308,16 @@ function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Memb
     return () => { vv.removeEventListener('resize', f); vv.removeEventListener('scroll', f); };
   }, []);
 
-  const set = (k: Exclude<Tab, 'scrap'>, id: string) => {
+  const applyTemplate = (id: string) => {
+    const m = TEMPLATES.find((x) => x.id === id);
+    if (!m) return;
+    tap();
+    setStyle(m.style);
+    try { localStorage.setItem('hl-letter-style', JSON.stringify(m.style)); } catch {}
+  };
+  const isTemplate = (id: string) => { const m = TEMPLATES.find((x) => x.id === id); return !!m && (Object.keys(m.style) as Array<keyof typeof m.style>).every((k) => m.style[k] === style[k]); };
+
+  const set = (k: Exclude<Tab, 'scrap' | 'layout'>, id: string) => {
     tap();
     setStyle((p) => {
       const n = { ...p, [k]: id };
@@ -259,7 +343,9 @@ function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Memb
     if (!file) return;
     if (photos >= MAX_PHOTOS || items.length >= MAX_ITEMS) return toast(t('letters.scrap.full'));
     const preview = URL.createObjectURL(file);
-    const key = drop({ type: 'photo', preview, w: 46 });
+    const postage = style.layout === 'postage';
+    const slot = postage ? [{ x: 65, y: 24 }, { x: 86, y: 24 }][photos % 2] : {};
+    const key = drop({ type: 'photo', preview, w: postage ? 20 : 46, shape: postage ? 'stamp' : 'polaroid', ...slot, ...(postage ? { rot: 0 } : {}) });
     setUploading((n) => n + 1);
     try {
       const blob = await shrinkImage(file, 1600);
@@ -277,8 +363,8 @@ function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Memb
     if (!canSend) return;
     setBusy(true);
     try {
-      const out = items.map(({ type, media, sticker, x, y, w, rot }) => ({ type, media, sticker, x, y, w, rot }));
-      const l = await call<Letter>('/api/letters', { method: 'POST', body: JSON.stringify({ to, body: text, style, items: out }) });
+      const out = items.map(({ type, media, sticker, shape, x, y, w, rot }) => ({ type, media, sticker, shape, x, y, w, rot }));
+      const l = await call<Letter>('/api/letters', { method: 'POST', body: JSON.stringify({ to, body: text, style, items: out, title, footer }) });
       onSent(l);
     } catch (e) {
       toast((e as Error).message);
@@ -287,7 +373,8 @@ function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Memb
   }
 
   const options: Array<{ id: string; node: React.ReactNode; label: string }> =
-    tab === 'paper' ? PAPERS.map((p) => ({ id: p.id, label: t(`letters.paper.${p.id}` as Key), node: <i className="lt-sw" style={{ background: p.c }} /> }))
+    tab === 'layout' ? TEMPLATES.map((m) => ({ id: m.id, label: t(`letters.tpl.${m.id}` as Key), node: <TplChip s={m.style} /> }))
+    : tab === 'paper' ? PAPERS.map((p) => ({ id: p.id, label: t(`letters.paper.${p.id}` as Key), node: <i className="lt-sw" style={{ background: p.c }} /> }))
     : tab === 'ink' ? INKS.map((p) => ({ id: p.id, label: t(`letters.ink.${p.id}` as Key), node: <i className="lt-sw" style={{ background: p.c }} /> }))
     : tab === 'frame' ? FRAMES.map((f) => ({ id: f, label: t(`letters.frame.${f}` as Key), node: <Paper style={{ ...style, frame: f }} className="lt-chip"><span /></Paper> }))
     : tab === 'font' ? FONTS.map((f) => ({ id: f.id, label: t(`letters.font.${f.id}` as Key), node: <b className="lt-font" style={{ fontFamily: f.css }}>Aa</b> }))
@@ -313,12 +400,7 @@ function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Memb
       </div>
       <div className="lt-stage" style={{ background: s.bg.css }} onPointerDown={(e) => { if (e.target === e.currentTarget) setSel(null); }}>
         <Paper style={style} className="lt-write">
-          <div className="lp-in" onClick={() => { setSel(null); area.current?.focus(); }}>
-            <div className="lp-to">{target ? t('letters.dear', { name: target.name }) : ' '}</div>
-            <textarea ref={area} className="lp-text" value={text} maxLength={MAX} onChange={(e) => setText(e.target.value)}
-              placeholder={t('letters.placeholder', { name: target?.name ?? '' })} aria-label={t('letters.new')} />
-            <div className="lp-sign"><span>{me.me.name}</span><small>{fmtDate(new Date(), { day: 'numeric', month: 'long', year: 'numeric' })}</small></div>
-          </div>
+          <Face layout={s.layout} mode="write" to={target?.name ?? ''} from={me.me.name} date={new Date()} body={text} onBody={setText} title={title} onTitle={setTitle} footer={footer} onFooter={setFooter} area={area} onFocusBody={() => { setSel(null); area.current?.focus(); }} />
           <div className="lp-items">
             {items.map((it) => <ItemView key={it.key} it={it} edit selected={sel === it.key} onSelect={() => setSel(it.key)} onMove={(p) => patch(it.key, p)} />)}
           </div>
@@ -331,11 +413,12 @@ function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Memb
             <button onClick={() => nudge({ w: clamp(cur.w * 1.14, 8, 80) })} aria-label={t('letters.scrap.bigger')}>+</button>
             <button onClick={() => nudge({ rot: ((cur.rot - 12 + 540) % 360) - 180 })} aria-label={t('letters.scrap.rotL')}>↶</button>
             <button onClick={() => nudge({ rot: ((cur.rot + 12 + 540) % 360) - 180 })} aria-label={t('letters.scrap.rotR')}>↷</button>
+            {cur.type === 'photo' && <button onClick={() => setItems((a) => a.map((x) => (x.key === cur.key ? { ...x, shape: x.shape === 'stamp' ? 'polaroid' : 'stamp' } : x)))} aria-label={t('letters.scrap.shape')}>▣</button>}
             <button className="del" onClick={() => { setItems((a) => a.filter((x) => x.key !== cur.key)); setSel(null); }} aria-label={t('letters.scrap.delete')}><Icon name="trash" size={18} /></button>
           </div>
         )}
         <div className="lt-tabs sm" role="tablist">
-          {(['scrap', 'paper', 'frame', 'font', 'ink', 'bg'] as const).map((k) => (
+          {(['layout', 'scrap', 'paper', 'frame', 'font', 'ink', 'bg'] as const).map((k) => (
             <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t(`letters.tab.${k}` as Key)}</button>
           ))}
         </div>
@@ -349,6 +432,9 @@ function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Memb
               <Icon name="booth" size={22} /><small>{t('letters.photo.pick')}</small>
               <input type="file" accept="image/*" hidden onChange={(e) => { void addPhoto(e.target.files?.[0]); e.target.value = ''; }} />
             </label>
+            {STAMPS.map((id) => (
+              <button key={id} className="lt-stk stamp" onClick={() => addSticker(id)} aria-label={t('letters.stamp')}><StampArt id={id} /></button>
+            ))}
             {STICKER_LIST.map((st) => (
               <button key={st.id} className="lt-stk" onClick={() => addSticker(st.id)} aria-label={t(`sticker.${st.id}` as Key)}><Sticker id={st.id} size={44} /></button>
             ))}
@@ -356,7 +442,7 @@ function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Memb
         ) : (
           <div className="lt-opts" role="radiogroup">
             {options.map((o) => (
-              <button key={o.id} role="radio" aria-checked={style[tab as Exclude<Tab, 'scrap'>] === o.id} aria-label={o.label} className={style[tab as Exclude<Tab, 'scrap'>] === o.id ? 'on' : ''} onClick={() => set(tab as Exclude<Tab, 'scrap'>, o.id)}>
+              <button key={o.id} role="radio" aria-checked={tab === 'layout' ? isTemplate(o.id) : style[tab as Exclude<Tab, 'scrap' | 'layout'>] === o.id} aria-label={o.label} className={(tab === 'layout' ? isTemplate(o.id) : style[tab as Exclude<Tab, 'scrap' | 'layout'>] === o.id) ? 'on' : ''} onClick={() => (tab === 'layout' ? applyTemplate(o.id) : set(tab as Exclude<Tab, 'scrap' | 'layout'>, o.id))}>
                 {o.node}<small>{o.label}</small>
               </button>
             ))}

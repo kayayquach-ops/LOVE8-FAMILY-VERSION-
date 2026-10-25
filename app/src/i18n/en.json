@@ -631,5 +631,28 @@
   "letters.scrap.bigger": "Bigger",
   "letters.scrap.rotL": "Rotate left",
   "letters.scrap.rotR": "Rotate right",
-  "letters.scrap.delete": "Remove"
+  "letters.scrap.delete": "Remove",
+
+  "letters.tab.layout": "Style",
+  "letters.layout.plain": "Plain",
+  "letters.layout.postage": "Postage",
+  "letters.tpl.title": "A LOVE LETTER",
+  "letters.tpl.titleLabel": "Letter title",
+  "letters.tpl.to": "TO:",
+  "letters.tpl.from": "FROM:",
+  "letters.tpl.footerPh": "A little wish",
+  "letters.tpl.footerLabel": "Closing wish",
+  "letters.tpl.postmark": "MADE WITH LOVE",
+  "letters.open": "Tap to open",
+  "letters.stamp": "Stamp",
+  "letters.scrap.shape": "Change photo frame",
+
+  "letters.tpl.love": "Love letter",
+  "letters.tpl.stamp": "Postage",
+  "letters.tpl.rose": "Blush",
+  "letters.tpl.kraft": "Kraft",
+  "letters.tpl.sky": "Blue sky",
+  "letters.tpl.summer": "Summer",
+  "letters.tpl.night": "Starry night",
+  "letters.bg.crimson": "Crimson"
 }

@@ -617,5 +617,28 @@
   "letters.scrap.bigger": "크게",
   "letters.scrap.rotL": "왼쪽으로 돌리기",
   "letters.scrap.rotR": "오른쪽으로 돌리기",
-  "letters.scrap.delete": "떼기"
+  "letters.scrap.delete": "떼기",
+
+  "letters.tab.layout": "양식",
+  "letters.layout.plain": "기본",
+  "letters.layout.postage": "우편",
+  "letters.tpl.title": "손편지",
+  "letters.tpl.titleLabel": "편지 제목",
+  "letters.tpl.to": "받는 사람:",
+  "letters.tpl.from": "보내는 사람:",
+  "letters.tpl.footerPh": "작은 인사말",
+  "letters.tpl.footerLabel": "끝인사",
+  "letters.tpl.postmark": "마음을 담아",
+  "letters.open": "눌러서 열어 보세요",
+  "letters.stamp": "우표",
+  "letters.scrap.shape": "사진 틀 바꾸기",
+
+  "letters.tpl.love": "연애편지",
+  "letters.tpl.stamp": "우편",
+  "letters.tpl.rose": "분홍빛",
+  "letters.tpl.kraft": "갈색 종이",
+  "letters.tpl.sky": "푸른 하늘",
+  "letters.tpl.summer": "여름",
+  "letters.tpl.night": "별밤",
+  "letters.bg.crimson": "진홍"
 }
