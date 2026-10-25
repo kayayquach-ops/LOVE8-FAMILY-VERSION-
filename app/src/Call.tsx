@@ -8,7 +8,7 @@ import { buzz, sfx, tap } from './sound';
 import { playVoice, prefetchVoice, resetVoice, setVoiceContext, speak, stopSpeaking, ttsReady, unlockSpeech, voiceCut, voiceReady, warmVoice, type Kind } from './speech';
 import { Icon, toast } from './ui';
 import { snooze } from './callSnooze';
-import { speechLang, t, type Key } from './i18n';
+import { shownLang, speechLang, t, type Key, type Lang } from './i18n';
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const t = token.get();
@@ -38,8 +38,13 @@ const VAD = {
   silence: 9000, // không nói gì
   maxAnswer: 180_000,
 };
-// i18n-ok: từ ngập ngừng tiếng Việt lúc nghe. TODO(i18n đợt 3): theo ngôn ngữ người nói.
-const FILLER = /(?:^|\s)(ờ|ừ|ừm|à|ơ|thì|là|mà|và|với|nhưng|rồi|cái|kiểu)\s*$/i;
+// Từ ngập ngừng ở cuối lời đang nói (người nói còn định nói tiếp) theo thứ tiếng của người nói.
+const FILLER: Record<Lang, RegExp> = {
+  // i18n-ok
+  vi: /(?:^|\s)(ờ|ừ|ừm|à|ơ|thì|là|mà|và|với|nhưng|rồi|cái|kiểu)\s*$/i,
+  en: /(?:^|\s)(um+|uh+|er+|erm|hmm+|so|and|but|like|because|the|a|with|then|or)\s*$/i,
+  ko: /(?:^|\s)(음+|어+|그+|저기|그러니까|그래서|그리고|근데|그런데|뭐지|있잖아요?)\s*$/,
+};
 
 type Heard = { recording: Recording | null; transcript: string; speechMs: number };
 type Saved = { transcript?: string | null; reply?: string | null } | null;
@@ -264,7 +269,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
         if (inSpeech) return;
         let need = VAD.endMs;
         if (speechMs < 2500) need += VAD.shortExtra;
-        if (lastSeg < 700 || FILLER.test(text)) need += VAD.hesitateExtra;
+        if (lastSeg < 700 || FILLER[shownLang()].test(text)) need += VAD.hesitateExtra;
         if (now - lastVoice > Math.min(need, VAD.endCap)) void finish(true);
       }, VAD.tick);
     });

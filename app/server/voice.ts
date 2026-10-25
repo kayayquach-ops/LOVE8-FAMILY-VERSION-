@@ -21,8 +21,7 @@ export const VOICE = () => process.env.GEMINI_VOICE || 'Zephyr';
 const CACHE_VER = 'v2';
 const STT_MODEL = () => process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 // Model 2.5 hiểu lời dặn giọng đặt trước câu; các model TTS mới hơn lại đọc to cả lời dặn, nên chỉ gửi câu.
-// Đổi lời dặn bằng GEMINI_TTS_STYLE, không cần sửa code.
-// TODO(i18n đợt 3): giọng đọc và lời dặn cách đọc theo ngôn ngữ của người nghe. Đợt này giữ nguyên tiếng Việt.
+// Đổi lời dặn bằng GEMINI_TTS_STYLE, không cần sửa code. Lời dặn theo thứ tiếng của câu (vi, en, ko).
 // i18n-ok-begin
 const STYLE_DEFAULT = 'Nói tiếng Việt tự nhiên, rõ ràng, tươi và thân thiện, như người thân đang nói chuyện bình thường qua điện thoại. '
   + 'Âm lượng và cao độ bình thường, tốc độ vừa phải hơi nhanh một chút, nhịp tự nhiên có nhấn nhá. '
@@ -31,11 +30,14 @@ const STYLE_DEFAULT = 'Nói tiếng Việt tự nhiên, rõ ràng, tươi và th
 const STYLE_EN = 'Speak natural, clear, friendly English, like a relative chatting normally on the phone. '
   + 'Normal volume and pitch, a steady pace that is a little quick, natural emphasis. '
   + 'No whispering, no drawn-out words, no bedtime-story voice. The sentence to say: ';
-// Câu có dấu tiếng Việt thì dùng lời dặn tiếng Việt; còn lại (tiếng Anh) dùng lời dặn tiếng Anh. Khoá kho âm thanh theo cả lời dặn lẫn chữ nên không lẫn.
-// TODO(i18n đợt 3): thêm lời dặn tiếng Hàn khi có bản dịch ko.
+const STYLE_KO = '따뜻하고 다정한 한국어로, 가족이 전화로 안부를 묻듯 자연스럽게 말해 주세요. '
+  + '보통 크기와 높이, 서두르지 않는 차분한 속도, 자연스러운 쉼. '
+  + '속삭이지 말고, 말을 길게 늘이지 말고, 자장가 같은 목소리는 피해 주세요. 말할 문장: ';
+// Câu có chữ Hàn dùng lời dặn tiếng Hàn; câu có dấu tiếng Việt dùng lời dặn tiếng Việt; còn lại (tiếng Anh) dùng lời dặn tiếng Anh.
+// Khoá kho âm thanh theo cả lời dặn lẫn chữ nên không lẫn; nhánh vi, en giữ nguyên như cũ để kho Gemini đang có vẫn trúng.
 // i18n-ok-begin
 const VI_CHARS = /[À-ÃÈ-ÊÌÍÒ-ÕÙÚÝà-ãè-êìíò-õùúýĂăĐđĨĩŨũƠơƯưẠ-ỹ]/;
-const STYLE = (text = '') => process.env.GEMINI_TTS_STYLE || (/[a-zA-Z]/.test(text) && !VI_CHARS.test(text) ? STYLE_EN : STYLE_DEFAULT);
+const STYLE = (text = '') => process.env.GEMINI_TTS_STYLE || (HANGUL.test(text) ? STYLE_KO : /[a-zA-Z]/.test(text) && !VI_CHARS.test(text) ? STYLE_EN : STYLE_DEFAULT);
 // i18n-ok-end
 
 export type Provider = 'openai' | 'gemini';
@@ -124,8 +126,8 @@ export const OA_VOICE = (text = ''): string => {
 // i18n-ok-begin
 const OA_STYLE: Record<'vi' | 'en' | 'ko', string> = {
   vi: 'Đọc bằng tiếng Việt tự nhiên, rõ, ấm và thân thiện như người thân gọi điện nói chuyện bình thường. Âm lượng và cao độ bình thường, tốc độ vừa phải hơi nhanh, có nhấn nhá. Không thì thầm, không kéo dài giọng, không giọng ru ngủ. Đọc tên "Mây" như tiếng Việt.',
-  en: 'Speak natural, clear, warm and friendly English, like a relative chatting normally on the phone. Normal volume and pitch, a steady pace that is a little quick, natural emphasis. No whispering, no drawn-out words, no bedtime-story voice. Say the name "Mây" as in Vietnamese.',
-  ko: '자연스럽고 또렷하고 따뜻하게, 가족이 전화로 편하게 말하듯 한국어로 읽어 주세요. 보통 크기와 높이, 약간 빠른 속도, 자연스러운 강세. 속삭이지 말고, 말을 늘이지 말고, 자장가 같은 목소리는 안 됩니다. "Mây"는 베트남어처럼 읽어 주세요.',
+  en: 'Speak natural, warm, gentle English, like a caring family member calling home to catch up. Normal volume and pitch, an unhurried, moderate pace with small natural pauses between sentences, friendly emphasis. Clear and close, not whispery, not drawn out, not a bedtime-story or announcer voice. Say the name "Mây" short, like "May".',
+  ko: '따뜻하고 다정한 한국어로, 가족이 전화로 안부를 묻듯 자연스럽게 말해 주세요. 보통 크기와 높이, 서두르지 않는 차분한 속도, 문장 사이에 자연스러운 쉼, 부드러운 강세. 또렷하게, 속삭이지 말고, 말을 길게 늘이지 말고, 자장가나 안내 방송 같은 목소리는 피해 주세요. "Mây"는 "머이"처럼 짧게 읽어 주세요.',
 };
 const HANGUL = /[\u3131-\u318E\uAC00-\uD7A3]/;
 // i18n-ok-end
@@ -320,11 +322,17 @@ function withWavHeader(pcm: Buffer, rate: number) {
 
 // ---------- Chép lời ----------
 
-// TODO(i18n đợt 3): chép lời theo ngôn ngữ người nói (members.lang). Đợt này giữ nguyên.
+// Chép lời theo thứ tiếng của cuộc gọi: Gemini không có tham số ngôn ngữ nên ghi rõ trong lời dặn (kèm mã ISO 639-1); OpenAI nhận `language`.
 // i18n-ok-begin
-const STT_PROMPT = `Chép lại nguyên văn lời nói tiếng Việt trong đoạn ghi âm này.
+type SttLang = 'vi' | 'en' | 'ko';
+const STT_NAME: Record<SttLang, string> = { vi: 'Vietnamese', en: 'English', ko: 'Korean' };
+const STT_PROMPT = (lang: SttLang) => lang === 'vi'
+  ? `Chép lại nguyên văn lời nói tiếng Việt trong đoạn ghi âm này.
 Giữ đúng từng chữ người nói, có dấu, không thêm, không bớt, không sửa câu, không tóm tắt, không giải thích.
-Bỏ qua tiếng ồn. Nếu không nghe thấy lời nói nào thì trả về chuỗi rỗng.`;
+Bỏ qua tiếng ồn. Nếu không nghe thấy lời nói nào thì trả về chuỗi rỗng.`
+  : `Transcribe verbatim the ${STT_NAME[lang]} speech in this recording (language code ${lang}).
+Keep every word exactly as spoken, in ${STT_NAME[lang]} script, with no additions, no omissions, no corrections, no summary, no translation, no explanation.
+Ignore noise. If there is no speech, return an empty string.`;
 // i18n-ok-end
 
 /** Chép lời một file ghi âm trong MEDIA_DIR. Gemini trước; Gemini lỗi hoặc hết hạn mức thì OpenAI (nếu có khoá). Quá hạn hoặc lỗi thì trả null, không làm chậm cuộc gọi. */
@@ -343,7 +351,7 @@ export async function transcribe(file: string, who: string, timeoutMs = 8000, la
     if (gem) {
       try {
         if (left() < 500) return null;
-        const text = await geminiStt(audio, left());
+        const text = await geminiStt(audio, left(), lang);
         console.log(`[voice] chép lời ${text.length} chữ trong ${Date.now() - t0} ms`);
         return text || null;
       } catch (e) {
@@ -363,12 +371,12 @@ export async function transcribe(file: string, who: string, timeoutMs = 8000, la
   }
 }
 
-async function geminiStt(audio: Buffer, ms: number) {
+async function geminiStt(audio: Buffer, ms: number, lang: SttLang) {
   const res = await doFetch(`${API}/${STT_MODEL()}:generateContent`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY! },
     body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ inlineData: { mimeType: 'audio/mp3', data: audio.toString('base64') } }, { text: STT_PROMPT }] }],
+      contents: [{ role: 'user', parts: [{ inlineData: { mimeType: 'audio/mp3', data: audio.toString('base64') } }, { text: STT_PROMPT(lang) }] }],
       generationConfig: {
         maxOutputTokens: 2000,
         thinkingConfig: { thinkingBudget: 0 },

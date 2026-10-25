@@ -138,7 +138,7 @@ test('API trả 429 thì đặt cờ, trả null, các câu sau không gọi n�
 test('nạp sẵn rải rác: bỏ câu đã có, dừng khi ngân sách còn dưới 30%', async () => {
   const call = await import('./call.ts');
   const lines = call.fixedLines();
-  assert.ok(lines.length <= 3 * 2 * 8, `quá nhiều câu cố định: ${lines.length}`);
+  assert.ok(lines.length <= 3 * 3 * 8, `quá nhiều câu cố định: ${lines.length}`);
   voice.gate.used = 0;
   voice.gate.until = 0;
   const m = fakeFetch();
@@ -295,3 +295,6 @@ test('chép lời: Gemini lỗi thì OpenAI gpt-4o-mini-transcribe, không khoá
 });
 
 test.after(() => { rmSync(dir, { recursive: true, force: true }); setTimeout(() => process.exit(0), 50); });
+
+// Lớp lọc chống bịa và đọc ngày (vi, en, ko).
+await import('./guard.test.ts');

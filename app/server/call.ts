@@ -6,8 +6,9 @@ import type multer from 'multer';
 import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { CALL_ROLES, EVENT_HINTS, TOPICS, callLines, isTopic, type CallQuestion, type CallScript, type Topic } from '../src/shared.ts';
-import { errorBody, langOf, LANGS, reqLang, tReq, tServer, tVi, type Lang } from './i18n.ts';
+import { errorBody, langOf, LANGS, reqLang, tReq, tServer, type Lang } from './i18n.ts';
 import { askJSON, askQuick } from './ai.ts';
+import { parseDate, suspect, type Allow } from './guard.ts';
 import { pool } from './db.ts';
 import { weekKey } from './recap.ts';
 import { buildPodcastsForCall } from './podcast.ts';
@@ -54,7 +55,7 @@ export async function migrateCall(p: pg.Pool) {
 /** Các câu cố định cần có giọng sẵn: mỗi (vai, ngôn ngữ) 7 câu. Câu "ack" không nạp (chỉ dùng nếu tình cờ đã có trong kho). */
 export function fixedLines() {
   const out = new Set<string>();
-  for (const lang of ['vi', 'en'] as const) {
+  for (const lang of LANGS) {
     for (const role of CALL_ROLES) {
       const L = callLines(role, (k, v) => tServer(lang, k, v));
       for (const text of [L.slow, L.busy, L.skip, L.photo, ...L.short, ...L.long]) out.add(text);
@@ -93,15 +94,16 @@ function callTime() {
 // Tên ngày tự thêm vào lịch theo loại (khoá callEvent.<loại>).
 const KIND_TITLE = (kind: string, lang: Lang) => (['wedding', 'anniversary', 'birthday', 'memory', 'other'].includes(kind) ? tServer(lang, `callEvent.${kind}`) : undefined);
 
-/** Đáp án onboarding lưu bằng mã (bản mới) hoặc nguyên chữ (bản cũ): đổi mã về chữ tiếng Việt để câu hỏi soạn sẵn và AI đọc như cũ. */
+/** Đáp án onboarding lưu bằng mã (bản mới) hoặc nguyên chữ (bản cũ): đổi mã về chữ để câu hỏi soạn sẵn và AI đọc.
+ * Người nghe tiếng Việt: chữ tiếng Việt như cũ; thứ tiếng khác: nhãn tiếng Anh (trung tính, prompt cũng bằng tiếng Anh). */
 const INTRO_IDS: Record<string, string[]> = { kid: ['son', 'daughter', 'both'], seen: ['week', 'months', 'year', 'together'], love: ['often', 'sometimes', 'never'] };
-function introLabels(intro: Record<string, string>) {
+function introLabels(intro: Record<string, string>, lang: Lang = 'vi') {
   const out = { ...intro };
-  for (const [k, ids] of Object.entries(INTRO_IDS)) if (ids.includes(out[k])) out[k] = tVi(`onboarding.${k}.opt.${out[k]}`);
+  for (const [k, ids] of Object.entries(INTRO_IDS)) if (ids.includes(out[k])) out[k] = tServer(lang === 'vi' ? 'vi' : 'en', `onboarding.${k}.opt.${out[k]}`);
   return out;
 }
 
-type Ctx = {
+export type Ctx = {
   /** Ngôn ngữ của người nghe (members.lang hoặc x-lang của máy). */
   lang: Lang;
   member: { id: string; name: string; role: string; intro: Record<string, string> };
@@ -130,10 +132,11 @@ async function context(memberId: string, fid: string): Promise<Ctx> {
     pool.query(`select count(*)::int n from posts where author_id = $1 and kind = 'photo'`, [memberId]),
     pool.query(`select count(*)::int n from vault where member_id = $1`, [memberId]),
   ]);
+  const lang = reqLang();
   let intro: Record<string, string> = {};
-  try { intro = introLabels(JSON.parse(m.rows[0]?.intro || '{}')); } catch {}
+  try { intro = introLabels(JSON.parse(m.rows[0]?.intro || '{}'), lang); } catch {}
   return {
-    lang: reqLang(),
+    lang,
     member: { id: memberId, name: m.rows[0]?.name ?? tReq('callScript.defaultName'), role: m.rows[0]?.role ?? 'con', intro },
     family: fam.rows, events: ev.rows, asked: asked.rows.map((r) => r.question),
     stories: stories.rows.map((r) => ({ question: r.question, answer: String(r.transcript).slice(0, 600) })),
@@ -148,7 +151,7 @@ async function context(memberId: string, fid: string): Promise<Ctx> {
 const lastWord = (name: string) => name.trim().split(/\s+/).pop() || name;
 
 /** Cuộc gọi đầu tiên: chào ngắn rồi đúng 3 câu rất dễ trả lời. Soạn sẵn, không gọi AI, không cần dữ liệu cũ. */
-function firstScript(c: Ctx): CallScript {
+export function firstScript(c: Ctx): CallScript {
   const { name, role } = c.member;
   const parent = role === 'bo' || role === 'me';
   const T = (k: string, v?: Record<string, string | number>) => tServer(c.lang, k, v);
@@ -166,7 +169,7 @@ function firstScript(c: Ctx): CallScript {
   };
 }
 
-function templateScript(c: Ctx, week: string): CallScript {
+export function templateScript(c: Ctx, week: string): CallScript {
   const { name, role, intro } = c.member;
   const parent = role === 'bo' || role === 'me';
   const T = (k: string, v?: Record<string, string | number>) => tServer(c.lang, k, v);
@@ -217,38 +220,12 @@ function templateScript(c: Ctx, week: string): CallScript {
   };
 }
 
-// i18n-ok-begin: kiểm câu AI viết (từ tiếng Việt), prompt và dữ liệu gửi AI. Đợt 3 mới làm theo ngôn ngữ.
-// ---------- Chống bịa ----------
+// ---------- Chống bịa: suspect() ở guard.ts (dấu hiệu bịa vi, en, ko + tên riêng, con số phải có trong dữ liệu) ----------
 
-const NAME_OK = new Set(['bố', 'mẹ', 'con', 'bà', 'ông', 'cô', 'chú', 'dì', 'anh', 'chị', 'em', 'mây', 'sweet', 'home', 'tết']);
-const fold = (s: string) => s.toLowerCase().normalize('NFC');
+/** Tên đầy đủ của ngôn ngữ người nghe, cho dòng "Reply in ..." của prompt. */
+const LANG_NAME: Record<Lang, string> = { vi: 'Vietnamese', en: 'English', ko: 'Korean' };
 
-type Allow = { prevCall: boolean; ownStory: boolean; photos: boolean };
-
-/** Lý do câu này có dấu hiệu bịa (nhắc điều không có trong dữ liệu), hoặc null nếu ổn. haystack là toàn bộ dữ liệu thật đã đưa vào. */
-export function suspect(text: string, haystack: string, allow: Allow): string | null {
-  const t = fold(text);
-  if (/hôm (trước|qua|kia|nọ)|lúc nãy|vừa nãy|mới đây|hồi sáng nay/.test(t)) return 'mốc thời gian không có trong dữ liệu';
-  if (/tin nhắn\s+(của\s+)?(bạn|bố|mẹ|con)|(bạn|bố|mẹ)\s+(đã\s+)?nhắn\s+(cho|với)/.test(t)) return 'nhắc tin nhắn không có trong dữ liệu';
-  if (!allow.prevCall && /(lần|buổi|tuần|cuộc gọi|lượt)\s+trước|lần\s+(gọi\s+)?(vừa\s+)?rồi|cuộc gọi\s+(vừa\s+)?rồi/.test(t)) return 'nhắc cuộc gọi trước không có';
-  if (!allow.ownStory && /(đã|từng|có lần|hay|vừa)\s+(kể|nói|chia sẻ|nhắc)(\s|$|[,.?!])|như\s+(bạn|bố|mẹ)\s+(đã\s+)?(kể|nói)/.test(t)) return 'nhắc điều đã kể mà chưa có';
-  if (!allow.photos && /ảnh[^.?!]{0,25}\s(bạn|bố|mẹ)\s+(đã\s+|vừa\s+)?(gửi|chụp|đăng|chia sẻ)|(đã|vừa|từng)\s+(gửi|đăng|chụp)[^.?!]{0,25}ảnh|như\s+\S+\s+đã\s+gửi/.test(t)) return 'nhắc ảnh đã gửi mà chưa có';
-  const hay = fold(haystack);
-  for (const n of text.match(/\d+/g) ?? []) if (!hay.includes(n)) return `con số ${n} không có trong dữ liệu`;
-  for (const sentence of text.match(/[^.!?…]+[.!?…]*/g) ?? []) {
-    const toks = sentence.trim().split(/\s+/);
-    for (let k = 0; k < toks.length; k++) {
-      const w = toks[k].replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '');
-      if (!w || !/^\p{Lu}/u.test(w)) continue;
-      // Đầu câu chỉ kiểm khi đó là tên gọi ("Lan ơi, ...").
-      if (k === 0 && fold(toks[1] ?? '').replace(/[^\p{L}]/gu, '') !== 'ơi') continue;
-      if (NAME_OK.has(fold(w)) || hay.includes(fold(w))) continue;
-      return `tên "${w}" không có trong dữ liệu`;
-    }
-  }
-  return null;
-}
-
+// i18n-ok-begin: prompt gửi AI (tiếng Anh, có ví dụ theo từng thứ tiếng), không phải chữ hiện cho người dùng.
 // ---------- AI soạn câu hỏi ----------
 
 const SCRIPT_SCHEMA = {
@@ -275,49 +252,78 @@ const SCRIPT_SCHEMA = {
   },
 };
 
-// TODO(i18n đợt 3): viết prompt bằng tiếng Anh một lần, thêm dòng "trả lời bằng {ngôn ngữ}" theo members.lang. Đợt này giữ nguyên.
-const SCRIPT_SYSTEM = `You write the script for a short voice call inside Sweet Home, a family app for Vietnamese families whose child lives far away. The caller is Mây, the app's little mascot. The phone reads every line aloud, and the person answers by speaking.
+/** Cách Mây xưng hô và giọng nói theo ngôn ngữ người nghe. */
+const ADDRESS: Record<Lang, string> = {
+  vi: `Vietnamese, the way a warm, unhurried person really talks on the phone.
+When talking to a parent (role bo or me), Mây calls itself "con" and addresses them as Bố or Mẹ. When talking to a child (role con), Mây calls itself "mình" and uses their name.`,
+  en: `English, the way a warm, unhurried family member really talks on the phone. Simple everyday words.
+Mây says I and me. When talking to a parent, call role me Mom and role bo Dad. When talking to a child (role con), Mây uses their name sparingly.`,
+  ko: `Korean in warm, gentle 해요체, the way a caring family member really talks on the phone. Simple everyday words. Every sentence ends in a 요 form (for example 하셨어요, 궁금해요, 들려주세요); never use the formal 합니다 or 입니다 style.
+Mây always calls itself 저, and writes its own name only as Mây in Latin letters, never in Hangul. When talking to a parent (role bo or me), use respectful honorific forms (for example 드셨어요, 하셨어요, 계세요); you may address them as 어머님 (role me) or 아버님 (role bo), at most twice in the whole script, never by their first name. When talking to a child (role con), use plain warm 해요체 without honorific verb forms and call them by their name followed by 님, sparingly.`,
+};
 
-LANGUAGE AND TONE. Vietnamese, the way a warm, unhurried person really talks on the phone. Short sentences. No em dash or long dash, no emoji, no lists, no quotation marks.
-When talking to a parent (role bo or me), Mây calls itself "con" and addresses them as Bố or Mẹ. When talking to a child (role con), Mây calls itself "mình" and uses their name.
-The lines are read aloud, so never write the English app name; if a name is needed, Mây calls itself Mây.
+const EXAMPLES: Record<Lang, { photo: string; forbidden: string }> = {
+  vi: { photo: 'Bạn có tấm ảnh nào muốn kể cho mình nghe không?', forbidden: '"lần trước", "hôm trước", "hôm qua", "lúc nãy", "như bạn đã gửi", "tấm ảnh bạn gửi", "bạn từng kể"' },
+  en: { photo: 'Is there a photo you would like to tell me about?', forbidden: '"last time", "the other day", "yesterday", "earlier", "as you sent", "the photo you sent", "you told me", "you mentioned", "remember when"' },
+  ko: { photo: '이야기해 주고 싶은 사진이 있으세요?', forbidden: '"지난번", "저번에", "어제", "아까", "보내주신", "말씀하신", "전에 말한"' },
+};
 
-WHAT YOU MAY USE. Only the facts in the JSON input. Every field is real data from the database. A field that says it is empty (for example "chưa có cuộc gọi trước", "chưa có ảnh nào", "chưa có sự kiện nào") means there is nothing, so you know nothing about it.
+function scriptSystem(lang: Lang) {
+  const ex = EXAMPLES[lang];
+  return `You write the script for a short voice call inside Sweet Home, a family app for families whose child lives far from home. The caller is Mây, the app's little mascot. The phone reads every line aloud, and the person answers by speaking.
+
+LANGUAGE AND TONE. ${ADDRESS[lang]}
+Short sentences. No em dash or long dash, no emoji, no lists, no quotation marks.
+The lines are read aloud, so never write the English app name; if a name is needed, Mây calls itself Mây. Mây is the one who called, so never thank the person for calling. Write every person's name exactly as it appears in the input, never translated or transliterated. The role codes bo, me and con are not names: never write them as words.
+
+WHAT YOU MAY USE. Only the facts in the JSON input. Every field is real data from the database. A field that starts with "none yet" (for example "none yet: no previous call", "none yet: no photos", "none yet: no calendar events") means there is nothing, so you know nothing about it. Field values may be in another language; never copy them word for word unless it is a name or a food the person wrote.
 
 HARD RULES, never break them:
-1. Never mention a photo, message, call, earlier session, memory or detail that is not in the input. Never write "lần trước", "hôm trước", "hôm qua", "lúc nãy", "như bạn đã gửi", "tấm ảnh bạn gửi", "bạn từng kể" or anything similar unless that exact thing is in the input.
-2. Never guess a name, date, place, number, age or relationship. Use only names and facts that appear in the input.
+1. Never mention a photo, message, call, earlier session, memory or detail that is not in the input. Never write ${ex.forbidden} or anything similar unless that exact thing is in the input.
+2. Never guess a name, date, place, country, number, age or relationship. Use only names and facts that appear in the input. Do not assume where anyone lives or studies.
 3. Ask only open, safe questions that assume nothing. Every question must be answerable without any outside data, by a person who just picked up the phone.
 4. Exactly 3 questions, plus at most one last gentle question that invites a message for the rest of the family (topic loi-nhan). Each question is one short sentence, at most two.
-5. Never repeat a question in already_asked.
+5. Never repeat a question in already_asked, in any language.
 6. Only follow up on an earlier answer if it is listed in own_earlier_answers, and quote nothing that is not there.
-7. A photo question (photo true) is a neutral invitation, for example "Bạn có tấm ảnh nào muốn kể cho mình nghe không?". It must never imply that a photo was already received. Use photo true in at most one question, and only when it fits.
+7. A photo question (photo true) is a neutral invitation, for example "${ex.photo}". It must never imply that a photo was already received. Use photo true in at most one question, and only when it fits.
 8. If wedding_question_allowed is true, one question asks when they got married and to tell about that day, with photo true and event wedding. Otherwise never ask about a wedding.
 9. Set event to the kind of date the answer will likely contain (wedding, anniversary, birthday, memory), otherwise none.
-10. Earlier answers come from past calls. Refer to them as "lần trước" and never with "hôm nay", "bây giờ" or any present-tense time. Never invent relatives (cháu, em, anh, chị, con của ai) unless listed in family_members.
+10. Earlier answers come from past calls. Refer to them only as being from an earlier call (last time) and never with today, now or any present-tense time. If previous_calls says none yet, never refer to any earlier call at all. Never put a time on an earlier answer (no last week, no 지난주). Never assume whether a child is a son or a daughter unless the intro says so. Never invent relatives (grandchildren, siblings, cousins, anyone's children) unless listed in family_members.
 11. The intro field "unsaid" is private: it may guide your tone, but never quote it or hint at its content.
 
-The greeting is one or two short sentences. The goodbye is one short sentence of thanks. Neither mentions anything outside the input.`;
+The greeting is one or two short sentences. The goodbye is one short sentence of thanks. Neither mentions anything outside the input.
 
-async function aiScript(c: Ctx, week: string): Promise<CallScript | null> {
+Reply in ${LANG_NAME[lang]}. Every greeting, question and goodbye must be written in ${LANG_NAME[lang]} only.`;
+}
+
+/** Dữ liệu thật đưa cho AI: mục trống ghi rõ "none yet" bằng nhãn tiếng Anh trung tính. */
+export function scriptFacts(c: Ctx) {
   const today = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
   const parent = c.member.role === 'bo' || c.member.role === 'me';
   const hasPair = c.family.some((m) => m.role === 'bo') && c.family.some((m) => m.role === 'me');
   const intro = Object.fromEntries(Object.entries(c.member.intro).filter(([, v]) => String(v ?? '').trim()));
-  const facts = {
+  return {
     today,
-    person: { name: c.member.name, role: c.member.role, intro: Object.keys(intro).length ? intro : 'chưa có thông tin nào' },
+    person: { name: c.member.name, role: c.member.role, intro: Object.keys(intro).length ? intro : 'none yet: no intro answers' },
     family_members: c.family,
-    calendar: c.events.length ? c.events : 'chưa có sự kiện nào',
-    previous_calls: c.doneCalls.length ? { count: c.doneCalls.length, last: c.doneCalls[0] } : 'chưa có cuộc gọi trước',
-    own_earlier_answers: c.stories.length ? c.stories : 'chưa có câu trả lời nào được chép',
-    saved_photos: c.photoCount ? { count: c.photoCount, captions: c.captions.length ? c.captions : 'không có chú thích' } : 'chưa có ảnh nào',
-    already_asked: c.asked.length ? c.asked : 'chưa hỏi câu nào',
+    calendar: c.events.length ? c.events : 'none yet: no calendar events',
+    previous_calls: c.doneCalls.length ? { count: c.doneCalls.length, last: c.doneCalls[0] } : 'none yet: no previous call',
+    own_earlier_answers: c.stories.length ? c.stories : 'none yet: no transcribed answers',
+    saved_photos: c.photoCount ? { count: c.photoCount, captions: c.captions.length ? c.captions : 'none yet: no captions' } : 'none yet: no photos',
+    already_asked: c.asked.length ? c.asked : 'none yet: nothing asked',
     wedding_question_allowed: parent && hasPair && !c.events.some((e) => e.kind === 'wedding'),
   };
-  const hay = JSON.stringify(facts);
+}
+
+const MONTH_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+export async function aiScript(c: Ctx, week: string): Promise<CallScript | null> {
+  const facts = scriptFacts(c);
+  // Tên tháng tiếng Anh của các ngày có trong lịch cũng tính là dữ liệu thật ("your birthday in March").
+  // Mã vai (bo, me, con) không phải tên: bỏ khỏi dữ liệu đối chiếu để câu "Hi Bo" bị chặn.
+  const hay = JSON.stringify(facts).replace(/"role":"(bo|me|con)"/g, '') + ' ' + c.events.map((e) => MONTH_EN[e.month - 1] ?? '').join(' ');
   const allow: Allow = { prevCall: c.doneCalls.length > 0, ownStory: c.stories.length > 0, photos: c.photoCount > 0 };
-  const r = await askJSON<Omit<CallScript, 'source'>>(SCRIPT_SYSTEM, JSON.stringify(facts, null, 1), SCRIPT_SCHEMA);
+  const r = await askJSON<Omit<CallScript, 'source'>>(scriptSystem(c.lang), JSON.stringify(facts, null, 1), SCRIPT_SCHEMA);
   if (!r || !Array.isArray(r.questions) || !r.questions.length) return null;
   const clean = (s: string) => String(s || '').replace(/\s*[—–]\s*/g, ', ').replace(/["“”]/g, '').trim();
   const tpl = templateScript(c, week);
@@ -327,7 +333,7 @@ async function aiScript(c: Ctx, week: string): Promise<CallScript | null> {
   for (const raw of r.questions.slice(0, 5)) {
     if (!raw || !raw.text || !isTopic(raw.topic)) continue;
     const text = clean(raw.text);
-    const why = suspect(text, hay, allow);
+    const why = suspect(text, hay, allow, c.lang);
     if (why) { console.warn(`[call] bỏ câu "${text}": ${why}`); continue; }
     if (c.asked.includes(text) || questions.some((q) => q.text === text)) continue;
     const event = EVENT_HINTS.includes(raw.event) ? raw.event : 'none';
@@ -347,44 +353,69 @@ async function aiScript(c: Ctx, week: string): Promise<CallScript | null> {
   }
   if (!questions.length) return null;
   const g = clean(r.greeting), b = clean(r.goodbye);
+  // Mây là người gọi: lời tạm biệt "thank you for calling" thì dùng câu mẫu.
+  const wrongBye = /\bfor (calling|the call)\b/i.test(b);
   return {
-    greeting: g && !suspect(g, hay, allow) ? g : tpl.greeting,
+    greeting: g && !suspect(g, hay, allow, c.lang) ? g : tpl.greeting,
     questions,
-    goodbye: b && !suspect(b, hay, allow) ? b : tpl.goodbye,
+    goodbye: b && !wrongBye && !suspect(b, hay, allow, c.lang) ? b : tpl.goodbye,
     source: 'ai',
-    lang: 'vi',
+    lang: c.lang,
   };
 }
 
-// TODO(i18n đợt 3): câu đáp theo ngôn ngữ của người nghe (members.lang). Đợt này giữ nguyên.
-const REPLY_SYSTEM = `You are Mây, the mascot of the family app Sweet Home, on a warm voice call with a Vietnamese family member. They just answered a question out loud (speech recognition text, may have errors).
-Reply with ONE short spoken Vietnamese reaction, at most 12 words, like a caring person on the phone.
-React warmly to what is written in "answer": when the answer has a concrete detail (an object, food, place, person or feeling the person actually said), your reply must echo that exact detail, for example answer "mua được con cá chép to" gives "Con cá chép to thế ạ, nghe vui quá.". Never add any fact, name, number, place, photo, memory or event that is not in "answer". Never say "lần trước", "hôm trước", "hôm qua" or refer to anything earlier.
-Do not ask a new question. Only if the answer is empty or truly unintelligible, reply with a generic warm line like "Dạ, mình nghe rồi." (role con) or "Dạ, con nghe rồi ạ." (role bo or me).
-Never say the English app name. No em dash, no emoji, no quotation marks.
-If role is bo or me, call yourself con and address them as Bố or Mẹ, end politely with ạ when natural. If role is con, call yourself mình and use their name sparingly.`;
+// ---------- Câu đáp ngắn theo điều vừa kể ----------
 
-async function quickReply(who: { name: string; role: string } | undefined, question: string, said: string, memberId: string) {
-  // TODO(i18n đợt 3): câu đáp theo nội dung bằng en, ko. Đợt này chỉ tiếng Việt; thứ tiếng khác để máy khách dùng câu đáp mẫu.
-  if (reqLang() !== 'vi') return null;
-  // Lời chép quá ngắn thì không đủ để đáp theo ý: để máy khách dùng câu đáp mẫu.
-  if (said.replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean).length < 3) return null;
-  const text = await askQuick(REPLY_SYSTEM, JSON.stringify({ person: { name: who?.name ?? '', role: who?.role ?? 'con' }, question, answer: said.slice(0, 1500) }), 1800);
+const REPLY_STYLE: Record<Lang, string> = {
+  vi: `Reply with ONE short spoken Vietnamese reaction, at most 12 words, like a caring person on the phone.
+Example: answer "mua được con cá chép to" gives "Con cá chép to thế ạ, nghe vui quá.".
+Only if the answer is empty or truly unintelligible, reply with a generic warm line like "Dạ, mình nghe rồi." (role con) or "Dạ, con nghe rồi ạ." (role bo or me).
+If role is bo or me, call yourself con and address them as Bố or Mẹ, end politely with ạ when natural. If role is con, call yourself mình and use their name sparingly.`,
+  en: `Reply with ONE short spoken English reaction, at most 12 words, like a caring family member on the phone.
+Example: answer "we bought a big carp at the market" gives "A big carp, that sounds like a happy trip.".
+Only if the answer is empty or truly unintelligible, reply with a generic warm line like "I hear you." or "Thank you for telling me.".
+If role is me you may call them Mom, if role is bo you may call them Dad. If role is con, use their name sparingly.`,
+  ko: `Reply with ONE short spoken Korean reaction in warm 해요체, at most 25 Korean syllables, like a caring family member on the phone. Mây calls itself 저.
+Example: answer "시장에서 큰 잉어를 샀어요" gives "큰 잉어를 사셨군요, 정말 즐거우셨겠어요.".
+Only if the answer is empty or truly unintelligible, reply with a generic warm line like "네, 잘 들었어요.".
+If role is bo or me, use respectful honorific forms (사셨군요, 드셨군요). If role is con, use plain warm 해요체 without honorific verb forms (샀군요, 먹었군요) and their name with 님 sparingly. Never use the formal 합니다 style.`,
+};
+
+function replySystem(lang: Lang) {
+  return `You are Mây, the mascot of the family app Sweet Home, on a warm voice call with a family member. They just answered a question out loud (speech recognition text, may have errors).
+React warmly to what is written in "answer": when the answer has a concrete detail (an object, food, place, person or feeling the person actually said), your reply must echo that exact detail in your own words.
+Never add any fact, name, number, place, photo, memory or event that is not in "answer". Never refer to anything earlier, and never use phrases like "you said", "you mentioned", "last time" or their equivalents; just echo the detail directly.
+Do not ask a new question. Never say the English app name. No em dash, no emoji, no quotation marks.
+${REPLY_STYLE[lang]}
+
+Reply in ${LANG_NAME[lang]}.`;
+}
+
+// i18n-ok-end
+export async function quickReply(who: { name: string; role: string } | undefined, question: string, said: string, memberId: string) {
+  const lang = reqLang();
+  // Lời chép quá ngắn thì không đủ để đáp theo ý: để máy khách dùng câu đáp mẫu. Tiếng Hàn đếm âm tiết (ít dấu cách hơn).
+  const short = lang === 'ko'
+    ? said.replace(/[^\p{L}\p{N}]/gu, '').length < 6
+    : said.replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean).length < 3;
+  if (short) return null;
+  const text = await askQuick(replySystem(lang), JSON.stringify({ person: { name: who?.name ?? '', role: who?.role ?? 'con' }, question, answer: said.slice(0, 1500) }), 1800);
   const clean = text?.replace(/\s*[—–]\s*/g, ', ').replace(/["“”]/g, '').split('\n')[0].trim().slice(0, 140) || null;
   if (!clean) return null;
   // Chỉ nhận câu đáp không có tên, số hay mốc thời gian lạ so với điều người ấy vừa nói.
-  const why = suspect(clean, `${said} ${who?.name ?? ''}`, { prevCall: false, ownStory: false, photos: false });
+  const why = suspect(clean, `${said} ${who?.name ?? ''}`, { prevCall: false, ownStory: false, photos: false }, lang);
   if (why) { console.warn(`[call] bỏ câu đáp "${clean}": ${why}`); return null; }
   // Đọc sẵn câu đáp ngay (chỉ khi còn dư ngân sách): lúc máy khách xin giọng sẽ nhận chung kết quả, đỡ một lượt mạng.
   void speech(clean, memberId, { optional: true });
   return clean;
 }
 
+// i18n-ok-begin: prompt rút ngày tháng (tiếng Anh) và nhãn nội bộ.
 // ---------- Rút ngày tháng sau cuộc gọi ----------
 
 type Found = { kind: string; title: string; day: number; month: number; year: number | null; note: string };
 
-const DATES_SCHEMA = {
+export const DATES_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   required: ['events'],
@@ -408,29 +439,46 @@ const DATES_SCHEMA = {
   },
 };
 
-// TODO(i18n đợt 3): tên ngày rút ra theo ngôn ngữ của nhà. Đợt này giữ nguyên.
-const DATES_SYSTEM = `You read the transcript of a family voice call (speech recognition, Vietnamese, may contain recognition errors) and pull out important family dates to add to the shared family calendar.
-Only include a date when the speaker clearly states both the day and the month. Include the year when stated. Do not guess.
-Skip dates already in the calendar. Title is short Vietnamese with full diacritics, for example: Ngày cưới bố mẹ, Sinh nhật bà nội, Ngày cả nhà chuyển nhà. No em dash.
-Note is one short Vietnamese sentence (full diacritics) about the day from the speaker's words.
-If nothing qualifies, return an empty list.`;
+const TITLE_EXAMPLES: Record<Lang, string> = {
+  vi: 'Ngày cưới bố mẹ, Sinh nhật bà nội, Ngày cả nhà chuyển nhà (full Vietnamese diacritics)',
+  en: "Mom and Dad's wedding day, Grandma's birthday, The day we moved house",
+  ko: '엄마 아빠 결혼식 날, 할머니 생신, 온 가족 이사한 날',
+};
 
-/** Không có Claude: đọc kiểu "ngày 12 tháng 3 năm 1995" hoặc "12/3/1995" trong câu trả lời có hẹn trước loại ngày. */
-function regexDates(answers: Array<{ transcript: string | null; event: string }>): Found[] {
+/** speak: thứ tiếng người kể nói; home: thứ tiếng của nhà (tên ngày, ghi chú hiện cho cả nhà). */
+export function datesSystem(speak: Lang, home: Lang) {
+  return `You read the transcript of a family voice call (speech recognition, ${LANG_NAME[speak]}, may contain recognition errors) and pull out important family dates to add to the shared family calendar.
+Only include a date when the speaker clearly states both the day and the month (for example "ngày 12 tháng 3", "March 12", "12 March", "3월 12일"). Include the year when stated. Do not guess, do not compute a date from an age or from "last year".
+Skip dates already in the calendar. Title is short ${LANG_NAME[home]}, for example: ${TITLE_EXAMPLES[home]}. No em dash. Use only names and relationships the speaker actually said.
+The whole family shares this calendar, so write title and note from the family's point of view: name people by the speaker's name or a family word (Mom, Dad, Grandma), never with I, we, my or our (in Korean never 저, 저희, 제, 우리).
+Note is one short ${LANG_NAME[home]} sentence about the day from the speaker's words, adding nothing they did not say.
+If nothing qualifies, return an empty list.
+
+Reply in ${LANG_NAME[home]} for title and note.`;
+}
+
+// i18n-ok-end
+/** Không có AI: đọc ngày có cả ngày lẫn tháng (vi, en, ko, xem parseDate) trong câu trả lời có hẹn trước loại ngày. */
+export function regexDates(answers: Array<{ transcript: string | null; event: string }>, speak: Lang = 'vi', home: Lang = 'vi'): Found[] {
   const out: Found[] = [];
   for (const a of answers) {
     if (!a.transcript || a.event === 'none') continue;
-    const t = a.transcript.toLowerCase();
-    const m = t.match(/ngày\s*(\d{1,2})\s*tháng\s*(\d{1,2})(?:\s*năm\s*(\d{4}))?/) ?? t.match(/\b(\d{1,2})\s*[/-]\s*(\d{1,2})(?:\s*[/-]\s*(\d{4}))?\b/);
-    if (!m) continue;
-    const day = +m[1], month = +m[2], year = m[3] ? +m[3] : null;
-    if (day < 1 || day > 31 || month < 1 || month > 12) continue;
-    out.push({ kind: a.event, title: KIND_TITLE(a.event, 'vi') ?? tVi('callEvent.memory'), day, month, year, note: '' });
+    const d = parseDate(a.transcript, speak);
+    if (!d) continue;
+    out.push({ kind: a.event, title: KIND_TITLE(a.event, home) ?? tServer(home, 'callEvent.memory'), ...d, note: '' });
   }
   return out;
 }
 
-// i18n-ok-end
+/** Thứ tiếng của nhà: thứ tiếng nhiều người dùng nhất trong nhà (chưa chọn là tiếng Việt); hoà thì theo người kể. */
+async function homeLang(fid: string, speaker: Lang): Promise<Lang> {
+  const { rows } = await pool.query('select lang from members where family_id = $1', [fid]);
+  const n: Record<Lang, number> = { vi: 0, en: 0, ko: 0 };
+  for (const r of rows) n[langOf(r.lang)]++;
+  const top = Math.max(...Object.values(n));
+  return n[speaker] === top ? speaker : LANGS.find((l) => n[l] === top) ?? speaker;
+}
+
 async function saveDates(callId: string) {
   const { rows: [call] } = await pool.query('select * from calls where id = $1', [callId]);
   if (!call) return;
@@ -440,28 +488,29 @@ async function saveDates(callId: string) {
   if (!said.length) return;
   const { rows: existing } = await pool.query('select kind, title, day, month, year from events where family_id = $1', [call.family_id]);
   const { rows: [who] } = await pool.query('select name, role, lang from members where id = $1', [call.member_id]);
-  // TODO(i18n đợt 3): rút ngày tháng từ lời kể bằng en, ko (prompt, regex "ngày .. tháng .."). Đợt này chỉ tiếng Việt, thứ tiếng khác thì không tự thêm vào lịch.
-  if (langOf(who?.lang) !== 'vi') return;
+  // Người kể nói thứ tiếng của bộ câu hỏi; tên ngày và ghi chú theo thứ tiếng của nhà (cả nhà cùng xem lịch).
+  const speak = langOf(script.lang ?? who?.lang);
+  const home = await homeLang(call.family_id, speak);
 
   let found: Found[] | null = null;
-  const ai = await askJSON<{ events: Found[] }>(DATES_SYSTEM, JSON.stringify({
-    speaker: who, calendar: existing,
+  const ai = await askJSON<{ events: Found[] }>(datesSystem(speak, home), JSON.stringify({
+    speaker: { name: who?.name, role: who?.role }, calendar: existing,
     call: said.map((a) => ({ question: a.question, answer: a.transcript })),
   }, null, 1), DATES_SCHEMA, 2000);
   if (ai?.events) found = ai.events;
-  else found = regexDates(said.map((a) => ({ transcript: a.transcript, event: script.questions[a.idx]?.event ?? 'none' })));
+  else found = regexDates(said.map((a) => ({ transcript: a.transcript, event: script.questions[a.idx]?.event ?? 'none' })), speak, home);
 
   for (const e of found) {
     const day = Math.round(e.day), month = Math.round(e.month);
     const year = e.year && e.year >= 1900 && e.year <= new Date().getFullYear() ? Math.round(e.year) : null;
     if (!(day >= 1 && day <= 31 && month >= 1 && month <= 12)) continue;
     if (existing.some((x) => x.day === day && x.month === month && (x.kind === e.kind || x.title === e.title))) continue;
-    const title = String(e.title || KIND_TITLE(e.kind, 'vi') || tVi('callEvent.memory')).replace(/\s*[—–]\s*/g, ', ').slice(0, 80);
+    const title = String(e.title || KIND_TITLE(e.kind, home) || tServer(home, 'callEvent.memory')).replace(/\s*[—–]\s*/g, ', ').slice(0, 80);
     await pool.query(
       `insert into events (id, family_id, member_id, kind, title, day, month, year, lunar, note, created_by)
        values ($1,$2,$3,$4,$5,$6,$7,$8,false,$9,$10)`,
       [randomUUID(), call.family_id, call.member_id, ['birthday', 'wedding', 'anniversary', 'memory', 'other'].includes(e.kind) ? e.kind : 'other',
-        title, day, month, year, e.note ? String(e.note).slice(0, 500) : tVi('callEvent.note', { name: who?.name ?? '' }).trim(), call.member_id],
+        title, day, month, year, e.note ? String(e.note).slice(0, 500) : tServer(home, 'callEvent.note', { name: who?.name ?? '' }).trim(), call.member_id],
     );
     existing.push({ kind: e.kind, title, day, month, year });
     console.log(`[call] thêm vào lịch: ${title} ${day}/${month}${year ? '/' + year : ''}`);
@@ -505,8 +554,7 @@ export function callRouter(upload: multer.Multer) {
     // Chưa từng có cuộc gọi nào thì chỉ dùng bộ câu chào hỏi đơn giản, kể cả khi đã lỡ soạn một bộ khác.
     // Bộ câu soạn bằng thứ tiếng khác với ngôn ngữ hiện tại (đổi ngôn ngữ giữa tuần) thì soạn lại.
     if (old && (old.lang ?? 'vi') === c.lang && (!first || old.source === 'first')) return res.json({ id: rows[0].id, script: old });
-    // TODO(i18n đợt 3): AI soạn câu hỏi cho en, ko. Đợt này chỉ tiếng Việt dùng AI; thứ tiếng khác dùng bộ câu mẫu.
-    const script = first ? firstScript(c) : (c.lang === 'vi' ? await aiScript(c, week) : null) ?? templateScript(c, week);
+    const script = first ? firstScript(c) : (await aiScript(c, week)) ?? templateScript(c, week);
     const id = randomUUID();
     await pool.query('insert into calls (id, family_id, member_id, week, script) values ($1,$2,$3,$4,$5)', [id, fid, mid, week, JSON.stringify(script)]);
     res.json({ id, script });
@@ -527,11 +575,10 @@ export function callRouter(upload: multer.Multer) {
       'insert into call_answers (id, call_id, family_id, member_id, idx, question, topic, media, transcript, seconds) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
       [aid, call.id, call.family_id, call.member_id, idx, q.text, q.topic, media(req.file), transcript, Number(req.body.seconds) || null],
     );
-    // Máy không chép được lời (iPhone hay bị): nhờ Gemini chép, quá 8 giây thì thôi. Chép được thì đáp luôn một câu.
+    // Máy không chép được lời (iPhone hay bị): nhờ Gemini (dự phòng OpenAI) chép theo thứ tiếng của cuộc gọi, quá 8 giây thì thôi. Chép được thì đáp luôn một câu.
     let reply: string | null = null;
-    // TODO(i18n đợt 3): chép lời bằng Gemini cho en, ko. Đợt này chỉ tiếng Việt.
-    if (!transcript && req.file && reqLang() === 'vi') {
-      transcript = (await transcribe(path.join(MEDIA_DIR, req.file.filename), req.member.id, 8000, reqLang()))?.slice(0, 4000) ?? null;
+    if (!transcript && req.file) {
+      transcript = (await transcribe(path.join(MEDIA_DIR, req.file.filename), req.member.id, 8000, langOf(script.lang ?? reqLang())))?.slice(0, 4000) ?? null;
       if (transcript) {
         await pool.query('update call_answers set transcript = $2 where id = $1', [aid, transcript]);
         const { rows: [m] } = await pool.query('select name, role from members where id = $1', [call.member_id]);
