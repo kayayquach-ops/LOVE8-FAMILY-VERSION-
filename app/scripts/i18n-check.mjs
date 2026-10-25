@@ -36,7 +36,7 @@ for (const side of ['client', 'server']) {
     for (const [k, v] of Object.entries(d)) {
       const base = k.replace(/\.(zero|one|two|few|many|other)$/, '');
       if (!(k in dict[side].vi) && !(base in dict[side].vi)) { errors.push(`${side}/${l}.json: khoá thừa "${k}"`); continue; }
-      if (l === 'en' && VI_CHARS.test(stripProper(v))) errors.push(`${side}/en.json: "${k}" còn chữ có dấu tiếng Việt: ${v.slice(0, 60)}`);
+      if (VI_CHARS.test(stripProper(v))) errors.push(`${side}/${l}.json: "${k}" còn chữ có dấu tiếng Việt: ${v.slice(0, 60)}`);
       if (v && vars(v, k.endsWith('.one') && !(k in dict[side].vi)) !== vars(dict[side].vi[k] ?? dict[side].vi[base], k.endsWith('.one') && !(k in dict[side].vi))) errors.push(`${side}/${l}.json: biến trong "${k}" khác tiếng Việt (${vars(v) || 'không có'} / ${vars(dict[side].vi[k] ?? dict[side].vi[base]) || 'không có'})`);
     }
     missing[`${side}/${l}`] = Object.keys(dict[side].vi).filter((k) => !d[k]);
@@ -113,6 +113,7 @@ for (const f of files) {
 
 // ---- Báo cáo ----
 console.log(`Khoá: máy khách ${Object.keys(dict.client.vi).length}, máy chủ ${Object.keys(dict.server.vi).length}, tổng ${viKeys.size}.`);
+for (const [k, list] of Object.entries(missing)) if (k.endsWith('/ko') && list.length) errors.push(`${k}: thiếu ${list.length} khoá (${list.slice(0, 5).join(', ')})`);
 for (const [k, list] of Object.entries(missing)) console.log(`Thiếu ${k}: ${list.length}${list.length ? ` (ví dụ ${list.slice(0, 3).join(', ')})` : ''}`);
 if (unused.length) warns.push(`khoá chưa thấy dùng (${unused.length}): ${unused.join(', ')}`);
 for (const l of leftovers) errors.push(`chữ tiếng Việt viết cứng: ${l}`);
