@@ -2,7 +2,7 @@ import express from 'express';
 import { randomUUID } from 'node:crypto';
 import { pool } from './db.ts';
 import { notifyCall } from './push.ts';
-import { errorBody, tVi } from './i18n.ts';
+import { errorBody, tReq } from './i18n.ts';
 
 // Gọi video cả nhà: mỗi nhà một phòng, máy chủ chỉ chuyển lời mời kết nối (SDP, ICE) giữa các máy qua SSE.
 // Hình và tiếng đi thẳng giữa các máy (WebRTC). Mạng di động thường cần TURN, đặt qua TURN_URL.
@@ -50,7 +50,7 @@ export function iceServers() {
 const h = (fn: (req: any, res: express.Response) => Promise<unknown>) => (req: any, res: express.Response) =>
   fn(req, res).catch((err: Error) => {
     console.error(err);
-    res.status(500).json({ error: err.message || tVi('error.server') });
+    res.status(500).json({ error: err.message || tReq('error.server') });
   });
 
 /** Luồng sự kiện gọi video. Gắn TRƯỚC auth, tự kiểm tra ?token= vì EventSource không gửi được header. */

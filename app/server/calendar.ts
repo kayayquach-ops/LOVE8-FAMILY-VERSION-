@@ -2,7 +2,7 @@ import express from 'express';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { nextOccurrence } from '../src/lunar.ts';
-import { errorBody, tVi } from './i18n.ts';
+import { errorBody, tReq } from './i18n.ts';
 
 const KINDS = ['birthday', 'wedding', 'anniversary', 'memory', 'other'];
 
@@ -31,7 +31,7 @@ export async function migrateCalendar(pool: Pool) {
 
 export type CalEvent = {
   id: string; kind: string; title: string; day: number; month: number; year: number | null;
-  lunar: boolean; leap: boolean; note: string | null; photo: string | null; memberId: string | null; createdBy: string | null; virtual?: boolean;
+  lunar: boolean; leap: boolean; note: string | null; photo: string | null; memberId: string | null; createdBy: string | null; virtual?: boolean; dobName?: string;
 };
 
 async function listEvents(pool: Pool, familyId: string): Promise<CalEvent[]> {
@@ -45,7 +45,7 @@ async function listEvents(pool: Pool, familyId: string): Promise<CalEvent[]> {
     note: r.note, photo: r.photo, memberId: r.member_id, createdBy: r.created_by,
   }));
   const dobs: CalEvent[] = ms.rows.map((r) => ({
-    id: `dob-${r.id}`, kind: 'birthday', title: tVi('calendarGen.dobTitle', { name: r.name }), day: r.d, month: r.m, year: r.y, lunar: false, leap: false,
+    id: `dob-${r.id}`, kind: 'birthday', title: tReq('calendarGen.dobTitle', { name: r.name }), dobName: r.name, day: r.d, month: r.m, year: r.y, lunar: false, leap: false,
     note: null, photo: null, memberId: r.id, createdBy: null, virtual: true,
   }));
   return [...dobs, ...real];
@@ -56,7 +56,7 @@ export async function upcoming(pool: Pool, familyId: string, days: number) {
   const now = new Date(Date.now() + 7 * 3600000); // giờ Việt Nam
   const todayParts = { day: now.getUTCDate(), month: now.getUTCMonth() + 1, year: now.getUTCFullYear() };
   const today = Date.UTC(todayParts.year, todayParts.month - 1, todayParts.day);
-  const out: Array<{ id: string; title: string; kind: string; date: string; inDays: number; years: number | null; lunar: boolean }> = [];
+  const out: Array<{ id: string; title: string; kind: string; date: string; inDays: number; years: number | null; lunar: boolean; dobName?: string }> = [];
   for (const e of await listEvents(pool, familyId)) {
     const occ = nextOccurrence(e, todayParts);
     if (!occ) continue;
@@ -65,7 +65,7 @@ export async function upcoming(pool: Pool, familyId: string, days: number) {
     if (inDays > days) continue;
     out.push({
       id: e.id, title: e.title, kind: e.kind, date: new Date(t).toISOString().slice(0, 10), inDays,
-      years: e.year ? (occ.lunarYear ?? occ.year) - e.year : null, lunar: e.lunar,
+      years: e.year ? (occ.lunarYear ?? occ.year) - e.year : null, lunar: e.lunar, dobName: e.dobName,
     });
   }
   return out.sort((a, b) => a.inDays - b.inDays);
@@ -75,7 +75,7 @@ type Fn = (req: any, res: express.Response) => Promise<unknown>;
 const h = (fn: Fn) => (req: any, res: express.Response) =>
   fn(req, res).catch((err: Error) => {
     console.error(err);
-    res.status(500).json({ error: err.message || tVi('error.server') });
+    res.status(500).json({ error: err.message || tReq('error.server') });
   });
 
 import { pool } from './db.ts';

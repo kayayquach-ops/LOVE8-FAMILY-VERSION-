@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 import { pool as db } from './db.ts';
-import { errorBody, tVi } from './i18n.ts';
+import { errorBody, langOf, reqLang, runWithLang, tReq, type Lang } from './i18n.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
@@ -37,12 +37,13 @@ export function weekKey(d = new Date()) {
 function weekLabel(week: string) {
   const a = new Date(`${week}T00:00:00Z`), b = new Date(a.getTime() + 6 * 86400e3);
   const am = a.getUTCMonth() + 1, bm = b.getUTCMonth() + 1;
-  return am === bm ? tVi('recapVideo.weekSame', { a: a.getUTCDate(), b: b.getUTCDate(), bm }) : tVi('recapVideo.weekCross', { a: a.getUTCDate(), am, b: b.getUTCDate(), bm });
+  return am === bm ? tReq('recapVideo.weekSame', { a: a.getUTCDate(), b: b.getUTCDate(), bm }) : tReq('recapVideo.weekCross', { a: a.getUTCDate(), am, b: b.getUTCDate(), bm });
 }
 
 function dayLabel(at: Date) {
   const t = new Date(at.getTime() + 7 * 3600e3);
-  return `${tVi(`recapVideo.day.${t.getUTCDay()}`)}, ${t.getUTCDate()}/${t.getUTCMonth() + 1}`;
+  const dm = reqLang() === 'en' ? `${t.getUTCMonth() + 1}/${t.getUTCDate()}` : `${t.getUTCDate()}/${t.getUTCMonth() + 1}`;
+  return `${tReq(`recapVideo.day.${t.getUTCDay()}`)}, ${dm}`;
 }
 const dayKey = (at: Date) => new Date(at.getTime() + 7 * 3600e3).toISOString().slice(0, 10);
 
@@ -252,11 +253,11 @@ export async function buildRecapVideo(input: RecapInput, outFile: string) {
     if (segs.length < 2) throw new Error('Không dựng được tấm ảnh nào');
 
     const c = input.counts;
-    const lines = [c.photos && tVi('recapVideo.photos', { n: c.photos }), c.videos && tVi('recapVideo.videos', { n: c.videos }), c.hugs && tVi('recapVideo.hugs', { n: c.hugs })].filter(Boolean) as string[];
+    const lines = [c.photos && tReq('recapVideo.photos', { n: c.photos }), c.videos && tReq('recapVideo.videos', { n: c.videos }), c.hugs && tReq('recapVideo.hugs', { n: c.hugs })].filter(Boolean) as string[];
     const top = 860 - lines.length * 45;
     await titleCard('close.mp4', 3.4, [
       ...lines.map((l, i) => draw(l, 64, '0x2B2723', top + i * 92, 0.15 + i * 0.25)),
-      draw(tVi('recapVideo.bye'), 44, '0x9A5A44', top + lines.length * 92 + 70, 0.4 + lines.length * 0.25),
+      draw(tReq('recapVideo.bye'), 44, '0x9A5A44', top + lines.length * 92 + 70, 0.4 + lines.length * 0.25),
       draw(input.family, 34, '0x8A8278', 1640, 0.6),
     ]);
 
@@ -352,7 +353,7 @@ async function renderFamilyWeek(p: pg.Pool, fid: string, week: string) {
       .filter((i) => existsSync(i.file));
     if (!items.length) throw new Error('Không còn file ảnh nào trên ổ đĩa');
     const out = path.join(MEDIA_DIR, 'recaps', `${fid}-${week}.mp4`);
-    await buildRecapVideo({ family: fam.rows[0]?.name ?? tVi('family.defaultName'), week, items, counts: { photos: n('photo'), videos: n('video'), hugs: n('hug') } }, out);
+    await buildRecapVideo({ family: fam.rows[0]?.name ?? tReq('family.defaultName'), week, items, counts: { photos: n('photo'), videos: n('video'), hugs: n('hug') } }, out);
     await p.query(`update recaps set status = 'ready', media = $3, posts_count = $4, created_at = now() where family_id = $1 and week = $2`,
       [fid, week, `/media/recaps/${fid}-${week}.mp4?v=${Date.now()}`, items.length]);
     console.log(`[recap] xong ${fid} ${week}`);
@@ -365,14 +366,14 @@ async function renderFamilyWeek(p: pg.Pool, fid: string, week: string) {
 // Mỗi lần dựng một video.
 let queue: Promise<void> = Promise.resolve();
 const busy = new Set<string>();
-async function enqueue(p: pg.Pool, fid: string, week: string, postsCount: number) {
+async function enqueue(p: pg.Pool, fid: string, week: string, postsCount: number, lang: Lang) {
   const key = `${fid}:${week}`;
   if (busy.has(key)) return;
   busy.add(key);
   await p.query(
     `insert into recaps (family_id, week, status, posts_count) values ($1,$2,'rendering',$3)
      on conflict (family_id, week) do update set status = 'rendering', posts_count = excluded.posts_count`, [fid, week, postsCount]);
-  queue = queue.then(() => renderFamilyWeek(p, fid, week)).finally(() => { busy.delete(key); });
+  queue = queue.then(() => runWithLang(lang, () => renderFamilyWeek(p, fid, week))).finally(() => { busy.delete(key); });
 }
 
 const row = (r: any) => ({ week: r.week, status: r.status, media: r.media, postsCount: r.posts_count, createdAt: r.created_at });
@@ -392,9 +393,9 @@ recapRouter.post('/recaps/render', async (req: any, res) => {
     const week = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.week ?? '')) ? String(req.body.week) : weekKey();
     const n = await countPosts(db, fid, week);
     if (n < MIN_POSTS) {
-      return res.json({ skipped: true, code: n ? 'recap_few' : 'recap_none', n, message: n ? tVi('recap.few', { n }) : tVi('recap.none') });
+      return res.json({ skipped: true, code: n ? 'recap_few' : 'recap_none', n, message: n ? tReq('recap.few', { n }) : tReq('recap.none') });
     }
-    await enqueue(db, fid, week, n);
+    await enqueue(db, fid, week, n, reqLang());
     const { rows } = await db.query('select * from recaps where family_id = $1 and week = $2', [fid, week]);
     res.json(row(rows[0]));
   } catch (e) { console.error(e); res.status(500).json(errorBody('server')); }
@@ -411,7 +412,11 @@ export function startRecapScheduler(p: pg.Pool) {
        where p.kind in ('photo','video') and p.media is not null and p.created_at >= $1
          and not exists (select 1 from recaps r where r.family_id = p.family_id and r.week = $2)
        group by p.family_id having count(*) >= ${MIN_POSTS}`, [s, week]);
-    for (const r of rows) await enqueue(p, r.family_id, week, r.n);
+    for (const r of rows) {
+      // Nhà không có người nhận lời nhắc riêng: dùng ngôn ngữ của người vào nhà đầu tiên.
+      const { rows: [m] } = await p.query('select lang from members where family_id = $1 order by created_at limit 1', [r.family_id]);
+      await enqueue(p, r.family_id, week, r.n, langOf(m?.lang));
+    }
   };
   const tick = () => { check().catch((e) => console.error('[recap] lịch:', e)); };
   setTimeout(tick, 60_000);

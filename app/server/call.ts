@@ -6,7 +6,7 @@ import type multer from 'multer';
 import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { CALL_ROLES, EVENT_HINTS, TOPICS, callLines, isTopic, type CallQuestion, type CallScript, type Topic } from '../src/shared.ts';
-import { errorBody, tVi } from './i18n.ts';
+import { errorBody, langOf, LANGS, reqLang, tReq, tServer, tVi, type Lang } from './i18n.ts';
 import { askJSON, askQuick } from './ai.ts';
 import { pool } from './db.ts';
 import { weekKey } from './recap.ts';
@@ -44,12 +44,15 @@ export async function migrateCall(p: pg.Pool) {
 export async function warmFixedVoices() {
   if (!hasVoice()) return;
   let n = 0;
-  for (const role of CALL_ROLES) {
-    const L = callLines(role, tVi);
-    for (const text of [L.ack, L.slow, L.busy, L.skip, L.photo, ...L.short, ...L.long]) {
-      if (cachedSpeech(text)) continue;
-      const p = speech(text, 'warm');
-      if (p && await p) n++;
+  // Mỗi thứ tiếng đã dịch nạp riêng (khoá bảng chữ chưa dịch thì rơi về tiếng Việt, câu trùng đã có trong kho thì bỏ qua).
+  for (const lang of ['vi', 'en'] as const) {
+    for (const role of CALL_ROLES) {
+      const L = callLines(role, (k, v) => tServer(lang, k, v));
+      for (const text of [L.ack, L.slow, L.busy, L.skip, L.photo, ...L.short, ...L.long]) {
+        if (cachedSpeech(text)) continue;
+        const p = speech(text, 'warm');
+        if (p && await p) n++;
+      }
     }
   }
   if (n) console.log(`[call] đã nạp sẵn ${n} câu cố định`);
@@ -65,7 +68,7 @@ function callTime() {
 }
 
 // Tên ngày tự thêm vào lịch theo loại (khoá callEvent.<loại>).
-const KIND_TITLE = (kind: string) => (['wedding', 'anniversary', 'birthday', 'memory', 'other'].includes(kind) ? tVi(`callEvent.${kind}`) : undefined);
+const KIND_TITLE = (kind: string, lang: Lang) => (['wedding', 'anniversary', 'birthday', 'memory', 'other'].includes(kind) ? tServer(lang, `callEvent.${kind}`) : undefined);
 
 /** Đáp án onboarding lưu bằng mã (bản mới) hoặc nguyên chữ (bản cũ): đổi mã về chữ tiếng Việt để câu hỏi soạn sẵn và AI đọc như cũ. */
 const INTRO_IDS: Record<string, string[]> = { kid: ['son', 'daughter', 'both'], seen: ['week', 'months', 'year', 'together'], love: ['often', 'sometimes', 'never'] };
@@ -76,6 +79,8 @@ function introLabels(intro: Record<string, string>) {
 }
 
 type Ctx = {
+  /** Ngôn ngữ của người nghe (members.lang hoặc x-lang của máy). */
+  lang: Lang;
   member: { id: string; name: string; role: string; intro: Record<string, string> };
   family: Array<{ name: string; role: string }>;
   events: Array<{ kind: string; title: string; day: number; month: number; year: number | null }>;
@@ -105,7 +110,8 @@ async function context(memberId: string, fid: string): Promise<Ctx> {
   let intro: Record<string, string> = {};
   try { intro = introLabels(JSON.parse(m.rows[0]?.intro || '{}')); } catch {}
   return {
-    member: { id: memberId, name: m.rows[0]?.name ?? tVi('callScript.defaultName'), role: m.rows[0]?.role ?? 'con', intro },
+    lang: reqLang(),
+    member: { id: memberId, name: m.rows[0]?.name ?? tReq('callScript.defaultName'), role: m.rows[0]?.role ?? 'con', intro },
     family: fam.rows, events: ev.rows, asked: asked.rows.map((r) => r.question),
     stories: stories.rows.map((r) => ({ question: r.question, answer: String(r.transcript).slice(0, 600) })),
     doneCalls: done.rows.map((r) => r.d),
@@ -122,32 +128,35 @@ const lastWord = (name: string) => name.trim().split(/\s+/).pop() || name;
 function firstScript(c: Ctx): CallScript {
   const { name, role } = c.member;
   const parent = role === 'bo' || role === 'me';
-  const self = role === 'bo' ? tVi('call.self.bo') : role === 'me' ? tVi('call.self.me') : '';
+  const T = (k: string, v?: Record<string, string | number>) => tServer(c.lang, k, v);
+  const self = role === 'bo' ? T('call.self.bo') : role === 'me' ? T('call.self.me') : '';
   const Self = self ? self[0].toUpperCase() + self.slice(1) : '';
   const nick = lastWord(name);
-  const S = (k: string) => tVi(`callScript.first.${parent ? 'parent' : 'child'}.${k}`, { self, Self, nick });
+  const S = (k: string) => T(`callScript.first.${parent ? 'parent' : 'child'}.${k}`, { self, Self, nick });
   const q = (text: string, topic: Topic): CallQuestion => ({ text, topic, photo: false, event: 'none' });
   return {
     greeting: S('greeting'),
     questions: [q(S('q1'), 'cuoc-song'), q(S('q2'), 'mon-an'), q(S('q3'), 'cuoc-song')],
     goodbye: S('goodbye'),
     source: 'first',
+    lang: c.lang,
   };
 }
 
 function templateScript(c: Ctx, week: string): CallScript {
   const { name, role, intro } = c.member;
   const parent = role === 'bo' || role === 'me';
-  const self = role === 'bo' ? tVi('call.self.bo') : role === 'me' ? tVi('call.self.me') : tVi('onboarding.self.con');
+  const T = (k: string, v?: Record<string, string | number>) => tServer(c.lang, k, v);
+  const self = role === 'bo' ? T('call.self.bo') : role === 'me' ? T('call.self.me') : T('onboarding.self.con');
   const call = parent ? self[0].toUpperCase() + self.slice(1) : name;
-  const other = tVi(role === 'bo' ? 'call.self.me' : 'call.self.bo');
+  const other = T(role === 'bo' ? 'call.self.me' : 'call.self.bo');
   const food = (intro.food || '').trim();
   // Chỉ hỏi ngày cưới khi trong nhà có đủ cả bố lẫn mẹ.
   const hasPair = c.family.some((m) => m.role === 'bo') && c.family.some((m) => m.role === 'me');
   const hasWedding = c.events.some((e) => e.kind === 'wedding');
   const q = (text: string, topic: Topic, photo = false, event: CallQuestion['event'] = 'none'): CallQuestion => ({ text, topic, photo, event });
 
-  const S = (k: string) => tVi(`callScript.template.${parent ? 'parent' : 'child'}.${k}`, { self, call, other, food, name });
+  const S = (k: string) => T(`callScript.template.${parent ? 'parent' : 'child'}.${k}`, { self, call, other, food, name });
   const pool: CallQuestion[] = parent ? [
     ...(!hasWedding && hasPair ? [q(S('wedding'), 'ngay-cuoi', true, 'wedding')] : []),
     q(S('play'), 'tuoi-tho'),
@@ -181,6 +190,7 @@ function templateScript(c: Ctx, week: string): CallScript {
     questions,
     goodbye: S('goodbye'),
     source: 'template',
+    lang: c.lang,
   };
 }
 
@@ -319,6 +329,7 @@ async function aiScript(c: Ctx, week: string): Promise<CallScript | null> {
     questions,
     goodbye: b && !suspect(b, hay, allow) ? b : tpl.goodbye,
     source: 'ai',
+    lang: 'vi',
   };
 }
 
@@ -331,6 +342,8 @@ Never say the English app name. No em dash, no emoji, no quotation marks.
 If role is bo or me, call yourself con and address them as Bố or Mẹ, end politely with ạ when natural. If role is con, call yourself mình and use their name sparingly.`;
 
 async function quickReply(who: { name: string; role: string } | undefined, question: string, said: string, memberId: string) {
+  // TODO(i18n đợt 3): câu đáp theo nội dung bằng en, ko. Đợt này chỉ tiếng Việt; thứ tiếng khác để máy khách dùng câu đáp mẫu.
+  if (reqLang() !== 'vi') return null;
   // Lời chép quá ngắn thì không đủ để đáp theo ý: để máy khách dùng câu đáp mẫu.
   if (said.replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean).length < 3) return null;
   const text = await askQuick(REPLY_SYSTEM, JSON.stringify({ person: { name: who?.name ?? '', role: who?.role ?? 'con' }, question, answer: said.slice(0, 1500) }), 1800);
@@ -389,7 +402,7 @@ function regexDates(answers: Array<{ transcript: string | null; event: string }>
     if (!m) continue;
     const day = +m[1], month = +m[2], year = m[3] ? +m[3] : null;
     if (day < 1 || day > 31 || month < 1 || month > 12) continue;
-    out.push({ kind: a.event, title: KIND_TITLE(a.event) ?? tVi('callEvent.memory'), day, month, year, note: '' });
+    out.push({ kind: a.event, title: KIND_TITLE(a.event, 'vi') ?? tVi('callEvent.memory'), day, month, year, note: '' });
   }
   return out;
 }
@@ -403,7 +416,9 @@ async function saveDates(callId: string) {
   const said = answers.filter((a) => (a.transcript ?? '').trim());
   if (!said.length) return;
   const { rows: existing } = await pool.query('select kind, title, day, month, year from events where family_id = $1', [call.family_id]);
-  const { rows: [who] } = await pool.query('select name, role from members where id = $1', [call.member_id]);
+  const { rows: [who] } = await pool.query('select name, role, lang from members where id = $1', [call.member_id]);
+  // TODO(i18n đợt 3): rút ngày tháng từ lời kể bằng en, ko (prompt, regex "ngày .. tháng .."). Đợt này chỉ tiếng Việt, thứ tiếng khác thì không tự thêm vào lịch.
+  if (langOf(who?.lang) !== 'vi') return;
 
   let found: Found[] | null = null;
   const ai = await askJSON<{ events: Found[] }>(DATES_SYSTEM, JSON.stringify({
@@ -418,7 +433,7 @@ async function saveDates(callId: string) {
     const year = e.year && e.year >= 1900 && e.year <= new Date().getFullYear() ? Math.round(e.year) : null;
     if (!(day >= 1 && day <= 31 && month >= 1 && month <= 12)) continue;
     if (existing.some((x) => x.day === day && x.month === month && (x.kind === e.kind || x.title === e.title))) continue;
-    const title = String(e.title || KIND_TITLE(e.kind) || tVi('callEvent.memory')).replace(/\s*[—–]\s*/g, ', ').slice(0, 80);
+    const title = String(e.title || KIND_TITLE(e.kind, 'vi') || tVi('callEvent.memory')).replace(/\s*[—–]\s*/g, ', ').slice(0, 80);
     await pool.query(
       `insert into events (id, family_id, member_id, kind, title, day, month, year, lunar, note, created_by)
        values ($1,$2,$3,$4,$5,$6,$7,$8,false,$9,$10)`,
@@ -441,7 +456,7 @@ type Fn = (req: any, res: express.Response) => Promise<unknown>;
 const h = (fn: Fn) => (req: any, res: express.Response) =>
   fn(req, res).catch((err: Error) => {
     console.error(err);
-    res.status(500).json({ error: err.message || tVi('error.server') });
+    res.status(500).json({ error: err.message || tReq('error.server') });
   });
 
 export function callRouter(upload: multer.Multer) {
@@ -465,8 +480,10 @@ export function callRouter(upload: multer.Multer) {
     const { rows } = await pool.query(`select id, script from calls where member_id = $1 and week = $2 and status = 'ready' order by created_at desc limit 1`, [mid, week]);
     const old: CallScript | null = rows[0] ? JSON.parse(rows[0].script) : null;
     // Chưa từng có cuộc gọi nào thì chỉ dùng bộ câu chào hỏi đơn giản, kể cả khi đã lỡ soạn một bộ khác.
-    if (old && (!first || old.source === 'first')) return res.json({ id: rows[0].id, script: old });
-    const script = first ? firstScript(c) : (await aiScript(c, week)) ?? templateScript(c, week);
+    // Bộ câu soạn bằng thứ tiếng khác với ngôn ngữ hiện tại (đổi ngôn ngữ giữa tuần) thì soạn lại.
+    if (old && (old.lang ?? 'vi') === c.lang && (!first || old.source === 'first')) return res.json({ id: rows[0].id, script: old });
+    // TODO(i18n đợt 3): AI soạn câu hỏi cho en, ko. Đợt này chỉ tiếng Việt dùng AI; thứ tiếng khác dùng bộ câu mẫu.
+    const script = first ? firstScript(c) : (c.lang === 'vi' ? await aiScript(c, week) : null) ?? templateScript(c, week);
     const id = randomUUID();
     await pool.query('insert into calls (id, family_id, member_id, week, script) values ($1,$2,$3,$4,$5)', [id, fid, mid, week, JSON.stringify(script)]);
     res.json({ id, script });
@@ -490,7 +507,8 @@ export function callRouter(upload: multer.Multer) {
     );
     // Máy không chép được lời (iPhone hay bị): nhờ Gemini chép, quá 8 giây thì thôi. Chép được thì đáp luôn một câu.
     let reply: string | null = null;
-    if (!transcript && req.file) {
+    // TODO(i18n đợt 3): chép lời bằng Gemini cho en, ko. Đợt này chỉ tiếng Việt.
+    if (!transcript && req.file && reqLang() === 'vi') {
       transcript = (await transcribe(path.join(MEDIA_DIR, req.file.filename), req.member.id, 8000))?.slice(0, 4000) ?? null;
       if (transcript) {
         await pool.query('update call_answers set transcript = $2 where id = $1', [aid, transcript]);
@@ -528,7 +546,7 @@ export function callRouter(upload: multer.Multer) {
     const script: CallScript = JSON.parse(call.script);
     const q = script.questions[Number(req.body.idx)];
     await pool.query('insert into vault (id, family_id, member_id, media, caption, call_id) values ($1,$2,$3,$4,$5,$6)',
-      [randomUUID(), call.family_id, call.member_id, media(req.file), q ? tVi(`topic.${q.topic}`) : null, call.id]);
+      [randomUUID(), call.family_id, call.member_id, media(req.file), q ? tReq(`topic.${q.topic}`) : null, call.id]);
     res.json({ ok: true });
   }));
 

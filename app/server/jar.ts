@@ -1,6 +1,6 @@
 import express from 'express';
 import { pool } from './db.ts';
-import { errorBody, tVi } from './i18n.ts';
+import { errorBody, tReq, tVi } from './i18n.ts';
 
 export const JAR_CAPACITY = 40;
 
@@ -34,7 +34,7 @@ export const jarRouter = express.Router();
 const wrap = (fn: (req: any, res: any) => Promise<unknown>) => (req: any, res: any) =>
   fn(req, res).catch((err: Error) => {
     console.error(err);
-    res.status(500).json({ error: err.message || tVi('error.server') });
+    res.status(500).json({ error: err.message || tReq('error.server') });
   });
 
 jarRouter.get('/jar', wrap(async (req, res) => {
@@ -60,7 +60,7 @@ jarRouter.get('/jar', wrap(async (req, res) => {
     count: cycle.filter((e: any) => e.who === m.id).length,
   }));
   res.json({
-    capacity: JAR_CAPACITY, level, gifts: Math.floor(total / JAR_CAPACITY), seeds, catalog: CATALOG,
+    capacity: JAR_CAPACITY, level, gifts: Math.floor(total / JAR_CAPACITY), seeds, catalog: CATALOG.map((s) => ({ ...s, name: tReq(`jar.seed.${s.id}`) })),
     owned: own.rows.map((r: any) => r.seed), mine: seeds.find((s: any) => s.memberId === me)?.seed ?? FREE[0],
   });
 }));

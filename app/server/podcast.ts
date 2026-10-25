@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type pg from 'pg';
 import { isTopic, type Chapter, type Podcast, type Topic } from '../src/shared.ts';
-import { errorBody, tVi } from './i18n.ts';
+import { errorBody, langOf, runWithLang, tReq, type Lang } from './i18n.ts';
 import { pool } from './db.ts';
 import { musicExpr, probe, run } from './recap.ts';
 
@@ -30,8 +30,8 @@ export async function migratePodcast(p: pg.Pool) {
 }
 
 // Tiêu đề tập theo chủ đề và tên chủ đề nằm trong bảng chữ máy chủ (podcastGen.titleOf.<chủ đề>, topic.<chủ đề>).
-const titleOf = (t: string) => tVi(isTopic(t) ? `podcastGen.titleOf.${t}` : 'podcastGen.titleOf.fallback');
-const topicLabel = (t: string) => tVi(isTopic(t) ? `topic.${t}` : 'topic.fallback');
+const titleOf = (t: string) => tReq(isTopic(t) ? `podcastGen.titleOf.${t}` : 'podcastGen.titleOf.fallback');
+const topicLabel = (t: string) => tReq(isTopic(t) ? `topic.${t}` : 'topic.fallback');
 const mediaFile = (m: string) => path.join(MEDIA_DIR, path.basename(m.split('?')[0]));
 /** Giọng máy đọc tiếng Việt chậm: ước chừng thời gian đọc để chừa đủ nhạc. */
 const sayTime = (s: string) => 1 + s.trim().split(/\s+/).length * 0.42;
@@ -121,7 +121,7 @@ async function render(job: Job) {
 
 // Mỗi lần ghép một tập để máy chủ không nặng.
 let queue: Promise<void> = Promise.resolve();
-const enqueue = (job: Job) => { queue = queue.then(() => render(job)); return queue; };
+const enqueue = (job: Job, lang: Lang) => { queue = queue.then(() => runWithLang(lang, () => render(job))); return queue; };
 
 async function coverFor(fid: string, memberId: string | null) {
   const { rows } = await pool.query(
@@ -135,8 +135,13 @@ async function coverFor(fid: string, memberId: string | null) {
 
 export async function buildPodcastsForCall(callId: string) {
   const { rows: [call] } = await pool.query(
-    'select c.*, m.name from calls c join members m on m.id = c.member_id where c.id = $1', [callId]);
+    'select c.*, m.name, m.lang from calls c join members m on m.id = c.member_id where c.id = $1', [callId]);
   if (!call) return;
+  const lang = langOf(call.lang);
+  return runWithLang(lang, () => buildFor(call, callId, lang));
+}
+
+async function buildFor(call: any, callId: string, lang: Lang) {
   const { rows: answers } = await pool.query(
     `select a.*, m.name who from call_answers a join members m on m.id = a.member_id
      where a.call_id = $1 and a.media is not null order by a.idx`, [callId]);
@@ -147,9 +152,9 @@ export async function buildPodcastsForCall(callId: string) {
 
   const jobs: Job[] = [{
     fid: call.family_id, key: `call:${callId}`, kind: 'person', memberId: call.member_id, topic: first,
-    title: tVi('podcastGen.person.title', { name, what: titleOf(first) }), cover: await coverFor(call.family_id, call.member_id),
-    intro: tVi('podcastGen.person.intro', { name }),
-    outro: tVi('podcastGen.person.outro', { name }),
+    title: tReq('podcastGen.person.title', { name, what: titleOf(first) }), cover: await coverFor(call.family_id, call.member_id),
+    intro: tReq('podcastGen.person.intro', { name }),
+    outro: tReq('podcastGen.person.outro', { name }),
     clips: usable.map((a) => ({ file: mediaFile(a.media), who: a.who, question: a.question, transcript: a.transcript, say: a.question })),
   }];
 
@@ -164,24 +169,24 @@ export async function buildPodcastsForCall(callId: string) {
     const label = topicLabel(topic);
     jobs.push({
       fid: call.family_id, key: `topic:${topic}`, kind: 'topic', memberId: null, topic, title: label, cover: await coverFor(call.family_id, null),
-      intro: tVi('podcastGen.topic.intro', { label }),
-      outro: tVi('podcastGen.topic.outro'),
+      intro: tReq('podcastGen.topic.intro', { label }),
+      outro: tReq('podcastGen.topic.outro'),
       clips: clips.map((a) => ({ file: mediaFile(a.media), who: a.who, question: a.question, transcript: a.transcript, say: `${a.who}. ${a.question}` })),
     });
   }
-  for (const j of jobs) await enqueue(j);
+  for (const j of jobs) await enqueue(j, lang);
 }
 
 /** Tập mở đầu trong album của một người: câu "thương" đầu tiên thu lúc mới vào nhà. */
-export async function buildFirstVoicePodcast(fid: string, memberId: string, name: string, media: string) {
+export async function buildFirstVoicePodcast(fid: string, memberId: string, name: string, media: string, lang: Lang = 'vi') {
   const file = mediaFile(media);
   if (!existsSync(file)) return;
-  await enqueue({
-    fid, key: `first:${memberId}`, kind: 'person', memberId, topic: 'loi-nhan', title: tVi('podcastGen.first.title'), cover: await coverFor(fid, memberId),
-    intro: tVi('podcastGen.first.intro', { name }),
-    outro: tVi('podcastGen.first.outro'),
-    clips: [{ file, who: name, question: tVi('podcastGen.first.title'), transcript: null, say: tVi('podcastGen.first.say', { name }) }],
-  });
+  await runWithLang(lang, async () => enqueue({
+    fid, key: `first:${memberId}`, kind: 'person', memberId, topic: 'loi-nhan', title: tReq('podcastGen.first.title'), cover: await coverFor(fid, memberId),
+    intro: tReq('podcastGen.first.intro', { name }),
+    outro: tReq('podcastGen.first.outro'),
+    clips: [{ file, who: name, question: tReq('podcastGen.first.title'), transcript: null, say: tReq('podcastGen.first.say', { name }) }],
+  }, lang));
 }
 
 function row(r: any): Podcast {

@@ -5,7 +5,7 @@ import express from 'express';
 import type pg from 'pg';
 import webpush from 'web-push';
 import { pool } from './db.ts';
-import { errorBody, tVi } from './i18n.ts';
+import { errorBody, langOf, LANGS, tReq, tServer, type Lang } from './i18n.ts';
 import { upcoming } from './calendar.ts';
 import { weekKey } from './recap.ts';
 
@@ -20,6 +20,8 @@ export type PushPayload = {
   ttl?: number;
   urgency?: 'very-low' | 'low' | 'normal' | 'high';
 };
+/** Chữ của thông báo viết theo ngôn ngữ của từng người nhận (members.lang). */
+type Payload = PushPayload | ((lang: Lang) => PushPayload);
 
 const KINDS: PushKind[] = ['call', 'chat', 'post', 'calendar', 'weekly'];
 type Prefs = Record<PushKind, boolean>;
@@ -62,12 +64,19 @@ async function prefsOf(memberId: string): Promise<Prefs> {
   return { ...DEFAULT_PREFS, ...saved };
 }
 
-type SubRow = { endpoint: string; member_id: string; p256dh: string; auth: string; prefs: string | null };
+type SubRow = { endpoint: string; member_id: string; p256dh: string; auth: string; prefs: string | null; lang: string | null };
 
-async function deliver(subs: SubRow[], payload: PushPayload) {
-  const body = JSON.stringify(payload);
-  const opts = { TTL: payload.ttl ?? 6 * 3600, urgency: payload.urgency ?? 'normal' } as const;
+async function deliver(subs: SubRow[], make: Payload) {
+  const build = typeof make === 'function' ? make : () => make;
+  const byLang = new Map<Lang, { payload: PushPayload; body: string }>();
+  const pick = (l: Lang) => {
+    let x = byLang.get(l);
+    if (!x) { const payload = build(l); x = { payload, body: JSON.stringify(payload) }; byLang.set(l, x); }
+    return x;
+  };
   await Promise.all(subs.map(async (s) => {
+    const { payload, body } = pick(langOf(s.lang));
+    const opts = { TTL: payload.ttl ?? 6 * 3600, urgency: payload.urgency ?? 'normal' } as const;
     let prefs: Partial<Prefs> = {};
     try { if (s.prefs) prefs = JSON.parse(s.prefs); } catch {}
     if (prefs[payload.kind] === false) return;
@@ -81,31 +90,33 @@ async function deliver(subs: SubRow[], payload: PushPayload) {
   }));
 }
 
-const SUB_COLS = 's.endpoint, s.member_id, s.p256dh, s.auth, p.prefs';
+const SUB_COLS = 's.endpoint, s.member_id, s.p256dh, s.auth, p.prefs, m.lang';
 
 /** Gửi cho mọi người trong nhà trừ người gây ra sự kiện. Chạy nền, không bao giờ ném lỗi. */
-export function notifyFamily(familyId: string, exceptMemberId: string | null, payload: PushPayload) {
+export function notifyFamily(familyId: string, exceptMemberId: string | null, payload: Payload) {
   return (async () => {
     const { rows } = await pool.query(
-      `select ${SUB_COLS} from push_subs s left join push_prefs p on p.member_id = s.member_id
+      `select ${SUB_COLS} from push_subs s join members m on m.id = s.member_id left join push_prefs p on p.member_id = s.member_id
        where s.family_id = $1 and s.member_id is distinct from $2`, [familyId, exceptMemberId]);
     await deliver(rows, payload);
   })().catch((e) => console.error('[push]', e));
 }
 
-export function notifyMembers(memberIds: string[], payload: PushPayload) {
+export function notifyMembers(memberIds: string[], payload: Payload) {
   return (async () => {
     if (!memberIds.length) return;
     const { rows } = await pool.query(
-      `select ${SUB_COLS} from push_subs s left join push_prefs p on p.member_id = s.member_id where s.member_id = any($1)`, [memberIds]);
+      `select ${SUB_COLS} from push_subs s join members m on m.id = s.member_id left join push_prefs p on p.member_id = s.member_id where s.member_id = any($1)`, [memberIds]);
     await deliver(rows, payload);
   })().catch((e) => console.error('[push]', e));
 }
 
+/** Tên người gây ra sự kiện; chưa có tên thì "Ai đó" theo ngôn ngữ người nhận (hàm who). */
 async function nameOf(memberId: string) {
   const { rows } = await pool.query('select name from members where id = $1', [memberId]);
-  return (rows[0]?.name as string) || tVi('push.someone');
+  return (rows[0]?.name as string) || '';
 }
+const who = (l: Lang, name: string) => name || tServer(l, 'push.someone');
 
 const short = (s: string, n = 90) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 
@@ -113,19 +124,19 @@ const short = (s: string, n = 90) => (s.length > n ? `${s.slice(0, n - 1).trimEn
 
 /** Có người mở cuộc gọi video cả nhà. */
 export function notifyCall(familyId: string, memberId: string) {
-  void nameOf(memberId).then((name) => notifyFamily(familyId, memberId, {
-    kind: 'call', title: tVi('push.call.title', { name }), body: tVi('push.call.body'), tag: 'call', open: 'call', ttl: 45, urgency: 'high',
-  })).catch((e) => console.error('[push]', e));
+  void nameOf(memberId).then((name) => notifyFamily(familyId, memberId, (l) => ({
+    kind: 'call', title: tServer(l, 'push.call.title', { name: who(l, name) }), body: tServer(l, 'push.call.body'), tag: 'call', open: 'call', ttl: 45, urgency: 'high',
+  }))).catch((e) => console.error('[push]', e));
 }
 
 const POST_KINDS = ['photo', 'video', 'voice', 'hug'];
 
 /** Bài mới trong Tin nhà (ảnh, video, giọng nói, cái ôm). */
 export function notifyPost(familyId: string, memberId: string, kind: string, caption?: string | null) {
-  void nameOf(memberId).then((name) => notifyFamily(familyId, memberId, {
-    kind: 'post', title: tVi(`push.post.${POST_KINDS.includes(kind) ? kind : 'photo'}`, { name }), body: caption ? short(caption) : undefined,
+  void nameOf(memberId).then((name) => notifyFamily(familyId, memberId, (l) => ({
+    kind: 'post', title: tServer(l, `push.post.${POST_KINDS.includes(kind) ? kind : 'photo'}`, { name: who(l, name) }), body: caption ? short(caption) : undefined,
     tag: kind === 'hug' ? 'hug' : `post-${memberId}`, open: 'post',
-  })).catch((e) => console.error('[push]', e));
+  }))).catch((e) => console.error('[push]', e));
 }
 
 /** Có người trả lời hoặc thả cảm xúc vào tin của mình: chỉ báo cho người đăng. */
@@ -135,8 +146,10 @@ export function notifyReply(postId: string, memberId: string, what: { text?: str
     const author = rows[0]?.author_id;
     if (!author || author === memberId) return;
     const name = await nameOf(memberId);
-    const title = what.emoji ? tVi('push.reply.emoji', { name, emoji: what.emoji }) : tVi('push.reply.text', { name });
-    await notifyMembers([author], { kind: 'post', title, body: what.text ? short(what.text) : undefined, tag: `reply-${postId}`, open: 'post' });
+    await notifyMembers([author], (l) => ({
+      kind: 'post', title: what.emoji ? tServer(l, 'push.reply.emoji', { name: who(l, name), emoji: what.emoji }) : tServer(l, 'push.reply.text', { name: who(l, name) }),
+      body: what.text ? short(what.text) : undefined, tag: `reply-${postId}`, open: 'post',
+    }));
   })().catch((e) => console.error('[push]', e));
 }
 
@@ -144,12 +157,10 @@ export function notifyReply(postId: string, memberId: string, what: { text?: str
 const CHAT_QUIET = 4000, CHAT_MAX = 12000;
 const pending = new Map<string, { fid: string; mid: string; n: number; last: string; first: number; timer: ReturnType<typeof setTimeout> }>();
 
-function chatLine(m: { kind: string; text?: string | null }) {
-  if (m.kind === 'sticker') return tVi('push.chat.sticker');
-  if (m.kind === 'photo') return tVi('push.chat.photo');
-  if (m.kind === 'voice') return tVi('push.chat.voice');
-  return short(String(m.text || ''), 120);
-}
+/** Tin chữ giữ nguyên; hình dán, ảnh, tin thoại lưu bằng mã, tới lúc gửi mới đổi thành chữ theo người nhận. */
+const CODE = '\u0000';
+const chatLine = (m: { kind: string; text?: string | null }) => (['sticker', 'photo', 'voice'].includes(m.kind) ? CODE + m.kind : short(String(m.text || ''), 120));
+const chatBody = (l: Lang, line: string) => (line.startsWith(CODE) ? tServer(l, `push.chat.${line.slice(1)}`) : line);
 
 export function notifyChat(familyId: string, memberId: string, m: { kind: string; text?: string | null }) {
   const key = `${familyId}:${memberId}`;
@@ -159,9 +170,9 @@ export function notifyChat(familyId: string, memberId: string, m: { kind: string
     const q = pending.get(key);
     if (!q) return;
     pending.delete(key);
-    void nameOf(q.mid).then((name) => notifyFamily(q.fid, q.mid, {
-      kind: 'chat', title: q.n > 1 ? tVi('push.chat.many', { name, n: q.n }) : name, body: q.last, tag: `chat-${q.mid}`, open: 'chat', ttl: 24 * 3600,
-    })).catch((e) => console.error('[push]', e));
+    void nameOf(q.mid).then((name) => notifyFamily(q.fid, q.mid, (l) => ({
+      kind: 'chat', title: q.n > 1 ? tServer(l, 'push.chat.many', { name: who(l, name), n: q.n }) : who(l, name), body: chatBody(l, q.last), tag: `chat-${q.mid}`, open: 'chat', ttl: 24 * 3600,
+    }))).catch((e) => console.error('[push]', e));
   };
   if (p) {
     clearTimeout(p.timer);
@@ -193,18 +204,24 @@ async function calendarTick() {
     for (const e of await upcoming(pool, fid, 1)) {
       if (e.inDays > 1) continue;
       if (!(await once(`cal:${fid}:${e.id}:${e.date}:${e.inDays}`))) continue;
-      // Tên sinh nhật có dạng "Sinh nhật <tên>" (calendarGen.dobTitle): tách lấy tên.
-      const pre = tVi('calendarGen.dobTitle', { name: '' });
-      const birthday = e.kind === 'birthday' && e.title.startsWith(pre);
-      const who = birthday ? e.title.slice(pre.length) : '';
-      const when = tVi(e.inDays === 0 ? 'push.cal.today' : 'push.cal.tomorrow');
-      const title = tVi('push.cal.title', { when, what: lower(e.title) });
-      const body = birthday
-        ? (e.inDays === 0 ? tVi('push.cal.wishToday', { who }) : tVi('push.cal.wishTomorrow'))
-        : e.years ? tVi('push.cal.years', { n: e.years }) : undefined;
+      // Sinh nhật theo ngày sinh (id dob-...) có tên người trong dobName: viết lại theo ngôn ngữ từng người nhận.
+      // Sinh nhật tự thêm có tên dạng "Sinh nhật <tên>" ở bất kỳ thứ tiếng nào: tách lấy tên.
+      const prefixes = LANGS.map((l) => tServer(l, 'calendarGen.dobTitle', { name: '' }));
+      const pre = prefixes.find((x) => e.title.startsWith(x));
+      const birthday = e.kind === 'birthday' && (!!e.dobName || !!pre);
+      const name = e.dobName ?? (pre ? e.title.slice(pre.length) : '');
       // Sinh nhật của ai thì không báo cho chính người đó.
       const except = e.id.startsWith('dob-') ? e.id.slice(4) : null;
-      await notifyFamily(fid, except, { kind: 'calendar', title, body, tag: `cal-${e.id}`, open: 'calendar', ttl: 12 * 3600 });
+      await notifyFamily(fid, except, (l) => {
+        const what = e.dobName ? tServer(l, 'calendarGen.dobTitle', { name: e.dobName }) : e.title;
+        return {
+          kind: 'calendar', tag: `cal-${e.id}`, open: 'calendar', ttl: 12 * 3600,
+          title: tServer(l, 'push.cal.title', { when: tServer(l, e.inDays === 0 ? 'push.cal.today' : 'push.cal.tomorrow'), what: l === 'vi' ? lower(what) : what }),
+          body: birthday
+            ? (e.inDays === 0 ? tServer(l, 'push.cal.wishToday', { who: name }) : tServer(l, 'push.cal.wishTomorrow'))
+            : e.years ? tServer(l, 'push.cal.years', { n: e.years }) : undefined,
+        };
+      });
     }
   }
 }
@@ -225,9 +242,9 @@ async function weeklyTick() {
      where not exists (select 1 from calls c where c.member_id = s.member_id and c.week = $1 and c.status = 'done')`, [week]);
   for (const { member_id: mid } of rows) {
     if (!(await once(`weekly:${mid}:${week}`))) continue;
-    await notifyMembers([mid], {
-      kind: 'weekly', title: tVi('push.weekly.title'), body: tVi('push.weekly.body'), tag: 'weekly', open: 'weekly', ttl: 6 * 3600,
-    });
+    await notifyMembers([mid], (l) => ({
+      kind: 'weekly', title: tServer(l, 'push.weekly.title'), body: tServer(l, 'push.weekly.body'), tag: 'weekly', open: 'weekly', ttl: 6 * 3600,
+    }));
   }
 }
 
@@ -252,7 +269,7 @@ export function startPushScheduler() {
 const hh = (fn: (req: any, res: express.Response) => Promise<unknown>) => (req: any, res: express.Response) =>
   fn(req, res).catch((err: Error) => {
     console.error(err);
-    res.status(500).json({ error: err.message || tVi('error.server') });
+    res.status(500).json({ error: err.message || tReq('error.server') });
   });
 
 export const pushRouter = express.Router();

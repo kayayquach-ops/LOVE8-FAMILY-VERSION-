@@ -46,10 +46,12 @@ Dọn nhà thử trên live (CHỈ khi người dùng bảo, vì nay đã có ng
 
 ## Còn phải làm
 
-### 1. Khung đa ngôn ngữ (i18n) vi, en, ko (việc kế tiếp)
-- Khoảng 450 câu chữ giao diện (`app/src`) và 210 câu phía máy chủ (`app/server`: lời cuộc gọi `callLines`, `firstScript`, thông báo đẩy, prompt AI). Chuyển thành khoá tra bảng; file `vi.json`, `en.json`, `ko.json`; hàm `t('khoá', {biến})`; lưu ngôn ngữ người dùng chọn (mặc định theo máy), chỗ chọn ngôn ngữ trong màn Gia đình và ở màn chào.
-- Máy chủ cần biết ngôn ngữ của từng người (cột `members.lang`) để gửi thông báo đẩy và nói chuyện đúng thứ tiếng; prompt AI viết tiếng Anh một lần kèm dòng "trả lời bằng {ngôn ngữ}"; chọn giọng Gemini và kiểm giọng cho từng thứ tiếng; Web Speech/chép lời theo ngôn ngữ.
-- Chia nhiều đợt: khung + tiếng Việt, thêm tiếng Anh, thêm tiếng Hàn; tên địa danh trong `places.json` thêm tên Anh/Hàn nếu cần.
+### 1. Khung đa ngôn ngữ (i18n) vi, en, ko: đợt 1 và 2 xong, còn đợt 3 (tiếng Hàn)
+- Đã có: khoá tra bảng (`app/src/i18n`, `app/server/i18n`), tiếng Việt và **tiếng Anh đầy đủ** (505 khoá máy khách, 138 máy chủ), chỗ chọn ngôn ngữ ở màn chào (VI · EN · KO) và mục Ngôn ngữ trong màn Gia đình. Công cụ: `npm run i18n:check` (khoá, biến, bản Anh không còn chữ Việt có dấu trừ tên "Mây"), `npm run i18n:compare` (tiếng Việt không đổi so với bản gốc).
+- Chọn ngôn ngữ: `localStorage['sh-lang']`; chưa chọn và chưa đăng nhập thì theo máy (vi, ko, còn lại en); **đã có mã máy mà chưa từng chọn thì giữ tiếng Việt** (người dùng cũ). Đổi thì `PUT /api/me/lang`; mọi `fetch('/api/...')` mang header `x-lang`. Máy chủ chọn ngôn ngữ theo `x-lang`, rồi `members.lang`, rồi `Accept-Language`, mặc định vi (`reqLang()`/`tReq()` trong `server/i18n.ts`, dùng AsyncLocalStorage). Lỗi API trả `{ error, message, code }`.
+- Máy chủ theo ngôn ngữ từng người: thông báo đẩy (từng người nhận một bản), chú thích bài, tiêu đề podcast, câu hỏi cuộc gọi (bộ câu lưu kèm `lang`, đổi ngôn ngữ giữa tuần thì soạn lại), giọng đọc Gemini (lời dặn tiếng Anh khi câu không có dấu Việt; kho âm thanh khoá theo cả lời dặn lẫn chữ), chép lời và giọng đọc của trình duyệt (`speechLang()`), ngày giờ (`fmtDate`, `fmtTime`, `fmtDayMonth`, `monthLabel` trong `src/i18n`), tên địa danh (`places.json` phần tử thứ 7 và `ce`, thêm bằng `scripts/places-en.mjs`; chạy lại `build-places.mjs` thì phải chạy tiếp `places-en.mjs`).
+- **TODO đợt 3 (ko + AI đa ngôn ngữ):** dịch `ko.json` (client, server); với en, ko hiện đang TẮT các lớp dựa vào tiếng Việt: AI soạn câu hỏi (`aiScript`, dùng bộ câu mẫu), câu đáp theo nội dung (`quickReply`, máy khách dùng câu đáp mẫu), chép lời Gemini (`transcribe`, vẫn dùng chép lời của trình duyệt), rút ngày tháng sau cuộc gọi (`saveDates`, prompt và regex tiếng Việt), bộ lọc chống bịa `suspect` (từ khoá tiếng Việt). Viết prompt tiếng Anh một lần kèm dòng "trả lời bằng {ngôn ngữ}", lời dặn giọng đọc tiếng Hàn trong `voice.ts`, giọng Gemini kiểm cho en/ko, tên Hàn trong `places.json`. Bản Anh chưa kiểm trên iPhone thật (giọng máy, chép lời, thông báo đẩy).
+- Còn lệch nhỏ: tên thành phố lưu theo ngôn ngữ lúc chọn; tiêu đề sự kiện lịch người dùng tự gõ giữ nguyên chữ họ gõ; tên ngày sinh tự sinh và các câu máy chủ khác đọc lại theo ngôn ngữ người xem.
 
 ### 2. Sau đó
 - Thông báo đẩy: thử thật trên iPhone (PWA Màn hình chính, iOS 16.4+).

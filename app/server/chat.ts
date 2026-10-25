@@ -5,7 +5,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { pool } from './db.ts';
 import { notifyChat } from './push.ts';
-import { errorBody, tVi } from './i18n.ts';
+import { errorBody, tReq } from './i18n.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -52,7 +52,7 @@ function broadcast(familyId: string, msg: unknown) {
 const h = (fn: (req: any, res: express.Response) => Promise<unknown>) => (req: any, res: express.Response) =>
   fn(req, res).catch((err: Error) => {
     console.error(err);
-    res.status(500).json({ error: err.message || tVi('error.server') });
+    res.status(500).json({ error: err.message || tReq('error.server') });
   });
 
 const COLS = 'id, author_id, kind, text, media, sticker, seconds, reply_to, created_at';

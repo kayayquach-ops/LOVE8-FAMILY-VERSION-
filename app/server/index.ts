@@ -7,7 +7,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { Member, Post, Reply, Week } from '../src/shared.ts';
 import { migrate, pool } from './db.ts';
-import { errorBody, isLang, tVi } from './i18n.ts';
+import { adoptLang, errorBody, isLang, langMiddleware, langOf, LANGS, tReq, tServer } from './i18n.ts';
 import { calendarRouter, migrateCalendar } from './calendar.ts';
 import { jarRouter, migrateJar } from './jar.ts';
 import { homeRouter } from './home.ts';
@@ -26,6 +26,7 @@ app.set('trust proxy', 1);
 // Nén chữ (JS, CSS, JSON) trước khi gửi: bản JS 400 kB còn khoảng 130 kB trên mạng 4G. Kênh SSE không nén để tin đến ngay.
 app.use(compression({ filter: (req, res) => !req.path.endsWith('/stream') && compression.filter(req, res) }));
 app.use(express.json({ limit: '1mb' }));
+app.use(langMiddleware);
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -50,19 +51,20 @@ function extOf(mime: string) {
 const id = () => randomUUID();
 const media = (file?: Express.Multer.File) => (file ? `/media/${file.filename}` : null);
 
-type Req = express.Request & { member?: { id: string; family_id: string } };
+type Req = express.Request & { member?: { id: string; family_id: string; lang?: string | null } };
 const h = (fn: (req: Req, res: express.Response) => Promise<unknown>) => (req: Req, res: express.Response) =>
   fn(req, res).catch((err: Error) => {
     console.error(err);
-    res.status(500).json({ error: err.message || tVi('error.server') });
+    res.status(500).json({ error: err.message || tReq('error.server') });
   });
 
 // Không mật khẩu: mỗi máy giữ một mã riêng, gửi kèm mọi lần gọi. Mỗi lần gọi cũng là một lần "còn hoạt động".
 async function auth(req: Req, res: express.Response, next: express.NextFunction) {
   const token = String(req.headers.authorization ?? '').replace(/^Bearer /, '');
   if (!token) return res.status(401).json(errorBody('not_signed_in'));
-  const { rows } = await pool.query('update members set last_seen = now() where token = $1 returning id, family_id', [token]);
+  const { rows } = await pool.query('update members set last_seen = now() where token = $1 returning id, family_id, lang', [token]);
   if (!rows[0]) return res.status(401).json(errorBody('not_signed_in'));
+  adoptLang(rows[0].lang);
   req.member = rows[0];
   next();
 }
@@ -90,7 +92,7 @@ async function addMember(familyId: string, b: any) {
     else delete b.intro[k];
   }
   await pool.query('insert into members (id, family_id, name, role, token, city, intro, lang) values ($1,$2,$3,$4,$5,$6,$7,$8)', [
-    id(), familyId, String(b.name || '').slice(0, 30) || tVi('member.defaultName'), ['bo', 'me', 'con'].includes(b.role) ? b.role : 'con', token,
+    id(), familyId, String(b.name || '').slice(0, 30) || tReq('member.defaultName'), ['bo', 'me', 'con'].includes(b.role) ? b.role : 'con', token,
     b.city ? String(b.city).slice(0, 300) : null, b.intro ? JSON.stringify(b.intro).slice(0, 4000) : null, isLang(b.lang) ? b.lang : null,
   ]);
   return token;
@@ -98,7 +100,7 @@ async function addMember(familyId: string, b: any) {
 
 app.post('/api/families', h(async (req, res) => {
   const fid = id();
-  await pool.query('insert into families (id, name, code) values ($1,$2,$3)', [fid, String(req.body.family || tVi('family.defaultName')).slice(0, 40), await newCode()]);
+  await pool.query('insert into families (id, name, code) values ($1,$2,$3)', [fid, String(req.body.family || tReq('family.defaultName')).slice(0, 40), await newCode()]);
   res.json({ token: await addMember(fid, req.body) });
 }));
 
@@ -229,15 +231,15 @@ app.post('/api/me/first-voice', upload.single('file'), h(async (req, res) => {
   const m = req.member!;
   if (!req.file || !req.file.mimetype.startsWith('audio/')) return res.status(400).json(errorBody('missing_audio'));
   const { rows: [me] } = await pool.query('select name from members where id = $1', [m.id]);
-  // Chú thích này cũng là dấu để không tạo trùng, nên luôn là chữ tiếng Việt như bản cũ.
-  const caption = tVi('post.firstVoice', { name: me.name });
-  const { rowCount } = await pool.query(`select 1 from posts where author_id = $1 and kind = 'voice' and caption = $2`, [m.id, caption]);
+  // Chú thích viết theo ngôn ngữ của người gửi. Chống trùng thì so với chú thích ở mọi thứ tiếng (đổi ngôn ngữ giữa chừng vẫn không tạo hai lần).
+  const caption = tServer(langOf(m.lang), 'post.firstVoice', { name: me.name });
+  const { rowCount } = await pool.query(`select 1 from posts where author_id = $1 and kind = 'voice' and caption = any($2)`, [m.id, LANGS.map((l) => tServer(l, 'post.firstVoice', { name: me.name }))]);
   if (rowCount) return res.json({ ok: true });
   const url = media(req.file)!;
   await pool.query('insert into posts (id, family_id, author_id, kind, media, caption, seconds) values ($1,$2,$3,$4,$5,$6,$7)',
     [id(), m.family_id, m.id, 'voice', url, caption, Math.min(20, Number(req.body.seconds) || 0) || null]);
   notifyPost(m.family_id, m.id, 'voice', caption);
-  void buildFirstVoicePodcast(m.family_id, m.id, me.name, url).catch((e) => console.error('[podcast] lời đầu tiên:', e));
+  void buildFirstVoicePodcast(m.family_id, m.id, me.name, url, langOf(m.lang)).catch((e) => console.error('[podcast] lời đầu tiên:', e));
   res.json({ ok: true });
 }));
 
@@ -257,7 +259,7 @@ app.post('/api/posts/:id/replies', upload.single('file'), h(async (req, res) => 
     id(), req.params.id, req.member!.id, req.file ? 'voice' : 'text', media(req.file), String(req.body.text || '').slice(0, 300) || null,
     Number(req.body.seconds) || null,
   ]);
-  notifyReply(req.params.id as string, req.member!.id, { text: req.file ? tVi('post.voiceReply') : String(req.body.text || '') });
+  notifyReply(req.params.id as string, req.member!.id, { text: req.file ? tReq('post.voiceReply') : String(req.body.text || '') });
   res.json({ ok: true });
 }));
 
@@ -310,10 +312,10 @@ app.get('/api/week', h(async (req, res) => {
   const idx = Math.floor(start.getTime() / (7 * 86400e3)) % QUESTIONS.length;
   const body: Week = {
     week,
-    question: tVi(QUESTIONS[idx]),
+    question: tReq(QUESTIONS[idx]),
     missions: MISSIONS.map((m) => {
       const by = done.rows.filter((d) => d.mission === m.key).map((d) => d.member_id);
-      return { key: m.key, text: tVi(`week.mission.${m.key}`), points: m.points, done: by.includes(req.member!.id), doneBy: by };
+      return { key: m.key, text: tReq(`week.mission.${m.key}`), points: m.points, done: by.includes(req.member!.id), doneBy: by };
     }),
     jar: { points, level: points % JAR, capacity: JAR, gifts: Math.floor(points / JAR) },
     recap: { photos: n('photo'), videos: n('video'), voices: n('voice'), hugs: n('hug'), meals: meals.rows.map(lite), top: top.rows[0] ? lite(top.rows[0]) : null },

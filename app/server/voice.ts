@@ -27,7 +27,15 @@ const STYLE_DEFAULT = 'Nói tiếng Việt tự nhiên, rõ ràng, tươi và th
   + 'Âm lượng và cao độ bình thường, tốc độ vừa phải hơi nhanh một chút, nhịp tự nhiên có nhấn nhá. '
   + 'Không thì thầm, không kéo dài chữ, không giọng kể chuyện ru ngủ. Câu cần nói: ';
 // i18n-ok-end
-const STYLE = () => process.env.GEMINI_TTS_STYLE || STYLE_DEFAULT;
+const STYLE_EN = 'Speak natural, clear, friendly English, like a relative chatting normally on the phone. '
+  + 'Normal volume and pitch, a steady pace that is a little quick, natural emphasis. '
+  + 'No whispering, no drawn-out words, no bedtime-story voice. The sentence to say: ';
+// Câu có dấu tiếng Việt thì dùng lời dặn tiếng Việt; còn lại (tiếng Anh) dùng lời dặn tiếng Anh. Khoá kho âm thanh theo cả lời dặn lẫn chữ nên không lẫn.
+// TODO(i18n đợt 3): thêm lời dặn tiếng Hàn khi có bản dịch ko.
+// i18n-ok-begin
+const VI_CHARS = /[À-ÃÈ-ÊÌÍÒ-ÕÙÚÝà-ãè-êìíò-õùúýĂăĐđĨĩŨũƠơƯưẠ-ỹ]/;
+const STYLE = (text = '') => process.env.GEMINI_TTS_STYLE || (/[a-zA-Z]/.test(text) && !VI_CHARS.test(text) ? STYLE_EN : STYLE_DEFAULT);
+// i18n-ok-end
 
 export const hasVoice = () => useGemini();
 const styled = () => TTS_MODEL().includes('2.5');
@@ -58,7 +66,7 @@ async function slot<T>(fn: () => Promise<T>): Promise<T> {
 const inflight = new Map<string, Promise<string | null>>();
 
 function keyOf(text: string) {
-  return createHash('sha1').update(`${CACHE_VER}|${TTS_MODEL()}|${VOICE()}|${styled() ? STYLE() : ''}|${text}`).digest('hex').slice(0, 24);
+  return createHash('sha1').update(`${CACHE_VER}|${TTS_MODEL()}|${VOICE()}|${styled() ? STYLE(text) : ''}|${text}`).digest('hex').slice(0, 24);
 }
 
 /** Đường dẫn /media/tts/<hash>.mp3 nếu đã có sẵn trong kho. */
@@ -105,7 +113,7 @@ async function askAudio(text: string) {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY! },
     body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: styled() ? STYLE() + text : text }] }],
+      contents: [{ role: 'user', parts: [{ text: styled() ? STYLE(text) + text : text }] }],
       generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE() } } } },
     }),
     signal: AbortSignal.timeout(25_000),
