@@ -28,9 +28,9 @@ const korean = () => shownLang() === 'ko';
 const nameOf = (h: Hit) => (korean() && (h.ko || h.en)) || (english() && h.en) || h.name;
 const whereOf = (h: Hit) => (korean() && (h.wko || h.wen)) || (english() && h.wen) || h.where;
 
-// i18n-ok: bỏ dấu tiếng Việt để gõ không dấu vẫn tìm được.
 const HANGUL = /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/;
-const norm = (x: string) => x.toLowerCase().replace(/đ/g, 'd').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+// i18n-ok: bỏ dấu tiếng Việt để gõ không dấu vẫn tìm được.
+const norm =(x: string) => x.toLowerCase().replace(/đ/g, 'd').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 function loadPlaces() {
   placesCache ??= import('./places.json').then((m) => {
     const d = m.default as unknown as Data;
