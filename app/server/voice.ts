@@ -115,7 +115,12 @@ const squash = (t: string) => t.replace(/\s+/g, ' ').trim();
 // ---------- OpenAI TTS: giọng, lời dặn theo ngôn ngữ, khoá kho riêng (không đụng khoá Gemini) ----------
 
 export const OA_MODEL = () => process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts';
-export const OA_VOICE = () => process.env.OPENAI_TTS_VOICE || 'coral';
+// Mỗi ngôn ngữ chốt đúng MỘT giọng (cùng một nhân vật Mây ở cả ba nước). Đổi bằng OPENAI_TTS_VOICE_VI / _EN / _KO, hoặc OPENAI_TTS_VOICE cho tất cả.
+const OA_VOICE_BY_LANG: Record<'vi' | 'en' | 'ko', string> = { vi: 'coral', en: 'coral', ko: 'coral' };
+export const OA_VOICE = (text = ''): string => {
+  const l = textLang(text);
+  return process.env[`OPENAI_TTS_VOICE_${l.toUpperCase()}`] || process.env.OPENAI_TTS_VOICE || OA_VOICE_BY_LANG[l];
+};
 // i18n-ok-begin
 const OA_STYLE: Record<'vi' | 'en' | 'ko', string> = {
   vi: 'Đọc bằng tiếng Việt tự nhiên, rõ, ấm và thân thiện như người thân gọi điện nói chuyện bình thường. Âm lượng và cao độ bình thường, tốc độ vừa phải hơi nhanh, có nhấn nhá. Không thì thầm, không kéo dài giọng, không giọng ru ngủ. Đọc tên "Mây" như tiếng Việt.',
@@ -131,7 +136,7 @@ export const OA_INSTR = (t: string) => process.env.OPENAI_TTS_STYLE || OA_STYLE[
 // i18n-ok-end
 
 function keyOf(text: string, p: Provider = 'gemini') {
-  if (p === 'openai') return createHash('sha1').update(`oa1|${OA_MODEL()}|${OA_VOICE()}|${OA_INSTR(text)}|${text}`).digest('hex').slice(0, 24);
+  if (p === 'openai') return createHash('sha1').update(`oa1|${OA_MODEL()}|${OA_VOICE(text)}|${OA_INSTR(text)}|${text}`).digest('hex').slice(0, 24);
   return createHash('sha1').update(`${CACHE_VER}|${TTS_MODEL()}|${VOICE()}|${styled() ? STYLE(text) : ''}|${text}`).digest('hex').slice(0, 24);
 }
 
@@ -212,7 +217,7 @@ async function askOpenAI(text: string): Promise<Buffer> {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
     body: JSON.stringify({
-      model, voice: OA_VOICE(), input: text, response_format: 'mp3',
+      model, voice: OA_VOICE(text), input: text, response_format: 'mp3',
       ...(model.includes('gpt-4o') ? { instructions: OA_INSTR(text) } : {}),
     }),
     signal: AbortSignal.timeout(20_000),
