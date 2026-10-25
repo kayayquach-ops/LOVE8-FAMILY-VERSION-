@@ -124,13 +124,11 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
         </span>
       </button>
 
-      {!alone && (
-        <button className="home-letters" onClick={go('letters')}>
-          <i><Icon name="mail" size={22} /></i>
-          <b>{t('letters.home')}</b>
-          {!!data?.letters && <em>{t('letters.homeNew', { n: data.letters })}</em>}
-        </button>
-      )}
+      <button className="home-letters" onClick={go('letters')}>
+        <i><Icon name="mail" size={22} /></i>
+        <b>{t('letters.home')}</b>
+        {!!data?.letters && <em>{t('letters.homeNew', { n: data.letters })}</em>}
+      </button>
 
       {!!data?.upcoming.length && (
         <section className="home-sec">
