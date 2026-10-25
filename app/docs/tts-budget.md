@@ -1,4 +1,23 @@
-# Ngân sách Gemini TTS (Sweet Home)
+# Ngân sách TTS (Sweet Home): OpenAI chính, Gemini dự phòng
+
+## Chọn nhà cung cấp (mới)
+
+- `TTS_PROVIDER` = `auto` (mặc định) | `openai` | `gemini`. `auto`: có `OPENAI_API_KEY` thì **OpenAI `gpt-4o-mini-tts`** là giọng chính; OpenAI đang bị chặn (key sai, hết số dư, 429) thì **Gemini** (nếu có key và còn ngân sách); không thì giọng máy. `openai` hoặc `gemini` ép một nhà, không rơi sang nhà kia.
+- **Một giọng cho cả cuộc gọi:** nhà cung cấp được chốt lúc nhấc máy qua `GET /api/call/tts-status` (trả `provider`: `openai` | `gemini` | `device`), máy khách gửi `provider` trong mọi `POST /api/call/tts`, máy chủ dùng đúng nhà đó và không tự đổi. Giữa cuộc gọi nhà đó lỗi thì câu ấy hiện phụ đề chữ + chuông nhẹ (cơ chế cũ), không đổi giọng.
+- Biến môi trường: `OPENAI_API_KEY` (bắt buộc để dùng OpenAI), `TTS_PROVIDER`, `OPENAI_TTS_MODEL` (mặc định `gpt-4o-mini-tts`), `OPENAI_TTS_VOICE` (mặc định **`coral`**), `OPENAI_TTS_STYLE` (ghi đè câu dặn giọng), `OPENAI_TTS_DAILY` (mặc định 400 yêu cầu/ngày giờ Việt Nam), `OPENAI_STT_MODEL` (mặc định `gpt-4o-mini-transcribe`).
+- Gọi `POST https://api.openai.com/v1/audio/speech` với `{ model, voice, input, instructions, response_format: 'mp3' }`, trả thẳng mp3, lưu vào `MEDIA_DIR/tts`. Không chạy loudnorm (âm lượng OpenAI đều, đỡ chậm). `instructions` theo ngôn ngữ của câu (vi, en, ko): tự nhiên, rõ, ấm, không thì thầm, không ru ngủ, đọc "Mây" như tiếng Việt.
+- **Kho riêng:** khoá file `sha1('oa1' | model | giọng | câu dặn | chữ)`; khoá Gemini cũ không đổi nên kho Gemini vẫn dùng được. Đổi giọng/model/câu dặn là đọc lại.
+- **Giới hạn OpenAI** (`oaGate`): tối đa 4 yêu cầu cùng lúc, ~60 yêu cầu/phút toàn máy chủ, ngân sách ngày `OPENAI_TTS_DAILY` (lưu `app_settings` key `tts_budget_openai`, ngày theo giờ Việt Nam), mỗi người tối đa 40 câu mới/giờ, chữ tối đa 300 ký tự, chờ tối đa 20 giây. **401/403** hoặc **429 `insufficient_quota`/billing**: chặn OpenAI 30 phút, log rõ nguyên nhân (chỉ mã lỗi, không in khoá); **429 do tốc độ**: chặn theo `retry-after` (5 đến 120 giây). Lỗi 5xx chỉ làm câu đó hiện chữ, không đặt cờ.
+- **Chép lời dự phòng:** `transcribe` thử Gemini trước; Gemini lỗi/429 thì `POST /v1/audio/transcriptions` model `gpt-4o-mini-transcribe` (mp3 16 kHz, `language` vi/en/ko, `response_format: text`), cùng hạn 8 giây, ngân sách 200/ngày (`stt_budget_openai`). Chỉ chạy khi có `OPENAI_API_KEY`.
+- **Tài khoản OpenAI:** có số dư trả trước (lúc làm khoảng 6,5 đô), tự nạp thêm, giới hạn tự nạp 10 đô/tháng. Key đang **dùng chung với app ytk-marketing-room**, nên một app hết số dư thì cả hai cùng chịu (log sẽ ghi `insufficient_quota`).
+- **Ước chi phí:** một cuộc gọi chừng 5 yêu cầu mới, khoảng 350 đến 450 chữ, 25 đến 35 giây tiếng. `gpt-4o-mini-tts` tính theo thời lượng khoảng 0,015 đô/phút (kiểm lại bảng giá hiện hành), tức **khoảng 0,01 đô một cuộc gọi**; kho câu cố định đọc một lần. 10 đô/tháng đủ cho vài trăm đến nghìn cuộc gọi.
+- **Chọn giọng mặc định `coral`:** thử 5 giọng (`coral`, `nova`, `sage`, `shimmer`, `marin`; đều có) với lời chào + câu 1 và câu 2 tiếng Việt thật của app. Độ trễ 0,8 đến 2,4 giây (câu ngắn 1,1 đến 1,8 giây; chào + câu 1 dài 107 chữ, 0,8 đến 2,2 giây), nên giữ chờ 4 giây rồi 8 giây ở máy khách. Chọn `coral` vì là giọng nữ ấm, rõ, tốc độ vừa (chào + câu 1 dài 8,7 giây, không kéo dài như `sage` 10 giây và `shimmer` 10,6 giây). Kiểm bằng chép lại: tiếng Việt, tiếng Anh, tiếng Hàn đều đọc đúng ngôn ngữ ("Mây" trong câu tiếng Anh đọc như "May"). Người dùng nên tự nghe và đổi bằng `OPENAI_TTS_VOICE`. File mẫu ở `C:\Users\YT KOREA\homeletter\tts-samples\openai\` (ngoài repo).
+- Log mỗi giờ/20 yêu cầu, mỗi nhà một dòng: `[voice] TTS openai hôm nay: N yêu cầu mới, M trúng kho, K lần 429, E lỗi, ngân sách used/limit (còn R)`.
+- Nạp sẵn câu cố định (`warmFixedVoices`) chạy theo nhà cung cấp chính; với OpenAI cách nhau 1 giây (42 câu, vài xu).
+
+---
+
+# Ngân sách Gemini TTS (dự phòng)
 
 Hạn mức thật (Tier 1) của giọng đọc: 10 yêu cầu mỗi phút, **100 yêu cầu mỗi ngày** (reset nửa đêm giờ Thái Bình Dương), tính cả mọi app dùng chung khoá. Mô hình văn bản thì rộng hơn nhiều nên không phải vấn đề.
 

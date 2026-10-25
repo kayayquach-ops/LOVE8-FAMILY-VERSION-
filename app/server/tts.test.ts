@@ -156,4 +156,142 @@ test('nạp sẵn rải rác: bỏ câu đã có, dừng khi ngân sách còn d�
   assert.ok(Date.now() - t0 < 10_000);
 });
 
+// ---------- OpenAI làm giọng chính, Gemini dự phòng ----------
+
+const mp3 = Buffer.alloc(2000, 1);
+function oaFetch(status = 200, body: BodyInit = '', headers: Record<string, string> = {}) {
+  const seen: { url: string; init: RequestInit }[] = [];
+  const f = (async (url: string, init: RequestInit) => { seen.push({ url: String(url), init }); return new Response(status === 200 ? new Uint8Array(mp3) : body, { status, headers }); }) as unknown as typeof fetch;
+  return { f, seen };
+}
+function resetOa() {
+  voice.oaGate.used = 0; voice.oaGate.until = 0; voice.oaGate.why = null; voice.oaGate.rpm = 60;
+  voice.gate.used = 0; voice.gate.until = 0; voice.gate.why = null;
+}
+
+test('chọn nhà cung cấp: auto ưu tiên OpenAI, TTS_PROVIDER ép, hỏng thì Gemini rồi giọng máy', () => {
+  resetOa();
+  delete process.env.OPENAI_API_KEY;
+  assert.equal(voice.pickProvider(), 'gemini');
+  process.env.OPENAI_API_KEY = 'sk-test-not-real';
+  assert.equal(voice.pickProvider(), 'openai');
+  assert.equal(voice.ttsStatus().provider, 'openai');
+  process.env.TTS_PROVIDER = 'gemini';
+  assert.equal(voice.pickProvider(), 'gemini');
+  process.env.TTS_PROVIDER = 'openai';
+  assert.equal(voice.pickProvider(), 'openai');
+  voice.oaGate.block(60_000);
+  assert.equal(voice.pickProvider(), 'device'); // ép openai thì không rơi sang Gemini
+  process.env.TTS_PROVIDER = 'auto';
+  assert.equal(voice.pickProvider(), 'gemini');
+  voice.gate.block(60_000);
+  assert.equal(voice.pickProvider(), 'device');
+  const st = voice.ttsStatus();
+  assert.equal(st.ok, false);
+  assert.equal(st.provider, 'device');
+  resetOa();
+});
+
+test('OpenAI: gọi đúng API, khoá kho riêng, lời dặn theo ngôn ngữ, trúng kho không gọi lại', async () => {
+  resetOa();
+  process.env.OPENAI_API_KEY = 'sk-test-not-real';
+  const m = oaFetch();
+  voice._setFetch(m.f);
+  const url = await voice.speech('Chào bạn, mình là Mây đây ạ.', 'o1', { provider: 'openai' });
+  assert.ok(url && url.endsWith('.mp3'));
+  assert.equal(m.seen.length, 1);
+  assert.equal(m.seen[0].url, 'https://api.openai.com/v1/audio/speech');
+  assert.equal((m.seen[0].init.headers as Record<string, string>).authorization, 'Bearer sk-test-not-real');
+  const body = JSON.parse(String(m.seen[0].init.body));
+  assert.equal(body.model, 'gpt-4o-mini-tts');
+  assert.equal(body.voice, 'coral');
+  assert.equal(body.response_format, 'mp3');
+  assert.match(body.instructions, /tiếng Việt/);
+  const en = await voice.speech('Hello, this is Mây.', 'o1', { provider: 'openai' });
+  assert.match(JSON.parse(String(m.seen[1].init.body)).instructions, /English/);
+  await voice.speech('안녕하세요, 마이예요.', 'o1', { provider: 'openai' });
+  assert.match(JSON.parse(String(m.seen[2].init.body)).instructions, /한국어/);
+  // kho riêng: cùng chữ, Gemini có khoá khác
+  assert.notEqual(voice.cachedSpeech('Hello, this is Mây.', 'gemini'), en);
+  assert.equal(voice.cachedSpeech('Hello, this is Mây.', 'openai'), en);
+  assert.equal(await voice.speech('Chào bạn,  mình là Mây đây ạ.', 'o1', { provider: 'openai' }), url);
+  assert.equal(m.seen.length, 3);
+  assert.equal(voice.oaGate.used, 3);
+});
+
+test('không đổi giọng giữa cuộc gọi: mỗi provider chỉ gọi đúng nhà của nó', async () => {
+  resetOa();
+  const c1: string[] = [];
+  voice._setFetch((async (u: string) => { c1.push(String(u)); return new Response('{"error":{}}', { status: 500 }); }) as unknown as typeof fetch);
+  assert.equal(await voice.speech('Câu thử cho Gemini số một', 'o2', { provider: 'gemini' }), null);
+  assert.ok(c1.length > 0 && c1.every((u) => u.includes('generativelanguage')));
+  const c2: string[] = [];
+  voice._setFetch((async (u: string) => { c2.push(String(u)); return new Response('{"error":{"code":"server_error"}}', { status: 500 }); }) as unknown as typeof fetch);
+  assert.equal(await voice.speech('Câu thử cho OpenAI lỗi 500', 'o2', { provider: 'openai' }), null);
+  assert.ok(c2.length > 0 && c2.every((u) => u.includes('openai.com')));
+  assert.ok(voice.oaGate.stats.err >= 1);
+  assert.equal(voice.pickProvider(), 'openai'); // lỗi 500 không đặt cờ chặn
+});
+
+test('OpenAI 401 và 429 hết số dư đặt cờ 30 phút, 429 tốc độ theo retry-after', async () => {
+  resetOa();
+  const m401 = oaFetch(401, '{"error":{"code":"invalid_api_key","message":"Incorrect API key provided: sk-test-not-real"}}');
+  voice._setFetch(m401.f);
+  assert.equal(await voice.speech('Câu cho lỗi bốn không một', 'o3', { provider: 'openai' }), null);
+  assert.ok(voice.oaGate.until - Date.now() > 29 * 60_000);
+  assert.equal(voice.pickProvider(), 'gemini');
+  assert.equal(voice.speech('Câu khác sau cờ chặn', 'o3', { provider: 'openai' }), null);
+  assert.equal(m401.seen.length, 1);
+  resetOa();
+  const mq = oaFetch(429, '{"error":{"code":"insufficient_quota"}}');
+  voice._setFetch(mq.f);
+  assert.equal(await voice.speech('Câu cho hết số dư', 'o3', { provider: 'openai' }), null);
+  assert.ok(voice.oaGate.until - Date.now() > 29 * 60_000);
+  assert.equal(voice.oaGate.why, 'budget');
+  resetOa();
+  const mr = oaFetch(429, '{"error":{"code":"rate_limit_exceeded"}}', { 'retry-after': '7' });
+  voice._setFetch(mr.f);
+  assert.equal(await voice.speech('Câu cho giới hạn tốc độ', 'o3', { provider: 'openai' }), null);
+  const left = voice.oaGate.until - Date.now();
+  assert.ok(left > 5_000 && left <= 7_100, `chờ ${left}`);
+  resetOa();
+});
+
+test('ngân sách ngày OpenAI và giới hạn mỗi người', async () => {
+  resetOa();
+  process.env.OPENAI_TTS_DAILY = '2';
+  const m = oaFetch(); voice._setFetch(m.f);
+  assert.ok(await voice.speech('Ngân sách câu một', 'o4', { provider: 'openai' }));
+  assert.ok(await voice.speech('Ngân sách câu hai', 'o4', { provider: 'openai' }));
+  assert.equal(voice.speech('Ngân sách câu ba', 'o4', { provider: 'openai' }), null);
+  assert.equal(voice.pickProvider(), 'gemini');
+  delete process.env.OPENAI_TTS_DAILY;
+  resetOa();
+  for (let i = 0; i < 40; i++) assert.ok(voice.allow('openai:u', 40));
+  assert.equal(voice.allow('openai:u', 40), false);
+});
+
+test('chép lời: Gemini lỗi thì OpenAI gpt-4o-mini-transcribe, không khoá thì thôi', async () => {
+  resetOa();
+  process.env.OPENAI_API_KEY = 'sk-test-not-real';
+  const f = path.join(dir, 'in.wav');
+  const { execFileSync } = await import('node:child_process');
+  try { execFileSync('ffmpeg', ['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', f], { stdio: 'ignore' }); } catch { return; }
+  const seen: { url: string; init: RequestInit }[] = [];
+  voice._setFetch((async (u: string, init: RequestInit) => {
+    seen.push({ url: String(u), init });
+    return String(u).includes('openai.com') ? new Response('xin chào cả nhà\n', { status: 200 }) : new Response('boom', { status: 500 });
+  }) as unknown as typeof fetch);
+  assert.equal(await voice.transcribe(f, 'stt1', 8000, 'vi'), 'xin chào cả nhà');
+  assert.ok(seen[0].url.includes('generativelanguage') && seen[1].url === 'https://api.openai.com/v1/audio/transcriptions');
+  const form = seen[1].init.body as FormData;
+  assert.equal(form.get('model'), 'gpt-4o-mini-transcribe');
+  assert.equal(form.get('language'), 'vi');
+  assert.equal(form.get('response_format'), 'text');
+  delete process.env.OPENAI_API_KEY;
+  seen.length = 0;
+  assert.equal(await voice.transcribe(f, 'stt2', 8000, 'vi'), null);
+  assert.ok(seen.every((x) => x.url.includes('generativelanguage')));
+});
+
 test.after(() => { rmSync(dir, { recursive: true, force: true }); setTimeout(() => process.exit(0), 50); });

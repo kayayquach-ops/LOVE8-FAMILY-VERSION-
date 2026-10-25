@@ -11,7 +11,7 @@ import { askJSON, askQuick } from './ai.ts';
 import { pool } from './db.ts';
 import { weekKey } from './recap.ts';
 import { buildPodcastsForCall } from './podcast.ts';
-import { cachedSpeech, gate, hasVoice, initTtsBudget, speech, transcribe, ttsStatus, TTS_MAX } from './voice.ts';
+import { cachedSpeech, defaultProvider, gateOf, hasVoice, initTtsBudget, pickProvider, providerOn, speech, transcribe, ttsStatus, TTS_MAX, type Provider } from './voice.ts';
 import path from 'node:path';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
@@ -36,17 +36,17 @@ export async function migrateCall(p: pg.Pool) {
     );
     create index if not exists vault_family on vault (family_id, created_at desc);
   `);
-  // Bộ đếm ngân sách TTS sống qua lần deploy (bảng app_settings, key 'tts_budget').
+  // Bộ đếm ngân sách TTS sống qua lần deploy (bảng app_settings: tts_budget, tts_budget_openai, stt_budget_openai).
   await p.query('create table if not exists app_settings (key text primary key, value text not null)');
-  await initTtsBudget({
+  await initTtsBudget((key) => ({
     async load() {
-      const { rows } = await p.query(`select value from app_settings where key = 'tts_budget'`);
+      const { rows } = await p.query(`select value from app_settings where key = $1`, [key]);
       return rows[0] ? JSON.parse(rows[0].value) : null;
     },
     async save(v) {
-      await p.query(`insert into app_settings (key, value) values ('tts_budget', $1) on conflict (key) do update set value = excluded.value`, [JSON.stringify(v)]);
+      await p.query(`insert into app_settings (key, value) values ($1, $2) on conflict (key) do update set value = excluded.value`, [key, JSON.stringify(v)]);
     },
-  });
+  }));
   // Nạp sẵn giọng cho các câu cố định còn thiếu trong kho, rải rác chậm, không dồn lúc khởi động.
   setTimeout(() => void warmFixedVoices(), 15_000);
 }
@@ -64,16 +64,19 @@ export function fixedLines() {
 }
 
 /** Tạo (một lần, rồi nằm trong kho) âm thanh Gemini cho câu cố định chưa có. Tối đa 6 yêu cầu mỗi phút; còn dưới 30% ngân sách ngày thì dừng. */
-export async function warmFixedVoices(gapMs = 10_000) {
+export async function warmFixedVoices(gapMs?: number) {
   if (!hasVoice()) return;
+  const provider = defaultProvider();
+  const gap = gapMs ?? (provider === 'openai' ? 1_000 : 10_000);
+  const gate = gateOf(provider);
   let n = 0;
   for (const text of fixedLines()) {
-    if (cachedSpeech(text)) continue;
+    if (cachedSpeech(text, provider)) continue;
     if (gate.blocked(true)) { console.log('[call] dừng nạp sẵn giọng: ngân sách ngày còn ít hoặc đang bị chặn'); break; }
-    const p = speech(text, 'warm', { prio: 1, optional: true });
+    const p = speech(text, 'warm', { prio: 1, optional: true, provider });
     if (!p || !(await p)) break;
     n++;
-    await new Promise((r) => setTimeout(r, gapMs));
+    await new Promise((r) => setTimeout(r, gap));
   }
   if (n) console.log(`[call] đã nạp sẵn ${n} câu cố định`);
 }
@@ -528,7 +531,7 @@ export function callRouter(upload: multer.Multer) {
     let reply: string | null = null;
     // TODO(i18n đợt 3): chép lời bằng Gemini cho en, ko. Đợt này chỉ tiếng Việt.
     if (!transcript && req.file && reqLang() === 'vi') {
-      transcript = (await transcribe(path.join(MEDIA_DIR, req.file.filename), req.member.id, 8000))?.slice(0, 4000) ?? null;
+      transcript = (await transcribe(path.join(MEDIA_DIR, req.file.filename), req.member.id, 8000, reqLang()))?.slice(0, 4000) ?? null;
       if (transcript) {
         await pool.query('update call_answers set transcript = $2 where id = $1', [aid, transcript]);
         const { rows: [m] } = await pool.query('select name, role from members where id = $1', [call.member_id]);
@@ -548,25 +551,30 @@ export function callRouter(upload: multer.Multer) {
     res.json({ text: await quickReply(call, q?.text ?? '', said, req.member.id) });
   }));
 
-  // Nhấc máy là hỏi trước một lần: cả cuộc gọi dùng giọng Gemini hay giọng máy. Con số dùng/hạn mức chỉ trả cho thành viên (đã qua auth).
+  // Nhấc máy là hỏi trước một lần: cả cuộc gọi dùng giọng OpenAI, Gemini hay giọng máy ('device'). Con số dùng/hạn mức chỉ trả cho thành viên (đã qua auth).
   r.get('/call/tts-status', h(async (req, res) => {
     const s = ttsStatus();
-    res.json({ ok: s.ok, reason: s.reason, ...(req.member ? { used: s.used, limit: s.limit } : {}) });
+    res.json({ ok: s.ok, provider: s.provider, reason: s.reason, ...(req.member ? { used: s.used, limit: s.limit } : {}) });
   }));
 
   // Giọng đọc của Mây: trả về đường dẫn file âm thanh. url null thì kèm reason (budget, cooldown, nokey, skip, fail) để máy hiện chữ.
-  // kind 'fixed': chỉ lấy từ kho, không bao giờ gọi Gemini. kind 'reply': câu đáp theo nội dung, chỉ đọc khi còn dư ngân sách.
+  // provider: nhà cung cấp đã chốt lúc nhấc máy, máy chủ dùng đúng nhà đó và không tự đổi giữa chừng.
+  // kind 'fixed': chỉ lấy từ kho, không bao giờ gọi nhà cung cấp. kind 'reply': câu đáp theo nội dung, chỉ đọc khi còn dư ngân sách.
   r.post('/call/tts', h(async (req, res) => {
     const text = String(req.body.text || '').replace(/\s+/g, ' ').trim();
     if (!text || text.length > TTS_MAX) return res.json({ url: null, reason: 'fail' });
     const kind = req.body.kind === 'fixed' || req.body.kind === 'reply' ? req.body.kind : undefined;
-    const hit = cachedSpeech(text);
+    const asked = req.body.provider;
+    const picked = pickProvider();
+    const provider: Provider = asked === 'openai' || asked === 'gemini' ? asked : picked === 'device' ? defaultProvider() : picked;
+    const hit = cachedSpeech(text, provider);
     if (hit) return res.json({ url: hit });
     if (kind === 'fixed') return res.json({ url: null, reason: 'skip' });
-    if (!hasVoice()) return res.json({ url: null, off: true, reason: 'nokey' });
+    if (!providerOn(provider)) return res.json({ url: null, off: true, reason: 'nokey' });
+    const gate = gateOf(provider);
     const why = gate.blocked(kind === 'reply');
     if (why) return res.json({ url: null, reason: kind === 'reply' && why === 'budget' && !gate.blocked() ? 'skip' : why });
-    const p = speech(text, req.member.id, { optional: kind === 'reply' });
+    const p = speech(text, req.member.id, { optional: kind === 'reply', provider });
     const url = p ? await p : null;
     res.json(url ? { url } : { url: null, reason: gate.blocked() ?? 'fail' });
   }));

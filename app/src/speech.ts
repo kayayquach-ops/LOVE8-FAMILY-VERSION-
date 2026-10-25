@@ -1,5 +1,5 @@
 // Giọng tiếng Việt của máy (speechSynthesis). iPhone chỉ cho nói sau một lần chạm, nên mở khoá ở nút bấm.
-// Một cuộc gọi chỉ dùng MỘT giọng: Gemini nếu máy chủ báo còn hạn mức lúc nhấc máy (ttsReady), không thì giọng máy từ đầu đến cuối.
+// Một cuộc gọi chỉ dùng MỘT giọng: OpenAI hoặc Gemini do máy chủ chốt lúc nhấc máy (ttsReady), không thì giọng máy từ đầu đến cuối.
 import { token } from './api';
 import { speechLang } from './i18n';
 
@@ -37,6 +37,7 @@ let playing: { src: AudioBufferSourceNode; done: () => void } | null = null;
 let off = false; // máy chủ báo chưa có giọng hoặc hết hạn mức ngay từ đầu: không xin nữa trong cuộc gọi này
 let cut = false; // hết hạn mức giữa cuộc gọi: câu nào chưa có sẵn thì chỉ hiện chữ, không đổi giọng
 let status: Promise<boolean> | null = null;
+let provider: 'openai' | 'gemini' | null = null; // nhà cung cấp chốt lúc nhấc máy, gửi kèm mọi yêu cầu để máy chủ không tự đổi giọng
 const clips = new Map<string, Promise<ArrayBuffer | null>>();
 const decoded = new Map<string, AudioBuffer>();
 
@@ -44,21 +45,22 @@ const decoded = new Map<string, AudioBuffer>();
 export type Kind = 'fixed' | 'reply';
 
 /** Bắt đầu cuộc gọi mới: quên cờ hết hạn mức của lần trước. */
-export function resetVoice() { off = false; cut = false; status = null; }
+export function resetVoice() { off = false; cut = false; status = null; provider = null; }
 
 /** Hết hạn mức giữa chừng (hoặc không có giọng): các câu sau chỉ hiện chữ. */
 export const voiceCut = () => cut || off;
 
-/** Hỏi máy chủ một lần cho cả cuộc gọi: true thì dùng giọng Gemini, false thì giọng máy từ đầu đến cuối. */
+/** Hỏi máy chủ một lần cho cả cuộc gọi: true thì dùng giọng của máy chủ (OpenAI hoặc Gemini), false thì giọng máy từ đầu đến cuối. */
 export function ttsReady(): Promise<boolean> {
   status ??= (async () => {
     try {
       const t = token.get();
       const r = await fetch('/api/call/tts-status', { headers: t ? { authorization: `Bearer ${t}` } : {} });
       if (!r.ok) return false;
-      const { ok } = await r.json() as { ok: boolean };
-      if (!ok) off = true;
-      return !!ok;
+      const j = await r.json() as { ok: boolean; provider?: string };
+      if (j.ok && (j.provider === 'openai' || j.provider === 'gemini')) provider = j.provider;
+      if (!j.ok || !provider) { off = true; return false; }
+      return true;
     } catch { off = true; return false; }
   })();
   return status;
@@ -84,7 +86,7 @@ async function fetchClip(text: string, kind?: Kind): Promise<ArrayBuffer | null>
   if (off) return null;
   try {
     const t = token.get();
-    const r = await fetch('/api/call/tts', { method: 'POST', headers: { 'content-type': 'application/json', ...(t ? { authorization: `Bearer ${t}` } : {}) }, body: JSON.stringify({ text, kind }) });
+    const r = await fetch('/api/call/tts', { method: 'POST', headers: { 'content-type': 'application/json', ...(t ? { authorization: `Bearer ${t}` } : {}) }, body: JSON.stringify({ text, kind, provider }) });
     if (!r.ok) return null;
     const { url, off: none, reason } = await r.json() as { url: string | null; off?: boolean; reason?: string };
     if (none) off = true;

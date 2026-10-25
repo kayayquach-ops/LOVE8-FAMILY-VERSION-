@@ -22,8 +22,12 @@ export function nextPacificMidnight(t: number) {
   return t + ((23 - n('hour')) * 3600 + (59 - n('minute')) * 60 + (60 - n('second'))) * 1000;
 }
 
+/** Ngày theo giờ Việt Nam (UTC+7), dùng cho ngân sách OpenAI. */
+export function vnDay(t: number) { return new Date(t + 7 * 3600e3).toISOString().slice(0, 10); }
+
 export class TtsGate {
   now: () => number;
+  dayOf: (t: number) => string;
   rpm: number;
   windowMs: number;
   maxWaitMs: number;
@@ -34,15 +38,16 @@ export class TtsGate {
   used = 0;
   until = 0;
   why: Reason | null = null;
-  stats = { cache: 0, calls: 0, r429: 0 };
+  stats = { cache: 0, calls: 0, r429: 0, err: 0 };
   private sent: number[] = [];
   private q: Item[] = [];
   private seq = 0;
   private inflight = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(o: { now?: () => number; rpm?: number; windowMs?: number; maxWaitMs?: number; concurrency?: number; daily?: () => number; store?: Store | null } = {}) {
+  constructor(o: { now?: () => number; rpm?: number; windowMs?: number; maxWaitMs?: number; concurrency?: number; daily?: () => number; store?: Store | null; dayOf?: (t: number) => string } = {}) {
     this.now = o.now ?? Date.now;
+    this.dayOf = o.dayOf ?? pacificDay;
     this.rpm = o.rpm ?? 8;
     this.windowMs = o.windowMs ?? 60_000;
     this.maxWaitMs = o.maxWaitMs ?? 20_000;
@@ -60,7 +65,7 @@ export class TtsGate {
   }
 
   private roll() {
-    const d = pacificDay(this.now());
+    const d = this.dayOf(this.now());
     if (d !== this.day) { this.day = d; this.used = 0; }
     if (this.until && this.now() >= this.until) { this.until = 0; this.why = null; }
   }
@@ -101,6 +106,14 @@ export class TtsGate {
     }
     this.persist();
     this.drain(new TtsLimited(this.why));
+  }
+
+  /** Chặn thẳng trong ms (nhà cung cấp báo key sai, hết tiền, hoặc giới hạn tốc độ). Các yêu cầu đang xếp hàng bị từ chối. */
+  block(ms: number, why: Reason = 'cooldown') {
+    this.until = this.now() + ms;
+    this.why = why;
+    this.persist();
+    this.drain(new TtsLimited(why));
   }
 
   /** Xếp một yêu cầu vào hàng: prio nhỏ chạy trước (0 là cuộc gọi đang diễn ra, 1 là nạp sẵn). Mỗi lần fn chạy tính một lượt ngân sách. */
