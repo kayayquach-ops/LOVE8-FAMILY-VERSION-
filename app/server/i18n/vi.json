@@ -145,5 +145,11 @@
   "push.cal.wishTomorrow": "Nhớ chuẩn bị một lời chúc nhé",
   "push.cal.years": "Tròn {n} năm rồi",
   "push.weekly.title": "Sweet Home đang gọi bạn",
-  "push.weekly.body": "Kể cả nhà nghe chuyện tuần này nhé"
+  "push.weekly.body": "Kể cả nhà nghe chuyện tuần này nhé",
+
+  "push.letter.title": "{name} gửi thư cho bạn",
+  "push.letter.body": "Mở thư ra đọc nhé",
+  "error.letter_to": "Chọn người nhận thư nhé",
+  "error.letter_empty": "Thư chưa có chữ nào",
+  "error.letter_not_found": "Không thấy lá thư này"
 }

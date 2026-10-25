@@ -11,9 +11,10 @@ import { snooze, snoozed } from './callSnooze';
 import { shareInvite } from './Onboarding';
 import { t } from './i18n';
 
-type Screen = 'camera' | 'feed' | 'chat' | 'calendar' | 'jar' | 'family' | 'podcast' | 'recap';
+type Screen = 'camera' | 'feed' | 'chat' | 'calendar' | 'jar' | 'family' | 'podcast' | 'recap' | 'letters';
 type Podcast = { id: string; title: string; topic: string; memberId: string; duration: number; cover?: string | null; createdAt: string };
 type HomeData = {
+  letters?: number;
   upcoming: Array<{ id: string; title: string; kind: string; inDays: number; years: number | null }>;
   latest: Array<{ id: string; media: string; kind: string; authorId: string; createdAt: string }>;
   jar: { level: number; capacity: number };
@@ -58,7 +59,8 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
     const t = setInterval(() => { if (!document.hidden) void run(); }, 30000);
     const onVis = () => { if (!document.hidden) void run(); };
     document.addEventListener('visibilitychange', onVis);
-    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis); };
+    window.addEventListener('hl-letters', onVis);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('hl-letters', onVis); };
   }, [tick]);
 
   useEffect(() => {
@@ -121,6 +123,14 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
           <b>{t('home.cta')}</b>
         </span>
       </button>
+
+      {!alone && (
+        <button className="home-letters" onClick={go('letters')}>
+          <i><Icon name="mail" size={22} /></i>
+          <b>{t('letters.home')}</b>
+          {!!data?.letters && <em>{t('letters.homeNew', { n: data.letters })}</em>}
+        </button>
+      )}
 
       {!!data?.upcoming.length && (
         <section className="home-sec">

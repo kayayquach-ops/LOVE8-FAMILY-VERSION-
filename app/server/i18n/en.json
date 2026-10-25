@@ -150,5 +150,11 @@
   "push.cal.years": "That's {n} years now",
   "push.cal.years.one": "That's {n} year now",
   "push.weekly.title": "Sweet Home is calling you",
-  "push.weekly.body": "Tell the family about your week"
+  "push.weekly.body": "Tell the family about your week",
+
+  "push.letter.title": "{name} sent you a letter",
+  "push.letter.body": "Open it and read",
+  "error.letter_to": "Pick who the letter is for",
+  "error.letter_empty": "The letter is empty",
+  "error.letter_not_found": "Can't find this letter"
 }

@@ -22,6 +22,7 @@ const PATHS: Record<string, ReactNode> = {
   phone: <path d="M6.5 4h3l1.5 4-2 1.5a10 10 0 005 5l1.5-2 4 1.5v3a2 2 0 01-2 2A15 15 0 014.5 6a2 2 0 012-2z" />,
   share: <><path d="M12 15V4M8 8l4-4 4 4" /><path d="M5 12v6a2 2 0 002 2h10a2 2 0 002-2v-6" /></>,
   check: <path d="M5 12.5l4.5 4.5L19 7" />,
+  mail: <><rect x="3.5" y="5.5" width="17" height="13" rx="2.5" /><path d="M4 8l8 5.5L20 8" /></>,
   chat: <path d="M5 5h14a2 2 0 012 2v8a2 2 0 01-2 2H10l-4 3v-3H5a2 2 0 01-2-2V7a2 2 0 012-2z" />,
   video: <><rect x="3" y="6.5" width="12.5" height="11" rx="2.5" /><path d="M15.5 10.5l5-3v9l-5-3z" /></>,
   calendar: <><rect x="3.5" y="5" width="17" height="15" rx="3" /><path d="M3.5 10h17M8 3v4M16 3v4" /></>,

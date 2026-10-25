@@ -1,6 +1,7 @@
 import express from 'express';
 import { pool } from './db.ts';
 import { upcoming } from './calendar.ts';
+import { unreadLetters } from './letters.ts';
 import { JAR_CAPACITY } from './jar.ts';
 import { listPodcasts } from './podcast.ts';
 import { tReq } from './i18n.ts';
@@ -10,7 +11,7 @@ export const homeRouter = express.Router();
 homeRouter.get('/home', async (req: any, res: any) => {
   try {
     const fid = req.member.family_id;
-    const [ev, latest, total, week, pods] = await Promise.all([
+    const [ev, latest, total, week, pods, letters] = await Promise.all([
       upcoming(pool, fid, 30),
       pool.query(
         `select id, media, kind, author_id, created_at from posts
@@ -24,11 +25,13 @@ homeRouter.get('/home', async (req: any, res: any) => {
       pool.query(
         `select kind, count(*)::int n from posts where family_id = $1 and created_at > now() - interval '7 days' group by kind`, [fid]),
       listPodcasts(fid, 12),
+      unreadLetters(req.member.id),
     ]);
     const counts: Record<string, number> = { photo: 0, video: 0, voice: 0, hug: 0 };
     for (const r of week.rows) counts[r.kind] = r.n;
     res.json({
       upcoming: ev.slice(0, 4),
+      letters,
       latest: latest.rows.map((r: any) => ({ id: r.id, media: r.media, kind: r.kind, authorId: r.author_id, createdAt: r.created_at })),
       jar: { level: total.rows[0].n % JAR_CAPACITY, capacity: JAR_CAPACITY },
       week: counts,
