@@ -97,7 +97,7 @@ const getVersion = () => version;
 /** Ngày đầy đủ dạng số, ví dụ 12/3/2026 (vi), 3/12/2026 (en), 2026. 3. 12. (ko). */
 export const fmtDate = (d: Date, o?: Intl.DateTimeFormatOptions) => d.toLocaleDateString(locale(), o);
 /** Giờ:phút. */
-export const fmtTime = (d: Date, tz?: string) => new Intl.DateTimeFormat(locale(), { hour: '2-digit', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) }).format(d);
+export const fmtTime = (d: Date, tz?: string) => new Intl.DateTimeFormat(locale(), { hour: locale().startsWith('vi') ? '2-digit' : 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) }).format(d);
 /** Ngày và tháng không có năm: 12/3 (vi), Mar 12 (en). */
 export const fmtDayMonth = (day: number, month: number) => (shown === 'vi' ? `${day}/${month}` : new Date(2024, month - 1, day).toLocaleDateString(locale(), { month: 'short', day: 'numeric' }));
 /** Tên tháng (m0 từ 0): vi chỉ hiện số tháng vì khoá `calendar.month` đã có chữ "Tháng". */

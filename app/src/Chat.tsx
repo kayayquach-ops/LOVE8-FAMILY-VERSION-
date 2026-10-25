@@ -19,7 +19,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
-const hm = (iso: string) => new Date(iso).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
+const hm = (iso: string) => new Date(iso).toLocaleTimeString(locale(), { hour: locale().startsWith('vi') ? '2-digit' : 'numeric', minute: '2-digit' });
 function dayLabel(iso: string) {
   const d = new Date(iso), n = new Date();
   const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();

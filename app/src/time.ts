@@ -1,5 +1,5 @@
 import { cityOf } from './shared';
-import { fmtDate, fmtTime, t } from './i18n';
+import { fmtDate, fmtTime, shownLang, t } from './i18n';
 
 export function ago(iso: string) {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -31,7 +31,9 @@ const weatherCache: Record<string, { at: number; text: string }> = {};
 export async function weather(city?: string | null): Promise<string | null> {
   const c = cityOf(city);
   if (!c) return null;
-  const hit = weatherCache[city!];
+  // Khoá theo cả ngôn ngữ: đổi ngôn ngữ thì chữ thời tiết đã nhớ không còn đúng.
+  const key = `${city}|${shownLang()}`;
+  const hit = weatherCache[key];
   if (hit && Date.now() - hit.at < 30 * 60e3) return hit.text;
   try {
     const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&current=temperature_2m,weather_code`);
@@ -39,7 +41,7 @@ export async function weather(city?: string | null): Promise<string | null> {
     const code = d.current.weather_code as number;
     const w = WEATHER.find(([cs]) => (cs as readonly number[]).includes(code))?.[1];
     const text = `${Math.round(d.current.temperature_2m)}°, ${w ? t(`weather.${w}`) : ''}`;
-    weatherCache[city!] = { at: Date.now(), text };
+    weatherCache[key] = { at: Date.now(), text };
     return text;
   } catch {
     return null;

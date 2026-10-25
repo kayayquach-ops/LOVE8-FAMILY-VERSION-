@@ -21,6 +21,8 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body, #root { height: 100%; margin: 0; }
+/* Tiếng Hàn xuống dòng theo từ, không cắt giữa từ; từ quá dài vẫn được bẻ để không tràn. */
+html[lang="ko"] body { word-break: keep-all; overflow-wrap: anywhere; }
 /* Chạm nhanh hai lần không phóng to trang; chụm hai ngón vẫn phóng to được. */
 html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
@@ -380,7 +382,7 @@ textarea.field { resize: none; text-align: left; line-height: 1.5; }
 .call-orb i { position: absolute; inset: 12px; border-radius: 50%; border: 1px solid rgba(154,90,68,.35); animation: call-ring 2.6s ease-out infinite; }
 .call-orb i + i { animation-delay: 1.3s; }
 @keyframes call-ring { from { transform: scale(1); opacity: .9; } to { transform: scale(1.9); opacity: 0; } }
-.call-who { font-size: 26px; font-weight: 500; margin-top: 34px; letter-spacing: -.3px; }
+.call-who { font-size: 26px; font-weight: 500; margin-top: 34px; letter-spacing: -.3px; text-align: center; }
 .call-sub { color: var(--muted); font-size: 16px; margin-top: 8px; }
 .call-actions { display: flex; gap: 64px; }
 .call-btn { display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 15px; color: var(--soft); }
@@ -563,3 +565,4 @@ button.code { display: block; width: 100%; min-height: 56px; }
 .viewer-close { position: absolute; top: calc(var(--safe-top) + 10px); right: 14px; background: rgba(255,255,255,.85); }
 
 @media (prefers-reduced-motion: reduce) { .sheet, .chat, .toast { animation-name: slowFade; } }
+html[lang="ko"] .bubble { word-break: keep-all; overflow-wrap: anywhere; }

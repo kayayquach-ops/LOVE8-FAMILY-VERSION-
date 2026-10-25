@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { errorText, token } from './api';
-import { fmtDate, fmtDayMonth, monthLabel, t } from './i18n';
+import { fmtDate, fmtDayMonth, monthLabel, shownLang, t } from './i18n';
 import type { Me } from './shared';
 import { tap } from './sound';
 import { Icon, toast } from './ui';
@@ -35,6 +35,9 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
     </div>
   );
 }
+
+// Tiếng Hàn viết ngày đủ chữ (2027년 9월 15일) để không bị gãy dòng giữa các dấu chấm.
+const solarDate = (d: Date) => fmtDate(d, shownLang() === 'ko' ? { year: 'numeric', month: 'long', day: 'numeric' } : undefined);
 
 export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void; onWish?: (e: CalEvent) => void }) {
   const now = new Date();
@@ -107,7 +110,7 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
     const d = Number(day), m = Number(month);
     if (!lunar || !d || !m || d > 30 || m > 12) return '';
     const o = nextOccurrence({ day: d, month: m, lunar: true, leap }, { day: now.getDate(), month: now.getMonth() + 1, year: now.getFullYear() });
-    return o ? t('calendar.preview', { date: fmtDate(new Date(o.year, o.month - 1, o.day)) }) : '';
+    return o ? t('calendar.preview', { date: solarDate(new Date(o.year, o.month - 1, o.day)) }) : '';
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lunar, leap, day, month]);
 
@@ -182,7 +185,7 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div>{e.title}</div>
                   <div className="muted" style={{ fontSize: 13 }}>
-                    {e.lunar ? t('calendar.row.lunar', { d: e.day, m: e.month, leap: e.leap ? t('calendar.row.leap') : '', date: fmtDate(new Date(occ.year, occ.month - 1, occ.day)) }) : fmtDayMonth(e.day, e.month)} · {inDays === 0 ? t('calendar.row.today') : t('calendar.row.inDays', { n: inDays })}{years !== null ? ` · ${sub(e, years)}` : ''}
+                    {e.lunar ? t('calendar.row.lunar', { d: e.day, m: e.month, leap: e.leap ? t('calendar.row.leap') : '', date: solarDate(new Date(occ.year, occ.month - 1, occ.day)) }) : fmtDayMonth(e.day, e.month)} · {inDays === 0 ? t('calendar.row.today') : t('calendar.row.inDays', { n: inDays })}{years !== null ? ` · ${sub(e, years)}` : ''}
                   </div>
                 </div>
                 {wish && <button className="chip" style={{ minHeight: 44 }} onClick={() => { tap(); onWish!(e); }}>{t('calendar.wish')}</button>}
