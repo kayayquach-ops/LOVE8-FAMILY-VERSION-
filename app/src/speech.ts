@@ -1,5 +1,5 @@
 // Giọng tiếng Việt của máy (speechSynthesis). iPhone chỉ cho nói sau một lần chạm, nên mở khoá ở nút bấm.
-// Một cuộc gọi chỉ dùng MỘT giọng: Gemini nếu kiểm ngay lúc đổ chuông được (voiceAvailable), không thì giọng máy từ đầu đến cuối.
+// Một cuộc gọi chỉ dùng MỘT giọng: Gemini nếu máy chủ báo còn hạn mức lúc nhấc máy (ttsReady), không thì giọng máy từ đầu đến cuối.
 import { token } from './api';
 import { speechLang } from './i18n';
 
@@ -34,9 +34,35 @@ export function stopSpeaking() {
 let ctx: AudioContext | null = null;
 let out: AnalyserNode | null = null;
 let playing: { src: AudioBufferSourceNode; done: () => void } | null = null;
-let off = false; // máy chủ báo chưa có giọng: thôi hỏi nữa trong lần này
+let off = false; // máy chủ báo chưa có giọng hoặc hết hạn mức ngay từ đầu: không xin nữa trong cuộc gọi này
+let cut = false; // hết hạn mức giữa cuộc gọi: câu nào chưa có sẵn thì chỉ hiện chữ, không đổi giọng
+let status: Promise<boolean> | null = null;
 const clips = new Map<string, Promise<ArrayBuffer | null>>();
 const decoded = new Map<string, AudioBuffer>();
+
+/** Loại câu: 'fixed' (câu cố định) chỉ lấy từ kho của máy chủ, không bao giờ tốn hạn mức; 'reply' (câu đáp theo nội dung) chỉ đọc khi máy chủ còn dư ngân sách. */
+export type Kind = 'fixed' | 'reply';
+
+/** Bắt đầu cuộc gọi mới: quên cờ hết hạn mức của lần trước. */
+export function resetVoice() { off = false; cut = false; status = null; }
+
+/** Hết hạn mức giữa chừng (hoặc không có giọng): các câu sau chỉ hiện chữ. */
+export const voiceCut = () => cut || off;
+
+/** Hỏi máy chủ một lần cho cả cuộc gọi: true thì dùng giọng Gemini, false thì giọng máy từ đầu đến cuối. */
+export function ttsReady(): Promise<boolean> {
+  status ??= (async () => {
+    try {
+      const t = token.get();
+      const r = await fetch('/api/call/tts-status', { headers: t ? { authorization: `Bearer ${t}` } : {} });
+      if (!r.ok) return false;
+      const { ok } = await r.json() as { ok: boolean };
+      if (!ok) off = true;
+      return !!ok;
+    } catch { off = true; return false; }
+  })();
+  return status;
+}
 
 /** Gọi ngay trong cú chạm "Nghe máy": nối loa qua bộ đo âm lượng và phát một mẩu im lặng để iPhone mở khoá. */
 export function setVoiceContext(ac: AudioContext | null) {
@@ -54,59 +80,43 @@ export function setVoiceContext(ac: AudioContext | null) {
   } catch { out = null; }
 }
 
-async function fetchClip(text: string): Promise<ArrayBuffer | null> {
+async function fetchClip(text: string, kind?: Kind): Promise<ArrayBuffer | null> {
   if (off) return null;
   try {
     const t = token.get();
-    const r = await fetch('/api/call/tts', { method: 'POST', headers: { 'content-type': 'application/json', ...(t ? { authorization: `Bearer ${t}` } : {}) }, body: JSON.stringify({ text }) });
+    const r = await fetch('/api/call/tts', { method: 'POST', headers: { 'content-type': 'application/json', ...(t ? { authorization: `Bearer ${t}` } : {}) }, body: JSON.stringify({ text, kind }) });
     if (!r.ok) return null;
-    const { url, off: none } = await r.json() as { url: string | null; off?: boolean };
+    const { url, off: none, reason } = await r.json() as { url: string | null; off?: boolean; reason?: string };
     if (none) off = true;
-    if (!url) return null;
+    if (!url) {
+      if (reason === 'budget' || reason === 'cooldown') cut = true;
+      return null;
+    }
     const a = await fetch(url);
     return a.ok ? await a.arrayBuffer() : null;
   } catch { return null; }
 }
 
 /** Xin trước âm thanh của một câu để lúc cần là phát ngay. */
-export function prefetchVoice(text: string) {
+export function prefetchVoice(text: string, kind?: Kind) {
   const k = text.trim();
   if (!k || off) return;
   if (!clips.has(k)) {
-    const p = fetchClip(k);
+    const p = fetchClip(k, kind);
     clips.set(k, p);
     void p.then((b) => { if (!b) clips.delete(k); });
   }
 }
 
-/** Kiểm giọng Gemini còn dùng được không bằng một câu đã nạp sẵn: có âm thanh trong ms thì true. Lỗi thì thử thêm một lần. */
-export async function voiceAvailable(text: string, ms = 12_000): Promise<boolean> {
-  const k = text.trim();
-  const t0 = Date.now();
-  for (let tries = 0; tries < 2; tries++) {
-    if (off) return false;
-    prefetchVoice(k);
-    const p = clips.get(k);
-    if (!p) return false;
-    let t = 0;
-    const data = await Promise.race([p, new Promise<null>((r) => { t = window.setTimeout(() => r(null), Math.max(500, ms - (Date.now() - t0))); })]);
-    clearTimeout(t);
-    if (data) return true;
-    if (Date.now() - t0 >= ms - 1500) return false;
-    await new Promise((r) => setTimeout(r, 1200));
-  }
-  return false;
-}
-
 /** Câu này đã có âm thanh sẵn trong máy chưa (để chọn câu đáp mẫu khi câu đáp mới đến muộn). */
 export function voiceReady(text: string) { return decoded.has(text.trim()); }
 
-async function bufferOf(text: string, ms: number): Promise<AudioBuffer | null> {
+async function bufferOf(text: string, ms: number, kind?: Kind): Promise<AudioBuffer | null> {
   const k = text.trim();
   const hit = decoded.get(k);
   if (hit) return hit;
   if (!ctx) return null;
-  prefetchVoice(k);
+  prefetchVoice(k, kind);
   const p = clips.get(k);
   if (!p) return null;
   let t = 0;
@@ -121,7 +131,7 @@ async function bufferOf(text: string, ms: number): Promise<AudioBuffer | null> {
 }
 
 /** Giải mã sẵn khi đã tải xong, để voiceReady biết câu nào phát được ngay. */
-export function warmVoice(text: string) { void bufferOf(text, 30_000); }
+export function warmVoice(text: string, kind?: Kind) { void bufferOf(text, 30_000, kind); }
 
 function stopVoice() {
   const p = playing;
@@ -130,9 +140,9 @@ function stopVoice() {
 }
 
 /** Phát câu bằng giọng Gemini. Quá ms chưa có âm thanh thì trả false (nơi gọi chờ thêm, không đổi sang giọng máy giữa chừng). level nhận âm lượng thật 0..1. */
-export async function playVoice(text: string, level: (v: number) => void, ms = 4000, onStart?: () => void): Promise<boolean> {
+export async function playVoice(text: string, level: (v: number) => void, ms = 4000, onStart?: () => void, kind?: Kind): Promise<boolean> {
   if (!ctx || !out || off) return false;
-  const b = await bufferOf(text, ms);
+  const b = await bufferOf(text, ms, kind);
   if (!b || !ctx || !out) return false;
   stopVoice();
   if (ctx.state !== 'running') { try { await ctx.resume(); } catch {} }

@@ -46,8 +46,8 @@ export function callLines(role: string, tr: Tr) {
     busy: L('busy'),
     skip: L('skip'),
     photo: L('photo'),
-    short: [1, 2, 3].map((n) => L(`short${n}`)),
-    long: [1, 2, 3, 4, 5].map((n) => L(`long${n}`)),
+    short: [1, 2].map((n) => L(`short${n}`)),
+    long: [1, 2, 3].map((n) => L(`long${n}`)),
   };
 }
 export const CALL_ROLES = ['bo', 'me', 'con'] as const;

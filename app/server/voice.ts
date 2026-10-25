@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import path from 'node:path';
 import { useGemini } from './ai.ts';
 import { run } from './recap.ts';
+import { TtsGate, TtsLimited, type Store } from './ttsgate.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 const TTS_DIR = path.join(MEDIA_DIR, 'tts');
@@ -16,7 +17,7 @@ export const TTS_MAX = 300;
 const TTS_MODEL = () => process.env.GEMINI_TTS_MODEL || 'gemini-2.5-flash-preview-tts';
 // Một giọng duy nhất cho cả cuộc gọi: đổi giọng bằng GEMINI_VOICE, cache khoá theo tên giọng.
 export const VOICE = () => process.env.GEMINI_VOICE || 'Zephyr';
-// Tăng số này khi đổi cách xử lý âm thanh để bỏ cache cũ.
+// Chỉ tăng số này khi thật sự đổi cách xử lý âm thanh: tăng là bỏ cả kho cũ và phải đọc lại (tốn hạn mức).
 const CACHE_VER = 'v2';
 const STT_MODEL = () => process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 // Model 2.5 hiểu lời dặn giọng đặt trước câu; các model TTS mới hơn lại đọc to cả lời dặn, nên chỉ gửi câu.
@@ -40,7 +41,7 @@ const STYLE = (text = '') => process.env.GEMINI_TTS_STYLE || (/[a-zA-Z]/.test(te
 export const hasVoice = () => useGemini();
 const styled = () => TTS_MODEL().includes('2.5');
 
-// ---------- Giới hạn: mỗi người tối đa 80 câu mới mỗi giờ, cả máy chủ 3 câu cùng lúc, bị 429 thì nghỉ 1 phút ----------
+// ---------- Giới hạn: mỗi người tối đa 80 câu mới mỗi giờ; cả máy chủ do TtsGate giữ (8 yêu cầu mỗi 60 giây, ngân sách ngày, cờ 429) ----------
 
 const used = new Map<string, number[]>();
 export function allow(who: string, max = 80, windowMs = 3600e3) {
@@ -52,18 +53,38 @@ export function allow(who: string, max = 80, windowMs = 3600e3) {
   return true;
 }
 
-let coolUntil = 0;
-let busy = 0;
-const queue: Array<() => void> = [];
-async function slot<T>(fn: () => Promise<T>): Promise<T> {
-  if (busy >= 3) await new Promise<void>((r) => queue.push(r));
-  busy++;
-  try { return await fn(); } finally { busy--; queue.shift()?.(); }
+export const gate = new TtsGate();
+let sttCool = 0;
+let doFetch: typeof fetch = (...a) => fetch(...a);
+/** Chỉ cho kiểm thử: thay fetch bằng hàm giả. */
+export function _setFetch(f: typeof fetch) { doFetch = f; }
+
+/** Nối bộ đếm ngày vào bảng app_settings (key 'tts_budget'), sống qua lần deploy. */
+export async function initTtsBudget(store: Store) {
+  gate.store = store;
+  await gate.init();
+  console.log(`[voice] ngân sách TTS hôm nay: đã dùng ${gate.used}/${gate.limit()}`);
 }
+
+/** Trạng thái cho máy khách: ok=false khi hết ngân sách, đang chờ sau 429 hoặc không có khoá. */
+export function ttsStatus() {
+  if (!hasVoice()) return { ok: false, reason: 'nokey' as const, used: 0, limit: gate.limit(), remaining: 0 };
+  const s = gate.status();
+  return { ok: s.ok, reason: s.reason, used: s.used, limit: s.limit, remaining: s.remaining };
+}
+
+let reqs = 0;
+function logSummary(force = false) {
+  if (!force && ++reqs % 20) return;
+  const s = gate.status();
+  console.log(`[voice] TTS hôm nay: ${s.calls} yêu cầu mới, ${s.cache} trúng kho, ${s.r429} lần 429, ngân sách ${s.used}/${s.limit} (còn ${s.remaining})${s.ok ? '' : ', đang chặn: ' + s.reason}`);
+}
+setInterval(() => logSummary(true), 3600e3).unref();
 
 // ---------- Đọc thành tiếng ----------
 
 const inflight = new Map<string, Promise<string | null>>();
+const squash = (t: string) => t.replace(/\s+/g, ' ').trim();
 
 function keyOf(text: string) {
   return createHash('sha1').update(`${CACHE_VER}|${TTS_MODEL()}|${VOICE()}|${styled() ? STYLE(text) : ''}|${text}`).digest('hex').slice(0, 24);
@@ -71,31 +92,44 @@ function keyOf(text: string) {
 
 /** Đường dẫn /media/tts/<hash>.mp3 nếu đã có sẵn trong kho. */
 export function cachedSpeech(text: string): string | null {
-  const k = keyOf(text);
+  const k = keyOf(squash(text));
   for (const ext of ['.mp3', '.wav']) if (existsSync(path.join(TTS_DIR, k + ext))) return `/media/tts/${k}${ext}`;
   return null;
 }
 
-/** Đọc câu thành tiếng, trả về đường dẫn file. who để tính giới hạn; câu có sẵn trong kho thì không tính. */
-export function speech(text: string, who: string): Promise<string | null> | null {
+export type SpeechOpts = {
+  /** 0: câu của cuộc gọi đang diễn ra (mặc định), 1: nạp sẵn. */
+  prio?: number;
+  /** Câu không bắt buộc (nạp sẵn, câu đáp theo nội dung): chỉ đọc khi còn trên 30% ngân sách ngày. */
+  optional?: boolean;
+  /** Chỉ lấy từ kho, không bao giờ gọi Gemini. */
+  cacheOnly?: boolean;
+};
+
+/** Đọc câu thành tiếng, trả về đường dẫn file. who để tính giới hạn; câu có sẵn trong kho thì không tính. null: không đọc được (chưa có khoá, hết hạn mức, bị chặn). */
+export function speech(raw: string, who: string, opts: SpeechOpts = {}): Promise<string | null> | null {
+  const text = squash(raw);
   const hit = cachedSpeech(text);
-  if (hit) return Promise.resolve(hit);
-  if (!hasVoice() || Date.now() < coolUntil) return null;
+  if (hit) { gate.stats.cache++; logSummary(); return Promise.resolve(hit); }
+  if (opts.cacheOnly || !hasVoice() || gate.blocked(!!opts.optional)) return null;
   const k = keyOf(text);
   const going = inflight.get(k);
   if (going) return going;
   if (!allow(`tts:${who}`)) return null;
-  const p = slot(() => synth(text, k)).catch((e) => { console.error('[voice] đọc lỗi:', (e as Error).message); return null; })
-    .finally(() => inflight.delete(k));
+  const p = synth(text, k, opts).catch((e) => {
+    if (!(e instanceof TtsLimited)) console.error('[voice] đọc lỗi:', (e as Error).message);
+    return null;
+  }).finally(() => { inflight.delete(k); logSummary(); });
   inflight.set(k, p);
   return p;
 }
 
-async function synth(text: string, k: string): Promise<string | null> {
+async function synth(text: string, k: string, opts: SpeechOpts): Promise<string | null> {
   const t0 = Date.now();
-  // Câu rất ngắn (ừm, dạ) đôi khi model trả chữ thay vì tiếng: thử thêm một lần.
-  let part = await askAudio(text);
-  if (!part) part = await askAudio(text);
+  // Câu rất ngắn (ừm, dạ) đôi khi model trả chữ thay vì tiếng: thử thêm một lần (mỗi lần tính một lượt ngân sách).
+  const ask = () => gate.schedule(opts.prio ?? 0, () => askAudio(text), !!opts.optional);
+  let part = await ask();
+  if (!part) part = await ask();
   if (!part) throw new Error('Gemini TTS không trả âm thanh');
   return save(part, text, k, t0);
 }
@@ -109,7 +143,7 @@ function ffmpegErr(args: string[]): Promise<string> {
 
 async function askAudio(text: string) {
   const model = TTS_MODEL();
-  const res = await fetch(`${API}/${model}:generateContent`, {
+  const res = await doFetch(`${API}/${model}:generateContent`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY! },
     body: JSON.stringify({
@@ -118,7 +152,10 @@ async function askAudio(text: string) {
     }),
     signal: AbortSignal.timeout(25_000),
   });
-  if (res.status === 429) coolUntil = Date.now() + 60_000;
+  if (res.status === 429) {
+    gate.note429(await res.text());
+    throw new TtsLimited(gate.status().reason ?? 'cooldown');
+  }
   if (!res.ok) throw new Error(`Gemini TTS ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const data = await res.json() as { candidates?: { content?: { parts?: { inlineData?: { mimeType?: string; data?: string } }[] } }[] };
   const part = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData;
@@ -181,7 +218,7 @@ Bỏ qua tiếng ồn. Nếu không nghe thấy lời nói nào thì trả về 
 
 /** Chép lời một file ghi âm trong MEDIA_DIR. Quá hạn hoặc lỗi thì trả null, không làm chậm cuộc gọi. */
 export async function transcribe(file: string, who: string, timeoutMs = 8000): Promise<string | null> {
-  if (!hasVoice() || Date.now() < coolUntil || !allow(`stt:${who}`, 60)) return null;
+  if (!hasVoice() || Date.now() < sttCool || !allow(`stt:${who}`, 60)) return null;
   const t0 = Date.now();
   const out = `${file}.stt.mp3`;
   try {
@@ -205,7 +242,7 @@ export async function transcribe(file: string, who: string, timeoutMs = 8000): P
       }),
       signal: AbortSignal.timeout(left),
     });
-    if (res.status === 429) coolUntil = Date.now() + 60_000;
+    if (res.status === 429) sttCool = Date.now() + 60_000;
     if (!res.ok) throw new Error(`Gemini STT ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
     const raw = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');

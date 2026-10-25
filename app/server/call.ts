@@ -11,7 +11,7 @@ import { askJSON, askQuick } from './ai.ts';
 import { pool } from './db.ts';
 import { weekKey } from './recap.ts';
 import { buildPodcastsForCall } from './podcast.ts';
-import { cachedSpeech, hasVoice, speech, transcribe, TTS_MAX } from './voice.ts';
+import { cachedSpeech, gate, hasVoice, initTtsBudget, speech, transcribe, ttsStatus, TTS_MAX } from './voice.ts';
 import path from 'node:path';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
@@ -36,24 +36,44 @@ export async function migrateCall(p: pg.Pool) {
     );
     create index if not exists vault_family on vault (family_id, created_at desc);
   `);
-  // Nạp sẵn giọng cho các câu cố định, để lúc gọi không phải chờ.
-  setTimeout(() => void warmFixedVoices(), 4000);
+  // Bộ đếm ngân sách TTS sống qua lần deploy (bảng app_settings, key 'tts_budget').
+  await p.query('create table if not exists app_settings (key text primary key, value text not null)');
+  await initTtsBudget({
+    async load() {
+      const { rows } = await p.query(`select value from app_settings where key = 'tts_budget'`);
+      return rows[0] ? JSON.parse(rows[0].value) : null;
+    },
+    async save(v) {
+      await p.query(`insert into app_settings (key, value) values ('tts_budget', $1) on conflict (key) do update set value = excluded.value`, [JSON.stringify(v)]);
+    },
+  });
+  // Nạp sẵn giọng cho các câu cố định còn thiếu trong kho, rải rác chậm, không dồn lúc khởi động.
+  setTimeout(() => void warmFixedVoices(), 15_000);
 }
 
-/** Tạo (một lần, rồi nằm trong kho) âm thanh Gemini cho mọi câu cố định của cả ba vai. */
-export async function warmFixedVoices() {
-  if (!hasVoice()) return;
-  let n = 0;
-  // Mỗi thứ tiếng đã dịch nạp riêng (khoá bảng chữ chưa dịch thì rơi về tiếng Việt, câu trùng đã có trong kho thì bỏ qua).
+/** Các câu cố định cần có giọng sẵn: mỗi (vai, ngôn ngữ) 7 câu. Câu "ack" không nạp (chỉ dùng nếu tình cờ đã có trong kho). */
+export function fixedLines() {
+  const out = new Set<string>();
   for (const lang of ['vi', 'en'] as const) {
     for (const role of CALL_ROLES) {
       const L = callLines(role, (k, v) => tServer(lang, k, v));
-      for (const text of [L.ack, L.slow, L.busy, L.skip, L.photo, ...L.short, ...L.long]) {
-        if (cachedSpeech(text)) continue;
-        const p = speech(text, 'warm');
-        if (p && await p) n++;
-      }
+      for (const text of [L.slow, L.busy, L.skip, L.photo, ...L.short, ...L.long]) out.add(text);
     }
+  }
+  return [...out];
+}
+
+/** Tạo (một lần, rồi nằm trong kho) âm thanh Gemini cho câu cố định chưa có. Tối đa 6 yêu cầu mỗi phút; còn dưới 30% ngân sách ngày thì dừng. */
+export async function warmFixedVoices(gapMs = 10_000) {
+  if (!hasVoice()) return;
+  let n = 0;
+  for (const text of fixedLines()) {
+    if (cachedSpeech(text)) continue;
+    if (gate.blocked(true)) { console.log('[call] dừng nạp sẵn giọng: ngân sách ngày còn ít hoặc đang bị chặn'); break; }
+    const p = speech(text, 'warm', { prio: 1, optional: true });
+    if (!p || !(await p)) break;
+    n++;
+    await new Promise((r) => setTimeout(r, gapMs));
   }
   if (n) console.log(`[call] đã nạp sẵn ${n} câu cố định`);
 }
@@ -352,8 +372,8 @@ async function quickReply(who: { name: string; role: string } | undefined, quest
   // Chỉ nhận câu đáp không có tên, số hay mốc thời gian lạ so với điều người ấy vừa nói.
   const why = suspect(clean, `${said} ${who?.name ?? ''}`, { prevCall: false, ownStory: false, photos: false });
   if (why) { console.warn(`[call] bỏ câu đáp "${clean}": ${why}`); return null; }
-  // Đọc sẵn câu đáp ngay: lúc máy khách xin giọng sẽ nhận chung kết quả, đỡ một lượt mạng.
-  void speech(clean, memberId);
+  // Đọc sẵn câu đáp ngay (chỉ khi còn dư ngân sách): lúc máy khách xin giọng sẽ nhận chung kết quả, đỡ một lượt mạng.
+  void speech(clean, memberId, { optional: true });
   return clean;
 }
 
@@ -487,8 +507,7 @@ export function callRouter(upload: multer.Multer) {
     const id = randomUUID();
     await pool.query('insert into calls (id, family_id, member_id, week, script) values ($1,$2,$3,$4,$5)', [id, fid, mid, week, JSON.stringify(script)]);
     res.json({ id, script });
-    // Đọc sẵn lời chào, câu đầu và lời tạm biệt trong lúc chuông còn reo.
-    for (const t of [script.greeting, script.questions[0]?.text, script.goodbye]) if (t) void speech(t, mid);
+    // Giọng đọc do máy khách xin khi cần (lời chào + câu đầu một lần, mỗi câu sau xin trước một câu), máy chủ không tự đọc trước.
   }));
 
   r.post('/call/:id/answer', upload.single('file'), h(async (req, res) => {
@@ -529,15 +548,27 @@ export function callRouter(upload: multer.Multer) {
     res.json({ text: await quickReply(call, q?.text ?? '', said, req.member.id) });
   }));
 
-  // Giọng đọc của Mây: trả về đường dẫn file âm thanh, chưa có khoá hay quá giới hạn thì url null để máy dùng giọng máy.
+  // Nhấc máy là hỏi trước một lần: cả cuộc gọi dùng giọng Gemini hay giọng máy. Con số dùng/hạn mức chỉ trả cho thành viên (đã qua auth).
+  r.get('/call/tts-status', h(async (req, res) => {
+    const s = ttsStatus();
+    res.json({ ok: s.ok, reason: s.reason, ...(req.member ? { used: s.used, limit: s.limit } : {}) });
+  }));
+
+  // Giọng đọc của Mây: trả về đường dẫn file âm thanh. url null thì kèm reason (budget, cooldown, nokey, skip, fail) để máy hiện chữ.
+  // kind 'fixed': chỉ lấy từ kho, không bao giờ gọi Gemini. kind 'reply': câu đáp theo nội dung, chỉ đọc khi còn dư ngân sách.
   r.post('/call/tts', h(async (req, res) => {
     const text = String(req.body.text || '').replace(/\s+/g, ' ').trim();
-    if (!text || text.length > TTS_MAX) return res.json({ url: null });
+    if (!text || text.length > TTS_MAX) return res.json({ url: null, reason: 'fail' });
+    const kind = req.body.kind === 'fixed' || req.body.kind === 'reply' ? req.body.kind : undefined;
     const hit = cachedSpeech(text);
     if (hit) return res.json({ url: hit });
-    if (!hasVoice()) return res.json({ url: null, off: true });
-    const p = speech(text, req.member.id);
-    res.json({ url: p ? await p : null });
+    if (kind === 'fixed') return res.json({ url: null, reason: 'skip' });
+    if (!hasVoice()) return res.json({ url: null, off: true, reason: 'nokey' });
+    const why = gate.blocked(kind === 'reply');
+    if (why) return res.json({ url: null, reason: kind === 'reply' && why === 'budget' && !gate.blocked() ? 'skip' : why });
+    const p = speech(text, req.member.id, { optional: kind === 'reply' });
+    const url = p ? await p : null;
+    res.json(url ? { url } : { url: null, reason: gate.blocked() ?? 'fail' });
   }));
 
   r.post('/call/:id/photo', upload.single('file'), h(async (req, res) => {

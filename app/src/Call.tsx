@@ -5,7 +5,7 @@ import { MascotAny as Mascot } from './Mascot3D';
 import { AUDIO_TYPE, fileName, record, type Recording } from './media';
 import { callLines, type CallScript, type Me } from './shared';
 import { buzz, sfx, tap } from './sound';
-import { playVoice, prefetchVoice, setVoiceContext, speak, stopSpeaking, unlockSpeech, voiceAvailable, voiceReady, warmVoice } from './speech';
+import { playVoice, prefetchVoice, resetVoice, setVoiceContext, speak, stopSpeaking, ttsReady, unlockSpeech, voiceCut, voiceReady, warmVoice, type Kind } from './speech';
 import { Icon, toast } from './ui';
 import { snooze } from './callSnooze';
 import { speechLang, t, type Key } from './i18n';
@@ -76,15 +76,18 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
 
   // Chuẩn bị câu hỏi ngay khi chuông reo để nhấc máy là nói được.
   useEffect(() => {
+    resetVoice();
+    void ttsReady();
     prep.current = call<Session>('/api/call/start', { method: 'POST' });
     prep.current.then(setSession).catch(() => {});
     return () => { live.current = false; cleanup(); };
   }, []);
 
-  // Có bộ câu hỏi là xin trước giọng đọc lời chào và câu đầu, chuông còn reo thì giọng đã sẵn.
+  // Có bộ câu hỏi (và máy chủ báo còn hạn mức) là xin trước giọng đọc lời chào + câu đầu (một yêu cầu), chuông còn reo thì giọng đã sẵn.
   useEffect(() => {
     if (!session) return;
-    [session.script.greeting, session.script.questions[0]?.text, lines.ack, lines.slow].forEach((t) => t && prefetchVoice(t));
+    const first = opening(session.script);
+    if (first) void ttsReady().then((ok) => ok && prefetchVoice(first));
   }, [session]);
 
   useEffect(() => {
@@ -143,7 +146,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
   /** Linh vật nói một câu, phụ đề hiện bên dưới. Lúc này không nghe để tiếng loa không lọt vào.
    * Cả cuộc gọi một giọng: Gemini thì chờ tới khi có tiếng (tối đa khoảng 12 giây, linh vật chớp mắt), không rơi sang giọng máy;
    * giọng máy chỉ khi ngay từ lúc đổ chuông đã biết Gemini không dùng được. */
-  async function say(text: string, alt?: string) {
+  async function say(text: string, alt?: string, kind?: Kind) {
     if (!live.current || !text) return;
     setCaption(text);
     const d = drive.current;
@@ -158,12 +161,15 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       d.talking = false;
       const level = (v: number) => { d.voice = v; };
       const start = () => { d.talking = true; setMode('talk'); };
-      let ok = await playVoice(text, level, 4000, start);
-      // Chưa kịp thì dùng câu mẫu cùng giọng Gemini nếu đã sẵn, không thì chờ tiếp.
+      let ok = await playVoice(text, level, kind === 'fixed' ? 1500 : 4000, start, kind);
+      // Chưa kịp thì dùng câu mẫu cùng giọng Gemini nếu đã sẵn, không thì chờ tiếp (hết hạn mức thì không chờ nữa).
       if (!ok && alt && voiceReady(alt) && live.current) { setCaption(alt); ok = await playVoice(alt, level, 500, start); }
-      if (!ok && live.current) ok = await playVoice(text, level, 8000, start);
-      // Vẫn không có tiếng: để chữ trên màn hình đủ lâu để đọc, rồi đi tiếp. Tuyệt đối không chen giọng máy vào.
-      if (!ok && live.current) await wait(Math.min(5000, 1200 + text.split(/\s+/).length * 350));
+      if (!ok && kind !== 'fixed' && !voiceCut() && live.current) ok = await playVoice(text, level, 8000, start, kind);
+      // Không có tiếng (hết hạn mức, câu mẫu chưa có sẵn): chuông nhẹ, chữ ở phụ đề đủ lâu để đọc, rồi đi tiếp. Tuyệt đối không chen giọng máy vào.
+      if (!ok && live.current) {
+        sfx('sparkle', true);
+        await wait(Math.min(kind === 'fixed' ? 2500 : 5000, 1200 + text.split(/\s+/).length * 350));
+      }
       d.talking = false;
     }
     d.voice = null;
@@ -298,9 +304,11 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
   async function run(s: Session) {
     const qs = s.script.questions;
     // Kiểm giọng Gemini một lần ngay lúc nhấc máy bằng câu đã nạp sẵn; hỏng thì cả cuộc gọi dùng giọng máy.
-    machine.current = !audio.current || !(await voiceAvailable(lines.ack));
+    machine.current = !audio.current || !(await ttsReady());
     if (!live.current) return;
-    await say(s.script.greeting);
+    // Lời chào + câu đầu đọc trong MỘT yêu cầu (một file) nếu vừa độ dài cho phép.
+    const first = opening(s.script);
+    if (!first) await say(s.script.greeting);
     let silentRow = 0;
     for (let n = 0; n < qs.length; n++) {
       if (!live.current) return;
@@ -310,13 +318,17 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       // Câu đáp mẫu chọn trước; giọng của chúng và của câu hỏi kế tiếp được xin sẵn trong lúc người kể đang nói.
       const fallback = { short: pickOne(lines.short), long: pickOne(lines.long) };
       const next = qs[n + 1]?.text ?? s.script.goodbye;
-      if (!machine.current) [fallback.short, fallback.long, next, lines.ack, lines.slow, lines.skip, lines.busy].forEach(warmVoice);
-      await say(qs[n].text);
+      // Câu cố định chỉ lấy từ kho (không tốn hạn mức); chỉ xin trước đúng một câu hỏi kế tiếp.
+      if (!machine.current) {
+        [fallback.short, fallback.long, lines.ack, lines.slow, lines.skip, lines.busy].forEach((t) => warmVoice(t, 'fixed'));
+        warmVoice(next);
+      }
+      if (n === 0 && first) { setCaption(first); await say(first); } else await say(qs[n].text);
       await wait(250);
       let h = await hear();
       if (!live.current) return;
       if (!h) {
-        await say(lines.slow);
+        await say(lines.slow, undefined, 'fixed');
         await wait(250);
         setCaption(qs[n].text);
         h = await hear();
@@ -325,26 +337,26 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       if (!h || !h.recording || h.recording.seconds < 1) {
         silentRow += 1;
         if (silentRow >= 2 || n === qs.length - 1) {
-          await say(lines.busy);
+          await say(lines.busy, undefined, 'fixed');
           return void bye(false);
         }
-        await say(lines.skip);
+        await say(lines.skip, undefined, 'fixed');
         continue;
       }
       silentRow = 0;
-      if (qs[n].photo && !machine.current) warmVoice(lines.photo);
+      if (qs[n].photo && !machine.current) warmVoice(lines.photo, 'fixed');
       const reply = replyFor(s, n, h, upload(s, n, h));
       setMode('idle');
       // Câu đáp chưa kịp về thì "ừm, mình nghe đây" một tiếng (đúng giọng Gemini) cho khỏi im.
       const early = await Promise.race([reply, wait(900).then(() => undefined)]);
-      if (early === undefined && !machine.current && voiceReady(lines.ack)) await say(lines.ack);
+      if (early === undefined && !machine.current && voiceReady(lines.ack)) await say(lines.ack, undefined, 'fixed');
       const local = h.speechMs < 3000 ? fallback.short : fallback.long;
       const text = (await reply) || local;
-      await say(text, text === local ? undefined : local);
+      await say(text, text === local ? undefined : local, text === local ? 'fixed' : 'reply');
       if (qs[n].photo && live.current) {
         setPhase('photo');
         const picked = new Promise<void>((r) => { photoDone.current = r; });
-        await say(lines.photo);
+        await say(lines.photo, undefined, 'fixed');
         await picked;
         if (!live.current) return;
         setPhase('talk');
@@ -445,4 +457,10 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
   );
 }
 
+/** Lời chào + câu hỏi đầu gộp thành một câu để đọc trong một yêu cầu giọng (giữ dưới giới hạn 300 chữ của máy chủ). */
+function opening(sc: CallScript) {
+  const q = sc.questions[0]?.text;
+  const t = q ? `${sc.greeting} ${q}`.replace(/\s+/g, ' ').trim() : '';
+  return t && t.length <= 300 ? t : null;
+}
 function pickOne<T>(xs: T[]) { return xs[Math.floor(Math.random() * xs.length)]; }
