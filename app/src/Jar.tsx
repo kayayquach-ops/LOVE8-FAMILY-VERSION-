@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, errorText, token } from './api';
 import { locale, t, type Key } from './i18n';
 import type { Me, Week } from './shared';
+import { cached, remember } from './cache';
 import { buzz, sfx, tap } from './sound';
 import { Avatar, Icon, toast } from './ui';
 
@@ -117,13 +118,14 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
 const GIFTS = [1, 2, 3, 4] as const;
 
 export function Jar({ me, onClose }: { me: Me; onClose: () => void }) {
-  const [w, setW] = useState<Week | null>(null);
-  const [j, setJ] = useState<JarData | null>(null);
+  // Mở là hiện ngay bản lần trước, không còn màn "đang tải".
+  const [w, setW] = useState<Week | null>(() => cached<Week>('week'));
+  const [j, setJ] = useState<JarData | null>(() => cached<JarData>('jar'));
   const [soon, setSoon] = useState<SeedDef | null>(null);
   const [doing, setDoing] = useState<string | null>(null);
   const load = () => {
-    api.week().then(setW).catch((e) => toast(e.message));
-    jfetch<JarData>('/api/jar').then(setJ).catch((e) => toast(e.message));
+    api.week().then((v) => { remember('week', v); setW(v); }).catch((e) => toast(e.message));
+    jfetch<JarData>('/api/jar').then((v) => { remember('jar', v); setJ(v); }).catch((e) => toast(e.message));
   };
   useEffect(load, []);
 
@@ -134,7 +136,13 @@ export function Jar({ me, onClose }: { me: Me; onClose: () => void }) {
   async function pick(s: SeedDef) {
     tap();
     if (s.price > 0 && !j!.owned.includes(s.id)) { setSoon(s); return; }
-    try { await jfetch('/api/jar/seed', { method: 'PUT', body: JSON.stringify({ seed: s.id }) }); load(); } catch (e) { toast((e as Error).message); }
+    // Đổi hạt hiện ngay; máy chủ từ chối thì trả lại hạt cũ.
+    const was = j!.mine;
+    setJ((x) => x && { ...x, mine: s.id, seeds: x.seeds.map((r) => (r.memberId === me.me.id ? { ...r, seed: s.id } : r)) });
+    try { await jfetch('/api/jar/seed', { method: 'PUT', body: JSON.stringify({ seed: s.id }) }); load(); } catch (e) {
+      setJ((x) => x && { ...x, mine: was, seeds: x.seeds.map((r) => (r.memberId === me.me.id ? { ...r, seed: was } : r)) });
+      toast((e as Error).message);
+    }
   }
 
   return (
@@ -185,7 +193,11 @@ export function Jar({ me, onClose }: { me: Me; onClose: () => void }) {
               onClick={async () => {
                 if (doing) return;
                 setDoing(m.key); tap(); buzz(30);
-                try { await api.mission(m.key); sfx('sparkle'); toast(t('jar.added')); load(); } catch (e) { toast((e as Error).message); } finally { setDoing(null); }
+                // Đánh dấu xong ngay, máy chủ trả lời sau; lỗi thì bỏ dấu và báo (không báo "+1 hạt" khi chưa nhận).
+                const was = m;
+                const put = (y: typeof m) => setW((x) => x && { ...x, missions: x.missions.map((z) => (z.key === m.key ? y : z)) });
+                put({ ...m, done: true, doneBy: m.doneBy.includes(me.me.id) ? m.doneBy : [...m.doneBy, me.me.id] });
+                try { await api.mission(m.key); sfx('sparkle'); toast(t('jar.added')); load(); } catch (e) { put(was); toast((e as Error).message); } finally { setDoing(null); }
               }}>
               {m.done ? t('jar.done') : t('common.done')}
             </button>

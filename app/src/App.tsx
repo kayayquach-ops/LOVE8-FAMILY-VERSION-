@@ -60,19 +60,30 @@ export function App() {
   const loadUnread = () => fetch('/api/chat/unread', { headers: { authorization: `Bearer ${token.get()}` } }).then((r) => r.json()).then((d) => setChatUnread(d.n ?? 0)).catch(() => {});
   const checkCall = () => fetch('/api/call/due', { headers: { authorization: `Bearer ${token.get()}` } }).then((r) => r.json())
     .then((d) => setCallDue(!!d.due)).catch(() => {});
+  // Bản mới giống hệt bản đang có thì giữ nguyên đối tượng cũ: không vẽ lại cả app mỗi lần hỏi máy chủ (30 giây một lần).
+  const meJson = useRef(me ? JSON.stringify(me) : '');
+  const loadMe = () => api.me().then((m) => {
+    setOffline(false);
+    const s = JSON.stringify(m);
+    if (s === meJson.current) return;
+    meJson.current = s;
+    setMe(m);
+    try { localStorage.setItem(ME_KEY, s); } catch {}
+  });
   const load = () => {
     void loadUnread(); void checkCall();
-    return api.me().then((m) => { setMe(m); setOffline(false); try { localStorage.setItem(ME_KEY, JSON.stringify(m)); } catch {} }).catch((e) => {
+    return loadMe().catch((e) => {
       // Chỉ bỏ mã khi máy chủ nói rõ mã không còn; mất mạng thì giữ nguyên để khỏi phải vào nhà lại.
       if (isSignedOut(e)) { token.clear(); setMe(null); } else setOffline(true);
     }).finally(() => setReady(true));
   };
   useEffect(() => {
     if (token.get()) void load(); else setReady(true);
-    // Không tải sẵn màn gọi video: phần chụp chung kéo theo chục phông chữ, chỉ tải khi bấm gọi.
-    const warm = () => { void loadCall(); void loadPodcast(); void loadRecap(); };
-    const w = window as Window & { requestIdleCallback?: (f: () => void) => number };
-    const t = setTimeout(() => (w.requestIdleCallback ? w.requestIdleCallback(warm) : warm()), 2500);
+    // Màn gọi video tải sau cùng, lúc rảnh hẳn: chỉ là mã và khai báo chữ, tệp phông của phần chụp chung chỉ tải khi vẽ đến.
+    const w = window as Window & { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number };
+    const idle = (f: () => void) => (w.requestIdleCallback ? w.requestIdleCallback(f, { timeout: 4000 }) : f());
+    const warm = () => { void loadCall(); void loadPodcast(); void loadRecap(); idle(() => void loadFaceTime()); };
+    const t = setTimeout(() => idle(warm), 2500);
     return () => clearTimeout(t);
   }, []);
   useEffect(() => {
@@ -107,7 +118,8 @@ export function App() {
   }, [!!me]);
 
   // Mở tin nhà, chat, gia đình thì lấy lại danh sách cả nhà: người mới vào nhà không hiện thành "?" hay "Ai đó".
-  useEffect(() => { if (me && (sheet === 'feed' || sheet === 'chat' || sheet === 'family')) void load(); }, [sheet]);
+  // Chỉ hỏi lại danh sách cả nhà, không kéo theo số tin chat và lịch gọi (đỡ hai yêu cầu mỗi lần mở).
+  useEffect(() => { if (me && (sheet === 'feed' || sheet === 'chat' || sheet === 'family')) void loadMe().catch(() => {}); }, [sheet]);
 
   const doneHug = () => { try { localStorage.setItem(HUG_KEY, today()); } catch {} setHug(false); };
 

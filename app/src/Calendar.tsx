@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { errorText, token } from './api';
 import { fmtDate, fmtDayMonth, monthLabel, shownLang, t } from './i18n';
 import type { Me } from './shared';
+import { cached, remember } from './cache';
 import { tap } from './sound';
 import { Icon, toast } from './ui';
 import { lunarEventInSolarYear, nextOccurrence, solarToLunar } from './lunar';
@@ -41,7 +42,7 @@ const solarDate = (d: Date) => fmtDate(d, shownLang() === 'ko' ? { year: 'numeri
 
 export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void; onWish?: (e: CalEvent) => void }) {
   const now = new Date();
-  const [events, setEvents] = useState<CalEvent[] | null>(null);
+  const [events, setEvents] = useState<CalEvent[] | null>(() => cached<CalEvent[]>('calendar'));
   const [ym, setYm] = useState({ y: now.getFullYear(), m: now.getMonth() });
   const [adding, setAdding] = useState(false);
   const [kind, setKind] = useState('birthday');
@@ -54,7 +55,7 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
   const [saving, setSaving] = useState(false);
   const touchX = useRef<number | null>(null);
 
-  const load = () => call<CalEvent[]>('/api/calendar').then(setEvents).catch((e) => toast(e.message));
+  const load = () => call<CalEvent[]>('/api/calendar').then((v) => { remember('calendar', v); setEvents(v); }).catch((e) => toast(e.message));
   useEffect(() => { void load(); }, []);
 
   const move = (d: number) => setYm(({ y, m }) => { const t = new Date(y, m + d, 1); return { y: t.getFullYear(), m: t.getMonth() }; });
@@ -98,12 +99,20 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
     if (!name) return toast(t('calendar.needName'));
     if (saving) return;
     setSaving(true);
+    // Ngày mới hiện ngay trong lịch và ô thêm đóng lại; máy chủ trả lời sau. Lỗi thì gỡ ngày tạm, mở lại ô với chữ đã gõ.
+    const tmp: CalEvent = { id: `tmp-${Date.now()}`, kind, title: name, day: Number(day), month: Number(month), year: year ? Number(year) : null, lunar, leap: lunar && leap, note: null, memberId: null, createdBy: me.me.id };
+    setEvents((l) => [...(l ?? []), tmp]);
+    setAdding(false);
     try {
       await call('/api/calendar', { method: 'POST', body: JSON.stringify({ kind, title: name, day: Number(day), month: Number(month), year: year ? Number(year) : undefined, lunar, leap: lunar && leap }) });
-      setTitle(''); setDay(''); setMonth(''); setYear(''); setLunar(false); setLeap(false); setAdding(false);
+      setTitle(''); setDay(''); setMonth(''); setYear(''); setLunar(false); setLeap(false);
       toast(t('calendar.added'));
       void load();
-    } catch (e) { toast((e as Error).message); } finally { setSaving(false); }
+    } catch (e) {
+      setEvents((l) => l && l.filter((x) => x.id !== tmp.id));
+      setAdding(true);
+      toast((e as Error).message);
+    } finally { setSaving(false); }
   };
 
   const preview = useMemo(() => {
@@ -116,7 +125,9 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
 
   const del = async (id: string) => {
     if (!confirm(t('calendar.confirmDelete'))) return;
-    try { await call(`/api/calendar/${id}`, { method: 'DELETE' }); void load(); } catch (e) { toast((e as Error).message); }
+    // Gỡ khỏi lịch ngay; máy chủ không xoá được thì tải lại bản thật.
+    setEvents((l) => l && l.filter((x) => x.id !== id));
+    try { await call(`/api/calendar/${id}`, { method: 'DELETE' }); void load(); } catch (e) { void load(); toast((e as Error).message); }
   };
 
   const sub = (e: CalEvent, years: number | null) => {

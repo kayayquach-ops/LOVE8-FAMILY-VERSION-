@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { token } from './api';
-import type { Me } from './shared';
+import { cached, remember } from './cache';
+import { thumb, type Me } from './shared';
 import { SILENT_HOURS } from './shared';
 import { hoursSince, localTime, weather } from './time';
 import { Avatar, Icon } from './ui';
@@ -32,16 +33,14 @@ function greet() {
   return t(h < 11 ? 'home.greet.morning' : h < 14 ? 'home.greet.noon' : h < 18 ? 'home.greet.afternoon' : 'home.greet.evening');
 }
 
-const isVideo = (m: string) => /\.(mp4|webm|mov)$/i.test(m);
-
+// Ô nhỏ: ảnh thu nhỏ máy chủ dựng sẵn; video cũng là một ảnh (khung đầu), không còn 3 thẻ video tự tải dữ liệu.
 function Thumb({ src }: { src: string }) {
-  return isVideo(src)
-    ? <video src={`${src}#t=0.1`} muted playsInline preload="metadata" />
-    : <img src={src} alt="" loading="lazy" />;
+  return <img src={thumb(src, 360)} alt="" loading="lazy" decoding="async" />;
 }
 
 export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean; onCall: () => void; onOpen: (s: Screen, arg?: string) => void }) {
-  const [data, setData] = useState<HomeData | null>(null);
+  // Đổi qua lại Camera và Nhà là dựng lại màn này: hiện ngay bản lần trước, phần dưới không trống rồi mới hiện.
+  const [data, setData] = useState<HomeData | null>(() => cached<HomeData>('home'));
   const [later, setLater] = useState(false);
   const invite = callDue && !later && !snoozed();
   const [wx, setWx] = useState<Record<string, string | null>>({});
@@ -50,7 +49,11 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
   const alone = me.members.length < 2;
 
   useEffect(() => {
-    const run = () => load().then((d) => { setData(d); setFailed(false); }).catch(() => setFailed(true));
+    const run = () => load().then((d) => {
+      remember('home', d);
+      setData((prev) => (prev && JSON.stringify(prev) === JSON.stringify(d) ? prev : d));
+      setFailed(false);
+    }).catch(() => setFailed(true));
     void run();
     const t = setInterval(() => { if (!document.hidden) void run(); }, 30000);
     const onVis = () => { if (!document.hidden) void run(); };
@@ -111,7 +114,8 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
       </section>
 
       <button className="home-cta" onClick={go('camera')}>
-        {cover && <img src={cover} alt="" />}
+        {/* Nền mờ: ảnh 160 px là đủ (làm mờ ảnh 2048 px tốn hơn nhiều lần mà nhìn như nhau). */}
+        {cover && <img src={thumb(cover, 160)} alt="" decoding="async" />}
         <span className="home-cta-in">
           <i><Icon name="image" size={24} /></i>
           <b>{t('home.cta')}</b>
@@ -158,7 +162,7 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
         <div className="home-row">
           {shelf.length ? shelf.map((p) => (
             <button key={p.id} className="home-album" onClick={go('podcast', p.id)}>
-              <span className="home-cover">{p.cover ? <img src={p.cover} alt="" /> : <Icon name="mic" size={26} />}</span>
+              <span className="home-cover">{p.cover ? <img src={thumb(p.cover, 360)} alt="" loading="lazy" decoding="async" /> : <Icon name="mic" size={26} />}</span>
               <b>{p.title}</b>
               <span className="muted">{byId(p.memberId)?.name ?? p.topic}</span>
             </button>

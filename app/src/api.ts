@@ -6,7 +6,13 @@ const KEY = 'homeletter-token';
 export const token = {
   get: () => { try { return localStorage.getItem(KEY); } catch { return null; } },
   set: (t: string) => { try { localStorage.setItem(KEY, t); } catch {} },
-  clear: () => { try { localStorage.removeItem(KEY); localStorage.removeItem('homeletter-me'); } catch {} },
+  clear: () => {
+    try {
+      localStorage.removeItem(KEY); localStorage.removeItem('homeletter-me');
+      // Bản lưu tin nhà, chat... của nhà cũ (cache.ts).
+      for (const k of Object.keys(localStorage)) if (k.startsWith('hl-c:')) localStorage.removeItem(k);
+    } catch {}
+  },
 };
 
 /** Lời báo lỗi: máy chủ gửi mã ổn định (code) thì tra bảng chữ; chưa có khoá thì dùng câu máy chủ gửi kèm. */

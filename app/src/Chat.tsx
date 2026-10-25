@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { Me, Member } from './shared';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { thumb, type Me, type Member } from './shared';
+import { cached, remember } from './cache';
 import { errorText, token } from './api';
 import { locale, t, type Key } from './i18n';
 import { fileName, shrinkImage, useHoldMic } from './media';
@@ -30,7 +31,8 @@ function dayLabel(iso: string) {
 }
 
 export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => void; onCall?: () => void; live?: boolean }) {
-  const [msgs, setMsgs] = useState<Msg[]>([]);
+  // Mở chat là thấy ngay các tin lần trước, tin mới về thì nối vào.
+  const [msgs, setMsgs] = useState<Msg[]>(() => cached<Msg[]>('chat') ?? []);
   const [text, setText] = useState('');
   const [tray, setTray] = useState(false);
   const [vh, setVh] = useState<number | null>(null);
@@ -51,18 +53,27 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
       const added = incoming.filter((m) => !seen.has(m.id));
       if (!added.length) return prev;
       if (added.some((m) => m.author_id !== meId)) markRead();
-      return [...prev, ...added].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
+      // Tin thật của mình về qua kênh tức thời trước khi lệnh gửi trả lời: bỏ tin tạm tương ứng, không hiện hai lần.
+      const same = (a: Msg, b: Msg) => a.author_id === b.author_id && a.kind === b.kind && (a.text ?? null) === (b.text ?? null) && (a.sticker ?? null) === (b.sticker ?? null);
+      const kept = prev.filter((m) => !m.id.startsWith('tmp-') || !added.some((a) => same(a, m)));
+      return [...kept, ...added].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
     });
   }, [meId, markRead]);
 
   // Tải ban đầu, rồi nghe tin mới qua SSE; hỏi lại mỗi 8 giây phòng khi mạng rớt.
   const latest = useRef('');
-  useEffect(() => { latest.current = msgs.length ? msgs[msgs.length - 1].created_at : ''; }, [msgs]);
+  useEffect(() => {
+    const real = msgs.filter((m) => !m.id.startsWith('tmp-'));
+    latest.current = real.length ? real[real.length - 1].created_at : '';
+    remember('chat', real.slice(-60));
+  }, [msgs]);
   useEffect(() => {
     let alive = true;
-    call<Msg[]>('/api/chat').then((r) => { if (alive) { setMsgs(r); markRead(); } }).catch((e) => toast(e.message));
+    // Bản mới thay bản lưu, giữ lại các tin mình đang gửi dở.
+    call<Msg[]>('/api/chat').then((r) => { if (alive) { setMsgs((p) => [...r, ...p.filter((m) => m.id.startsWith('tmp-'))]); markRead(); } }).catch((e) => toast(e.message));
     const poll = setInterval(() => {
-      if (document.hidden) return;
+      // Kênh tin tức thời đang nối thì không cần hỏi thêm; chỉ hỏi khi kênh rớt.
+      if (document.hidden || es?.readyState === 1) return;
       const q = latest.current ? `?after=${encodeURIComponent(latest.current)}` : '';
       call<Msg[]>(`/api/chat${q}`).then((r) => alive && merge(r)).catch(() => {});
     }, 8000);
@@ -89,16 +100,26 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
     if (stick.current && list.current) list.current.scrollTop = list.current.scrollHeight;
   }, [msgs, tray, vh, pending]);
 
-  async function send(f: FormData) {
+  // Chữ và hình dán hiện ngay trong khung (tin tạm), máy chủ trả lời thì thay bằng tin thật; lỗi thì gỡ tin tạm và báo.
+  async function send(f: FormData, tmp?: Msg) {
     const slow = f.has('file');
-    if (slow) { stick.current = true; setPending((n) => n + 1); }
+    stick.current = true;
+    if (slow) setPending((n) => n + 1);
+    if (tmp) setMsgs((p) => [...p, tmp]);
     try {
       const m = await call<Msg>('/api/chat', { method: 'POST', body: f });
-      stick.current = true;
-      setMsgs((p) => (p.some((x) => x.id === m.id) ? p : [...p, m]));
-    } catch (e) { toast((e as Error).message); }
-    finally { if (slow) setPending((n) => n - 1); }
+      setMsgs((p) => {
+        const rest = tmp ? p.filter((x) => x.id !== tmp.id) : p;
+        // Kênh tức thời có thể đã đưa tin thật về trước.
+        return rest.some((x) => x.id === m.id) ? rest : [...rest, m];
+      });
+    } catch (e) {
+      if (tmp) setMsgs((p) => p.filter((x) => x.id !== tmp.id));
+      toast((e as Error).message);
+      throw e;
+    } finally { if (slow) setPending((n) => n - 1); }
   }
+  const tmpMsg = (x: Partial<Msg>): Msg => ({ id: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, author_id: meId, kind: 'text', created_at: new Date().toISOString(), ...x });
   const lastSent = useRef({ t: '', at: 0 });
   function sendText() {
     const s = text.trim();
@@ -107,12 +128,13 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
     lastSent.current = { t: s, at: Date.now() };
     setText('');
     const f = new FormData(); f.set('kind', 'text'); f.set('text', s);
-    void send(f);
+    // Gửi lỗi thì trả chữ về ô (nếu người dùng chưa gõ gì mới) để khỏi gõ lại.
+    send(f, tmpMsg({ kind: 'text', text: s })).catch(() => setText((cur) => cur || s));
   }
   function sendSticker(id: string) {
     setTray(false);
     const f = new FormData(); f.set('kind', 'sticker'); f.set('sticker', id);
-    void send(f);
+    send(f, tmpMsg({ kind: 'sticker', sticker: id })).catch(() => {});
   }
   async function sendPhoto(file?: File) {
     if (!file) return;
@@ -120,13 +142,13 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
     const blob = await shrinkImage(file);
     setPending((n) => n - 1);
     const f = new FormData(); f.set('kind', 'photo'); f.set('file', blob, blob === file ? file.name : 'photo.jpg');
-    void send(f);
+    send(f).catch(() => {});
   }
 
   // Giữ để nói: thả tay trước khi micro kịp mở thì không ghi, micro luôn tắt khi thả.
   const mic = useHoldMic((r) => {
     const f = new FormData(); f.set('kind', 'voice'); f.set('seconds', String(r.seconds)); f.set('file', r.blob, fileName(r.blob, 'voice'));
-    void send(f);
+    send(f).catch(() => {});
   });
   const rec = mic.rec;
   function micDown(e: React.PointerEvent) {
@@ -135,13 +157,36 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
   }
   const micUp = () => { void mic.up(); };
 
-  const rows: Array<{ type: 'day'; label: string; key: string } | { type: 'msg'; m: Msg; first: boolean; last: boolean }> = [];
-  const near = (a: Msg, b: Msg) => a.author_id === b.author_id && dayLabel(a.created_at) === dayLabel(b.created_at) && Math.abs(+new Date(b.created_at) - +new Date(a.created_at)) < 5 * 60e3;
-  msgs.forEach((m, i) => {
-    const p = msgs[i - 1], n = msgs[i + 1];
-    if (!p || dayLabel(p.created_at) !== dayLabel(m.created_at)) rows.push({ type: 'day', label: dayLabel(m.created_at), key: `d${m.id}` });
-    rows.push({ type: 'msg', m, first: !p || !near(p, m), last: !n || !near(m, n) });
-  });
+  // Danh sách tin chỉ dựng lại khi tin đổi, không dựng lại mỗi lần gõ một chữ (gõ trên iPhone từng khựng khi chat dài).
+  const listBody = useMemo(() => {
+    const rows: Array<{ type: 'day'; label: string; key: string } | { type: 'msg'; m: Msg; first: boolean; last: boolean }> = [];
+    const days = msgs.map((m) => dayLabel(m.created_at));
+    const near = (i: number, j: number) => msgs[i].author_id === msgs[j].author_id && days[i] === days[j] && Math.abs(+new Date(msgs[j].created_at) - +new Date(msgs[i].created_at)) < 5 * 60e3;
+    msgs.forEach((m, i) => {
+      const p = i > 0, n = i < msgs.length - 1;
+      if (!p || days[i - 1] !== days[i]) rows.push({ type: 'day', label: days[i], key: `d${m.id}` });
+      rows.push({ type: 'msg', m, first: !p || !near(i - 1, i), last: !n || !near(i, i + 1) });
+    });
+    return rows.map((r) => {
+      if (r.type === 'day') return <div key={r.key} className="chat-day">{r.label}</div>;
+      const { m, first, last } = r;
+      const mine = m.author_id === meId;
+      const who = member(m.author_id);
+      return (
+        <div key={m.id} className={`chat-row ${mine ? 'mine' : ''} ${first ? 'first' : ''}`}>
+          {!mine && <div className="chat-av">{last ? <Avatar m={who} size={30} /> : null}</div>}
+          <div className="chat-col">
+            {!mine && first && <small className="chat-name">{who?.name ?? t('common.someone')}</small>}
+            {m.kind === 'sticker' ? <div className="chat-sticker"><Sticker id={m.sticker ?? ''} size={120} /></div>
+              : m.kind === 'photo' ? <button className="chat-photo-btn" onClick={() => setViewer(m.media!)} aria-label={t('chat.viewPhoto')}><img className="chat-photo" src={thumb(m.media, 1080)} alt="" loading="lazy" decoding="async" onLoad={() => { if (stick.current && list.current) list.current.scrollTop = list.current.scrollHeight; }} /></button>
+              : <div className={`bubble ${mine ? 'mine' : ''}`}>{m.kind === 'voice' ? <Voice url={m.media!} seconds={m.seconds} /> : m.text}</div>}
+            {last && <small className="chat-time">{hm(m.created_at)}</small>}
+          </div>
+        </div>
+      );
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [msgs, me]);
 
   return (
     <div className="chat" style={vh ? { height: vh } : undefined}>
@@ -156,24 +201,7 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
 
       <div className="chat-list" ref={list} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
         {!msgs.length && <div className="chat-empty">{t('chat.empty')}</div>}
-        {rows.map((r) => {
-          if (r.type === 'day') return <div key={r.key} className="chat-day">{r.label}</div>;
-          const { m, first, last } = r;
-          const mine = m.author_id === meId;
-          const who = member(m.author_id);
-          return (
-            <div key={m.id} className={`chat-row ${mine ? 'mine' : ''} ${first ? 'first' : ''}`}>
-              {!mine && <div className="chat-av">{last ? <Avatar m={who} size={30} /> : null}</div>}
-              <div className="chat-col">
-                {!mine && first && <small className="chat-name">{who?.name ?? t('common.someone')}</small>}
-                {m.kind === 'sticker' ? <div className="chat-sticker"><Sticker id={m.sticker ?? ''} size={120} /></div>
-                  : m.kind === 'photo' ? <button className="chat-photo-btn" onClick={() => setViewer(m.media!)} aria-label={t('chat.viewPhoto')}><img className="chat-photo" src={m.media!} alt="" loading="lazy" onLoad={() => { if (stick.current && list.current) list.current.scrollTop = list.current.scrollHeight; }} /></button>
-                  : <div className={`bubble ${mine ? 'mine' : ''}`}>{m.kind === 'voice' ? <Voice url={m.media!} seconds={m.seconds} /> : m.text}</div>}
-                {last && <small className="chat-time">{hm(m.created_at)}</small>}
-              </div>
-            </div>
-          );
-        })}
+        {listBody}
         {pending > 0 && <div className="chat-day chat-sending">{t('chat.sending')}</div>}
       </div>
 
@@ -215,7 +243,7 @@ function Voice({ url, seconds }: { url: string; seconds?: number | null }) {
   const [on, setOn] = useState(false);
   return (
     <button className="chat-voice" onClick={() => { if (on) a.current?.pause(); else void a.current?.play(); }}>
-      <audio ref={a} src={url} onEnded={() => setOn(false)} onPause={() => setOn(false)} onPlay={() => setOn(true)} />
+      <audio ref={a} src={url} preload="none" onEnded={() => setOn(false)} onPause={() => setOn(false)} onPlay={() => setOn(true)} />
       <Icon name={on ? 'pause' : 'play'} size={18} />
       <i className="chat-wave" />
       <span>{seconds ? `${Math.round(seconds)}s` : t('common.listen')}</span>
