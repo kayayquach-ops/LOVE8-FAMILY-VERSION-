@@ -654,5 +654,22 @@
   "settings.reload": "Tải lại app",
   "settings.reloadHint": "Dùng khi app có vẻ chưa cập nhật bản mới",
 
-  "letters.toSelf": "Cho mình"
+  "letters.toSelf": "Cho mình",
+
+  "tab.may": "Mây",
+  "may.title": "Mây",
+  "may.call": "Gọi cho Mây",
+  "may.wait.sub": "Mây hay gọi vào cuối tuần để nghe chuyện của bạn.",
+  "may.wait.note": "Muốn kể ngay thì gọi cho Mây, lúc nào Mây cũng nghe.",
+  "may.due.title": "{name} ơi, Mây đang gọi",
+  "may.due.sub": "Mây muốn nghe chuyện của bạn một chút.",
+  "may.listen": "Nghe lại chuyện đã kể",
+  "notifyAsk.title": "Bật thông báo nhé?",
+  "notifyAsk.body": "Để biết khi nhà nhắn tin, gửi thư, gọi video, hay khi Mây gọi bạn.",
+  "notifyAsk.yes": "Bật thông báo",
+
+  "facetime.callingOne": "Đang gọi {name}...",
+  "facetime.noAnswer": "{name} chưa nghe máy",
+  "incoming.you": "Gọi riêng cho bạn",
+  "family.callVideo": "Gọi video cho {name}"
 }

@@ -7,14 +7,14 @@ import { errorBody, tReq } from './i18n.ts';
 // Gọi video cả nhà: mỗi nhà một phòng, máy chủ chỉ chuyển lời mời kết nối (SDP, ICE) giữa các máy qua SSE.
 // Hình và tiếng đi thẳng giữa các máy (WebRTC). Mạng di động thường cần TURN, đặt CF_TURN_KEY_ID và CF_TURN_API_TOKEN (Cloudflare) hoặc TURN_URL.
 
-type Room = { id: string; by: string; members: Set<string>; started: number };
-export type LiveRoom = { id: string; by: string; members: string[]; started: number } | null;
+type Room = { id: string; by: string; to: string | null; members: Set<string>; started: number };
+export type LiveRoom = { id: string; by: string; to: string | null; members: string[]; started: number } | null;
 
 const rooms = new Map<string, Room>(); // family_id -> phòng đang gọi
 const conns = new Map<string, { fid: string; set: Set<express.Response> }>(); // member_id -> các luồng SSE đang mở
 const gone = new Map<string, ReturnType<typeof setTimeout>>();
 
-const view = (r?: Room): LiveRoom => (r ? { id: r.id, by: r.by, members: [...r.members], started: r.started } : null);
+const view = (r?: Room): LiveRoom => (r ? { id: r.id, by: r.by, to: r.to, members: [...r.members], started: r.started } : null);
 
 function send(memberId: string, msg: unknown) {
   const c = conns.get(memberId);
@@ -119,14 +119,28 @@ liveRouter.get('/live/config', h(async (_req, res) => { res.json({ iceServers: a
 
 liveRouter.get('/live/room', (req: any, res) => { res.json({ room: view(rooms.get(req.member.family_id)) }); });
 
-liveRouter.post('/live/join', (req: any, res) => {
+liveRouter.post('/live/join', h(async (req, res) => {
   const { id: mid, family_id: fid } = req.member;
   let r = rooms.get(fid);
-  if (!r) { rooms.set(fid, (r = { id: randomUUID(), by: mid, members: new Set(), started: Date.now() })); notifyCall(fid, mid); }
+  if (!r) {
+    // `to`: gọi riêng một người trong nhà (chuông và thông báo chỉ tới người đó).
+    let to: string | null = typeof req.body?.to === 'string' && req.body.to !== mid ? req.body.to : null;
+    if (to) {
+      const { rows } = await pool.query('select 1 from members where id = $1 and family_id = $2', [to, fid]);
+      if (!rows[0]) to = null;
+    }
+    // Trong lúc kiểm tra người nhận, người khác có thể đã mở phòng: dùng phòng đó.
+    r = rooms.get(fid);
+    if (!r) {
+      r = { id: randomUUID(), by: mid, to, members: new Set(), started: Date.now() };
+      rooms.set(fid, r);
+      notifyCall(fid, mid, to);
+    }
+  }
   r.members.add(mid);
   toFamily(fid, { type: 'room', room: view(r) });
   res.json({ room: view(r) });
-});
+}));
 
 liveRouter.post('/live/leave', (req: any, res) => {
   leave(req.member.family_id, req.member.id);

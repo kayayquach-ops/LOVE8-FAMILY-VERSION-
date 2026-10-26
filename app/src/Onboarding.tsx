@@ -319,14 +319,15 @@ export async function copyText(text: string) {
 
 export async function shareInvite(code: string, family: string) {
   const url = `${location.origin}/?join=${code}`;
-  const text = t('invite.text', { family, code });
+  // Link nằm ngay trong lời nhắn: Zalo, Messenger, iMessage hay bỏ `url` riêng khi có `text`, khiến người nhận chỉ thấy mã mà không có link.
+  const text = `${t('invite.text', { family, code })}\n${url}`;
   if (navigator.share) {
-    try { await navigator.share({ title: 'Sweet Home', text, url }); return; } catch (e) {
+    try { await navigator.share({ title: 'Sweet Home', text }); return; } catch (e) {
       // Tự đóng bảng chia sẻ thì thôi; máy không cho chia sẻ thì chép lời mời.
       if ((e as Error).name === 'AbortError') return;
     }
   }
-  toast(await copyText(`${text}\n${url}`) ? t('invite.copied') : t('invite.code', { code }));
+  toast(await copyText(text) ? t('invite.copied') : t('invite.code', { code }));
 }
 
 export async function copyCode(code: string) {

@@ -668,5 +668,22 @@
   "settings.reload": "Reload app",
   "settings.reloadHint": "Use it if the app doesn't look up to date",
 
-  "letters.toSelf": "Myself"
+  "letters.toSelf": "Myself",
+
+  "tab.may": "Mây",
+  "may.title": "Mây",
+  "may.call": "Call Mây",
+  "may.wait.sub": "Mây usually calls on weekends to hear your stories.",
+  "may.wait.note": "Want to talk now? Call Mây, Mây is always listening.",
+  "may.due.title": "{name}, Mây is calling",
+  "may.due.sub": "Mây would like to hear a little of your story.",
+  "may.listen": "Listen to stories so far",
+  "notifyAsk.title": "Turn on notifications?",
+  "notifyAsk.body": "So you know when the family messages, sends a letter, starts a video call, or when Mây calls you.",
+  "notifyAsk.yes": "Turn on",
+
+  "facetime.callingOne": "Calling {name}...",
+  "facetime.noAnswer": "{name} didn't pick up",
+  "incoming.you": "Calling just you",
+  "family.callVideo": "Video call {name}"
 }

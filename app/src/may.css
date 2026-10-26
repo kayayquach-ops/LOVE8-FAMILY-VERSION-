@@ -1,0 +1,17 @@
+/* Tab Mây: gọi và chờ Mây gọi. Chỉ animate opacity và transform. */
+.may { display: flex; flex-direction: column; align-items: center; padding: calc(var(--safe-top) + 28px) 24px calc(var(--safe-bottom) + 110px); text-align: center; }
+.may-hero { position: relative; width: 220px; height: 220px; display: grid; place-items: center; margin-top: 8px; }
+.may-mascot { position: relative; z-index: 1; }
+.may-ring { position: absolute; inset: 14px; border-radius: 50%; border: 2px solid var(--accent); opacity: .6; animation: call-ring 2s ease-out infinite; }
+.may-title { font-size: 26px; font-weight: 500; margin: 10px 0 6px; letter-spacing: -.3px; }
+.may-sub { font-size: 16px; color: var(--soft); line-height: 1.5; max-width: 300px; margin: 0 0 22px; }
+.may-call { max-width: 300px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.may-note { margin: 14px 0 0; max-width: 280px; font-size: 14px; }
+.may-more { margin-top: 28px; }
+.tab .badge.dot { width: 9px; height: 9px; min-width: 0; padding: 0; right: 14px; top: 0; border-radius: 50%; }
+
+/* Hỏi bật thông báo khi mới vào app */
+.nask { position: fixed; inset: 0; z-index: 80; display: flex; align-items: flex-end; justify-content: center; padding: 16px 16px calc(var(--safe-bottom) + 16px); background: rgba(40, 30, 20, .35); animation: slowFade .25s ease both; }
+.nask-card { width: 100%; max-width: 420px; background: var(--bg); border-radius: 24px; padding: 24px 22px 18px; text-align: center; display: flex; flex-direction: column; gap: 10px; animation: chatIn .25s ease-out both; }
+.nask-card h2 { margin: 0; font-size: 21px; font-weight: 500; }
+.nask-card p { margin: 0 0 8px; color: var(--soft); font-size: 15px; line-height: 1.5; }

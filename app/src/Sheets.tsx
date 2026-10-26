@@ -23,7 +23,7 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 // Gia đình: từng người với giờ, thời tiết bên đó, lần hoạt động cuối; mời người mới; sửa thông tin của mình.
-export function Family({ me, onClose, onChanged, onSettings }: { me: Me; onClose: () => void; onChanged: () => void; onSettings: () => void }) {
+export function Family({ me, onClose, onChanged, onSettings, onCallMember }: { me: Me; onClose: () => void; onChanged: () => void; onSettings: () => void; onCallMember: (id: string) => void }) {
   const lang = useLang();
   const [wx, setWx] = useState<Record<string, string>>({});
   const [edit, setEdit] = useState(false);
@@ -75,6 +75,7 @@ export function Family({ me, onClose, onChanged, onSettings }: { me: Me; onClose
                 <div className="info">{m.city ? `${cityOf(m.city)?.name ?? ''} ${lt ?? ''}` : t(`role.${m.role}`)}{wx[m.id] ? ` · ${wx[m.id]}` : ''}</div>
                 <div className={`info ${quiet ? 'warn' : ''}`}>{m.id === me.me.id ? t('family.online') : quiet ? t('home.quietDays', { n: Math.floor(hoursSince(m.lastSeen) / 24) }) : t('family.active', { ago: ago(m.lastSeen) })}</div>
               </div>
+              {m.id !== me.me.id && <button className="round" onClick={() => { tap(); onCallMember(m.id); }} aria-label={t('family.callVideo', { name: m.name })}><Icon name="video" /></button>}
               {m.id !== me.me.id && m.phone && <a className="round" href={`tel:${m.phone}`} aria-label={t('family.callAria', { name: m.name })}><Icon name="phone" /></a>}
             </div>
           );

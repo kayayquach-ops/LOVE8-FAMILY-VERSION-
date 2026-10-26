@@ -3,6 +3,8 @@ import { api, isSignedOut, token } from './api';
 import { Camera } from './Camera';
 import { Feed } from './Feed';
 import { Hug } from './Hug';
+import { MayTab } from './MayTab';
+import { NotifyAsk } from './NotifyAsk';
 import { Greeting, Onboarding } from './Onboarding';
 import type { Me } from './shared';
 import { Calendar } from './Calendar';
@@ -43,7 +45,7 @@ export function App() {
   const [ready, setReady] = useState(() => !!me);
   const [sheet, setSheet] = useState<'feed' | 'jar' | 'family' | 'calendar' | 'chat' | 'recap' | 'podcast' | 'letters' | 'settings' | null>(null);
   // Mở app là vào camera như Locket; Trang chủ là một tab.
-  const [tab, setTab] = useState<'home' | 'camera'>('camera');
+  const [tab, setTab] = useState<'home' | 'camera' | 'may'>('camera');
   const [chatUnread, setChatUnread] = useState(0);
   const [podcastId, setPodcastId] = useState<string | null>(null);
   const [feedPost, setFeedPost] = useState<string | null>(null);
@@ -55,6 +57,8 @@ export function App() {
   // Gọi video cả nhà: phòng đang mở, mình có đang trong cuộc gọi không, cuộc nào mình đã từ chối hoặc vừa rời.
   const [room, setRoom] = useState<LiveRoom>(null);
   const [facetime, setFacetime] = useState(false);
+  const [callTo, setCallTo] = useState<string | null>(null);
+  const startFaceTime = (to?: string) => { setCallTo(to ?? null); setFacetime(true); };
   const inCall = useRef(false);
   inCall.current = facetime;
   const [skipRoom, setSkipRoom] = useState<string | null>(null);
@@ -145,23 +149,25 @@ export function App() {
     <>
       {tab === 'home'
         ? <Home me={me} callDue={callDue && !calling} onCall={() => setCalling(true)} onOpen={(s, arg) => { if (s === 'camera') return setTab('camera'); if (s === 'podcast') setPodcastId(arg ?? null); if (s === 'feed') setFeedPost(arg ?? null); setSheet(s); }} />
+        : tab === 'may'
+        ? <MayTab me={me} callDue={callDue && !calling} onCall={() => setCalling(true)} onPodcast={() => { setPodcastId(null); setSheet('podcast'); }} />
         : <Camera me={me} active={!sheet && !facetime && !calling} onOpen={(s) => { if (s === 'feed') setFeedPost(null); setSheet(s); }} onSent={load} />}
-      {!sheet && <TabBar active={tab} unread={chatUnread} onSelect={(t: Tab) => {
-        if (t === 'home' || t === 'camera') { setSheet(null); setTab(t); } else setSheet(t);
+      {!sheet && <TabBar active={tab} unread={chatUnread} ring={callDue && !calling} onSelect={(t: Tab) => {
+        if (t === 'home' || t === 'camera' || t === 'may') { setSheet(null); setTab(t); } else setSheet(t);
       }} />}
       {sheet === 'feed' && <Feed me={me} start={feedPost} onClose={() => { setSheet(null); void load(); }} />}
       {sheet === 'jar' && <Jar me={me} onClose={() => setSheet(null)} />}
       {sheet === 'calendar' && <Calendar me={me} onClose={() => setSheet(null)} onWish={() => setSheet('chat')} />}
-      {sheet === 'chat' && <Chat me={me} live={!!room} onClose={() => { setSheet(null); void loadUnread(); }} onCall={() => setFacetime(true)} />}
+      {sheet === 'chat' && <Chat me={me} live={!!room} onClose={() => { setSheet(null); void loadUnread(); }} onCall={() => startFaceTime()} />}
       <Suspense fallback={null}>
       {sheet === 'settings' && <Settings me={me} onClose={() => setSheet(null)} onProfile={() => setSheet('family')} />}
       {sheet === 'letters' && <Letters me={me} onClose={() => setSheet(null)} />}
       {sheet === 'recap' && <Recap me={me} onClose={() => setSheet(null)} />}
-      {sheet === 'family' && <Family me={me} onClose={() => setSheet(null)} onChanged={load} onSettings={() => setSheet('settings')} />}
+      {sheet === 'family' && <Family me={me} onClose={() => setSheet(null)} onChanged={load} onSettings={() => setSheet('settings')} onCallMember={(id) => { setSheet(null); startFaceTime(id); }} />}
       {sheet === 'podcast' && <Podcast me={me} start={podcastId} onClose={() => setSheet(null)} onCall={() => setCalling(true)} />}
-      {facetime && <FaceTime me={me} onClose={() => { setFacetime(false); setSkipRoom(room?.id ?? null); }} />}
-      {!facetime && !calling && room && !room.members.includes(me.me.id) && skipRoom !== room.id && (
-        <Incoming me={me} room={room} onAccept={() => setFacetime(true)} onDecline={() => setSkipRoom(room.id)} />
+      {facetime && <FaceTime me={me} to={callTo} onClose={() => { setFacetime(false); setSkipRoom(room?.id ?? null); }} />}
+      {!facetime && !calling && room && !room.members.includes(me.me.id) && skipRoom !== room.id && (!room.to || room.to === me.me.id) && (
+        <Incoming me={me} room={room} onAccept={() => startFaceTime()} onDecline={() => setSkipRoom(room.id)} />
       )}
       {calling && <Call me={me} onClose={(done) => { setCalling(false); if (done) setCallDue(false); void checkCall(); if (done) { setPodcastId(null); setSheet('podcast'); } }} />}
       </Suspense>
@@ -172,6 +178,7 @@ export function App() {
     <>
       <Mesh />
       {body}
+      {me && !greet && !hug && <NotifyAsk />}
       <Toaster />
     </>
   );

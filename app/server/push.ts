@@ -123,10 +123,12 @@ const short = (s: string, n = 90) => (s.length > n ? `${s.slice(0, n - 1).trimEn
 // ---- Các sự kiện ----
 
 /** Có người mở cuộc gọi video cả nhà. */
-export function notifyCall(familyId: string, memberId: string) {
-  void nameOf(memberId).then((name) => notifyFamily(familyId, memberId, (l) => ({
+export function notifyCall(familyId: string, memberId: string, to?: string | null) {
+  const payload = (name: string) => (l: Lang): PushPayload => ({
     kind: 'call', title: tServer(l, 'push.call.title', { name: who(l, name) }), body: tServer(l, 'push.call.body'), tag: 'call', open: 'call', ttl: 45, urgency: 'high',
-  }))).catch((e) => console.error('[push]', e));
+  });
+  // Gọi riêng một người thì chỉ báo cho người đó; không thì báo cả nhà.
+  void nameOf(memberId).then((name) => (to ? notifyMembers([to], payload(name)) : notifyFamily(familyId, memberId, payload(name)))).catch((e) => console.error('[push]', e));
 }
 
 const POST_KINDS = ['photo', 'video', 'voice', 'hug'];

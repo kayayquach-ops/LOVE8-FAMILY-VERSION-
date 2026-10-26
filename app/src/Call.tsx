@@ -4,7 +4,7 @@ import { type Drive, type MascotMode } from './Mascot';
 import { MascotAny as Mascot } from './Mascot3D';
 import { AUDIO_TYPE, fileName, record, type Recording } from './media';
 import { callLines, type CallScript, type Me } from './shared';
-import { buzz, sfx, tap } from './sound';
+import { buzz, sfx, startRing, stopRing, tap } from './sound';
 import { playVoice, prefetchVoice, resetVoice, setVoiceContext, speak, stopSpeaking, ttsReady, unlockSpeech, voiceCut, voiceReady, warmVoice, type Kind } from './speech';
 import { Icon, toast } from './ui';
 import { snooze } from './callSnooze';
@@ -97,10 +97,8 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
 
   useEffect(() => {
     if (phase !== 'ring') return;
-    const ring = () => { sfx('hello'); buzz(400); };
-    ring();
-    const t = setInterval(ring, 3200);
-    return () => clearInterval(t);
+    startRing('in');
+    return () => stopRing();
   }, [phase]);
 
   function cleanup() {

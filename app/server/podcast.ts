@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type pg from 'pg';
 import { isTopic, type Chapter, type Podcast, type Topic } from '../src/shared.ts';
-import { errorBody, langOf, runWithLang, tReq, type Lang } from './i18n.ts';
+import { errorBody, langOf, LANGS, runWithLang, tReq, tServer, type Lang } from './i18n.ts';
 import { pool } from './db.ts';
 import { musicExpr, probe, run } from './recap.ts';
 
@@ -34,7 +34,7 @@ const titleOf = (t: string) => tReq(isTopic(t) ? `podcastGen.titleOf.${t}` : 'po
 const topicLabel = (t: string) => tReq(isTopic(t) ? `topic.${t}` : 'topic.fallback');
 const mediaFile = (m: string) => path.join(MEDIA_DIR, path.basename(m.split('?')[0]));
 /** Giọng máy đọc tiếng Việt chậm: ước chừng thời gian đọc để chừa đủ nhạc. */
-const sayTime = (s: string) => 1 + s.trim().split(/\s+/).length * 0.42;
+const sayTime = (s: string) => (s.trim() ? 1 + s.trim().split(/\s+/).length * 0.42 : 0);
 
 type Clip = { file: string; who: string; question: string; transcript: string | null; say: string };
 
@@ -59,21 +59,21 @@ async function buildAudio(intro: string, clips: Clip[], outro: string, outFile: 
 
     // Xếp mốc: nhạc vào, lời dẫn, giọng thật, nghỉ một nhịp, lời dẫn tiếp...
     const chapters: Chapter[] = [];
-    let t = 1.2;
+    // Lời dẫn rỗng thì bỏ hẳn: không chừa nhạc, không có giọng máy (tập lời thương đầu tiên chỉ có giọng người nói).
+    let t = intro.trim() ? 1.2 : 0.8;
     const sayIntro = sayTime(intro);
-    chapters.push({ at: t, until: t + sayIntro, say: intro });
-    t += sayIntro + 0.8;
+    if (sayIntro) { chapters.push({ at: t, until: t + sayIntro, say: intro }); t += sayIntro + 0.8; }
     const starts: number[] = [];
     for (const v of voices) {
       const s = sayTime(v.clip.say);
-      chapters.push({ at: t, until: t + s + 0.5, say: v.clip.say, who: v.clip.who, question: v.clip.question, transcript: v.clip.transcript });
-      t += s + 0.5;
+      chapters.push({ at: t, until: t + (s ? s + 0.5 : 0.2), say: v.clip.say, who: v.clip.who, question: v.clip.question, transcript: v.clip.transcript });
+      t += s ? s + 0.5 : 0;
       starts.push(t);
       t += v.dur + 1.4;
     }
     const sayOut = sayTime(outro);
-    chapters.push({ at: t, until: t + sayOut, say: outro });
-    const total = t + sayOut + 3.5;
+    if (sayOut) chapters.push({ at: t, until: t + sayOut, say: outro });
+    const total = t + sayOut + (sayOut ? 3.5 : 2.2);
 
     await run(FFMPEG, [...base, '-f', 'lavfi', '-i', `aevalsrc=exprs='${musicExpr(0.998)}|${musicExpr(1.002)}':s=44100:d=${(total + 1).toFixed(2)}`,
       '-af', 'lowpass=f=2800,aecho=0.8:0.6:180|340:0.22|0.12,volume=1.8', '-c:a', 'pcm_s16le', 'music.wav'], work, 300_000);
@@ -183,10 +183,27 @@ export async function buildFirstVoicePodcast(fid: string, memberId: string, name
   if (!existsSync(file)) return;
   await runWithLang(lang, async () => enqueue({
     fid, key: `first:${memberId}`, kind: 'person', memberId, topic: 'loi-nhan', title: tReq('podcastGen.first.title'), cover: await coverFor(fid, memberId),
-    intro: tReq('podcastGen.first.intro', { name }),
-    outro: tReq('podcastGen.first.outro'),
-    clips: [{ file, who: name, question: tReq('podcastGen.first.title'), transcript: null, say: tReq('podcastGen.first.say', { name }) }],
+    // Không có lời dẫn bằng giọng máy: nghe là tới thẳng giọng người nói, nhạc chỉ vào dịu ở đầu và tan ở cuối.
+    intro: '',
+    outro: '',
+    clips: [{ file, who: name, question: tReq('podcastGen.first.title'), transcript: null, say: '' }],
   }, lang));
+}
+
+/** Tập lời thương đầu tiên làm bản cũ còn lời dẫn bằng giọng máy và khoảng nhạc dài: dựng lại một lần cho đúng kiểu mới (chỉ giọng người nói). */
+export async function refreshFirstVoicePodcasts() {
+  const { rows } = await pool.query(`select family_id, member_id, chapters from podcasts where key like 'first:%' and status = 'ready'`);
+  for (const r of rows) {
+    let ch: Array<{ say?: string }> = [];
+    try { ch = JSON.parse(r.chapters); } catch { continue; }
+    if (!ch.some((c) => c.say)) continue;
+    const { rows: [m] } = await pool.query('select name, lang from members where id = $1', [r.member_id]);
+    if (!m) continue;
+    const caps = LANGS.map((l) => tServer(l, 'post.firstVoice', { name: m.name }));
+    const { rows: [post] } = await pool.query(
+      `select media from posts where author_id = $1 and kind = 'voice' and caption = any($2) and media is not null order by created_at limit 1`, [r.member_id, caps]);
+    if (post?.media) void buildFirstVoicePodcast(r.family_id, r.member_id, m.name, post.media, langOf(m.lang)).catch((e) => console.error('[podcast] dựng lại lời đầu tiên:', e));
+  }
 }
 
 function row(r: any): Podcast {

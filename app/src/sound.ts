@@ -63,6 +63,84 @@ export const tap = () => { sfx('tap'); navigator.vibrate?.(10); };
 export const tapSoft = () => { sfx('tap', true); navigator.vibrate?.(10); };
 export const buzz = (ms = 10) => navigator.vibrate?.(ms);
 
+// Chuông điện thoại thật, tổng hợp bằng Web Audio (không dùng file âm thanh).
+// 'in': chuông gọi đến kiểu chuông bàn cổ, hai hồi "kính coong" rồi nghỉ. 'out': tiếng chờ "tút ... tút" của người đang gọi.
+let ringing: { stop: () => void } | null = null;
+
+function bell(c: AudioContext, t0: number, dur: number, vol: number) {
+  // Hai tần số lệch nhau, đóng mở 20 lần mỗi giây tạo tiếng chuông rung của điện thoại bàn.
+  const out = c.createGain();
+  out.gain.setValueAtTime(0, t0);
+  out.gain.linearRampToValueAtTime(vol, t0 + 0.02);
+  out.gain.setValueAtTime(vol, t0 + dur - 0.04);
+  out.gain.linearRampToValueAtTime(0, t0 + dur);
+  const am = c.createGain();
+  am.gain.value = 0.5;
+  const lfo = c.createOscillator();
+  lfo.type = 'square';
+  lfo.frequency.value = 20;
+  const depth = c.createGain();
+  depth.gain.value = 0.5;
+  lfo.connect(depth).connect(am.gain);
+  for (const f of [1180, 1480]) {
+    const o = c.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = f;
+    o.connect(am);
+    o.start(t0);
+    o.stop(t0 + dur + 0.05);
+  }
+  am.connect(out).connect(c.destination);
+  lfo.start(t0);
+  lfo.stop(t0 + dur + 0.05);
+}
+
+function beep(c: AudioContext, t0: number, dur: number, vol: number) {
+  const out = c.createGain();
+  out.gain.setValueAtTime(0, t0);
+  out.gain.linearRampToValueAtTime(vol, t0 + 0.05);
+  out.gain.setValueAtTime(vol, t0 + dur - 0.08);
+  out.gain.linearRampToValueAtTime(0, t0 + dur);
+  for (const f of [425, 450]) {
+    const o = c.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = f;
+    o.connect(out);
+    o.start(t0);
+    o.stop(t0 + dur + 0.05);
+  }
+  out.connect(c.destination);
+}
+
+/** Đổ chuông cho tới khi gọi stopRing(). Gọi nhiều lần thì chỉ một chuông. iPhone cần app đã được chạm một lần mới phát được tiếng. */
+export function startRing(kind: 'in' | 'out') {
+  unlock();
+  if (ringing || !ctx) return;
+  const c = ctx;
+  let alive = true;
+  let timer = 0;
+  const cycle = () => {
+    if (!alive || document.hidden) { if (alive) timer = window.setTimeout(cycle, 1000); return; }
+    const t = c.currentTime + 0.05;
+    if (kind === 'in') {
+      bell(c, t, 0.42, 0.22);
+      bell(c, t + 0.62, 0.42, 0.22);
+      navigator.vibrate?.([420, 200, 420]);
+      timer = window.setTimeout(cycle, 3000);
+    } else {
+      beep(c, t, 1.1, 0.12);
+      timer = window.setTimeout(cycle, 4000);
+    }
+  };
+  cycle();
+  ringing = { stop: () => { alive = false; clearTimeout(timer); navigator.vibrate?.(0); } };
+}
+
+export function stopRing() {
+  ringing?.stop();
+  ringing = null;
+}
+
 // Nhạc nền piano nhẹ cho phần hỏi đầu: vào nhỏ dần, lặp lại, khi xong thì tắt dần.
 let music: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
 let musicBuf: Promise<AudioBuffer | null> | null = null;

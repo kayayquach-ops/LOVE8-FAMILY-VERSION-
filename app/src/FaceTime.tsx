@@ -5,7 +5,7 @@ import { FH, FW, loadStripFonts, renderStrip, snap, snapInto, STRIPS, stripTheme
 import './booth.css';
 import { livePost, onLive, type LiveMsg, type LiveRoom } from './live';
 import type { Me } from './shared';
-import { buzz, sfx, tap } from './sound';
+import { buzz, sfx, startRing, stopRing, tap } from './sound';
 import { Avatar, Icon, toast } from './ui';
 import { t, type Key } from './i18n';
 
@@ -51,7 +51,7 @@ async function getMedia(name: string): Promise<{ stream: MediaStream; fake: bool
 }
 
 /** Gọi video cả nhà: mỗi người nối thẳng với từng người còn lại (WebRTC), máy chủ chỉ chuyển lời mời. */
-export function FaceTime({ me, onClose }: { me: Me; onClose: () => void }) {
+export function FaceTime({ me, to, onClose }: { me: Me; to?: string | null; onClose: () => void }) {
   const meId = me.me.id;
   const [, bump] = useReducer((x: number) => x + 1, 0);
   const [local, setLocal] = useState<MediaStream | null>(null);
@@ -181,7 +181,7 @@ export function FaceTime({ me, onClose }: { me: Me; onClose: () => void }) {
       setLocal(media.stream);
       setFake(media.fake);
       if (media.fake) toast(media.stream.getAudioTracks().length ? t('facetime.noCam') : t('facetime.noCamMic'));
-      const r = await livePost<{ room: LiveRoom }>('join');
+      const r = await livePost<{ room: LiveRoom }>('join', to ? { to } : {});
       joined.current = true;
       sync(r.room);
     })().catch((e) => toast((e as Error).message));
@@ -190,10 +190,17 @@ export function FaceTime({ me, onClose }: { me: Me; onClose: () => void }) {
 
   // Còn một mình thì nghe tiếng chờ nhẹ.
   const alone = !members.filter((id) => id !== meId).length;
+  const target = to ? me.members.find((m) => m.id === to) : null;
+  // Gọi riêng một người mà 45 giây không ai nghe thì tự dừng.
+  useEffect(() => {
+    if (!to || !alone || !local) return;
+    const id = setTimeout(() => { toast(t('facetime.noAnswer', { name: target?.name ?? '' })); hangUp(); }, 45000);
+    return () => clearTimeout(id);
+  }, [to, alone, !!local]);
   useEffect(() => {
     if (!alone || !local) return;
-    const iv = setInterval(() => sfx('reveal'), 2600);
-    return () => clearInterval(iv);
+    startRing('out');
+    return () => stopRing();
   }, [alone, !!local]);
 
   function hangUp(silent = false) {
@@ -255,8 +262,8 @@ export function FaceTime({ me, onClose }: { me: Me; onClose: () => void }) {
 
       {alone && !!local && (
         <div className="ft-wait fade">
-          <div className="ft-wait-faces">{me.members.filter((m) => m.id !== meId).map((m) => <Avatar key={m.id} m={m} size={38} />)}</div>
-          <span>{t('facetime.calling')}</span>
+          <div className="ft-wait-faces">{me.members.filter((m) => (target ? m.id === target.id : m.id !== meId)).map((m) => <Avatar key={m.id} m={m} size={38} />)}</div>
+          <span>{target ? t('facetime.callingOne', { name: target.name }) : t('facetime.calling')}</span>
         </div>
       )}
       {!!smile && <Countdown key={smile} onDone={() => setSmile(0)} />}
