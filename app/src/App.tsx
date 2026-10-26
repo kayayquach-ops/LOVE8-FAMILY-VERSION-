@@ -62,7 +62,8 @@ export function App() {
   const inCall = useRef(false);
   inCall.current = facetime;
   const [skipRoom, setSkipRoom] = useState<string | null>(null);
-  const [greet, setGreet] = useState(true);
+  // Mở từ thông báo (?open=...) thì vào thẳng, không chờ màn chào: cuộc gọi chỉ đổ chuông vài chục giây.
+  const [greet, setGreet] = useState(() => !new URLSearchParams(location.search).get('open'));
   // Màn "giữ để ôm" mỗi ngày đã bỏ theo yêu cầu: mở app là vào thẳng Trang chủ sau màn chào. Đặt lại thành kiểm HUG_KEY để bật lại.
   const [hug, setHug] = useState(false);
 
@@ -103,6 +104,16 @@ export function App() {
     document.addEventListener('visibilitychange', onShow);
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', onShow); };
   }, [!!me]);
+  // Hỏi thẳng máy chủ xem nhà đang có cuộc gọi không: kênh sự kiện có thể đã chết khi app nằm nền.
+  const syncRoom = () => fetch('/api/live/room', { headers: { authorization: `Bearer ${token.get()}` } }).then((r) => r.json())
+    .then((d) => setRoom((prev) => (JSON.stringify(prev) === JSON.stringify(d.room ?? null) ? prev : (d.room ?? null)))).catch(() => {});
+  useEffect(() => {
+    if (!me) return;
+    const iv = setInterval(() => { if (!document.hidden && !inCall.current) void syncRoom(); }, 4000);
+    const onShow = () => { if (document.visibilityState === 'visible') { connectLive(); void syncRoom(); } };
+    document.addEventListener('visibilitychange', onShow);
+    return () => { clearInterval(iv); document.removeEventListener('visibilitychange', onShow); };
+  }, [!!me]);
   useEffect(() => {
     if (!me) return;
     connectLive();
@@ -119,7 +130,7 @@ export function App() {
     if (!me) return;
     void syncPush();
     return onPushOpen((o) => {
-      if (o === 'call') { setSkipRoom(null); setSheet(null); setTab('camera'); }
+      if (o === 'call') { setSkipRoom(null); setSheet(null); setTab('camera'); connectLive(); void syncRoom(); }
       else if (o === 'weekly') setCalling(true);
       else if (o === 'chat' || o === 'calendar') setSheet(o);
       else if (o === 'letter') setSheet('letters');

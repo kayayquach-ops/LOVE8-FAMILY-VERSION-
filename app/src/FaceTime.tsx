@@ -99,6 +99,7 @@ export function FaceTime({ me, to, onClose }: { me: Me; to?: string | null; onCl
         void signal(id, { state: state.current });
         if (!counted.current) { counted.current = true; api.mission('call').catch(() => {}); }
       }
+      if (pc.connectionState === 'failed') toast(t('facetime.failed'));
       // Rớt hẳn thì người có mã nhỏ hơn mời lại.
       if (pc.connectionState === 'failed' && meId < id) {
         close(id);
@@ -194,7 +195,7 @@ export function FaceTime({ me, to, onClose }: { me: Me; to?: string | null; onCl
   // Gọi riêng một người mà 45 giây không ai nghe thì tự dừng.
   useEffect(() => {
     if (!to || !alone || !local) return;
-    const id = setTimeout(() => { toast(t('facetime.noAnswer', { name: target?.name ?? '' })); hangUp(); }, 45000);
+    const id = setTimeout(() => { toast(t('facetime.noAnswer', { name: target?.name ?? '' })); hangUp(); }, 60000);
     return () => clearTimeout(id);
   }, [to, alone, !!local]);
   useEffect(() => {

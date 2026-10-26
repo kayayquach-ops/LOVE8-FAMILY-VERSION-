@@ -671,5 +671,7 @@
   "facetime.callingOne": "{name}님에게 거는 중...",
   "facetime.noAnswer": "{name}님이 받지 않았어요",
   "incoming.you": "당신에게 걸려 온 전화예요",
-  "family.callVideo": "{name}님에게 영상통화"
+  "family.callVideo": "{name}님에게 영상통화",
+
+  "facetime.failed": "영상이 연결되지 않아 다시 시도하고 있어요"
 }

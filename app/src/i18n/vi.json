@@ -671,5 +671,7 @@
   "facetime.callingOne": "Đang gọi {name}...",
   "facetime.noAnswer": "{name} chưa nghe máy",
   "incoming.you": "Gọi riêng cho bạn",
-  "family.callVideo": "Gọi video cho {name}"
+  "family.callVideo": "Gọi video cho {name}",
+
+  "facetime.failed": "Chưa nối được hình, mình đang thử lại"
 }

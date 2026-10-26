@@ -685,5 +685,7 @@
   "facetime.callingOne": "Calling {name}...",
   "facetime.noAnswer": "{name} didn't pick up",
   "incoming.you": "Calling just you",
-  "family.callVideo": "Video call {name}"
+  "family.callVideo": "Video call {name}",
+
+  "facetime.failed": "Couldn't connect the video, trying again"
 }

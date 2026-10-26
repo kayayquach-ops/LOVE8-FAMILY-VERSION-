@@ -109,7 +109,8 @@ liveStreamRouter.get('/live/stream', h(async (req, res) => {
     if (c!.set.size) return;
     conns.delete(mid);
     // Mất kết nối hẳn một lúc thì coi như đã gác máy.
-    gone.set(mid, setTimeout(() => { gone.delete(mid); if (!conns.has(mid)) leave(fid, mid); }, 20000));
+    // iPhone cắt kênh khi app xuống nền một lúc: chờ lâu hơn trước khi coi là đã gác máy, để người nhận bấm vào thông báo vẫn còn phòng để vào.
+    gone.set(mid, setTimeout(() => { gone.delete(mid); if (!conns.has(mid)) leave(fid, mid); }, 75000));
   });
 }));
 
