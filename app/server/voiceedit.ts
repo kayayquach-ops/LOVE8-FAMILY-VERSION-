@@ -414,7 +414,7 @@ export type Placed = { clip: Clip; at: number };
 const trackLufs = new Map<string, number>();
 
 async function musicInput(work: string, total: number, seed: string): Promise<{ args: string[]; graph: (i: number) => string; lufs: number }> {
-  const track = pickTrack(seed);
+  const track = pickTrack(seed, 'podcast');
   if (track) {
     try {
       const st = statSync(track);

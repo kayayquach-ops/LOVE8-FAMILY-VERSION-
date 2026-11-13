@@ -475,7 +475,7 @@ export async function buildRecapVideo(input: RecapInput, outFile: string, opts: 
     if (!shots.length) throw new Error('Không đọc được ảnh hay video nào');
 
     // 3. Nhạc và nhịp: có bài thật thì đo nhịp bài, chưa có thì tổng hợp ở 112 nhịp mỗi phút.
-    const track = pickTrack(input.seed ?? input.week);
+    const track = pickTrack(input.seed ?? input.week, 'recap');
     let beat: Beat = { period: 60 / 112, phase: 0, sure: true };
     let trackDur = 0;
     if (track) {
