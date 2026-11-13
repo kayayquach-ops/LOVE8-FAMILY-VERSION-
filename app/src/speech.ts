@@ -50,6 +50,9 @@ export function resetVoice() { off = false; cut = false; status = null; provider
 /** Hết hạn mức giữa chừng (hoặc không có giọng): các câu sau chỉ hiện chữ. */
 export const voiceCut = () => cut || off;
 
+/** Nhà cung cấp giọng đã chốt cho cuộc gọi này (null: giọng máy hoặc chưa hỏi), để máy chủ đọc sẵn câu đáp đúng giọng. */
+export const voiceProvider = () => (off ? null : provider);
+
 /** Hỏi máy chủ một lần cho cả cuộc gọi: true thì dùng giọng của máy chủ (OpenAI hoặc Gemini), false thì giọng máy từ đầu đến cuối. */
 export function ttsReady(): Promise<boolean> {
   status ??= (async () => {
@@ -147,7 +150,9 @@ export async function playVoice(text: string, level: (v: number) => void, ms = 4
   const b = await bufferOf(text, ms, kind);
   if (!b || !ctx || !out) return false;
   stopVoice();
-  if (ctx.state !== 'running') { try { await ctx.resume(); } catch {} }
+  // iPhone có thể treo resume() khi âm thanh đang bị hệ thống chiếm ('interrupted'): chờ tối đa 1 giây, phần hẹn giờ bảo vệ bên dưới lo tiếp.
+  if (ctx.state !== 'running') { try { await Promise.race([ctx.resume(), new Promise((r) => setTimeout(r, 1000))]); } catch {} }
+  if (!ctx || !out) return false;
   const ac = ctx, an = out;
   return new Promise<boolean>((resolve) => {
     const src = ac.createBufferSource();

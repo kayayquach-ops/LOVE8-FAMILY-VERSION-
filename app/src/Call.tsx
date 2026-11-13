@@ -6,7 +6,7 @@ import { AUDIO_TYPE, fileName, record, type Recording } from './media';
 import { send as outbox } from './outbox';
 import { callLines, type CallScript, type Me } from './shared';
 import { buzz, sfx, startRing, stopRing, tap } from './sound';
-import { playVoice, prefetchVoice, resetVoice, setVoiceContext, speak, stopSpeaking, ttsReady, unlockSpeech, voiceCut, voiceReady, warmVoice, type Kind } from './speech';
+import { playVoice, prefetchVoice, resetVoice, setVoiceContext, speak, stopSpeaking, ttsReady, unlockSpeech, voiceCut, voiceProvider, voiceReady, warmVoice, type Kind } from './speech';
 import { Icon, toast } from './ui';
 import { snooze } from './callSnooze';
 import { shownLang, speechLang, t, type Key, type Lang } from './i18n';
@@ -190,6 +190,9 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     if (!live.current) return Promise.resolve(null);
     setMode('listen');
     setHeard('');
+    // Sau khi chọn ảnh, có cuộc gọi đến hay khoá màn hình, iPhone có thể treo AudioContext ('interrupted'): đánh thức lại trước khi nghe.
+    const ac = audio.current;
+    if (ac && ac.state !== 'running' && ac.state !== 'closed') void ac.resume().catch(() => {});
     const p = new Promise<Heard | null>((resolve) => {
       const a = analyser.current;
       const buf = a ? new Float32Array(a.fftSize) : null;
@@ -199,6 +202,10 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       let floorSum = 0, floorN = 0, floor = 0.004;
       let started = false, inSpeech = false, voiceRun = 0, lastVoice = 0, segStart = 0, lastSeg = 0, speechMs = 0;
       let ended = false;
+      // Mức âm lớn nhất đo được: bộ đo có mà toàn số 0 (iPhone đôi khi) thì coi như không đo được, lấy chữ chép làm dấu hiệu đang nói.
+      let peak = 0;
+      // Nhận dạng tự tắt thì bật lại, nhưng có giới hạn; máy không cho dùng (iOS PWA báo service-not-allowed) thì thôi hẳn.
+      let restarts = 0, denied = false;
 
       const R = Recognition();
       let r: any = null;
@@ -219,10 +226,10 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
             text = (final + interim).trim();
             setHeard(text);
             // Không đo được âm lượng thì lấy chữ chép được làm dấu hiệu đang nói.
-            if (!a) { const now = performance.now(); if (!started) { started = true; segStart = now; } inSpeech = true; lastVoice = now; }
+            if (!a || peak < 0.002) { const now = performance.now(); if (!started) { started = true; segStart = now; } inSpeech = true; lastVoice = now; }
           };
-          r.onend = () => { if (!ended) { try { r.start(); } catch {} } };
-          r.onerror = () => {};
+          r.onend = () => { if (!ended && !denied && restarts++ < 30) { try { r.start(); } catch {} } };
+          r.onerror = (e: any) => { if (['not-allowed', 'service-not-allowed', 'audio-capture'].includes(e?.error)) denied = true; };
           rec.current = r;
           r.start();
         } catch { r = null; }
@@ -249,6 +256,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
           let sum = 0;
           for (let k = 0; k < buf.length; k++) sum += buf[k] * buf[k];
           const rms = Math.sqrt(sum / buf.length);
+          peak = Math.max(peak, rms);
           drive.current.level = Math.min(1, Math.max(0, (rms - floor) * 14));
           if (elapsed < VAD.calibrate) { floorSum += rms; floorN++; return; }
           if (floorN) { floor = Math.min(0.02, Math.max(0.002, floorSum / floorN)); floorN = 0; }
@@ -286,7 +294,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     count.current += 1;
     return outbox({
       group: s.id, url: `/api/call/${s.id}/answer`, blob: h.recording.blob, file: fileName(h.recording.blob, 'answer'),
-      fields: { idx: String(n), transcript: h.transcript, seconds: String(h.recording.seconds) },
+      fields: { idx: String(n), transcript: h.transcript, seconds: String(h.recording.seconds), provider: (!machine.current && voiceProvider()) || '' },
     }).then((r: Saved) => { if (r === null) toast(t('call.answerFailed')); return r; });
   }
 
@@ -302,7 +310,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 2000);
     try {
-      const r = await call<{ text: string | null }>(`/api/call/${s.id}/reply`, { method: 'POST', body: JSON.stringify({ idx: n, transcript: h.transcript }), signal: ctrl.signal });
+      const r = await call<{ text: string | null }>(`/api/call/${s.id}/reply`, { method: 'POST', body: JSON.stringify({ idx: n, transcript: h.transcript, provider: machine.current ? null : voiceProvider() }), signal: ctrl.signal });
       return r.text || null;
     } catch { return null; } finally { clearTimeout(t); }
   }
