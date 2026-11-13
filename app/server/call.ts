@@ -14,6 +14,7 @@ import { weekKey } from './recap.ts';
 import { buildPodcastsForCall } from './podcast.ts';
 import { cachedSpeech, defaultProvider, gateOf, hasVoice, initTtsBudget, pickProvider, providerOn, speech, transcribe, ttsStatus, TTS_MAX, type Provider } from './voice.ts';
 import path from 'node:path';
+import { Limit, limitBy } from './limit.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 
@@ -549,6 +550,18 @@ const h = (fn: Fn) => (req: any, res: express.Response) =>
 /** Hạn chờ AI soạn bộ câu hỏi lúc nhấc máy (máy khách xin ngay khi chuông reo nên thường đã có trước khi bấm). */
 const START_AI_MS = 7000;
 
+// Giới hạn tần suất: người có mã máy không gọi dồn được để đốt ngân sách Gemini, OpenAI. Máy khách gặp 429 thì dùng câu mẫu, chữ phụ đề,
+// hoặc (câu trả lời) để hàng chờ thử lại sau, nên người dùng thật không thấy lỗi.
+const byMember = (req: express.Request) => (req as express.Request & { member: { id: string } }).member.id;
+const limitStart = limitBy({ name: 'call-start', per: new Limit(30, 3600e3), key: byMember });
+const limitAnswer = limitBy({ name: 'call-answer', per: new Limit(30, 10 * 60e3), key: byMember });
+const limitReply = limitBy({ name: 'call-reply', per: new Limit(20, 10 * 60e3), key: byMember });
+const limitTts = limitBy({ name: 'call-tts', per: new Limit(150, 10 * 60e3), key: byMember });
+// Nhiều thành viên giả cùng một nơi: thêm trần theo IP (cả nhà dùng chung wifi vẫn dư).
+const limitTtsIp = limitBy({ name: 'call-tts-ip', per: new Limit(400, 10 * 60e3) });
+// AI soạn bộ câu mới: mỗi người 4 lần mỗi giờ (đổi ngôn ngữ, đổi tên linh vật), quá thì dùng bộ câu mẫu chứ không báo lỗi.
+const aiScripts = new Limit(4, 3600e3);
+
 export function callRouter(upload: multer.Multer) {
   const r = express.Router();
   const media = (f?: Express.Multer.File) => (f ? `/media/${f.filename}` : null);
@@ -562,7 +575,7 @@ export function callRouter(upload: multer.Multer) {
   }));
 
   // Nhấc máy: lấy bộ câu hỏi của tuần (soạn một lần, gọi lại thì dùng tiếp).
-  r.post('/call/start', h(async (req, res) => {
+  r.post('/call/start', limitStart, h(async (req, res) => {
     const { id: mid, family_id: fid } = req.member;
     const week = weekKey();
     const c = await context(mid, fid);
@@ -573,14 +586,14 @@ export function callRouter(upload: multer.Multer) {
     // Bộ câu soạn bằng thứ tiếng khác với ngôn ngữ hiện tại (đổi ngôn ngữ giữa tuần), hoặc nhà vừa đổi tên linh vật, thì soạn lại.
     if (old && (old.lang ?? 'vi') === c.lang && (old.mascot ?? DEFAULT_MASCOT_NAME) === (c.mascot ?? DEFAULT_MASCOT_NAME) && (!first || old.source === 'first')) return res.json({ id: rows[0].id, script: old });
     // Người dùng đã bấm Nghe máy và đang chờ: AI soạn quá 7 giây thì dùng bộ câu mẫu, không để màn hình im lặng.
-    const script = first ? firstScript(c) : (await aiScript(c, week, START_AI_MS)) ?? templateScript(c, week);
+    const script = first ? firstScript(c) : (aiScripts.take(mid) ? await aiScript(c, week, START_AI_MS) : null) ?? templateScript(c, week);
     const id = randomUUID();
     await pool.query('insert into calls (id, family_id, member_id, week, script) values ($1,$2,$3,$4,$5)', [id, fid, mid, week, JSON.stringify(script)]);
     res.json({ id, script });
     // Giọng đọc do máy khách xin khi cần (lời chào + câu đầu một lần, mỗi câu sau xin trước một câu), máy chủ không tự đọc trước.
   }));
 
-  r.post('/call/:id/answer', upload.single('file'), h(async (req, res) => {
+  r.post('/call/:id/answer', limitAnswer, upload.single('file'), h(async (req, res) => {
     const { rows: [call] } = await pool.query('select * from calls where id = $1 and member_id = $2', [req.params.id, req.member.id]);
     if (!call) return res.status(404).json(errorBody('call_not_found'));
     const script: CallScript = JSON.parse(call.script);
@@ -608,7 +621,7 @@ export function callRouter(upload: multer.Multer) {
   }));
 
   // Nghe xong một câu: AI đáp một câu ngắn theo điều vừa kể. Không có khoá hay quá 2 giây thì máy khách dùng câu mẫu.
-  r.post('/call/:id/reply', h(async (req, res) => {
+  r.post('/call/:id/reply', limitReply, h(async (req, res) => {
     const said = String(req.body.transcript || '').trim().slice(0, 1500);
     if (!said) return res.json({ text: null });
     const { rows: [call] } = await pool.query('select c.script, m.name, m.role from calls c join members m on m.id = c.member_id where c.id = $1 and c.member_id = $2', [req.params.id, req.member.id]);
@@ -626,7 +639,7 @@ export function callRouter(upload: multer.Multer) {
   // Giọng đọc của Mây: trả về đường dẫn file âm thanh. url null thì kèm reason (budget, cooldown, nokey, skip, fail) để máy hiện chữ.
   // provider: nhà cung cấp đã chốt lúc nhấc máy, máy chủ dùng đúng nhà đó và không tự đổi giữa chừng.
   // kind 'fixed': chỉ lấy từ kho, không bao giờ gọi nhà cung cấp. kind 'reply': câu đáp theo nội dung, chỉ đọc khi còn dư ngân sách.
-  r.post('/call/tts', h(async (req, res) => {
+  r.post('/call/tts', limitTts, limitTtsIp, h(async (req, res) => {
     const text = String(req.body.text || '').replace(/\s+/g, ' ').trim();
     if (!text || text.length > TTS_MAX) return res.json({ url: null, reason: 'fail' });
     const kind = req.body.kind === 'fixed' || req.body.kind === 'reply' ? req.body.kind : undefined;
