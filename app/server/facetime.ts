@@ -122,20 +122,30 @@ liveRouter.get('/live/room', (req: any, res) => { res.json({ room: view(rooms.ge
 
 liveRouter.post('/live/join', h(async (req, res) => {
   const { id: mid, family_id: fid } = req.member;
+  const b = req.body ?? {};
+  // rejoin: máy đang trong cuộc gọi mà máy chủ vừa khởi động lại (deploy) nên mất phòng. Mở lại đúng phòng cũ (mã phòng, người gọi,
+  // người được gọi riêng, giờ bắt đầu) và không gửi thông báo, để cả nhà không bị đổ chuông lại.
+  const rejoin = b.rejoin === true;
   let r = rooms.get(fid);
   if (!r) {
-    // `to`: gọi riêng một người trong nhà (chuông và thông báo chỉ tới người đó).
-    let to: string | null = typeof req.body?.to === 'string' && req.body.to !== mid ? req.body.to : null;
-    if (to) {
-      const { rows } = await pool.query('select 1 from members where id = $1 and family_id = $2', [to, fid]);
-      if (!rows[0]) to = null;
+    // `to`: gọi riêng một người trong nhà (chuông và thông báo chỉ tới người đó). Vào lại thì người được gọi có thể chính là mình.
+    let to: string | null = typeof b.to === 'string' && (rejoin || b.to !== mid) ? b.to : null;
+    let by: string = rejoin && typeof b.by === 'string' ? b.by : mid;
+    const check = [to, by].filter((x): x is string => !!x && x !== mid);
+    if (check.length) {
+      const { rows } = await pool.query('select id from members where family_id = $1 and id = any($2)', [fid, check]);
+      const ok = new Set<string>(rows.map((x) => x.id).concat(mid));
+      if (to && !ok.has(to)) to = null;
+      if (!ok.has(by)) by = mid;
     }
+    const started = rejoin && Number.isFinite(b.started) && b.started <= Date.now() && b.started > Date.now() - 86400e3 ? b.started : Date.now();
+    const rid = rejoin && typeof b.id === 'string' && /^[0-9a-f-]{36}$/.test(b.id) ? b.id : randomUUID();
     // Trong lúc kiểm tra người nhận, người khác có thể đã mở phòng: dùng phòng đó.
     r = rooms.get(fid);
     if (!r) {
-      r = { id: randomUUID(), by: mid, to, members: new Set(), started: Date.now() };
+      r = { id: rid, by, to, members: new Set(), started };
       rooms.set(fid, r);
-      notifyCall(fid, mid, to);
+      if (!rejoin) notifyCall(fid, mid, to);
     }
   }
   r.members.add(mid);
