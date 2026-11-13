@@ -1,6 +1,24 @@
 # Sweet Home (tên cũ Homeletter): bàn giao cho phiên làm việc tiếp theo
 
-App gia đình cho du học sinh ở xa và bố mẹ. Bản thật: **https://homeletter-production.up.railway.app** (tên miền giữ tên cũ). Cập nhật lần cuối: 2026-10-25, commit `dafe118`, nhánh `ux-simple-poetic`, đã fast-forward vào `main`.
+App gia đình cho du học sinh ở xa và bố mẹ. Bản thật: **https://homeletter-production.up.railway.app** (tên miền giữ tên cũ). Cập nhật lần cuối: 2026-11-13, nhánh `ux-simple-poetic`. Bản live vẫn là `f0e9258` (26/10); mọi thứ ở mục "Đợt 13/11/2026" dưới đây CHƯA deploy.
+
+## Đợt 13/11/2026 (đã gộp vào `ux-simple-poetic`, chưa deploy)
+
+Làm song song bằng nhiều agent, mỗi agent một nhánh `worktree-agent-*` (trong `.claude/worktrees`, đã gộp hết). Lưu ý khi dùng worktree: nhánh mới được tách từ `origin` (bản đã push), không phải HEAD trên máy, nên phải `git reset --hard <commit>` hoặc rebase trước khi làm.
+
+- **Linh vật**: mỗi nhà đặt tên (mặc định Mây, chữ `{mascot}` trong bảng i18n, prompt AI theo tên) và chọn 1 trong 8 hình (`PUT /api/family/mascot`, `MascotSheet.tsx`). 8 hình là thú bông vải nỉ dựng bằng Blender (người dùng chọn kiểu này, chê bản khối tròn). Mã nhà mới 7 số, nhà cũ giữ 6 số.
+- **Logo** mới từ ảnh người dùng gửi (`branding/logo-source.webp`, giữ nguyên, không đổi màu): icon app dùng nguyên ảnh có nền giấy; trong app dùng `public/logo-mark.png` (chữ đen tách nền). Sinh lại bằng `node scripts/icons.mjs`. Chữ "sweet home" ở màn chào vẫn là chữ thường, chưa hỏi người dùng có muốn thay bằng logo không.
+- **Camera**: chụm hai ngón để zoom (phần cứng nếu có, không thì zoom số, ảnh/video ra đúng khung), nút 1×/2×. **Photobooth**: nền sau dải tự chọn màu tương phản với khung (`stageColor` trong `booth.ts`).
+- **Trang chủ** làm lại (`Home.tsx`, `home.css`): lọ yêu thương là khối lớn ở màn đầu; nền giấy ngà chỉ ở Trang chủ, tab khác vẫn nền cũ. Ảnh trước/sau: `app/docs/home-redesign/`.
+- **Phim tuần** làm lại theo tinh thần Yope (`app/docs/recap-design.md`): tự dựng 20 giờ tối Chủ nhật giờ VN cho mọi nhà rồi đẩy thông báo; server tắt đúng lúc thì dựng bù; lần deploy đầu sẽ dựng bù tuần 2-8/11 (không báo). `sharp` đã chuyển sang dependencies vì phim tuần dùng lúc chạy.
+- **Podcast và video sau cuộc gọi**: xem mục trong phần cuộc gọi AI bên dưới. Phụ đề khớp từ dùng `whisper-1` (trần `WHISPER_DAILY_MIN`), chưa chạy thật với khoá OpenAI.
+- **Đăng nhập Google** (`server/google.ts`, `googleVerify.ts`, `app/docs/google-login.md`): OIDC chuyển cả trang, chạy được ở PWA iPhone; ẩn tới khi đặt `GOOGLE_CLIENT_ID`. Bộ giả chỉ cho dev (`GOOGLE_FAKE=1`, tự tắt trên Railway). Test: `npm run test:google`.
+- **Rà soát toàn app (Fable)** và sửa lỗi: `app/docs/audit-2026-11.md` (mục 7 cuối file là các mục để lại và các câu cần người dùng quyết). Đã sửa: giới hạn thử mã nhà (`server/limit.ts`), hàng chờ gửi lại câu trả lời và `/finish` của cuộc gọi (`src/outbox.ts`), ErrorBoundary + tự tải lại khi chunk cũ mất, chờ AI tối đa 7 giây khi nhấc máy, chặn cảm xúc/trả lời chéo nhà, giới hạn API cuộc gọi, gọi video vào lại phòng sau khi server khởi động lại, lỗi 500 không lộ câu Postgres, thư (khoá thiếu, nháp, viết cho mình không đẩy, HEIC, 413, công tắc thông báo thư).
+- **Nhạc nền chung**: thả bài không lời vào `app/server/music/` (`server/music.ts`, `pickTrack`), chưa có thì dùng nhạc tổng hợp. Người dùng sẽ gen 4-5 bài bằng Suno (đã đưa prompt).
+
+Sau khi deploy đợt này: xem log `[limit]` (nếu mọi dòng cùng một IP thì số tầng `trust proxy` sai), `[voice-edit]` và `[recap]`; nghe vài video sau cuộc gọi đầu; thử trên iPhone thật (zoom camera, nháp thư, gửi lại khi tắt app, linh vật 3D, phim tuần).
+
+Người dùng cần làm: tạo OAuth Client ID theo `app/docs/google-login.md` rồi đưa để đặt `GOOGLE_CLIENT_ID` trên Railway; gửi nhạc Suno.
 
 ## Code ở đâu
 
