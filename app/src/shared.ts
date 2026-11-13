@@ -82,6 +82,8 @@ export type Chapter = { at: number; until: number; say: string; who?: string; qu
 export type Podcast = {
   id: string; kind: 'person' | 'topic'; title: string; topic: string; memberId: string | null; duration: number;
   cover: string | null; media: string | null; chapters: Chapter[]; status: 'rendering' | 'ready' | 'failed'; createdAt: string;
+  /** Video dọc có ảnh và phụ đề (chỉ tập theo cuộc gọi); poster là ảnh bìa của video. */
+  video: string | null; poster: string | null; videoStatus: 'none' | 'rendering' | 'ready' | 'failed';
 };
 
 // i18n-ok-begin: địa danh, đợt sau thêm tên tiếng Anh, tiếng Hàn.

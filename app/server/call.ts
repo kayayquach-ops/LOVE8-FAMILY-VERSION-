@@ -11,7 +11,7 @@ import { askJSON, askQuick } from './ai.ts';
 import { parseDate, suspect, type Allow } from './guard.ts';
 import { mascotName, pool } from './db.ts';
 import { weekKey } from './recap.ts';
-import { buildPodcastsForCall } from './podcast.ts';
+import { buildPodcastsForCall, rebuildCallSoon } from './podcast.ts';
 import { cachedSpeech, defaultProvider, gateOf, hasVoice, initTtsBudget, pickProvider, providerOn, speech, transcribe, ttsStatus, TTS_MAX, type Provider } from './voice.ts';
 import path from 'node:path';
 
@@ -601,6 +601,8 @@ export function callRouter(upload: multer.Multer) {
       }
     }
     res.json({ ok: true, transcript, reply });
+    // Câu trả lời tới sau khi cuộc gọi đã chốt (máy khách gửi lại): dựng lại tập của cuộc gọi cho đủ câu.
+    if (call.status === 'done') rebuildCallSoon(call.id);
   }));
 
   // Nghe xong một câu: AI đáp một câu ngắn theo điều vừa kể. Không có khoá hay quá 2 giây thì máy khách dùng câu mẫu.
@@ -651,6 +653,7 @@ export function callRouter(upload: multer.Multer) {
     res.json({ ok: true });
   }));
 
+  // Gọi lặp được (máy khách thử lại khi mạng chập): chỉ lần đầu chốt cuộc gọi và chạy việc sau cuộc gọi, các lần sau chỉ trả ok.
   r.post('/call/:id/finish', h(async (req, res) => {
     const { rowCount } = await pool.query(`update calls set status = 'done', done_at = now() where id = $1 and member_id = $2 and status = 'ready'`, [req.params.id, req.member.id]);
     res.json({ ok: true });
