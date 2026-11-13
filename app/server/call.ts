@@ -329,13 +329,13 @@ export function scriptFacts(c: Ctx) {
 
 const MONTH_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-export async function aiScript(c: Ctx, week: string): Promise<CallScript | null> {
+export async function aiScript(c: Ctx, week: string, timeoutMs?: number): Promise<CallScript | null> {
   const facts = scriptFacts(c);
   // Tên tháng tiếng Anh của các ngày có trong lịch cũng tính là dữ liệu thật ("your birthday in March").
   // Mã vai (bo, me, con) không phải tên: bỏ khỏi dữ liệu đối chiếu để câu "Hi Bo" bị chặn.
   const hay = JSON.stringify(facts).replace(/"role":"(bo|me|con)"/g, '') + ' ' + c.events.map((e) => MONTH_EN[e.month - 1] ?? '').join(' ') + ' ' + (c.mascot ?? '');
   const allow: Allow = { prevCall: c.doneCalls.length > 0, ownStory: c.stories.length > 0, photos: c.photoCount > 0 };
-  const r = await askJSON<Omit<CallScript, 'source'>>(scriptSystem(c.lang, c.mascot), JSON.stringify(facts, null, 1), SCRIPT_SCHEMA);
+  const r = await askJSON<Omit<CallScript, 'source'>>(scriptSystem(c.lang, c.mascot), JSON.stringify(facts, null, 1), SCRIPT_SCHEMA, undefined, timeoutMs);
   if (!r || !Array.isArray(r.questions) || !r.questions.length) return null;
   const clean = (s: string) => String(s || '').replace(/\s*[—–]\s*/g, ', ').replace(/["“”]/g, '').trim();
   const tpl = templateScript(c, week);
@@ -546,6 +546,9 @@ const h = (fn: Fn) => (req: any, res: express.Response) =>
     res.status(500).json({ error: err.message || tReq('error.server') });
   });
 
+/** Hạn chờ AI soạn bộ câu hỏi lúc nhấc máy (máy khách xin ngay khi chuông reo nên thường đã có trước khi bấm). */
+const START_AI_MS = 7000;
+
 export function callRouter(upload: multer.Multer) {
   const r = express.Router();
   const media = (f?: Express.Multer.File) => (f ? `/media/${f.filename}` : null);
@@ -569,7 +572,8 @@ export function callRouter(upload: multer.Multer) {
     // Chưa từng có cuộc gọi nào thì chỉ dùng bộ câu chào hỏi đơn giản, kể cả khi đã lỡ soạn một bộ khác.
     // Bộ câu soạn bằng thứ tiếng khác với ngôn ngữ hiện tại (đổi ngôn ngữ giữa tuần), hoặc nhà vừa đổi tên linh vật, thì soạn lại.
     if (old && (old.lang ?? 'vi') === c.lang && (old.mascot ?? DEFAULT_MASCOT_NAME) === (c.mascot ?? DEFAULT_MASCOT_NAME) && (!first || old.source === 'first')) return res.json({ id: rows[0].id, script: old });
-    const script = first ? firstScript(c) : (await aiScript(c, week)) ?? templateScript(c, week);
+    // Người dùng đã bấm Nghe máy và đang chờ: AI soạn quá 7 giây thì dùng bộ câu mẫu, không để màn hình im lặng.
+    const script = first ? firstScript(c) : (await aiScript(c, week, START_AI_MS)) ?? templateScript(c, week);
     const id = randomUUID();
     await pool.query('insert into calls (id, family_id, member_id, week, script) values ($1,$2,$3,$4,$5)', [id, fid, mid, week, JSON.stringify(script)]);
     res.json({ id, script });
