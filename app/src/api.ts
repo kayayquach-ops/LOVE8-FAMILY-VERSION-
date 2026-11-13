@@ -75,6 +75,7 @@ export const api = {
 
 // Mọi yêu cầu tới /api/ mang theo ngôn ngữ đang chọn (header x-lang), để lời báo lỗi và chữ máy chủ soạn đúng thứ tiếng
 // kể cả ở các màn tự gọi fetch riêng. Máy chủ ưu tiên x-lang, rồi tới ngôn ngữ đã lưu của người dùng (members.lang).
+// Mất mạng thì trình duyệt ném "Load failed", "Failed to fetch": đổi thành câu dễ hiểu theo ngôn ngữ đang chọn cho mọi màn.
 if (typeof window !== 'undefined' && !(window as { __langFetch?: boolean }).__langFetch) {
   (window as { __langFetch?: boolean }).__langFetch = true;
   const native = window.fetch.bind(window);
@@ -83,7 +84,11 @@ if (typeof window !== 'undefined' && !(window as { __langFetch?: boolean }).__la
     if (!url.startsWith('/api/')) return native(input, init);
     const h = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
     if (!h.has('x-lang')) h.set('x-lang', getLang());
-    return native(input, { ...init, headers: h });
+    return native(input, { ...init, headers: h }).catch((e: Error) => {
+      if (e?.name === 'AbortError') throw e;
+      const send = (init?.method ?? 'GET').toUpperCase() !== 'GET';
+      throw Object.assign(new Error(t(send ? 'common.offlineSend' : 'common.offline')), { offline: true });
+    });
   };
 }
 

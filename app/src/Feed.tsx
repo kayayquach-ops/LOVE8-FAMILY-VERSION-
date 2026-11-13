@@ -23,11 +23,12 @@ export function Feed({ me, start, onClose }: { me: Me; start?: string | null; on
   const pager = useRef<HTMLDivElement>(null);
   const jumped = useRef(false);
 
-  const load = () => Promise.all([
+  // Lần tải nền 20 giây một lần thì im khi lỗi (mất mạng không bị báo lặp lại mãi), chỉ lần mở đầu mới báo.
+  const load = (quiet = false) => Promise.all([
     api.feed().then((p) => { remember('feed', p); setPosts((prev) => reuse(prev, p)); setFresh(true); }),
     api.week().then((w) => { remember('week', w); setWeek((prev) => (prev && JSON.stringify(prev) === JSON.stringify(w) ? prev : w)); }),
-  ]).catch((e) => toast(e.message));
-  useEffect(() => { void load(); const t = setInterval(() => { if (!document.hidden) void load(); }, 20000); return () => clearInterval(t); }, []);
+  ]).catch((e) => { if (!quiet) toast(e.message); });
+  useEffect(() => { void load(); const t = setInterval(() => { if (!document.hidden) void load(true); }, 20000); return () => clearInterval(t); }, []);
   // Trước khi vẽ: mở thẳng tới tin vừa bấm, không thấy trang Tuần này lướt qua. Bản lưu chưa có tin đó thì đợi bản mới.
   useLayoutEffect(() => {
     if (jumped.current || !start || !posts || !pager.current) return;

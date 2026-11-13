@@ -13,6 +13,7 @@
   "common.retry": "다시 해보기",
   "common.error": "문제가 생겼어요. 다시 해 주세요",
   "common.offlineSend": "네트워크가 불안해요. 다시 보내 주세요",
+  "common.offline": "네트워크가 불안해요. 조금 있다가 다시 해 주세요",
   "common.you": "나",
   "common.someone": "누군가",
   "common.listening": "듣는 중...",

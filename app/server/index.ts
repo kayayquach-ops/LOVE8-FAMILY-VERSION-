@@ -30,8 +30,16 @@ const app = express();
 app.set('trust proxy', 1);
 // Nén chữ (JS, CSS, JSON) trước khi gửi: bản JS 400 kB còn khoảng 130 kB trên mạng 4G. Kênh SSE không nén để tin đến ngay.
 app.use(compression({ filter: (req, res) => !req.path.endsWith('/stream') && compression.filter(req, res) }));
-app.use(express.json({ limit: '1mb' }));
+// Bỏ ký tự \u0000 trong mọi chuỗi gửi lên: Postgres không lưu được ký tự này và báo lỗi.
+app.use(express.json({ limit: '1mb', reviver: (_k, v) => (typeof v === 'string' ? v.replace(/\u0000/g, '') : v) }));
 app.use(langMiddleware);
+// Lỗi 500 không gửi câu lỗi nội bộ (câu Postgres, đường dẫn tệp) cho người dùng: hàm h của từng router đã ghi chi tiết vào log,
+// máy khách chỉ nhận mã chung error.server đúng thứ tiếng. Đặt một chỗ ở đây để áp cho mọi router.
+app.use((_req, res, next) => {
+  const json = res.json.bind(res);
+  res.json = (body?: unknown) => json(res.statusCode >= 500 && body && typeof body === 'object' && !('code' in body) ? errorBody('server') : body);
+  next();
+});
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -60,7 +68,7 @@ type Req = express.Request & { member?: { id: string; family_id: string; lang?: 
 const h = (fn: (req: Req, res: express.Response) => Promise<unknown>) => (req: Req, res: express.Response) =>
   fn(req, res).catch((err: Error) => {
     console.error(err);
-    res.status(500).json({ error: err.message || tReq('error.server') });
+    res.status(500).json(errorBody('server'));
   });
 
 // Không mật khẩu: mỗi máy giữ một mã riêng, gửi kèm mọi lần gọi. Mỗi lần gọi cũng là một lần "còn hoạt động".

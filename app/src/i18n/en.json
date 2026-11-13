@@ -13,6 +13,7 @@
   "common.retry": "Try again",
   "common.error": "Something went wrong, try again",
   "common.offlineSend": "The connection is shaky, send it again",
+  "common.offline": "The connection is shaky, try again in a bit",
   "common.you": "You",
   "common.someone": "Someone",
   "common.listening": "Listening...",
