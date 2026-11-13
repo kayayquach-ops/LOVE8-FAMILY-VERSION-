@@ -527,6 +527,7 @@
   "notify.turnOff": "이 기기에서 끄기",
   "notify.kind.call": "가족 영상 통화",
   "notify.kind.chat": "메시지",
+  "notify.kind.letter": "편지",
   "notify.kind.post": "집 소식과 포옹",
   "notify.kind.calendar": "특별한 날",
   "notify.kind.weekly": "주간 통화",

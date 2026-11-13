@@ -540,6 +540,7 @@
   "notify.turnOff": "Turn off on this device",
   "notify.kind.call": "Family video calls",
   "notify.kind.chat": "Messages",
+  "notify.kind.letter": "Letters",
   "notify.kind.post": "Feed and hugs",
   "notify.kind.calendar": "Special days",
   "notify.kind.weekly": "Weekly call",

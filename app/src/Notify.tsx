@@ -4,7 +4,7 @@ import { tap } from './sound';
 import { toast } from './ui';
 import { t } from './i18n';
 
-const LABELS: PushKind[] = ['call', 'chat', 'post', 'calendar', 'weekly'];
+const LABELS: PushKind[] = ['call', 'chat', 'letter', 'post', 'calendar', 'weekly'];
 
 export function Notify() {
   const [state, setState] = useState<PushState | null>(null);

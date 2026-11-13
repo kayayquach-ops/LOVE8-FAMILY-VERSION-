@@ -527,6 +527,7 @@
   "notify.turnOff": "Tắt trên máy này",
   "notify.kind.call": "Cả nhà gọi video",
   "notify.kind.chat": "Tin nhắn",
+  "notify.kind.letter": "Thư",
   "notify.kind.post": "Tin nhà và cái ôm",
   "notify.kind.calendar": "Ngày đặc biệt",
   "notify.kind.weekly": "Cuộc gọi tuần",

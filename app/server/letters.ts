@@ -120,7 +120,7 @@ lettersRouter.post('/letters', h(async (req, res) => {
   const name = String(me[0]?.name || '');
   // Chạy nền; nội dung thư không nằm trong thông báo. Thư viết cho chính mình thì không báo.
   if (to !== req.member.id) void notifyMembers([to], (l) => ({
-    kind: 'chat', title: tServer(l, 'push.letter.title', { name: name || tServer(l, 'push.someone') }), body: tServer(l, 'push.letter.body'),
+    kind: 'letter', title: tServer(l, 'push.letter.title', { name: name || tServer(l, 'push.someone') }), body: tServer(l, 'push.letter.body'),
     tag: `letter-${id}`, open: 'letter', ttl: 7 * 24 * 3600,
   }));
   res.json(view(rows[0]));

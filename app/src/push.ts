@@ -2,7 +2,7 @@ import { token } from './api';
 import { t } from './i18n';
 
 // Thông báo đẩy ở máy khách: đăng ký service worker, xin quyền, gửi đăng ký lên máy chủ.
-export type PushKind = 'call' | 'chat' | 'post' | 'calendar' | 'weekly';
+export type PushKind = 'call' | 'chat' | 'post' | 'calendar' | 'weekly' | 'letter';
 export type PushPrefs = Record<PushKind, boolean>;
 export type PushState = 'on' | 'off' | 'denied' | 'ios-browser' | 'unsupported';
 

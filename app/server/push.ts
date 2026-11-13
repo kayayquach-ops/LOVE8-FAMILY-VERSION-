@@ -9,7 +9,7 @@ import { errorBody, langOf, LANGS, tReq, tServer, type Lang } from './i18n.ts';
 import { upcoming } from './calendar.ts';
 import { weekKey } from './recap.ts';
 
-export type PushKind = 'call' | 'chat' | 'post' | 'calendar' | 'weekly';
+export type PushKind = 'call' | 'chat' | 'post' | 'calendar' | 'weekly' | 'letter';
 export type PushPayload = {
   kind: PushKind;
   title: string;
@@ -23,9 +23,11 @@ export type PushPayload = {
 /** Chữ của thông báo viết theo ngôn ngữ của từng người nhận (members.lang). */
 type Payload = PushPayload | ((lang: Lang) => PushPayload);
 
-const KINDS: PushKind[] = ['call', 'chat', 'post', 'calendar', 'weekly'];
+const KINDS: PushKind[] = ['call', 'chat', 'post', 'calendar', 'weekly', 'letter'];
 type Prefs = Record<PushKind, boolean>;
-const DEFAULT_PREFS: Prefs = { call: true, chat: true, post: true, calendar: true, weekly: true };
+const DEFAULT_PREFS: Prefs = { call: true, chat: true, post: true, calendar: true, weekly: true, letter: true };
+// Thư trước đây đi chung công tắc tin nhắn: ai đã tắt tin nhắn mà chưa chọn gì cho thư thì thư vẫn tắt như cũ.
+const withLetter = (p: Partial<Prefs>): Partial<Prefs> => (p.letter === undefined && p.chat === false ? { ...p, letter: false } : p);
 
 export async function migratePush(p: pg.Pool) {
   await p.query(`
@@ -61,7 +63,7 @@ async function prefsOf(memberId: string): Promise<Prefs> {
   const { rows } = await pool.query('select prefs from push_prefs where member_id = $1', [memberId]);
   let saved: Partial<Prefs> = {};
   try { if (rows[0]) saved = JSON.parse(rows[0].prefs); } catch {}
-  return { ...DEFAULT_PREFS, ...saved };
+  return { ...DEFAULT_PREFS, ...withLetter(saved) };
 }
 
 type SubRow = { endpoint: string; member_id: string; p256dh: string; auth: string; prefs: string | null; lang: string | null };
@@ -79,7 +81,7 @@ async function deliver(subs: SubRow[], make: Payload) {
     const opts = { TTL: payload.ttl ?? 6 * 3600, urgency: payload.urgency ?? 'normal' } as const;
     let prefs: Partial<Prefs> = {};
     try { if (s.prefs) prefs = JSON.parse(s.prefs); } catch {}
-    if (prefs[payload.kind] === false) return;
+    if (withLetter(prefs)[payload.kind] === false) return;
     try {
       await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body, opts);
     } catch (e: any) {
