@@ -37,6 +37,25 @@ export function Feed({ me, start, onClose }: { me: Me; start?: string | null; on
     else if (fresh) jumped.current = true;
   }, [posts, start, fresh]);
 
+  // Tin mới chèn lên đầu (20 giây hỏi một lần) trong lúc đang xem: Safari không tự neo cuộn nên trang đang xem bị đẩy sang tin khác,
+  // đang gõ trả lời có thể gửi nhầm tin. Nhớ tin đang xem theo id, danh sách đổi thì cuộn lại đúng tin đó.
+  const postsRef = useRef(posts);
+  postsRef.current = posts;
+  const viewing = useRef<string | null>(null);
+  const onScroll = (el: HTMLDivElement) => {
+    const i = Math.round(el.scrollTop / el.clientHeight);
+    setIndex(i);
+    viewing.current = i > 0 ? postsRef.current?.[i - 1]?.id ?? null : null;
+  };
+  useLayoutEffect(() => {
+    const el = pager.current, id = viewing.current;
+    if (!el || !posts || !id) return;
+    const i = posts.findIndex((p) => p.id === id);
+    if (i < 0 || i + 1 === Math.round(el.scrollTop / el.clientHeight)) return;
+    el.scrollTop = (i + 1) * el.clientHeight;
+    setIndex(i + 1);
+  }, [posts]);
+
   const member = (id: string) => me.members.find((m) => m.id === id);
   // Trang 0 là "Tuần này"; trang i là tin i - 1.
   const current = index > 0 ? posts?.[index - 1] : undefined;
@@ -114,7 +133,7 @@ export function Feed({ me, start, onClose }: { me: Me; start?: string | null; on
         <span style={{ width: 44 }} />
       </div>
 
-      <div className="pager" ref={pager} onScroll={(e) => setIndex(Math.round(e.currentTarget.scrollTop / e.currentTarget.clientHeight))}>
+      <div className="pager" ref={pager} onScroll={(e) => onScroll(e.currentTarget)}>
         <div className="page">
           {week ? <WeekCard week={week} me={me} recording={voice.rec && !!target.current.week} onDown={() => voiceDown({ week: week.week })} onUp={voiceUp} /> : <div className="muted" style={{ textAlign: 'center' }}>{t('feed.loading')}</div>}
           {posts && posts.length > 0 && <div className="muted" style={{ textAlign: 'center', marginTop: 18 }}>{t('feed.swipe')}</div>}
@@ -134,7 +153,7 @@ export function Feed({ me, start, onClose }: { me: Me; start?: string | null; on
       {current && (
         <div className="reply-bar fade-only">
           <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) sendText(); }}
-            enterKeyHint="send" placeholder={t('feed.replyTo', { name: current.authorId === me.me.id ? t('feed.everyone') : member(current.authorId)?.name as string })} />
+            enterKeyHint="send" placeholder={t('feed.replyTo', { name: current.authorId === me.me.id ? t('feed.everyone') : member(current.authorId)?.name ?? t('common.someone') })} />
           {text.trim() ? (
             <button className="round dark" onClick={sendText} aria-label={t('common.send')}><Icon name="send" /></button>
           ) : (
@@ -227,7 +246,7 @@ function MiniVoice({ url, seconds }: { url: string; seconds?: number | null }) {
   return (
     <button onClick={() => { if (on) a.current?.pause(); else void a.current?.play().catch(() => {}); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minHeight: 32 }}>
       <audio ref={a} src={url} preload="none" onPlay={() => setOn(true)} onPause={() => setOn(false)} onEnded={() => setOn(false)} />
-      <Icon name={on ? 'pause' : 'play'} size={14} /> {seconds ? `${Math.round(seconds)}s` : t('common.listen')}
+      <Icon name={on ? 'pause' : 'play'} size={14} /> {seconds ? t('common.seconds', { n: Math.round(seconds) }) : t('common.listen')}
     </button>
   );
 }
