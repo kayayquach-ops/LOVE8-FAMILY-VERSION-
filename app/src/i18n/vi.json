@@ -253,7 +253,6 @@
   "home.greet.afternoon": "Chào buổi chiều",
   "home.greet.evening": "Chào buổi tối",
   "home.hi": "{greet}, {name}",
-  "home.familyAria": "Cả nhà",
   "home.now": "Cả nhà lúc này",
   "home.noTime": "Chưa có giờ",
   "home.quietDays": "{n} ngày chưa mở app",
@@ -270,7 +269,8 @@
   "home.podcasts": "Podcast nhà mình",
   "home.callWaiting": "Có cuộc gọi đang chờ",
   "home.podcastEmpty": "Tập đầu tiên sẽ có sau cuộc gọi tuần này",
-  "home.jar": "Lọ thương: {level}/{capacity} hạt",
+  "home.jar.of": "/ {capacity} hạt",
+  "home.jar.left": "Thêm {n} hạt nữa là mở quà",
 
   "chat.videoCall": "Gọi video",
   "chat.empty": "Chưa có tin nào. Nhắn một câu cho cả nhà nhé.",

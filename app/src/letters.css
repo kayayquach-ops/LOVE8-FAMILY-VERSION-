@@ -84,12 +84,6 @@ html[lang="ko"] .lp-text { word-break: keep-all; }
 .lp-f-corners.lt-chip::after { inset: 4px; background-size: 9px 1.5px, 1.5px 9px, 9px 1.5px, 1.5px 9px, 9px 1.5px, 1.5px 9px, 9px 1.5px, 1.5px 9px; }
 .lp-f-ribbon.lt-chip::before, .lp-f-ribbon.lt-chip::after { transform: none; height: 5px; }
 
-/* Thẻ ở Trang chủ */
-.home-letters { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 16px; margin-top: 10px; border-radius: 18px; background: var(--glass); border: 1px solid var(--line); text-align: left; }
-.home-letters i { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.8); flex: none; }
-.home-letters b { flex: 1; font-weight: 500; font-size: 16px; }
-.home-letters em { font-style: normal; font-size: 12px; font-weight: 600; background: var(--accent); color: #fff; border-radius: 999px; padding: 3px 9px; }
-
 /* Thanh chỉnh món đang chọn và ô dán */
 .lt-sel { display: flex; justify-content: center; gap: 10px; padding: 8px 12px 0; }
 .lt-sel button { width: 42px; height: 38px; border-radius: 12px; border: 1px solid var(--line); background: #fff; font-size: 20px; line-height: 1; display: grid; place-items: center; color: var(--ink); }
