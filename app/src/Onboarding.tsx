@@ -278,9 +278,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
       {step === 'code' && (
         <Ask key="code" q={t('onboarding.code.q')} sub={t('onboarding.code.sub')} {...T}
-          footer={<button className="btn" disabled={busy || code.trim().length !== 6} onClick={() => finish(true)}>{t('onboarding.join.btn')}</button>}>
+          footer={<button className="btn" disabled={busy || !/^\d{6,7}$/.test(code.trim())} onClick={() => finish(true)}>{t('onboarding.join.btn')}</button>}>
           {/* Không đặt maxLength: dán cả câu mời ("Mã nhà: 123456") vẫn lấy được đủ 6 số. */}
-          <input className="field fade" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => { const six = e.target.value.match(/\d{6}/g); setCode(six ? six[six.length - 1] : e.target.value.replace(/\D/g, '').slice(0, 6)); }} placeholder="123456" style={{ letterSpacing: 6, fontSize: 24 }} />
+          <input className="field fade" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => { const found = e.target.value.match(/\d{6,7}/g); setCode(found ? found[found.length - 1] : e.target.value.replace(/\D/g, '').slice(0, 7)); }} placeholder="1234567" style={{ letterSpacing: 6, fontSize: 24 }} />
         </Ask>
       )}
 

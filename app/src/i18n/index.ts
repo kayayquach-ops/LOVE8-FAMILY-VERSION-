@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import vi from './vi.json';
+import { DEFAULT_MASCOT_NAME, fillMascot } from '../shared';
 
 // Chữ giao diện tra theo khoá. Tiếng Việt nằm sẵn trong gói chính; tiếng Anh, tiếng Hàn tải khi cần.
 // Khoá nào ngôn ngữ đang chọn chưa có (hoặc để trống) thì dùng chữ tiếng Việt.
@@ -80,11 +81,22 @@ export function t(key: Key, vars?: Vars): string {
     s = dict[`${key}.${p.select(vars.n)}`];
   }
   s = s || dict[key] || VI[key] || key;
+  s = fillMascot(s, String(vars?.mascot || mascot), shown);
   return vars ? s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m)) : s;
 }
 
 /** Có khoá này trong bảng tiếng Việt không (dùng cho mã lỗi máy chủ gửi về). */
 export const hasKey = (key: string): key is Key => key in VI;
+
+/** Tên linh vật của nhà, điền vào mọi chữ có {mascot}. Đổi tên thì các màn dùng useLang vẽ lại. */
+let mascot = DEFAULT_MASCOT_NAME;
+export function setMascotName(name?: string | null) {
+  const n = name || DEFAULT_MASCOT_NAME;
+  if (n === mascot) return;
+  mascot = n;
+  version++;
+  listeners.forEach((f) => f());
+}
 
 export const getLang = () => lang;
 /** Thứ tiếng của chữ đang hiện (ngôn ngữ chọn chưa có bản dịch thì là tiếng Việt). */

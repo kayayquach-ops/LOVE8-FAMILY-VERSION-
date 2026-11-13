@@ -9,7 +9,7 @@ import path from 'node:path';
 import type pg from 'pg';
 import { isTopic, type Chapter, type Podcast, type Topic } from '../src/shared.ts';
 import { errorBody, langOf, LANGS, runWithLang, tReq, tServer, type Lang } from './i18n.ts';
-import { pool } from './db.ts';
+import { mascotName, pool } from './db.ts';
 import { musicExpr, probe, run } from './recap.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
@@ -153,7 +153,7 @@ async function buildFor(call: any, callId: string, lang: Lang) {
   const jobs: Job[] = [{
     fid: call.family_id, key: `call:${callId}`, kind: 'person', memberId: call.member_id, topic: first,
     title: tReq('podcastGen.person.title', { name, what: titleOf(first) }), cover: await coverFor(call.family_id, call.member_id),
-    intro: tReq('podcastGen.person.intro', { name }),
+    intro: tReq('podcastGen.person.intro', { name, mascot: await mascotName(call.family_id) }),
     outro: tReq('podcastGen.person.outro', { name }),
     clips: usable.map((a) => ({ file: mediaFile(a.media), who: a.who, question: a.question, transcript: a.transcript, say: a.question })),
   }];

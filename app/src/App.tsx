@@ -16,6 +16,7 @@ import { Incoming } from './Incoming';
 import { connectLive, livePost, onLive, type LiveRoom } from './live';
 import { onPushOpen, syncPush } from './push';
 import { TabBar, type Tab } from './TabBar';
+import { applyMascot } from './mascotStore';
 import { Mesh, Toaster } from './ui';
 import { t, useLang } from './i18n';
 
@@ -23,10 +24,12 @@ import { t, useLang } from './i18n';
 const loadRecap = () => import('./Recap');
 const loadLetters = () => import('./Letters');
 const loadSettings = () => import('./Settings');
+const loadMascotSheet = () => import('./MascotSheet');
 const loadPodcast = () => import('./Podcast');
 const loadCall = () => import('./Call');
 const loadFaceTime = () => import('./FaceTime');
 const Settings = lazy(() => loadSettings().then((m) => ({ default: m.Settings })));
+const MascotSheet = lazy(() => loadMascotSheet().then((m) => ({ default: m.MascotSheet })));
 const Letters = lazy(() => loadLetters().then((m) => ({ default: m.Letters })));
 const Recap = lazy(() => loadRecap().then((m) => ({ default: m.Recap })));
 const Podcast = lazy(() => loadPodcast().then((m) => ({ default: m.Podcast })));
@@ -41,9 +44,11 @@ export function App() {
   // Đổi ngôn ngữ thì vẽ lại cả app một lần.
   useLang();
   // Mở app là hiện ngay bản lưu lần trước (tên nhà, cả nhà), máy chủ trả lời thì thay bằng bản mới. Không còn màn trống lúc chờ mạng.
-  const [me, setMe] = useState<Me | null>(() => { if (!token.get()) return null; try { return JSON.parse(localStorage.getItem(ME_KEY) ?? 'null'); } catch { return null; } });
+  const [me, setMe] = useState<Me | null>(() => { if (!token.get()) return null; try { const m: Me | null = JSON.parse(localStorage.getItem(ME_KEY) ?? 'null'); applyMascot(m?.family); return m; } catch { return null; } });
+  // Tên và hình linh vật của nhà: chữ có {mascot} và mọi chỗ vẽ linh vật theo nhà đang ở.
+  useEffect(() => { applyMascot(me?.family); }, [me?.family.mascotName, me?.family.mascotShape]);
   const [ready, setReady] = useState(() => !!me);
-  const [sheet, setSheet] = useState<'feed' | 'jar' | 'family' | 'calendar' | 'chat' | 'recap' | 'podcast' | 'letters' | 'settings' | null>(null);
+  const [sheet, setSheet] = useState<'feed' | 'jar' | 'family' | 'calendar' | 'chat' | 'recap' | 'podcast' | 'letters' | 'settings' | 'mascot' | null>(null);
   // Mở app là vào camera như Locket; Trang chủ là một tab.
   const [tab, setTab] = useState<'home' | 'camera' | 'may'>('camera');
   const [chatUnread, setChatUnread] = useState(0);
@@ -161,7 +166,7 @@ export function App() {
       {tab === 'home'
         ? <Home me={me} callDue={callDue && !calling} onCall={() => setCalling(true)} onOpen={(s, arg) => { if (s === 'camera') return setTab('camera'); if (s === 'podcast') setPodcastId(arg ?? null); if (s === 'feed') setFeedPost(arg ?? null); setSheet(s); }} />
         : tab === 'may'
-        ? <MayTab me={me} callDue={callDue && !calling} onCall={() => setCalling(true)} onPodcast={() => { setPodcastId(null); setSheet('podcast'); }} />
+        ? <MayTab me={me} callDue={callDue && !calling} onCall={() => setCalling(true)} onPodcast={() => { setPodcastId(null); setSheet('podcast'); }} onCustomize={() => setSheet('mascot')} />
         : <Camera me={me} active={!sheet && !facetime && !calling} onOpen={(s) => { if (s === 'feed') setFeedPost(null); setSheet(s); }} onSent={load} />}
       {!sheet && <TabBar active={tab} unread={chatUnread} ring={callDue && !calling} onSelect={(t: Tab) => {
         if (t === 'home' || t === 'camera' || t === 'may') { setSheet(null); setTab(t); } else setSheet(t);
@@ -171,7 +176,8 @@ export function App() {
       {sheet === 'calendar' && <Calendar me={me} onClose={() => setSheet(null)} onWish={() => setSheet('chat')} />}
       {sheet === 'chat' && <Chat me={me} live={!!room} onClose={() => { setSheet(null); void loadUnread(); }} onCall={() => startFaceTime()} />}
       <Suspense fallback={null}>
-      {sheet === 'settings' && <Settings me={me} onClose={() => setSheet(null)} onProfile={() => setSheet('family')} />}
+      {sheet === 'settings' && <Settings me={me} onClose={() => setSheet(null)} onProfile={() => setSheet('family')} onMascot={() => setSheet('mascot')} />}
+      {sheet === 'mascot' && <MascotSheet me={me} onClose={() => setSheet(null)} onSaved={() => void loadMe().catch(() => {})} />}
       {sheet === 'letters' && <Letters me={me} onClose={() => setSheet(null)} />}
       {sheet === 'recap' && <Recap me={me} onClose={() => setSheet(null)} />}
       {sheet === 'family' && <Family me={me} onClose={() => setSheet(null)} onChanged={load} onSettings={() => setSheet('settings')} onCallMember={(id) => { setSheet(null); startFaceTime(id); }} />}

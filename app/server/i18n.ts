@@ -4,6 +4,7 @@
 // Thiếu khoá ở ngôn ngữ được hỏi (hoặc để trống) thì dùng tiếng Việt.
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { readFileSync } from 'node:fs';
+import { DEFAULT_MASCOT_NAME, fillMascot } from '../src/shared.ts';
 
 export type Lang = 'vi' | 'en' | 'ko';
 export const LANGS: readonly Lang[] = ['vi', 'en', 'ko'];
@@ -28,6 +29,8 @@ export function tServer(lang: Lang | null | undefined, key: string, vars?: Recor
     s = server[l][`${key}.${form}`] || client[l][`${key}.${form}`];
   }
   s = s || server[l][key] || client[l][key] || server.vi[key] || client.vi[key] || key;
+  // Tên linh vật của nhà: truyền qua biến mascot; quên truyền thì là Mây, không bao giờ lộ chữ {mascot}.
+  s = fillMascot(s, String(vars?.mascot || DEFAULT_MASCOT_NAME), l);
   return vars ? s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m)) : s;
 }
 

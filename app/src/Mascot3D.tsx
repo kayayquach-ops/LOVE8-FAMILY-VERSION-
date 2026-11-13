@@ -1,8 +1,12 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
-import type * as THREE from 'three';
+import type * as T3 from 'three';
 import { Mascot, type Drive, type MascotMode } from './Mascot';
+import { useMascotShape } from './mascotStore';
+import type { Rig } from './mascotModels';
+import type { MascotShape } from './shared';
 
-type Props = { mode?: MascotMode; drive?: React.RefObject<Drive>; size?: number; className?: string };
+/** shape: hình muốn vẽ (khung chọn hình xem trước); bỏ trống thì dùng hình nhà đã chọn. */
+type Props = { mode?: MascotMode; drive?: React.RefObject<Drive>; size?: number; className?: string; shape?: MascotShape };
 
 const still: React.RefObject<Drive> = { current: { talking: false, pulse: 0, level: 0 } };
 
@@ -15,18 +19,22 @@ function hasWebGL() {
 
 const Inner = lazy(() => Promise.resolve({ default: Mascot3D }));
 
-/** Linh vật 3D (Blender → mascot.glb, vẽ bằng three.js). Máy không có WebGL hoặc tải lỗi thì rơi về bản SVG. */
+/** Linh vật 3D (bản gốc từ Blender → mascot.glb, các hình khác dựng bằng three.js). Máy không có WebGL hoặc tải lỗi thì rơi về bản SVG. */
 export function MascotAny(p: Props) {
   const [ok, setOk] = useState(() => hasWebGL());
+  const family = useMascotShape();
+  const shape = p.shape ?? family;
   const svg = <Mascot mode={p.mode} drive={p.drive} size={p.size} className={p.className} />;
   if (!ok) return svg;
-  return <Suspense fallback={svg}><Inner {...p} onFail={() => setOk(false)} /></Suspense>;
+  return <Suspense fallback={svg}><Inner {...p} shape={shape} onFail={() => setOk(false)} /></Suspense>;
 }
 
-function Mascot3D({ mode = 'idle', drive = still, size = 220, className = '', onFail }: Props & { onFail: () => void }) {
+function Mascot3D({ mode = 'idle', drive = still, size = 220, className = '', shape = 'cloud', onFail }: Props & { onFail: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const modeRef = useRef(mode);
   modeRef.current = mode;
+  const shapeRef = useRef(shape);
+  shapeRef.current = shape;
   const [ready, setReady] = useState(false);
   const w = size, h = Math.round(size * 260 / 240);
 
@@ -37,53 +45,36 @@ function Mascot3D({ mode = 'idle', drive = still, size = 220, className = '', on
     (async () => {
       try {
         const THREE = await import('three');
-        const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
-        const { RoomEnvironment } = await import('three/examples/jsm/environments/RoomEnvironment.js');
+        const { loadMascotModel, bindRig, disposeTree, makeStage } = await import('./mascotModels');
         if (dead || !host.current) return;
 
         const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'low-power' });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
         renderer.setSize(w, h);
-        renderer.toneMapping = THREE.NeutralToneMapping;
-        renderer.toneMappingExposure = 1.0;
         host.current.appendChild(renderer.domElement);
         renderer.domElement.style.display = 'block';
+        const { scene, camera } = await makeStage(THREE, renderer, w, h);
 
-        const scene = new THREE.Scene();
-        const pmrem = new THREE.PMREMGenerator(renderer);
-        scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-        const key = new THREE.DirectionalLight(0xfff3e6, 1.1);
-        key.position.set(-2.5, 4, 5);
-        scene.add(key);
-        const camera = new THREE.PerspectiveCamera(28, w / h, 0.1, 50);
-        camera.position.set(0, 1.1, 6.3);
-        camera.lookAt(0, 1.02, 0);
-
-        const gltf = await new GLTFLoader().loadAsync('/mascot.glb');
+        // Đổi hình (khung chọn hình) thì chỉ thay mô hình, giữ nguyên bộ vẽ và nhịp chuyển động.
+        let rig: Rig | null = null;
+        let loaded: MascotShape | null = null;
+        let loading = false;
+        const swap = async (s: MascotShape) => {
+          loading = true;
+          try {
+            const root = await loadMascotModel(THREE, s);
+            if (dead) { disposeTree(root); return; }
+            const next = bindRig(root);
+            if (rig) { scene.remove(rig.root); disposeTree(rig.root); }
+            rig = next;
+            scene.add(root);
+          } finally {
+            loaded = s;
+            loading = false;
+          }
+        };
+        await swap(shapeRef.current);
         if (dead) { renderer.dispose(); return; }
-        const root = gltf.scene;
-        scene.add(root);
-
-        // Chất liệu mềm như silicon: phủ một lớp bóng nhẹ, mắt thì bóng hẳn.
-        const get = (n: string) => root.getObjectByName(n) as THREE.Object3D;
-        root.traverse((o) => {
-          const m = o as THREE.Mesh;
-          if (!m.isMesh) return;
-          const old = m.material as THREE.MeshStandardMaterial;
-          const eye = /^Eye/.test(m.name), glint = /^Glint/.test(m.name);
-          m.material = new THREE.MeshPhysicalMaterial({
-            color: old.color, roughness: eye ? 0.1 : glint ? 0.3 : 0.55, metalness: 0,
-            clearcoat: eye ? 1 : 0.25, clearcoatRoughness: eye ? 0.05 : 0.35,
-            sheen: eye || glint ? 0 : 0.5, sheenColor: new THREE.Color('#F5EEFF'), sheenRoughness: 0.6,
-            emissive: glint ? new THREE.Color('#ffffff') : new THREE.Color('#000000'), emissiveIntensity: glint ? 0.9 : 0,
-          });
-        });
-
-        const eyeL = get('EyeL'), eyeR = get('EyeR'), mouth = get('Mouth');
-        const armL = get('ArmL'), armR = get('ArmR'), stalk = get('Stalk'), face = get('Face');
-        const cheekL = get('CheekL'), cheekR = get('CheekR'), ball = get('Ball') as THREE.Mesh;
-        const ballMat = ball.material as THREE.MeshPhysicalMaterial;
-        mouth.scale.set(0, 0, 0);
 
         // Trạng thái đang chạy, trượt dần về đích để đổi chế độ không bị giật.
         const s = { open: 1, tilt: 0, armL: 0, armR: 0, droop: 0, lean: 0, happy: 0, glow: 0, m: 0, lv: 0 };
@@ -98,6 +89,9 @@ function Mascot3D({ mode = 'idle', drive = still, size = 220, className = '', on
           raf = requestAnimationFrame(frame);
           if (document.hidden || t - last < 30) return;
           last = t;
+          if (!loading && shapeRef.current !== loaded) void swap(shapeRef.current).catch(() => {});
+          if (!rig) return;
+          const { root, eyeL, eyeR, mouth, armL, armR, stalk, cheekL, cheekR, ball, armGain } = rig;
           const mo = modeRef.current, d = drive.current;
           const listen = mo === 'listen', sleep = mo === 'sleep', happy = mo === 'happy', wave = mo === 'wave';
 
@@ -145,22 +139,24 @@ function Mascot3D({ mode = 'idle', drive = still, size = 220, className = '', on
           root.rotation.x = s.lean;
           root.rotation.y = Math.sin(t / 2600) * 0.06 + (listen ? 0.1 : 0);
 
-          armL.rotation.z = s.armL + Math.sin(t / 1100) * 0.03;
-          armR.rotation.z = -s.armR - Math.sin(t / 1100 + 2) * 0.03;
+          armL.rotation.z = s.armL * armGain + Math.sin(t / 1100) * 0.03;
+          armR.rotation.z = -s.armR * armGain - Math.sin(t / 1100 + 2) * 0.03;
 
-          // Ăng-ten đung đưa, rủ xuống khi ngủ, sáng lên khi lắng nghe.
+          // Phần trên đầu (ăng-ten, tai, mầm, đuôi) đung đưa, rủ xuống khi ngủ; quả bi sáng lên khi lắng nghe.
           stalk.rotation.z = Math.sin(t / 700) * 0.12 + s.droop * 0.7;
           stalk.rotation.x = Math.sin(t / 900 + 1) * 0.06;
-          ballMat.emissive.set('#B9A0FF');
-          ballMat.emissiveIntensity = s.glow * (0.6 + Math.sin(t / 220) * 0.2);
+          if (ball) {
+            const ballMat = ball.material as T3.MeshPhysicalMaterial;
+            ballMat.emissive.set('#B9A0FF');
+            ballMat.emissiveIntensity = s.glow * (0.6 + Math.sin(t / 220) * 0.2);
+          }
           cheekL.scale.setScalar(1 + s.happy * 0.25);
           cheekR.scale.setScalar(1 + s.happy * 0.25);
 
-          // Miệng chỉ hiện khi đang nói; mở theo chiều đứng.
+          // Miệng chỉ hiện khi đang nói; mở theo trục z của nó.
           const open = s.m;
           if (open > 0.06) mouth.scale.set(0.9 + open * 0.5, 1, Math.max(0.1, open * 1.7));
           else mouth.scale.set(0, 0, 0);
-          void face;
 
           renderer.render(scene, camera);
         };
@@ -168,10 +164,7 @@ function Mascot3D({ mode = 'idle', drive = still, size = 220, className = '', on
 
         cleanup = () => {
           cancelAnimationFrame(raf);
-          scene.traverse((o) => {
-            const m = o as THREE.Mesh;
-            if (m.isMesh) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); }
-          });
+          disposeTree(scene);
           renderer.dispose();
           renderer.domElement.remove();
         };

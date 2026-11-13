@@ -1,4 +1,4 @@
-import { Mascot } from './Mascot';
+import { MascotAny } from './Mascot3D';
 import { t } from './i18n';
 import { tap } from './sound';
 import { Icon } from './ui';
@@ -6,12 +6,13 @@ import type { Me } from './shared';
 import './may.css';
 
 /** Tab Mây: gọi cho Mây bất cứ lúc nào, hoặc chờ Mây gọi (cuối tuần). Mây gọi thì nút "Nghe máy" nổi lên. */
-export function MayTab({ me, callDue, onCall, onPodcast }: { me: Me; callDue: boolean; onCall: () => void; onPodcast: () => void }) {
+export function MayTab({ me, callDue, onCall, onPodcast, onCustomize }: { me: Me; callDue: boolean; onCall: () => void; onPodcast: () => void; onCustomize: () => void }) {
   const first = me.me.name.trim().split(/\s+/).pop() ?? '';
   return (
     <div className="may scroll">
+      <button className="icon-btn may-edit" aria-label={t('may.customize')} onClick={() => { tap(); onCustomize(); }}><Icon name="sliders" size={20} /></button>
       <div className={`may-hero${callDue ? ' ring' : ''}`}>
-        <div className="may-mascot"><Mascot mode={callDue ? 'wave' : 'idle'} size={190} /></div>
+        <div className="may-mascot"><MascotAny mode={callDue ? 'wave' : 'idle'} size={190} /></div>
         {callDue && <i className="may-ring" aria-hidden />}
       </div>
       <h1 className="may-title">{callDue ? t('may.due.title', { name: first }) : t('may.title')}</h1>

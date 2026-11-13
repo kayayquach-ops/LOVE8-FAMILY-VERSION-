@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { DEFAULT_MASCOT_NAME } from '../src/shared.ts';
 
 export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
@@ -35,6 +36,14 @@ export async function migrate() {
     );
     alter table members add column if not exists intro text;
     alter table members add column if not exists lang text;
+    alter table families add column if not exists mascot_name text;
+    alter table families add column if not exists mascot_shape text;
     create table if not exists seen (member_id text primary key references members(id), at timestamptz not null default now());
   `);
+}
+
+/** Tên linh vật của nhà (chưa đặt thì Mây): dùng trong lời chào cuộc gọi, lời dẫn podcast, prompt AI. */
+export async function mascotName(familyId: string): Promise<string> {
+  const { rows } = await pool.query('select mascot_name from families where id = $1', [familyId]);
+  return rows[0]?.mascot_name || DEFAULT_MASCOT_NAME;
 }

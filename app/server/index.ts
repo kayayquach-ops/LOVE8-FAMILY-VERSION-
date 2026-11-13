@@ -5,7 +5,7 @@ import multer from 'multer';
 import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { Member, Post, Reply, Week } from '../src/shared.ts';
+import { cleanMascotName, DEFAULT_MASCOT_NAME, isMascotShape, type Member, type Post, type Reply, type Week } from '../src/shared.ts';
 import { migrate, pool } from './db.ts';
 import { adoptLang, errorBody, isLang, langMiddleware, langOf, LANGS, tReq, tServer } from './i18n.ts';
 import { calendarRouter, migrateCalendar } from './calendar.ts';
@@ -77,7 +77,8 @@ function memberRow(r: any): Member {
 
 async function newCode() {
   for (;;) {
-    const code = String(randomInt(100000, 1000000));
+    // Mã mới 7 số; nhà cũ vẫn giữ mã 6 số.
+    const code = String(randomInt(1000000, 10000000));
     const { rowCount } = await pool.query('select 1 from families where code = $1', [code]);
     if (!rowCount) return code;
   }
@@ -167,14 +168,27 @@ app.use('/api', pushRouter);
 app.get('/api/me', h(async (req, res) => {
   const m = req.member!;
   const [f, ms, unseen] = await Promise.all([
-    pool.query('select id, name, code from families where id = $1', [m.family_id]),
+    pool.query('select id, name, code, mascot_name, mascot_shape from families where id = $1', [m.family_id]),
     pool.query('select * from members where family_id = $1 order by created_at', [m.family_id]),
     pool.query(
       `select count(*)::int n from posts p where p.family_id = $1 and p.author_id <> $2
        and p.created_at > coalesce((select at from seen where member_id = $2), 'epoch')`, [m.family_id, m.id]),
   ]);
   const members = ms.rows.map(memberRow);
-  res.json({ family: f.rows[0], me: members.find((x) => x.id === m.id), members, unseen: unseen.rows[0].n });
+  const { mascot_name, mascot_shape, ...fam } = f.rows[0];
+  const family = { ...fam, mascotName: mascot_name || DEFAULT_MASCOT_NAME, mascotShape: isMascotShape(mascot_shape) ? mascot_shape : 'cloud' };
+  res.json({ family, me: members.find((x) => x.id === m.id), members, unseen: unseen.rows[0].n });
+}));
+
+// Linh vật của nhà: ai trong nhà cũng đổi được tên (1-20 ký tự) và hình. Gửi trường nào thì đổi trường đó.
+app.put('/api/family/mascot', h(async (req, res) => {
+  const b = req.body ?? {};
+  const name = b.name === undefined ? undefined : cleanMascotName(b.name);
+  if (name === null) return res.status(400).json(errorBody('mascot_name_invalid'));
+  if (b.shape !== undefined && !isMascotShape(b.shape)) return res.status(400).json(errorBody('mascot_shape_invalid'));
+  await pool.query('update families set mascot_name = coalesce($2, mascot_name), mascot_shape = coalesce($3, mascot_shape) where id = $1',
+    [req.member!.family_id, name ?? null, b.shape ?? null]);
+  res.json({ ok: true });
 }));
 
 app.patch('/api/me', upload.single('avatar'), h(async (req, res) => {

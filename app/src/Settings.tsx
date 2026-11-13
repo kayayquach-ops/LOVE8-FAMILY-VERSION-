@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { token } from './api';
 import { LANG_NAMES, LANGS, setLang, t, useLang } from './i18n';
 import { Notify } from './Notify';
-import type { Me } from './shared';
+import { mascotNameOf, type Me } from './shared';
 import { setUiSounds, tap, uiSoundsOn } from './sound';
 import { Avatar, Icon } from './ui';
 
 /** Cài đặt: hồ sơ, ngôn ngữ, thông báo, âm thanh, tải lại app, rời nhà. */
-export function Settings({ me, onClose, onProfile }: { me: Me; onClose: () => void; onProfile: () => void }) {
+export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose: () => void; onProfile: () => void; onMascot: () => void }) {
   const lang = useLang();
   const [sound, setSound] = useState(uiSoundsOn());
 
@@ -23,6 +23,12 @@ export function Settings({ me, onClose, onProfile }: { me: Me; onClose: () => vo
           <Avatar m={me.me} size={48} />
           <span className="set-name"><b>{me.me.name}</b><small>{me.family.name}</small></span>
           <span className="chip">{t('settings.profileEdit')}</span>
+        </button>
+
+        <div className="h2">{t('settings.mascot')}</div>
+        <button className="panel set-profile" onClick={() => { tap(); onMascot(); }}>
+          <span className="set-name"><b>{mascotNameOf(me.family)}</b></span>
+          <span className="chip">{t('may.customize')}</span>
         </button>
 
         <div className="h2">{t('family.language')}</div>

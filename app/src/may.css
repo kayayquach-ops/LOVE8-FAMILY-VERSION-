@@ -15,3 +15,19 @@
 .nask-card { width: 100%; max-width: 420px; background: var(--bg); border-radius: 24px; padding: 24px 22px 18px; text-align: center; display: flex; flex-direction: column; gap: 10px; animation: chatIn .25s ease-out both; }
 .nask-card h2 { margin: 0; font-size: 21px; font-weight: 500; }
 .nask-card p { margin: 0 0 8px; color: var(--soft); font-size: 15px; line-height: 1.5; }
+.may { position: relative; }
+.may-edit { position: absolute; top: calc(var(--safe-top) + 12px); right: 16px; }
+
+/* Đổi tên, đổi hình linh vật */
+.mascot-edit { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 0 20px calc(var(--safe-bottom) + 30px); }
+.mascot-stage { height: 232px; display: grid; place-items: center; }
+.mascot-shapes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: 100%; max-width: 380px; margin-top: 6px; }
+.mascot-shape { aspect-ratio: 1; border-radius: 22px; background: rgba(255,255,255,.6); border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden; transition: transform .15s, background-color .2s, box-shadow .2s; }
+.mascot-shape:active { transform: scale(.94); transition-duration: 0s; }
+.mascot-shape.on { background: #fff; box-shadow: 0 0 0 2px var(--ink); }
+.mascot-shape img { width: 100%; height: 100%; object-fit: contain; }
+.mascot-shape i { width: 40%; aspect-ratio: 1; border-radius: 50%; background: var(--accent-soft); }
+.mascot-name { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 8px; margin-top: 24px; }
+.mascot-name span { font-size: 14px; color: var(--soft); padding-left: 8px; }
+.mascot-name .field { width: 100%; max-width: none; }
+.mascot-save { max-width: 380px; margin-top: 16px; }

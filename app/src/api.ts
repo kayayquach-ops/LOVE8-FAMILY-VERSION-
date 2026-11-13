@@ -70,6 +70,7 @@ export const api = {
   week: () => call<Week>('/api/week'),
   mission: (key: string) => call(`/api/missions/${key}`, { method: 'POST' }),
   lang: (lang: string) => call('/api/me/lang', { method: 'PUT', body: JSON.stringify({ lang }) }),
+  mascot: (b: { name?: string; shape?: string }) => call('/api/family/mascot', { method: 'PUT', body: JSON.stringify(b) }),
 };
 
 // Mọi yêu cầu tới /api/ mang theo ngôn ngữ đang chọn (header x-lang), để lời báo lỗi và chữ máy chủ soạn đúng thứ tiếng

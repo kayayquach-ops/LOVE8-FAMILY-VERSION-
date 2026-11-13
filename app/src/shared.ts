@@ -4,7 +4,33 @@ export type Role = 'bo' | 'me' | 'con';
 export type Kind = 'photo' | 'video' | 'voice' | 'hug';
 
 export type Member = { id: string; name: string; role: Role; avatar?: string | null; city?: string | null; phone?: string | null; lastSeen: string };
-export type Family = { id: string; name: string; code: string };
+export type Family = { id: string; name: string; code: string; mascotName?: string | null; mascotShape?: string | null };
+
+// Linh vật của mỗi nhà: tên tự đặt (mặc định Mây) và một trong các hình có sẵn. cloud là bản gốc.
+export const MASCOT_SHAPES = ['cloud', 'chick', 'bunny', 'kitten', 'bear', 'sprout', 'riceball', 'star'] as const;
+export type MascotShape = (typeof MASCOT_SHAPES)[number];
+export const isMascotShape = (v: unknown): v is MascotShape => (MASCOT_SHAPES as readonly unknown[]).includes(v);
+// i18n-ok-begin: tên riêng của linh vật, giữ nguyên ở mọi thứ tiếng.
+export const DEFAULT_MASCOT_NAME = 'Mây';
+// i18n-ok-end
+export const MASCOT_NAME_MAX = 20;
+/** Tên linh vật đã làm sạch: bỏ khoảng trắng thừa và ký tự điều khiển; rỗng hoặc dài quá thì null. */
+export function cleanMascotName(v: unknown): string | null {
+  const s = String(v ?? '').replace(/[\u0000-\u001f\u007f{}<>]/g, '').replace(/\s+/g, ' ').trim().normalize('NFC');
+  const n = [...s].length;
+  return n >= 1 && n <= MASCOT_NAME_MAX ? s : null;
+}
+export const mascotNameOf = (f?: { mascotName?: string | null } | null) => f?.mascotName || DEFAULT_MASCOT_NAME;
+const KO_JOSA: Record<string, string> = { 는: '은', 가: '이', 예요: '이에요', 를: '을', 와: '과' };
+/** Thay {mascot} bằng tên linh vật. Tiếng Hàn: tên tận cùng bằng âm có patchim thì đổi trợ từ (는→은, 가→이, 예요→이에요...). */
+export function fillMascot(s: string, name: string, lang?: string): string {
+  if (!s.includes('{mascot}')) return s;
+  const last = name.charCodeAt(name.length - 1);
+  if (lang === 'ko' && last >= 0xac00 && last <= 0xd7a3 && (last - 0xac00) % 28 !== 0) {
+    s = s.replace(/\{mascot\}(는|가|예요|를|와)/g, (_m, j: string) => `{mascot}${KO_JOSA[j]}`);
+  }
+  return s.split('{mascot}').join(name);
+}
 export type Reply = { id: string; authorId: string; kind: 'voice' | 'text'; media?: string | null; text?: string | null; seconds?: number | null; createdAt: string };
 export type Post = {
   id: string; authorId: string; kind: Kind; media?: string | null; caption?: string | null; meal: boolean; seconds?: number | null;
@@ -26,8 +52,8 @@ export type Topic = (typeof TOPICS)[number];
 export const isTopic = (v: unknown): v is Topic => (TOPICS as readonly unknown[]).includes(v);
 export const EVENT_HINTS = ['none', 'wedding', 'anniversary', 'birthday', 'memory'] as const;
 export type CallQuestion = { text: string; topic: Topic; photo: boolean; event: (typeof EVENT_HINTS)[number] };
-/** `lang`: thứ tiếng của bộ câu (bản cũ không có là tiếng Việt). */
-export type CallScript = { greeting: string; questions: CallQuestion[]; goodbye: string; source: 'ai' | 'template' | 'first'; lang?: 'vi' | 'en' | 'ko' };
+/** `lang`: thứ tiếng của bộ câu (bản cũ không có là tiếng Việt). `mascot`: tên linh vật lúc soạn (bản cũ không có là Mây). */
+export type CallScript = { greeting: string; questions: CallQuestion[]; goodbye: string; source: 'ai' | 'template' | 'first'; lang?: 'vi' | 'en' | 'ko'; mascot?: string };
 
 /** Hàm tra chữ: máy khách truyền `t`, máy chủ truyền `tServer` theo ngôn ngữ của người nghe. */
 export type Tr = (key: string, vars?: Record<string, string | number>) => string;

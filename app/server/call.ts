@@ -5,11 +5,11 @@ import express from 'express';
 import type multer from 'multer';
 import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
-import { CALL_ROLES, EVENT_HINTS, TOPICS, callLines, isTopic, type CallQuestion, type CallScript, type Topic } from '../src/shared.ts';
+import { CALL_ROLES, DEFAULT_MASCOT_NAME, EVENT_HINTS, TOPICS, callLines, isTopic, type CallQuestion, type CallScript, type Topic } from '../src/shared.ts';
 import { errorBody, langOf, LANGS, reqLang, tReq, tServer, type Lang } from './i18n.ts';
 import { askJSON, askQuick } from './ai.ts';
 import { parseDate, suspect, type Allow } from './guard.ts';
-import { pool } from './db.ts';
+import { mascotName, pool } from './db.ts';
 import { weekKey } from './recap.ts';
 import { buildPodcastsForCall } from './podcast.ts';
 import { cachedSpeech, defaultProvider, gateOf, hasVoice, initTtsBudget, pickProvider, providerOn, speech, transcribe, ttsStatus, TTS_MAX, type Provider } from './voice.ts';
@@ -117,10 +117,12 @@ export type Ctx = {
   /** Số ảnh người này đã lưu thật (tin ảnh + kho), và chú thích thật nếu có. */
   photoCount: number;
   captions: string[];
+  /** Tên linh vật của nhà (families.mascot_name), chưa đặt thì Mây. */
+  mascot?: string;
 };
 
 async function context(memberId: string, fid: string): Promise<Ctx> {
-  const [m, fam, ev, asked, stories, caps, done, ph, vt] = await Promise.all([
+  const [m, fam, ev, asked, stories, caps, done, ph, vt, mascot] = await Promise.all([
     pool.query('select id, name, role, intro from members where id = $1', [memberId]),
     pool.query('select name, role from members where family_id = $1 order by created_at', [fid]),
     pool.query('select kind, title, day, month, year from events where family_id = $1', [fid]),
@@ -131,6 +133,7 @@ async function context(memberId: string, fid: string): Promise<Ctx> {
     pool.query(`select to_char(done_at at time zone 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') d from calls where member_id = $1 and status = 'done' order by done_at desc limit 10`, [memberId]),
     pool.query(`select count(*)::int n from posts where author_id = $1 and kind = 'photo'`, [memberId]),
     pool.query(`select count(*)::int n from vault where member_id = $1`, [memberId]),
+    mascotName(fid),
   ]);
   const lang = reqLang();
   let intro: Record<string, string> = {};
@@ -143,6 +146,7 @@ async function context(memberId: string, fid: string): Promise<Ctx> {
     doneCalls: done.rows.map((r) => r.d),
     photoCount: (ph.rows[0]?.n ?? 0) + (vt.rows[0]?.n ?? 0),
     captions: caps.rows.map((r) => r.caption),
+    mascot,
   };
 }
 
@@ -158,7 +162,7 @@ export function firstScript(c: Ctx): CallScript {
   const self = role === 'bo' ? T('call.self.bo') : role === 'me' ? T('call.self.me') : '';
   const Self = self ? self[0].toUpperCase() + self.slice(1) : '';
   const nick = lastWord(name);
-  const S = (k: string) => T(`callScript.first.${parent ? 'parent' : 'child'}.${k}`, { self, Self, nick });
+  const S = (k: string) => T(`callScript.first.${parent ? 'parent' : 'child'}.${k}`, { self, Self, nick, mascot: c.mascot ?? DEFAULT_MASCOT_NAME });
   const q = (text: string, topic: Topic): CallQuestion => ({ text, topic, photo: false, event: 'none' });
   return {
     greeting: S('greeting'),
@@ -166,6 +170,7 @@ export function firstScript(c: Ctx): CallScript {
     goodbye: S('goodbye'),
     source: 'first',
     lang: c.lang,
+    mascot: c.mascot ?? DEFAULT_MASCOT_NAME,
   };
 }
 
@@ -182,7 +187,7 @@ export function templateScript(c: Ctx, week: string): CallScript {
   const hasWedding = c.events.some((e) => e.kind === 'wedding');
   const q = (text: string, topic: Topic, photo = false, event: CallQuestion['event'] = 'none'): CallQuestion => ({ text, topic, photo, event });
 
-  const S = (k: string) => T(`callScript.template.${parent ? 'parent' : 'child'}.${k}`, { self, call, other, food, name });
+  const S = (k: string) => T(`callScript.template.${parent ? 'parent' : 'child'}.${k}`, { self, call, other, food, name, mascot: c.mascot ?? DEFAULT_MASCOT_NAME });
   const pool: CallQuestion[] = parent ? [
     ...(!hasWedding && hasPair ? [q(S('wedding'), 'ngay-cuoi', true, 'wedding')] : []),
     q(S('play'), 'tuoi-tho'),
@@ -217,6 +222,7 @@ export function templateScript(c: Ctx, week: string): CallScript {
     goodbye: S('goodbye'),
     source: 'template',
     lang: c.lang,
+    mascot: c.mascot ?? DEFAULT_MASCOT_NAME,
   };
 }
 
@@ -268,9 +274,15 @@ const EXAMPLES: Record<Lang, { photo: string; forbidden: string }> = {
   ko: { photo: '이야기해 주고 싶은 사진이 있으세요?', forbidden: '"지난번", "저번에", "어제", "아까", "보내주신", "말씀하신", "전에 말한"' },
 };
 
-function scriptSystem(lang: Lang) {
+/** Prompt viết sẵn cho tên Mây: nhà đã đặt tên khác thì thay bằng tên ấy (tiếng Hàn bỏ luật "chỉ viết chữ Latin"). */
+function named(prompt: string, name: string) {
+  if (name === DEFAULT_MASCOT_NAME) return prompt;
+  return prompt.replace('writes its own name only as Mây in Latin letters, never in Hangul', `writes its own name exactly as ${name}`).split('Mây').join(name);
+}
+
+function scriptSystem(lang: Lang, name = DEFAULT_MASCOT_NAME) {
   const ex = EXAMPLES[lang];
-  return `You write the script for a short voice call inside Sweet Home, a family app for families whose child lives far from home. The caller is Mây, the app's little mascot. The phone reads every line aloud, and the person answers by speaking.
+  return named(`You write the script for a short voice call inside Sweet Home, a family app for families whose child lives far from home. The caller is Mây, the app's little mascot. The phone reads every line aloud, and the person answers by speaking.
 
 LANGUAGE AND TONE. ${ADDRESS[lang]}
 Short sentences. No em dash or long dash, no emoji, no lists, no quotation marks.
@@ -293,7 +305,7 @@ HARD RULES, never break them:
 
 The greeting is one or two short sentences. The goodbye is one short sentence of thanks. Neither mentions anything outside the input.
 
-Reply in ${LANG_NAME[lang]}. Every greeting, question and goodbye must be written in ${LANG_NAME[lang]} only.`;
+Reply in ${LANG_NAME[lang]}. Every greeting, question and goodbye must be written in ${LANG_NAME[lang]} only.`, name);
 }
 
 /** Dữ liệu thật đưa cho AI: mục trống ghi rõ "none yet" bằng nhãn tiếng Anh trung tính. */
@@ -321,9 +333,9 @@ export async function aiScript(c: Ctx, week: string): Promise<CallScript | null>
   const facts = scriptFacts(c);
   // Tên tháng tiếng Anh của các ngày có trong lịch cũng tính là dữ liệu thật ("your birthday in March").
   // Mã vai (bo, me, con) không phải tên: bỏ khỏi dữ liệu đối chiếu để câu "Hi Bo" bị chặn.
-  const hay = JSON.stringify(facts).replace(/"role":"(bo|me|con)"/g, '') + ' ' + c.events.map((e) => MONTH_EN[e.month - 1] ?? '').join(' ');
+  const hay = JSON.stringify(facts).replace(/"role":"(bo|me|con)"/g, '') + ' ' + c.events.map((e) => MONTH_EN[e.month - 1] ?? '').join(' ') + ' ' + (c.mascot ?? '');
   const allow: Allow = { prevCall: c.doneCalls.length > 0, ownStory: c.stories.length > 0, photos: c.photoCount > 0 };
-  const r = await askJSON<Omit<CallScript, 'source'>>(scriptSystem(c.lang), JSON.stringify(facts, null, 1), SCRIPT_SCHEMA);
+  const r = await askJSON<Omit<CallScript, 'source'>>(scriptSystem(c.lang, c.mascot), JSON.stringify(facts, null, 1), SCRIPT_SCHEMA);
   if (!r || !Array.isArray(r.questions) || !r.questions.length) return null;
   const clean = (s: string) => String(s || '').replace(/\s*[—–]\s*/g, ', ').replace(/["“”]/g, '').trim();
   const tpl = templateScript(c, week);
@@ -361,6 +373,7 @@ export async function aiScript(c: Ctx, week: string): Promise<CallScript | null>
     goodbye: b && !wrongBye && !suspect(b, hay, allow, c.lang) ? b : tpl.goodbye,
     source: 'ai',
     lang: c.lang,
+    mascot: c.mascot ?? DEFAULT_MASCOT_NAME,
   };
 }
 
@@ -381,14 +394,14 @@ Only if the answer is empty or truly unintelligible, reply with a generic warm l
 If role is bo or me, use respectful honorific forms (사셨군요, 드셨군요). If role is con, use plain warm 해요체 without honorific verb forms (샀군요, 먹었군요) and their name with 님 sparingly. Never use the formal 합니다 style.`,
 };
 
-function replySystem(lang: Lang) {
-  return `You are Mây, the mascot of the family app Sweet Home, on a warm voice call with a family member. They just answered a question out loud (speech recognition text, may have errors).
+function replySystem(lang: Lang, name = DEFAULT_MASCOT_NAME) {
+  return named(`You are Mây, the mascot of the family app Sweet Home, on a warm voice call with a family member. They just answered a question out loud (speech recognition text, may have errors).
 React warmly to what is written in "answer": when the answer has a concrete detail (an object, food, place, person or feeling the person actually said), your reply must echo that exact detail in your own words.
 Never add any fact, name, number, place, photo, memory or event that is not in "answer". Never refer to anything earlier, and never use phrases like "you said", "you mentioned", "last time" or their equivalents; just echo the detail directly.
 Do not ask a new question. Never say the English app name. No em dash, no emoji, no quotation marks.
 ${REPLY_STYLE[lang]}
 
-Reply in ${LANG_NAME[lang]}.`;
+Reply in ${LANG_NAME[lang]}.`, name);
 }
 
 // i18n-ok-end
@@ -399,11 +412,13 @@ export async function quickReply(who: { name: string; role: string } | undefined
     ? said.replace(/[^\p{L}\p{N}]/gu, '').length < 6
     : said.replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean).length < 3;
   if (short) return null;
-  const text = await askQuick(replySystem(lang), JSON.stringify({ person: { name: who?.name ?? '', role: who?.role ?? 'con' }, question, answer: said.slice(0, 1500) }), 1800);
+  const { rows: [fam] } = await pool.query('select f.mascot_name from members m join families f on f.id = m.family_id where m.id = $1', [memberId]);
+  const bot = fam?.mascot_name || DEFAULT_MASCOT_NAME;
+  const text = await askQuick(replySystem(lang, bot), JSON.stringify({ person: { name: who?.name ?? '', role: who?.role ?? 'con' }, question, answer: said.slice(0, 1500) }), 1800);
   const clean = text?.replace(/\s*[—–]\s*/g, ', ').replace(/["“”]/g, '').split('\n')[0].trim().slice(0, 140) || null;
   if (!clean) return null;
   // Chỉ nhận câu đáp không có tên, số hay mốc thời gian lạ so với điều người ấy vừa nói.
-  const why = suspect(clean, `${said} ${who?.name ?? ''}`, { prevCall: false, ownStory: false, photos: false }, lang);
+  const why = suspect(clean, `${said} ${who?.name ?? ''} ${bot}`, { prevCall: false, ownStory: false, photos: false }, lang);
   if (why) { console.warn(`[call] bỏ câu đáp "${clean}": ${why}`); return null; }
   // Đọc sẵn câu đáp ngay (chỉ khi còn dư ngân sách): lúc máy khách xin giọng sẽ nhận chung kết quả, đỡ một lượt mạng.
   void speech(clean, memberId, { optional: true });
@@ -552,8 +567,8 @@ export function callRouter(upload: multer.Multer) {
     const { rows } = await pool.query(`select id, script from calls where member_id = $1 and week = $2 and status = 'ready' order by created_at desc limit 1`, [mid, week]);
     const old: CallScript | null = rows[0] ? JSON.parse(rows[0].script) : null;
     // Chưa từng có cuộc gọi nào thì chỉ dùng bộ câu chào hỏi đơn giản, kể cả khi đã lỡ soạn một bộ khác.
-    // Bộ câu soạn bằng thứ tiếng khác với ngôn ngữ hiện tại (đổi ngôn ngữ giữa tuần) thì soạn lại.
-    if (old && (old.lang ?? 'vi') === c.lang && (!first || old.source === 'first')) return res.json({ id: rows[0].id, script: old });
+    // Bộ câu soạn bằng thứ tiếng khác với ngôn ngữ hiện tại (đổi ngôn ngữ giữa tuần), hoặc nhà vừa đổi tên linh vật, thì soạn lại.
+    if (old && (old.lang ?? 'vi') === c.lang && (old.mascot ?? DEFAULT_MASCOT_NAME) === (c.mascot ?? DEFAULT_MASCOT_NAME) && (!first || old.source === 'first')) return res.json({ id: rows[0].id, script: old });
     const script = first ? firstScript(c) : (await aiScript(c, week)) ?? templateScript(c, week);
     const id = randomUUID();
     await pool.query('insert into calls (id, family_id, member_id, week, script) values ($1,$2,$3,$4,$5)', [id, fid, mid, week, JSON.stringify(script)]);
