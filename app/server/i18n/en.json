@@ -1,7 +1,7 @@
 {
   "error.server": "Server error",
   "error.not_signed_in": "You're not in a home yet",
-  "error.family_code_not_found": "No home found with this code",
+  "error.family_code_not_found": "No home has this code. Please check the code again",
   "error.family_not_found": "Home not found",
   "error.missing_media": "Missing photo or recording",
   "error.missing_audio": "Missing recording",
@@ -22,6 +22,8 @@
   "error.seed_not_found": "That seed doesn't exist",
   "error.seed_locked": "That seed isn't on sale yet",
   "error.push_bad_subscription": "Invalid subscription",
+  "error.too_many_tries": "Too many tries. Wait about ten minutes and try again",
+  "error.slow_down": "That was a bit fast. Wait a moment and try again",
 
   "member.defaultName": "Me",
   "family.defaultName": "Our Home",

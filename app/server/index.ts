@@ -19,11 +19,13 @@ import { buildFirstVoicePodcast, migratePodcast, podcastRouter, refreshFirstVoic
 import { liveRouter, liveStreamRouter } from './facetime.ts';
 import { migratePush, notifyPost, notifyReply, pushRouter, startPushScheduler } from './push.ts';
 import { thumbRoute, warmThumbs } from './thumb.ts';
+import { Limit, limitBy } from './limit.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
 
 const app = express();
+// Railway đứng sau đúng một tầng proxy: req.ip là địa chỉ cuối trong x-forwarded-for (proxy gắn vào), người gọi tự thêm header cũng không giả được.
 app.set('trust proxy', 1);
 // Nén chữ (JS, CSS, JSON) trước khi gửi: bản JS 400 kB còn khoảng 130 kB trên mạng 4G. Kênh SSE không nén để tin đến ngay.
 app.use(compression({ filter: (req, res) => !req.path.endsWith('/stream') && compression.filter(req, res) }));
@@ -101,19 +103,25 @@ async function addMember(familyId: string, b: any) {
   return token;
 }
 
-app.post('/api/families', h(async (req, res) => {
+// Mã nhà chỉ 6 hoặc 7 chữ số và vào nhà không cần đăng nhập: mỗi IP được sai 15 lần mỗi 10 phút, cả máy chủ 100 lần sai mỗi giờ
+// (đổi IP liên tục cũng không quét nổi). Nhập đúng thì không tốn lượt.
+const codeTries = limitBy({ name: 'family-code', per: new Limit(15, 10 * 60e3), total: new Limit(100, 3600e3), onlyFailed: true, code: 'too_many_tries' });
+// Tạo nhà mới không cần mã: mỗi IP 20 nhà mỗi giờ, cả máy chủ 200, để không ai đẻ hàng loạt thành viên giả đốt ngân sách giọng đọc.
+const newFamilies = limitBy({ name: 'new-family', per: new Limit(20, 3600e3), total: new Limit(200, 3600e3) });
+
+app.post('/api/families', newFamilies, h(async (req, res) => {
   const fid = id();
   await pool.query('insert into families (id, name, code) values ($1,$2,$3)', [fid, String(req.body.family || tReq('family.defaultName')).slice(0, 40), await newCode()]);
   res.json({ token: await addMember(fid, req.body) });
 }));
 
-app.post('/api/join', h(async (req, res) => {
+app.post('/api/join', codeTries, h(async (req, res) => {
   const { rows } = await pool.query('select id from families where code = $1', [String(req.body.code || '').trim()]);
   if (!rows[0]) return res.status(404).json(errorBody('family_code_not_found'));
   res.json({ token: await addMember(rows[0].id, req.body) });
 }));
 
-app.get('/api/family/:code', h(async (req, res) => {
+app.get('/api/family/:code', codeTries, h(async (req, res) => {
   const { rows } = await pool.query('select name from families where code = $1', [req.params.code]);
   if (!rows[0]) return res.status(404).json(errorBody('family_not_found'));
   res.json({ name: rows[0].name });

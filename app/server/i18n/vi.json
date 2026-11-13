@@ -1,7 +1,7 @@
 {
   "error.server": "Lỗi máy chủ",
   "error.not_signed_in": "Chưa vào nhà",
-  "error.family_code_not_found": "Không tìm thấy nhà với mã này",
+  "error.family_code_not_found": "Chưa thấy nhà nào có mã này, bạn xem lại mã giúp mình nhé",
   "error.family_not_found": "Không tìm thấy nhà",
   "error.missing_media": "Thiếu ảnh hoặc ghi âm",
   "error.missing_audio": "Thiếu ghi âm",
@@ -22,6 +22,8 @@
   "error.seed_not_found": "Không có hạt này",
   "error.seed_locked": "Hạt này chưa mở bán",
   "error.push_bad_subscription": "Đăng ký chưa đúng",
+  "error.too_many_tries": "Thử mã nhiều lần quá rồi, đợi chừng mười phút rồi thử lại nhé",
+  "error.slow_down": "Nhanh quá rồi, đợi một lát rồi thử lại nhé",
 
   "member.defaultName": "Mình",
   "family.defaultName": "Nhà mình",
