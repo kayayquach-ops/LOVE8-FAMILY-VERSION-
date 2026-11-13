@@ -1,0 +1,57 @@
+/* Phim tuần: nền giấy ấm, bìa phim như ảnh in, xem toàn màn hình kiểu story. Chỉ animate opacity và transform. */
+@import '@fontsource/noto-serif-kr/latin-600.css';
+@import '@fontsource/noto-serif-kr/latin-ext-600.css';
+@import '@fontsource/noto-serif-kr/vietnamese-600.css';
+
+.rc { --rc-paper: #F4F0E8; --rc-ink: #1B1714; --rc-soft: #7A6F64; --rc-serif: 'Noto Serif KR', 'Noto Serif', Georgia, serif; background: var(--rc-paper); color: var(--rc-ink); }
+.rc-top { display: flex; align-items: center; padding: calc(var(--safe-top) + 10px) 16px 4px; }
+.rc-title { flex: 1; text-align: center; font-family: var(--rc-serif); font-weight: 600; font-size: 19px; letter-spacing: .01em; }
+.rc-body { flex: 1; padding: 10px 20px calc(var(--safe-bottom) + 36px); }
+
+.rc-hero { position: relative; display: block; width: min(100%, calc(58dvh * 9 / 16)); aspect-ratio: 9 / 16; margin: 6px auto 0; padding: 0; border: 0; border-radius: 22px; overflow: hidden;
+  background: #E9E3D9; box-shadow: 0 1px 0 rgba(255,255,255,.7) inset, 0 22px 44px -18px rgba(40,28,18,.38), 0 4px 12px rgba(40,28,18,.08); cursor: pointer;
+  animation: rc-in .5s cubic-bezier(.2,.8,.2,1) both; }
+.rc-hero img, .rc-hero video, .rc-thumb img, .rc-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.rc-hero:active { transform: scale(.985); }
+.rc-play { position: absolute; left: 50%; bottom: 22px; width: 58px; height: 58px; margin-left: -29px; border-radius: 50%; display: grid; place-items: center;
+  background: rgba(27,23,20,.78); color: #F7F2EA; box-shadow: 0 8px 22px rgba(27,23,20,.25); }
+.rc-play svg { width: 24px; height: 24px; margin-left: 3px; fill: currentColor; }
+.rc-new { position: absolute; top: 14px; left: 14px; padding: 5px 11px; border-radius: 999px; background: var(--rc-ink); color: #F7F2EA; font-size: 12px; font-weight: 500; letter-spacing: .04em; }
+.rc-cap { text-align: center; margin-top: 14px; font-family: var(--rc-serif); font-weight: 600; font-size: 16px; color: var(--rc-ink); }
+
+.rc-now { margin: 26px auto 0; max-width: 360px; text-align: center; padding: 18px 18px 20px; border-top: 1px solid rgba(27,23,20,.1); border-bottom: 1px solid rgba(27,23,20,.1); }
+.rc-now p { margin: 0; font-family: var(--rc-serif); font-weight: 600; font-size: 17px; }
+.rc-now small { display: block; margin-top: 6px; color: var(--rc-soft); font-size: 14px; line-height: 1.5; }
+.rc-now .rc-fail { color: var(--warn); }
+.rc-preview { margin-top: 14px; padding: 10px 18px; border-radius: 999px; border: 1px solid rgba(27,23,20,.22); background: transparent; color: var(--rc-ink); font-size: 14px; }
+.rc-preview:active { transform: scale(.96); }
+.rc-preview:disabled { opacity: .5; }
+.rc-busy { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 15px; color: var(--rc-soft); }
+.rc-busy i { width: 9px; height: 9px; border-radius: 50%; background: var(--rc-ink); animation: rc-pulse 1.2s ease-in-out infinite; }
+
+.rc-h { margin: 28px 0 12px; font-family: var(--rc-serif); font-weight: 600; }
+.rc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 12px; }
+.rc-tile { display: flex; flex-direction: column; gap: 7px; padding: 0; border: 0; background: none; color: var(--rc-soft); font-size: 12.5px; cursor: pointer; }
+.rc-tile:active { transform: scale(.96); }
+.rc-thumb { aspect-ratio: 9 / 16; border-radius: 12px; overflow: hidden; background: #E9E3D9; box-shadow: 0 10px 22px -14px rgba(40,28,18,.45); }
+.rc-tile-label { text-align: center; }
+
+/* Trình xem toàn màn hình: luôn có sẵn để play() chạy ngay trong lúc chạm. */
+.rc-player { position: fixed; inset: 0; z-index: 30; background: #120F0D; opacity: 0; transform: scale(1.02); pointer-events: none; transition: opacity .25s ease, transform .3s cubic-bezier(.2,.8,.2,1); }
+.rc-player.on { opacity: 1; transform: none; pointer-events: auto; }
+.rc-player video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.rc-bar { position: absolute; top: calc(var(--safe-top) + 10px); left: 14px; right: 14px; height: 3px; border-radius: 3px; background: rgba(247,242,234,.25); overflow: hidden; }
+.rc-bar span { display: block; height: 100%; background: #F7F2EA; transform: scaleX(0); transform-origin: left center; will-change: transform; }
+.rc-player-top { position: absolute; top: calc(var(--safe-top) + 20px); left: 10px; right: 10px; display: flex; align-items: center; justify-content: space-between; color: #F7F2EA; }
+.rc-player-top span { padding-left: 8px; font-family: var(--rc-serif); font-weight: 600; font-size: 15px; text-shadow: 0 1px 6px rgba(0,0,0,.4); }
+.rc-player-top .icon-btn { color: #F7F2EA; }
+.rc-big { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 0; border: 0; background: none; color: #F7F2EA; font-size: 14px; }
+.rc-big svg { width: 76px; height: 76px; padding: 24px 22px 24px 26px; border-radius: 50%; background: rgba(18,15,13,.55); fill: currentColor; animation: rc-fade .2s ease both; }
+.rc-share { position: absolute; left: 50%; bottom: calc(var(--safe-bottom) + 18px); transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 999px;
+  border: 1px solid rgba(247,242,234,.3); background: rgba(18,15,13,.4); color: #F7F2EA; font-size: 14px; }
+.rc-share:active { transform: translateX(-50%) scale(.96); }
+
+@keyframes rc-in { from { opacity: 0; transform: translateY(14px) scale(.98); } }
+@keyframes rc-fade { from { opacity: 0; } }
+@keyframes rc-pulse { 50% { opacity: .25; transform: scale(.7); } }
+@media (prefers-reduced-motion: reduce) { .rc-hero, .rc-big svg { animation: none; } .rc-player { transition: opacity .2s ease; transform: none; } }
