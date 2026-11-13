@@ -25,6 +25,8 @@
   "error.too_many_tries": "Thử mã nhiều lần quá rồi, đợi chừng mười phút rồi thử lại nhé",
   "error.slow_down": "Nhanh quá rồi, đợi một lát rồi thử lại nhé",
   "error.post_not_found": "Không thấy tin này nữa",
+  "error.file_too_big": "Tệp lớn quá, chọn tệp nhỏ hơn nhé",
+  "error.photo_type": "Ảnh này chưa dùng được, chọn ảnh JPG hoặc PNG nhé",
 
   "member.defaultName": "Mình",
   "family.defaultName": "Nhà mình",

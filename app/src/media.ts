@@ -74,7 +74,9 @@ export function fileName(blob: Blob, base: string) {
 
 /** Ảnh chọn từ máy (ảnh iPhone 3 đến 5 MB) thu về cạnh dài 2048 px trước khi gửi: tải nhanh hơn nhiều, nhìn vẫn nét. Lỗi thì gửi bản gốc. */
 export async function shrinkImage(file: Blob, max = 2048): Promise<Blob> {
-  if (!file.type.startsWith('image/') || file.type === 'image/gif' || file.size < 500_000) return file;
+  // HEIC, AVIF... (ảnh từ máy tính, Android) luôn vẽ lại ra JPEG dù nhỏ, vì máy chủ và máy khác chưa chắc đọc được. GIF giữ nguyên để còn chuyển động.
+  const usable = /^image\/(jpeg|png|webp)$/.test(file.type);
+  if (!file.type.startsWith('image/') || file.type === 'image/gif' || (usable && file.size < 500_000)) return file;
   try {
     const bmp = await createImageBitmap(file);
     const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
@@ -83,7 +85,7 @@ export async function shrinkImage(file: Blob, max = 2048): Promise<Blob> {
     c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
     bmp.close();
     const out = await new Promise<Blob | null>((r) => c.toBlob(r, 'image/jpeg', 0.86));
-    return out && out.size < file.size ? out : file;
+    return out && (out.size < file.size || !usable) ? out : file;
   } catch { return file; }
 }
 

@@ -393,6 +393,15 @@ if (existsSync(dist)) {
   app.get(/^(?!\/api|\/media).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
 }
 
+// Lỗi lọt ra ngoài hàm h (tệp quá cỡ ở multer, thân JSON quá 1 MB hay hỏng): trả JSON có mã lỗi thay vì trang lỗi HTML.
+app.use((err: Error & { type?: string; status?: number }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const big = (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') || err.type === 'entity.too.large';
+  if (big) return void res.status(413).json(errorBody('file_too_big'));
+  if (err instanceof multer.MulterError) return void res.status(400).json(errorBody('missing_media'));
+  if (!err.status || err.status >= 500) console.error(err);
+  res.status(err.status && err.status >= 400 && err.status < 500 ? err.status : 500).json(errorBody('server'));
+});
+
 const port = Number(process.env.PORT || 3010);
 await migrate();
 await migrateCalendar(pool);
