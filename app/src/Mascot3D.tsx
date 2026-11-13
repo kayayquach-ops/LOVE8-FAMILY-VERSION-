@@ -19,7 +19,7 @@ function hasWebGL() {
 
 const Inner = lazy(() => Promise.resolve({ default: Mascot3D }));
 
-/** Linh vật 3D (bản gốc từ Blender → mascot.glb, các hình khác dựng bằng three.js). Máy không có WebGL hoặc tải lỗi thì rơi về bản SVG. */
+/** Linh vật 3D: thú bông vải nỉ dựng trong Blender → public/mascots/<hình>.glb (xem mascotModels.ts). Máy không có WebGL hoặc tải lỗi thì rơi về bản SVG. */
 export function MascotAny(p: Props) {
   const [ok, setOk] = useState(() => hasWebGL());
   const family = useMascotShape();
