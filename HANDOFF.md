@@ -4,6 +4,9 @@ App gia đình cho du học sinh ở xa và bố mẹ. Bản thật: **https://h
 
 ## Đợt 13/11/2026 (đã deploy 13/11, commit `1b00abb`)
 
+- 14/11: theo yêu cầu người dùng đã xoá hẳn 14 tập podcast kiểu cũ trên live (3 nhà, tạo 24-26/10) cùng 13 file âm thanh; bản ghi giọng gốc của cuộc gọi còn nguyên. Tập mới chỉ có từ cuộc gọi sau.
+- 14/11: nhạc nền thật (7 bài Suno không lời của người dùng, tài khoản melomelo_zz): `server/music/recap/` (neo-soul, lo-fi) và `server/music/podcast/` (piano chậm), `pickTrack(seed, kind)`. Commit `3b7d719`, CHƯA deploy (chờ người dùng đồng ý). Không dùng bài có lời, bộ Giáng sinh có tiếng lửa, và nhạc của nghệ sĩ khác trong Downloads.
+
 Làm song song bằng nhiều agent, mỗi agent một nhánh `worktree-agent-*` (trong `.claude/worktrees`, đã gộp hết). Lưu ý khi dùng worktree: nhánh mới được tách từ `origin` (bản đã push), không phải HEAD trên máy, nên phải `git reset --hard <commit>` hoặc rebase trước khi làm.
 
 - **Linh vật**: mỗi nhà đặt tên (mặc định Mây, chữ `{mascot}` trong bảng i18n, prompt AI theo tên) và chọn 1 trong 8 hình (`PUT /api/family/mascot`, `MascotSheet.tsx`). 8 hình là thú bông vải nỉ dựng bằng Blender (người dùng chọn kiểu này, chê bản khối tròn). Mã nhà mới 7 số, nhà cũ giữ 6 số.
