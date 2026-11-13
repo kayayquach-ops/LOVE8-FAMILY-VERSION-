@@ -141,6 +141,7 @@ export function App() {
       else if (o === 'chat' || o === 'calendar') setSheet(o);
       else if (o === 'letter') setSheet('letters');
       else if (o === 'post') setSheet('feed');
+      else if (o === 'recap') setSheet('recap');
     });
   }, [!!me]);
 
