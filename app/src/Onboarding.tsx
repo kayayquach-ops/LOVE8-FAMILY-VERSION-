@@ -291,7 +291,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <button className="link" onClick={onDone}>{t('onboarding.invite.skip')}</button>
           </>}>
           <div className="panel fade" style={{ alignSelf: 'center', width: '86%', textAlign: 'center' }}>
-            <img className="invite-logo" src="/logo.svg" alt="" />
+            <img className="invite-logo" src="/logo-mark.png" alt="" />
             <div className="muted">{t('onboarding.invite.codeOf', { family: made.family })}</div>
             <button className="code" onClick={() => void copyCode(made.code)} aria-label={t('invite.codeAria', { code: made.code })}>{made.code}</button>
             <div className="code-hint">{t('invite.codeHint')}</div>

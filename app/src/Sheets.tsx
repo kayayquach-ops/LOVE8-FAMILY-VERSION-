@@ -86,7 +86,7 @@ export function Family({ me, onClose, onChanged, onSettings, onCallMember }: { m
 
       <div className="h2">{t('home.invite.more')}</div>
       <div className="panel" style={{ textAlign: 'center' }}>
-        <img className="invite-logo" src="/logo.svg" alt="" />
+        <img className="invite-logo" src="/logo-mark.png" alt="" />
         <div className="muted">{t('family.code')}</div>
         <button className="code" onClick={() => void copyCode(me.family.code)} aria-label={t('invite.codeAria', { code: me.family.code })}>{me.family.code}</button>
         <div className="code-hint">{t('invite.codeHint')}</div>
