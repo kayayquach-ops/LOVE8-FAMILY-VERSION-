@@ -36,6 +36,9 @@
 
   "app.offline.title": "Can't reach home yet",
   "app.offline.body": "The connection is shaky. Check your wifi or mobile data and try again.",
+  "app.crash.title": "Something went wrong",
+  "app.crash.body": "Reload the app and you're all set.",
+  "app.crash.reload": "Reload",
 
   "invite.send": "Send invite",
   "invite.text": "Come join {family} on Sweet Home with me. Home code: {code}",

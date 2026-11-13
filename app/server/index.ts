@@ -367,6 +367,8 @@ const dist = path.resolve('dist');
 if (existsSync(dist)) {
   // File trong assets có mã băm trong tên, giữ lâu được; các file khác giữ 1 giờ.
   app.use('/assets', express.static(path.join(dist, 'assets'), { maxAge: '1y', immutable: true }));
+  // Tệp không còn (máy đang mở bản cũ sau khi deploy): trả 404 thật để máy khách biết mà tải lại, không trả index.html giả làm JS.
+  app.use('/assets', (_req, res) => { res.status(404).set('Cache-Control', 'no-store').end(); });
   app.use(express.static(dist, { index: false, maxAge: '1h' }));
   app.get(/^(?!\/api|\/media).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
 }

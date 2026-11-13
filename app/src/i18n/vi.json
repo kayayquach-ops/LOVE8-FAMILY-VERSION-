@@ -34,6 +34,9 @@
 
   "app.offline.title": "Chưa nối được về nhà",
   "app.offline.body": "Mạng đang chập chờn. Kiểm tra wifi hoặc 4G rồi thử lại nhé.",
+  "app.crash.title": "Có chút trục trặc",
+  "app.crash.body": "Mở lại app là được nhé.",
+  "app.crash.reload": "Mở lại",
 
   "invite.send": "Gửi lời mời",
   "invite.text": "Vào {family} trên Sweet Home với mình nhé. Mã nhà: {code}",

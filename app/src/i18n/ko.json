@@ -34,6 +34,9 @@
 
   "app.offline.title": "아직 집에 연결이 안 됐어요",
   "app.offline.body": "네트워크가 불안해요. 와이파이나 데이터를 확인하고 다시 해 주세요.",
+  "app.crash.title": "문제가 조금 생겼어요",
+  "app.crash.body": "앱을 다시 열면 괜찮아요.",
+  "app.crash.reload": "다시 열기",
 
   "invite.send": "초대 보내기",
   "invite.text": "Sweet Home에서 {family}에 같이 들어와요. 집 코드: {code}",
