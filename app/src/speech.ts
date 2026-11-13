@@ -35,6 +35,7 @@ let ctx: AudioContext | null = null;
 let out: AnalyserNode | null = null;
 let playing: { src: AudioBufferSourceNode; done: () => void } | null = null;
 let off = false; // máy chủ báo chưa có giọng hoặc hết hạn mức ngay từ đầu: không xin nữa trong cuộc gọi này
+let coolUntil = 0; // nhà cung cấp bị chặn tạm: tới lúc này mới xin giọng mới
 let cut = false; // hết hạn mức giữa cuộc gọi: câu nào chưa có sẵn thì chỉ hiện chữ, không đổi giọng
 let status: Promise<boolean> | null = null;
 let provider: 'openai' | 'gemini' | null = null; // nhà cung cấp chốt lúc nhấc máy, gửi kèm mọi yêu cầu để máy chủ không tự đổi giọng
@@ -45,10 +46,10 @@ const decoded = new Map<string, AudioBuffer>();
 export type Kind = 'fixed' | 'reply';
 
 /** Bắt đầu cuộc gọi mới: quên cờ hết hạn mức của lần trước. */
-export function resetVoice() { off = false; cut = false; status = null; provider = null; }
+export function resetVoice() { off = false; cut = false; coolUntil = 0; status = null; provider = null; clips.clear(); decoded.clear(); }
 
 /** Hết hạn mức giữa chừng (hoặc không có giọng): các câu sau chỉ hiện chữ. */
-export const voiceCut = () => cut || off;
+export const voiceCut = () => cut || off || Date.now() < coolUntil;
 
 /** Nhà cung cấp giọng đã chốt cho cuộc gọi này (null: giọng máy hoặc chưa hỏi), để máy chủ đọc sẵn câu đáp đúng giọng. */
 export const voiceProvider = () => (off ? null : provider);
@@ -94,7 +95,9 @@ async function fetchClip(text: string, kind?: Kind): Promise<ArrayBuffer | null>
     const { url, off: none, reason } = await r.json() as { url: string | null; off?: boolean; reason?: string };
     if (none) off = true;
     if (!url) {
-      if (reason === 'budget' || reason === 'cooldown') cut = true;
+      // Hết ngân sách ngày thì thôi cả cuộc gọi; bị chặn tạm (cooldown, thường vài giây tới vài phút) thì chỉ nghỉ 30 giây rồi xin lại.
+      if (reason === 'budget') cut = true;
+      else if (reason === 'cooldown') coolUntil = Date.now() + 30_000;
       return null;
     }
     const a = await fetch(url);

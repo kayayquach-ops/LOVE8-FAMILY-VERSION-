@@ -27,6 +27,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 const changed = () => window.dispatchEvent(new Event('hl-letters'));
+const hasHangul = (s: string) => /[ᄀ-ᇿ㄰-㆏가-힣]/.test(s);
 const MAX = 1500;
 const MAX_PHOTOS = 3;
 const MAX_ITEMS = 12;
@@ -159,8 +160,10 @@ export function Letters({ me, start, onClose }: { me: Me; start?: string | null;
   const byId = (id: string): Member | undefined => me.members.find((m) => m.id === id);
 
   useEffect(() => { void loadLetterFonts(getLang() === 'ko'); }, []);
+  // Thư có chữ Hàn (du học sinh hay viết) thì tải phông Hàn dù app đang tiếng Việt, khỏi rơi về phông hệ thống to và lệch.
+  useEffect(() => { if ([...(lists.in ?? []), ...(lists.out ?? [])].some((l) => hasHangul(`${l.body}${l.title ?? ''}${l.footer ?? ''}`))) void loadLetterFonts(true); }, [lists]);
 
-  const reload = (which: 'in' | 'out') => call<Letter[]>(`/api/letters?box=${which}`).then((r) => setLists((p) => ({ ...p, [which]: r }))).catch((e) => toast(e.message));
+  const reload =(which: 'in' | 'out') => call<Letter[]>(`/api/letters?box=${which}`).then((r) => setLists((p) => ({ ...p, [which]: r }))).catch((e) => toast(e.message));
   useEffect(() => { void reload('in'); void reload('out'); }, []);
   useEffect(() => { if (start === 'write') setView({ type: 'write' }); }, [start]);
 
@@ -319,6 +322,9 @@ function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Memb
     saveDraft(me.me.id, to ?? '', empty ? null : { text, title, footer, items: kept, at: Date.now() }, draftTo.current);
     draftTo.current = to ?? '';
   }, [to, text, title, footer, items]);
+  // Gõ chữ Hàn thì tải phông Hàn (một lần).
+  const ko = hasHangul(`${text}${title}${footer}`);
+  useEffect(() => { if (ko) void loadLetterFonts(true); }, [ko]);
   const [sel, setSel] = useState<string | null>(null);
   const [uploading, setUploading] = useState(0);
   const [cut, setCut] = useState(false);

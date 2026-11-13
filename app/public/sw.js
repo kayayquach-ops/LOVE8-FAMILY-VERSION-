@@ -7,7 +7,7 @@ self.addEventListener('push', (e) => {
   try { d = e.data ? e.data.json() : {}; } catch { d = { title: e.data ? e.data.text() : '' }; }
   const open = d.open || '';
   const call = d.kind === 'call';
-  e.waitUntil(self.registration.showNotification(d.title || 'Nhà mình có tin mới', {
+  e.waitUntil(self.registration.showNotification(d.title || 'Sweet Home', { // máy chủ luôn gửi tiêu đề đúng thứ tiếng; chỉ dự phòng
     body: d.body || '',
     icon: '/icon-192.png',
     badge: '/icon-192.png',
