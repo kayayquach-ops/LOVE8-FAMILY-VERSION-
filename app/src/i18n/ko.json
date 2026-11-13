@@ -221,6 +221,7 @@
   "camera.pickAria": "기기에서 사진 고르기",
   "camera.shutterAria": "누르면 사진, 길게 누르면 영상",
   "camera.flip": "카메라 전환",
+  "camera.zoomTo": "{n}배 확대",
   "camera.talk.listening": "듣는 중...",
   "camera.talk.hold": "눌러서 가족에게 말하기",
   "camera.news.new": " · 새 소식 {n}",

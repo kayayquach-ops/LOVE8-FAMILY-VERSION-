@@ -30,10 +30,34 @@ export function record(stream: MediaStream, mime: string): () => Promise<Recordi
   });
 }
 
-/** Chụp một khung vuông từ video đang chạy, lật lại nếu là camera trước. */
-export function snap(video: HTMLVideoElement, mirror: boolean): Promise<Blob> {
-  const s = Math.min(video.videoWidth, video.videoHeight);
-  const out = Math.min(s, 1440);
+/**
+ * Quay khi zoom số (máy không zoom được bằng phần cứng): vẽ vùng đang phóng lên canvas rồi quay luồng của canvas,
+ * kèm âm thanh gốc. Mức zoom đọc mỗi khung nên chụm tay lúc đang quay vẫn ra đúng.
+ */
+export function recordZoomed(stream: MediaStream, video: HTMLVideoElement, getZoom: () => number, mime: string): () => Promise<Recording> {
+  const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+  const k = Math.min(1, 1280 / Math.max(vw, vh));
+  const c = document.createElement('canvas');
+  c.width = Math.round(vw * k); c.height = Math.round(vh * k);
+  const g = c.getContext('2d')!;
+  let on = true;
+  const draw = () => {
+    if (!on) return;
+    const z = Math.max(1, getZoom());
+    g.drawImage(video, (vw - vw / z) / 2, (vh - vh / z) / 2, vw / z, vh / z, 0, 0, c.width, c.height);
+    requestAnimationFrame(draw);
+  };
+  draw();
+  const out = new MediaStream([...c.captureStream(30).getVideoTracks(), ...stream.getAudioTracks()]);
+  const stop = record(out, mime);
+  return () => { on = false; return stop().finally(() => out.getVideoTracks().forEach((t) => t.stop())); };
+}
+
+/** Chụp một khung vuông từ video đang chạy, lật lại nếu là camera trước. zoom > 1: chỉ lấy vùng giữa đang phóng. */
+export function snap(video: HTMLVideoElement, mirror: boolean, zoom = 1): Promise<Blob> {
+  const full = Math.min(video.videoWidth, video.videoHeight);
+  const s = full / Math.max(1, zoom);
+  const out = Math.round(Math.min(s, 1440));
   const c = document.createElement('canvas');
   c.width = c.height = out;
   const g = c.getContext('2d')!;

@@ -90,6 +90,12 @@ img, video { display: block; }
 /* Camera kiểu Locket */
 .viewfinder { position: relative; width: 100%; aspect-ratio: 1; border-radius: 44px; overflow: hidden; background: #E9DFD0; margin-top: 14px; }
 .viewfinder video, .viewfinder img { width: 100%; height: 100%; object-fit: cover; }
+.cam-screen .viewfinder { touch-action: none; }
+.zoom-hint { position: absolute; top: 50%; left: 50%; margin: -17px 0 0 -30px; width: 60px; line-height: 34px; text-align: center; border-radius: 999px; background: rgba(43,39,35,.5); color: #fff; font-size: 15px; opacity: 0; transition: opacity .4s; pointer-events: none; }
+.zoom-hint.on { opacity: 1; transition-duration: .1s; }
+.zoom-pills { position: absolute; left: 0; right: 0; bottom: 14px; display: flex; justify-content: center; gap: 8px; }
+.zoom-pills button { width: 38px; height: 38px; border-radius: 50%; background: rgba(43,39,35,.42); color: #fff; font-size: 14px; }
+.zoom-pills button.on { background: rgba(255,255,255,.9); color: var(--ink); }
 .mirror { transform: scaleX(-1); }
 .cap-input {
   position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); max-width: 86%; min-width: 60%; border: 0; outline: none;
@@ -516,7 +522,7 @@ textarea.field { resize: none; text-align: left; line-height: 1.5; }
 .ft-booth { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; background: var(--bg); padding: calc(var(--safe-top) + 10px) 16px calc(var(--safe-bottom) + 16px); }
 .ft-booth-top { display: flex; align-items: center; justify-content: space-between; }
 .ft-booth-top b { font-weight: 500; font-size: 17px; }
-.ft-stage { flex: 1; min-height: 0; position: relative; display: grid; place-items: center; padding: 12px 0; }
+.ft-stage { flex: 1; min-height: 0; position: relative; display: grid; place-items: center; padding: 18px 14px; margin: 10px 0; border-radius: 28px; }
 .ft-canvas { max-width: 100%; max-height: 100%; aspect-ratio: 4 / 5; border-radius: 18px; box-shadow: 0 14px 40px rgba(43,39,35,.16); }
 .ft-num { position: absolute; }
 .ft-booth-foot { display: flex; flex-direction: column; align-items: center; gap: 14px; }

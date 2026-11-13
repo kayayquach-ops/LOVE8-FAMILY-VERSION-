@@ -223,6 +223,7 @@
   "camera.pickAria": "Choose a photo from your device",
   "camera.shutterAria": "Tap to take a photo, hold to record",
   "camera.flip": "Flip camera",
+  "camera.zoomTo": "Zoom {n}×",
   "camera.talk.listening": "Listening...",
   "camera.talk.hold": "Hold to talk to everyone",
   "camera.news.new": " · {n} new",
