@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { api, isSignedOut, token } from './api';
+import { api, fromGoogle, isSignedOut, token } from './api';
 import { Camera } from './Camera';
 import { Feed } from './Feed';
 import { Hug } from './Hug';
@@ -48,7 +48,8 @@ export function App() {
   // Tên và hình linh vật của nhà: chữ có {mascot} và mọi chỗ vẽ linh vật theo nhà đang ở.
   useEffect(() => { applyMascot(me?.family); }, [me?.family.mascotName, me?.family.mascotShape]);
   const [ready, setReady] = useState(() => !!me);
-  const [sheet, setSheet] = useState<'feed' | 'jar' | 'family' | 'calendar' | 'chat' | 'recap' | 'podcast' | 'letters' | 'settings' | 'mascot' | null>(null);
+  // Liên kết Google từ Cài đặt xong, quay về thì mở lại Cài đặt để thấy kết quả.
+  const [sheet, setSheet] = useState<'feed' | 'jar' | 'family' | 'calendar' | 'chat' | 'recap' | 'podcast' | 'letters' | 'settings' | 'mascot' | null>(() => (fromGoogle && token.get() ? 'settings' : null));
   // Mở app là vào camera như Locket; Trang chủ là một tab.
   const [tab, setTab] = useState<'home' | 'camera' | 'may'>('camera');
   const [chatUnread, setChatUnread] = useState(0);
@@ -68,7 +69,7 @@ export function App() {
   inCall.current = facetime;
   const [skipRoom, setSkipRoom] = useState<string | null>(null);
   // Mở từ thông báo (?open=...) thì vào thẳng, không chờ màn chào: cuộc gọi chỉ đổ chuông vài chục giây.
-  const [greet, setGreet] = useState(() => !new URLSearchParams(location.search).get('open'));
+  const [greet, setGreet] = useState(() => !new URLSearchParams(location.search).get('open') && !(fromGoogle && token.get()));
   // Màn "giữ để ôm" mỗi ngày đã bỏ theo yêu cầu: mở app là vào thẳng Trang chủ sau màn chào. Đặt lại thành kiểm HUG_KEY để bật lại.
   const [hug, setHug] = useState(false);
 

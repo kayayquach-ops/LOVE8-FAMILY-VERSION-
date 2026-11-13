@@ -19,6 +19,7 @@ import { buildFirstVoicePodcast, migratePodcast, podcastRouter, refreshFirstVoic
 import { liveRouter, liveStreamRouter } from './facetime.ts';
 import { migratePush, notifyPost, notifyReply, pushRouter, startPushScheduler } from './push.ts';
 import { thumbRoute, warmThumbs } from './thumb.ts';
+import { googlePublicRouter, googleRouter, linkPendingGoogle } from './google.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -94,23 +95,25 @@ async function addMember(familyId: string, b: any) {
     else if (w === false || w === 'false') b.intro[k] = false;
     else delete b.intro[k];
   }
+  const mid = id();
   await pool.query('insert into members (id, family_id, name, role, token, city, intro, lang) values ($1,$2,$3,$4,$5,$6,$7,$8)', [
-    id(), familyId, String(b.name || '').slice(0, 30) || tReq('member.defaultName'), ['bo', 'me', 'con'].includes(b.role) ? b.role : 'con', token,
+    mid, familyId, String(b.name || '').slice(0, 30) || tReq('member.defaultName'), ['bo', 'me', 'con'].includes(b.role) ? b.role : 'con', token,
     b.city ? String(b.city).slice(0, 300) : null, b.intro ? JSON.stringify(b.intro).slice(0, 4000) : null, isLang(b.lang) ? b.lang : null,
   ]);
-  return token;
+  // Vào bằng Google mà tài khoản chưa có nhà: nối luôn (máy chủ chỉ tin danh tính đã xác minh trong phiên Google, không tin tên máy khách gửi).
+  return { token, google: await linkPendingGoogle(mid, b.google) };
 }
 
 app.post('/api/families', h(async (req, res) => {
   const fid = id();
   await pool.query('insert into families (id, name, code) values ($1,$2,$3)', [fid, String(req.body.family || tReq('family.defaultName')).slice(0, 40), await newCode()]);
-  res.json({ token: await addMember(fid, req.body) });
+  res.json(await addMember(fid, req.body));
 }));
 
 app.post('/api/join', h(async (req, res) => {
   const { rows } = await pool.query('select id from families where code = $1', [String(req.body.code || '').trim()]);
   if (!rows[0]) return res.status(404).json(errorBody('family_code_not_found'));
-  res.json({ token: await addMember(rows[0].id, req.body) });
+  res.json(await addMember(rows[0].id, req.body));
 }));
 
 app.get('/api/family/:code', h(async (req, res) => {
@@ -153,6 +156,7 @@ app.get('/api/survey/voice', h(async (_req, res) => {
 
 app.use('/api', chatStreamRouter);
 app.use('/api', liveStreamRouter);
+app.use('/api', googlePublicRouter);
 app.use('/api', auth as express.RequestHandler);
 app.use('/api', calendarRouter);
 app.use('/api', jarRouter);
@@ -164,6 +168,7 @@ app.use('/api', callRouter(upload));
 app.use('/api', podcastRouter);
 app.use('/api', liveRouter);
 app.use('/api', pushRouter);
+app.use('/api', googleRouter);
 
 app.get('/api/me', h(async (req, res) => {
   const m = req.member!;

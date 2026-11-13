@@ -4,6 +4,7 @@ import { DEFAULT_MASCOT_NAME } from '../src/shared.ts';
 export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
 // members.lang: ngôn ngữ của từng người (vi, en, ko); null là tiếng Việt như bản cũ.
+// members.google_sub: tài khoản Google đã liên kết (mã sub, mỗi tài khoản một người); google_auth: phiên đăng nhập Google đang dở (server/google.ts).
 export async function migrate() {
   await pool.query(`
     create table if not exists families (
@@ -38,6 +39,14 @@ export async function migrate() {
     alter table members add column if not exists lang text;
     alter table families add column if not exists mascot_name text;
     alter table families add column if not exists mascot_shape text;
+    alter table members add column if not exists google_sub text;
+    alter table members add column if not exists google_email text;
+    create unique index if not exists members_google_sub on members (google_sub);
+    create table if not exists google_auth (
+      state text primary key, bind_hash text not null, nonce text not null, intent text not null, member_id text,
+      sub text, email text, name text, error text, tries int not null default 0,
+      expires_at timestamptz not null, created_at timestamptz not null default now()
+    );
     create table if not exists seen (member_id text primary key references members(id), at timestamptz not null default now());
   `);
 }

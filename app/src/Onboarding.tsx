@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, token } from './api';
+import { api, fromGoogle, googlePending, startGoogle, token } from './api';
 import { CityPicker } from './CityPicker';
 import { getLang, LANGS, rememberLang, setLang, t, useLang } from './i18n';
 import { fileName, type Recording } from './media';
@@ -24,7 +24,8 @@ type Kid = 'son' | 'daughter' | 'both';
 // Vào app như một cuộc trò chuyện: bạn là ai, nhớ nhà thế nào, rồi nghe kể vì sao có Sweet Home và vào nhà.
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const lang = useLang();
-  const invite = new URLSearchParams(location.search).get('join') ?? '';
+  // Đi Google rồi quay về thì link mời đã rời thanh địa chỉ: lấy lại mã nhà đã giữ cùng phiên Google.
+  const [invite] = useState(() => new URLSearchParams(location.search).get('join') ?? googlePending.get()?.join ?? '');
   const [step, setStep] = useState<Step>('hello');
   const [role, setRole] = useState<Role | null>(null);
   const [kid, setKid] = useState<Kid | ''>('');
@@ -58,6 +59,58 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   useEffect(() => { for (const a of ['room', 'home', 'letter']) new Image().src = `/art/story-${a}.png`; }, []);
   useEffect(() => { if (invite) api.familyName(invite).then((r) => setInviteName(r.name)).catch(() => {}); }, []);
+
+  // Đăng nhập Google: máy chủ chưa đặt GOOGLE_CLIENT_ID thì không có nút. gName: tài khoản chưa có nhà, tên lấy từ Google.
+  const [gOn, setGOn] = useState(false);
+  const [gBusy, setGBusy] = useState(false);
+  const [gName, setGName] = useState<string | null>(null);
+  // Google xong ở cửa sổ khác (Safari) mà không phải app đã bấm: nhắc quay lại app trên Màn hình chính.
+  const [gBack] = useState(() => fromGoogle && !googlePending.get());
+  const resuming = useRef(false);
+  const gNameRef = useRef<string | null>(null);
+  useEffect(() => {
+    api.google().then((r) => setGOn(r.enabled)).catch(() => {});
+    // Quay về từ Google (trang tải lại, hoặc app trên Màn hình chính hiện lại sau khi Google mở ở cửa sổ khác): hỏi máy chủ kết quả.
+    const resume = async () => {
+      const p = googlePending.get();
+      if (!p || p.intent !== 'signin' || resuming.current) return;
+      resuming.current = true;
+      try {
+        const r = await api.googleFinish(p);
+        if (r.status === 'signin') {
+          googlePending.clear();
+          token.set(r.token);
+          rememberLang();
+          sfx('arrive');
+          return onDone();
+        }
+        if (r.status === 'cancel') googlePending.clear();
+        if (r.status === 'new') {
+          // Giữ phiên Google để tạo nhà hoặc vào nhà xong thì nối luôn.
+          const first = gNameRef.current === null;
+          gNameRef.current = r.name ?? '';
+          setGName(gNameRef.current);
+          if (first) { setName(gNameRef.current); setStep((s) => (s === 'hello' ? 'role' : s)); toast(t('onboarding.google.new')); }
+        }
+      } catch (e) {
+        googlePending.clear();
+        // Phiên cũ đã hết hạn từ lâu thì bỏ lặng lẽ; vừa quay về thì báo.
+        if (Date.now() - p.at < 16 * 60e3) toast((e as Error).message);
+      } finally {
+        resuming.current = false;
+      }
+    };
+    void resume();
+    const onShow = () => { if (document.visibilityState === 'visible') void resume(); };
+    document.addEventListener('visibilitychange', onShow);
+    return () => document.removeEventListener('visibilitychange', onShow);
+  }, []);
+  const google = () => {
+    if (gBusy) return;
+    sfx('button', true);
+    setGBusy(true);
+    startGoogle('signin', invite || undefined).catch((e) => { toast((e as Error).message); setGBusy(false); });
+  };
   // Quay lại câu ôm thì hỏi lại từ đầu.
   useEffect(() => { if (step === 'hug') { setWantHug(null); setA((x) => { const { hug: _, ...r } = x; return r; }); } }, [step]);
 
@@ -92,9 +145,14 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   async function finish(join: boolean) {
     setBusy(true);
     try {
-      const body = { name: name.trim(), role: role!, city, lang: getLang(), intro: { ...a, kid, ...(wantHug === null ? {} : { wantHug }), loveVoice: !!voice } };
+      // Vào bằng Google mà chưa có nhà: gửi kèm phiên Google, máy chủ nối tài khoản theo danh tính đã xác minh.
+      const gp = gName !== null ? googlePending.get() : null;
+      const body = { name: name.trim(), role: role!, city, lang: getLang(), intro: { ...a, kid, ...(wantHug === null ? {} : { wantHug }), loveVoice: !!voice },
+        ...(gp?.intent === 'signin' ? { google: { state: gp.state, bind: gp.bind } } : {}) };
       const r = join ? await api.join({ ...body, code: code.trim() }) : await api.create({ ...body, family: familyName.trim() || t('onboarding.home.default') });
       token.set(r.token);
+      // Phiên Google hết hạn giữa chừng (làm quen quá lâu) hay tài khoản vừa bị nối ở máy khác: vẫn vào nhà, nhắc nối lại sau.
+      if (gName !== null) { googlePending.clear(); if (r.google !== true) toast(t('onboarding.google.linkLater')); }
       // Từ giờ máy này có mã: ghi nhớ ngôn ngữ đang dùng để lần mở sau không bị coi là người cũ của bản tiếng Việt.
       rememberLang();
       if (voice) {
@@ -131,8 +189,18 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           </div>
           <Welcome />
           <div className="center" />
-          <div className="hello-hint">{inviteName ? t('onboarding.hello.invited', { family: inviteName }) : t('onboarding.hello.tap')}</div>
+          <div className="hello-hint" style={gOn ? { paddingBottom: 70 } : undefined}>
+            {gBack ? t('onboarding.google.back') : inviteName ? t('onboarding.hello.invited', { family: inviteName }) : t('onboarding.hello.tap')}
+          </div>
         </button>
+        {gOn && (
+          <button className="hello-google" disabled={gBusy} onClick={google}
+            style={{ position: 'fixed', zIndex: 30, left: '50%', bottom: 'calc(var(--safe-bottom) + 22px)', transform: 'translateX(-50%)', display: 'flex', alignItems: 'center', gap: 10,
+              minHeight: 46, padding: '0 22px', borderRadius: 999, border: '1px solid rgba(59,62,52,.16)', background: 'rgba(255,255,255,.82)', color: '#3B3E34',
+              font: 'inherit', fontSize: 15, fontWeight: 500, whiteSpace: 'nowrap', boxShadow: '0 1px 3px rgba(0,0,0,.08)', opacity: 0, animation: 'slowFade 1.6s 1.8s forwards' }}>
+            <GoogleMark /> {t('onboarding.hello.google')}
+          </button>
+        )}
         <div className="hello-lang" role="group" aria-label="Language">
           {LANGS.map((l, i) => (
             <span key={l}>
@@ -167,7 +235,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       {step === 'role' && (
         <Ask key="role" q={t('onboarding.role.q')} {...T}>
           {(['bo', 'me', 'con'] as const).map((k) => (
-            <Opt key={k} on={role === k} onClick={() => { tapSoft(); setRole(k); setName(k === 'bo' ? t('role.bo') : k === 'me' ? t('role.me') : ''); later(next, 250); }}>{t(`onboarding.role.opt.${k}`)}</Opt>
+            <Opt key={k} on={role === k} onClick={() => { tapSoft(); setRole(k); setName(gName || (k === 'bo' ? t('role.bo') : k === 'me' ? t('role.me') : '')); later(next, 250); }}>{t(`onboarding.role.opt.${k}`)}</Opt>
           ))}
         </Ask>
       )}
@@ -332,6 +400,18 @@ export async function shareInvite(code: string, family: string) {
 
 export async function copyCode(code: string) {
   toast(await copyText(code) ? t('invite.codeCopied', { code }) : t('invite.code', { code }));
+}
+
+/** Chữ G nhiều màu của Google, đúng mẫu nút đăng nhập Google. */
+export function GoogleMark({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden style={{ flex: 'none' }}>
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+    </svg>
+  );
 }
 
 function Opt({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
