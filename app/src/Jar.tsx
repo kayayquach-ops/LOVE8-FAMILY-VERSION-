@@ -1,29 +1,23 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, errorText, token } from './api';
 import { locale, t, type Key } from './i18n';
 import type { Me, Week } from './shared';
 import { cached, remember } from './cache';
 import { buzz, sfx, tap } from './sound';
 import { Avatar, Icon, toast } from './ui';
+import { JarArt, SeedImg } from './JarArt';
 
-type Shape = 'heart' | 'round' | 'star' | 'petal' | 'drop' | 'leaf';
-type SeedDef = { id: string; colors: [string, string]; shape: Shape; price: number };
+type SeedDef = { id: string; price: number };
 type JarData = {
   capacity: number; level: number; gifts: number; seeds: Array<{ memberId: string; seed: string; count: number }>;
   catalog: SeedDef[]; owned: string[]; mine: string;
 };
 
+// Hình hạt là sprite charm trong public/jar (JarArt.tsx); máy chủ giữ danh sách và giá tương ứng (server/jar.ts).
 const CATALOG: SeedDef[] = [
-  { id: 'heart_red', colors: ['#D9534F', '#A23430'], shape: 'heart', price: 0 },
-  { id: 'lotus', colors: ['#F2B5C4', '#C9798F'], shape: 'round', price: 0 },
-  { id: 'sun', colors: ['#F6C453', '#C98E1B'], shape: 'star', price: 0 },
-  { id: 'leaf', colors: ['#8DB580', '#4F7A47'], shape: 'leaf', price: 0 },
-  { id: 'pearl', colors: ['#F4EFE8', '#B9AEA0'], shape: 'round', price: 19000 },
-  { id: 'sakura', colors: ['#F9C9D6', '#E58CA5'], shape: 'petal', price: 19000 },
-  { id: 'gold', colors: ['#E8B93C', '#9C6F0C'], shape: 'heart', price: 29000 },
-  { id: 'crystal', colors: ['#BFE3F2', '#6FA8C4'], shape: 'drop', price: 29000 },
-  { id: 'rainbow', colors: ['#B48AE0', '#F08A7A'], shape: 'star', price: 39000 },
-  { id: 'dew', colors: ['#9FD8CF', '#4E9E94'], shape: 'drop', price: 19000 },
+  { id: 'heart_red', price: 0 }, { id: 'lotus', price: 0 }, { id: 'sun', price: 0 }, { id: 'leaf', price: 0 },
+  { id: 'pearl', price: 19000 }, { id: 'sakura', price: 19000 }, { id: 'gold', price: 29000 },
+  { id: 'crystal', price: 29000 }, { id: 'rainbow', price: 39000 }, { id: 'dew', price: 19000 },
 ];
 const seedOf = (id: string) => CATALOG.find((s) => s.id === id) ?? CATALOG[0];
 const seedName = (s: SeedDef) => t(`jar.seed.${s.id}` as Key);
@@ -35,73 +29,6 @@ async function jfetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(errorText(data));
   return data as T;
-}
-
-const PATH: Record<Shape, string> = {
-  heart: 'M0 8C-9 2-9-6-4.5-6C-2-6 0-4 0-2.5C0-4 2-6 4.5-6C9-6 9 2 0 8Z',
-  round: 'M0-7A7 7 0 110 7A7 7 0 110-7Z',
-  star: 'M0-9L2.6-3 9-2.4 4.2 1.8 5.6 8 0 4.8-5.6 8-4.2 1.8-9-2.4-2.6-3Z',
-  petal: 'M0 9C-9 3-8-7-3-8L0-5L3-8C8-7 9 3 0 9Z',
-  drop: 'M0-9C5-2 8 2 8 4A8 8 0 01-8 4C-8 2-5-2 0-9Z',
-  leaf: 'M-7 7C-8-3 0-9 8-8C8 0 3 8-7 7Z',
-};
-
-function SeedShape({ def, size = 20 }: { def: SeedDef; size?: number }) {
-  return (
-    <svg viewBox="-11 -11 22 22" width={size} height={size} aria-hidden>
-      <path d={PATH[def.shape]} fill={def.colors[0]} stroke={def.colors[1]} strokeWidth="1.2" strokeLinejoin="round" />
-      <ellipse cx="-2.5" cy="-2.5" rx="2" ry="1.2" fill="#fff" opacity=".55" transform="rotate(-30 -2.5 -2.5)" />
-    </svg>
-  );
-}
-
-function prng(seed: number) {
-  let a = seed >>> 0;
-  return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-}
-
-const JAR_PATH = 'M50 30h60v18c22 10 32 30 32 54v60a26 26 0 01-26 26H44a26 26 0 01-26-26v-60c0-24 10-44 32-54z';
-
-/** Hình lọ với các hạt bên trong. Trang chủ dùng bản nhỏ; id riêng mỗi lọ vì Trang chủ và màn lọ cùng nằm trên trang. */
-export function JarArt({ list, width = 230 }: { list: string[]; width?: number }) {
-  const uid = useId().replace(/:/g, '');
-  const placed = useMemo(() => {
-    const r = prng(list.length * 7919 + 13);
-    const order = list.map((s) => ({ s, k: r() })).sort((a, b) => a.k - b.k).map((x) => x.s);
-    const COLS = 7;
-    return order.map((s, i) => {
-      const row = Math.floor(i / COLS), col = i % COLS;
-      const x = 29 + col * 17 + (row % 2 ? 8 : 0) + (r() - 0.5) * 3;
-      const y = 168 - row * 14 + (r() - 0.5) * 3;
-      return { s, x: Math.min(x, 133), y, rot: (r() - 0.5) * 70 };
-    });
-  }, [list]);
-  return (
-    <svg viewBox="0 0 160 200" width={width} height={Math.round(width * 1.25)} aria-hidden className="jar-svg">
-      <defs>
-        <clipPath id={`jarclip${uid}`}><path d={JAR_PATH} /></clipPath>
-        <linearGradient id={`jarglass${uid}`} x1="0" x2="1">
-          <stop offset="0" stopColor="#fff" stopOpacity=".7" /><stop offset=".5" stopColor="#fff" stopOpacity=".18" /><stop offset="1" stopColor="#fff" stopOpacity=".5" />
-        </linearGradient>
-      </defs>
-      <ellipse cx="80" cy="192" rx="56" ry="5" fill="#2B2723" opacity=".08" />
-      <path d={JAR_PATH} fill={`url(#jarglass${uid})`} />
-      <g clipPath={`url(#jarclip${uid})`}>
-        {placed.map((p, i) => {
-          const d = seedOf(p.s);
-          return (
-            <g key={i} transform={`translate(${p.x} ${p.y}) rotate(${p.rot}) scale(.78)`}>
-              <path d={PATH[d.shape]} fill={d.colors[0]} stroke={d.colors[1]} strokeWidth="1.4" strokeLinejoin="round" />
-              <ellipse cx="-2.5" cy="-2.5" rx="2" ry="1.2" fill="#fff" opacity=".55" />
-            </g>
-          );
-        })}
-      </g>
-      <path d={JAR_PATH} fill="none" stroke="#2B2723" strokeWidth="2" opacity=".85" />
-      <path d="M30 100c0-14 4-26 12-34" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" opacity=".7" />
-      <rect x="44" y="18" width="72" height="14" rx="5" fill="#E9DCCB" stroke="#2B2723" strokeWidth="2" />
-    </svg>
-  );
 }
 
 function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -125,13 +52,12 @@ export function Jar({ me, onClose }: { me: Me; onClose: () => void }) {
   const [j, setJ] = useState<JarData | null>(() => cached<JarData>('jar'));
   const [soon, setSoon] = useState<SeedDef | null>(null);
   const [doing, setDoing] = useState<string | null>(null);
+  const art = useRef<HTMLDivElement>(null);
   const load = () => {
     api.week().then((v) => { remember('week', v); setW(v); }).catch((e) => toast(e.message));
     jfetch<JarData>('/api/jar').then((v) => { remember('jar', v); setJ(v); }).catch((e) => toast(e.message));
   };
   useEffect(load, []);
-
-  const list = useMemo(() => (j ? j.seeds.flatMap((s) => Array<string>(s.count).fill(s.seed)) : []), [j]);
 
   if (!w || !j) return <Sheet title={t('jar.title')} onClose={onClose}><div className="muted">{t('common.loading')}</div></Sheet>;
 
@@ -149,8 +75,8 @@ export function Jar({ me, onClose }: { me: Me; onClose: () => void }) {
 
   return (
     <Sheet title={t('jar.title')} onClose={onClose}>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 6 }}>
-        <JarArt list={list} />
+      <div ref={art} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 6 }}>
+        <JarArt rows={j.seeds} gifts={j.gifts} family={me.family.id} width={250} />
         <div className="h1">{t('jar.count', { level: j.level, capacity: j.capacity })}</div>
         <div className="muted" style={{ textAlign: 'center' }}>{t('jar.sub')}</div>
       </div>
@@ -161,7 +87,7 @@ export function Jar({ me, onClose }: { me: Me; onClose: () => void }) {
           return (
             <div key={s.memberId} className="jar-who">
               <Avatar m={m} size={34} />
-              <SeedShape def={seedOf(s.seed)} size={22} />
+              <SeedImg id={seedOf(s.seed).id} size={30} />
               <span>{m?.name ?? ''}</span>
               <b>{s.count}</b>
             </div>
@@ -175,7 +101,7 @@ export function Jar({ me, onClose }: { me: Me; onClose: () => void }) {
           const locked = s.price > 0 && !j.owned.includes(s.id);
           return (
             <button key={s.id} className={`jar-seed ${j.mine === s.id ? 'on' : ''}`} onClick={() => pick(s)}>
-              <SeedShape def={s} size={32} />
+              <SeedImg id={s.id} size={48} />
               <span>{seedName(s)}</span>
               <i>{locked ? money(s.price) : j.mine === s.id ? t('jar.using') : t('jar.use')}</i>
             </button>
@@ -199,7 +125,14 @@ export function Jar({ me, onClose }: { me: Me; onClose: () => void }) {
                 const was = m;
                 const put = (y: typeof m) => setW((x) => x && { ...x, missions: x.missions.map((z) => (z.key === m.key ? y : z)) });
                 put({ ...m, done: true, doneBy: m.doneBy.includes(me.me.id) ? m.doneBy : [...m.doneBy, me.me.id] });
-                try { await api.mission(m.key); sfx('sparkle'); toast(t('jar.added')); load(); } catch (e) { put(was); toast((e as Error).message); } finally { setDoing(null); }
+                // Hạt của mình rơi vào lọ ngay (cuộn lên cho thấy lọ trước); lọ sắp đầy thì để máy chủ đổ lọ rồi mới vẽ.
+                const box = art.current?.querySelector('.jar-art')?.getBoundingClientRect();
+                if (!box || box.top < 40 || box.bottom > window.innerHeight) {
+                  art.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  await new Promise((ok) => window.setTimeout(ok, 420));
+                }
+                if (j.level + 1 < j.capacity) setJ((x) => x && { ...x, level: x.level + 1, seeds: x.seeds.map((r) => (r.memberId === me.me.id ? { ...r, count: r.count + 1 } : r)) });
+                try { await api.mission(m.key); sfx('sparkle'); toast(t('jar.added')); load(); } catch (e) { put(was); toast((e as Error).message); load(); } finally { setDoing(null); }
               }}>
               {m.done ? t('jar.done') : t('common.done')}
             </button>
@@ -220,7 +153,7 @@ export function Jar({ me, onClose }: { me: Me; onClose: () => void }) {
       {soon && (
         <div className="jar-modal" onClick={() => setSoon(null)}>
           <div className="jar-modal-box" onClick={(e) => e.stopPropagation()}>
-            <SeedShape def={soon} size={56} />
+            <SeedImg id={soon.id} size={88} />
             <div className="h1" style={{ marginTop: 10 }}>{t('jar.soon.title')}</div>
             <div className="muted" style={{ textAlign: 'center' }}>{t('jar.soon.body', { name: seedName(soon), price: money(soon.price) })}</div>
             <button className="btn" style={{ marginTop: 18 }} onClick={() => setSoon(null)}>{t('jar.soon.ok')}</button>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import './home.css';
 import { token } from './api';
 import { cached, remember } from './cache';
@@ -10,7 +10,7 @@ import { tap } from './sound';
 import { CallCard } from './CallCard';
 import { snooze, snoozed } from './callSnooze';
 import { shareInvite } from './Onboarding';
-import { JarArt } from './Jar';
+import { JarArt } from './JarArt';
 import { fmtDate, t } from './i18n';
 
 type Screen = 'camera' | 'feed' | 'chat' | 'calendar' | 'jar' | 'family' | 'podcast' | 'recap' | 'letters' | 'settings';
@@ -24,7 +24,7 @@ type HomeData = {
   podcasts: Podcast[];
 };
 // Phần của /api/jar mà Trang chủ cần: màu hạt từng người để vẽ lọ thật. Dùng chung bản lưu 'jar' với màn lọ.
-type JarLite = { level: number; capacity: number; seeds: Array<{ memberId: string; seed: string; count: number }> };
+type JarLite = { level: number; capacity: number; gifts?: number; seeds: Array<{ memberId: string; seed: string; count: number }> };
 
 async function get<T>(path: string): Promise<T> {
   const tk = token.get();
@@ -78,7 +78,6 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
     get<JarLite>('/api/jar').then((j) => { remember('jar', j); if (live) setJarTick((n) => n + 1); }).catch(() => {});
     return () => { live = false; };
   }, [data?.jar.level]);
-  const seeds = useMemo(() => (jar ? jar.seeds.flatMap((s) => Array<string>(s.count).fill(s.seed)) : []), [jar]);
 
   useEffect(() => {
     let live = true;
@@ -109,7 +108,7 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
 
       {/* Lọ yêu thương: khối lớn ngay dưới lời chào, chạm là mở lọ. Luôn giữ chỗ để phần dưới không nhảy khi số hạt về. */}
       <button className="home-jar" onClick={go('jar')}>
-        <span className="home-jar-art"><JarArt list={seeds} width={114} /></span>
+        <span className="home-jar-art"><JarArt rows={jar?.seeds ?? []} gifts={jar?.gifts ?? 0} family={me.family.id} width={118} ready={!!jar} /></span>
         <span className="home-jar-text">
           <span className="home-eyebrow">{t('jar.title')}</span>
           <span className={`home-jar-count${data || jar ? '' : ' wait'}`}>
