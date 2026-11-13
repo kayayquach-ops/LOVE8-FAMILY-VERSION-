@@ -24,6 +24,7 @@
   "error.push_bad_subscription": "Đăng ký chưa đúng",
   "error.too_many_tries": "Thử mã nhiều lần quá rồi, đợi chừng mười phút rồi thử lại nhé",
   "error.slow_down": "Nhanh quá rồi, đợi một lát rồi thử lại nhé",
+  "error.post_not_found": "Không thấy tin này nữa",
 
   "member.defaultName": "Mình",
   "family.defaultName": "Nhà mình",

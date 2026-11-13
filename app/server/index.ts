@@ -4,6 +4,7 @@ import compression from 'compression';
 import multer from 'multer';
 import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
+import { unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { cleanMascotName, DEFAULT_MASCOT_NAME, isMascotShape, type Member, type Post, type Reply, type Week } from '../src/shared.ts';
 import { migrate, pool } from './db.ts';
@@ -270,8 +271,15 @@ app.post('/api/me/first-voice', upload.single('file'), h(async (req, res) => {
   res.json({ ok: true });
 }));
 
+/** Bài có thuộc nhà của người gọi không: thả cảm xúc, trả lời chỉ được vào bài trong nhà mình. */
+async function ownPost(req: Req) {
+  const { rowCount } = await pool.query('select 1 from posts where id = $1 and family_id = $2', [req.params.id, req.member!.family_id]);
+  return !!rowCount;
+}
+
 app.post('/api/posts/:id/react', h(async (req, res) => {
-  const emoji = String(req.body.emoji || '');
+  if (!(await ownPost(req))) return res.status(404).json(errorBody('post_not_found'));
+  const emoji = String(req.body.emoji || '').slice(0, 16);
   if (!emoji) await pool.query('delete from reactions where post_id = $1 and member_id = $2', [req.params.id, req.member!.id]);
   else await pool.query(
     'insert into reactions (post_id, member_id, emoji) values ($1,$2,$3) on conflict (post_id, member_id) do update set emoji = excluded.emoji',
@@ -282,6 +290,10 @@ app.post('/api/posts/:id/react', h(async (req, res) => {
 }));
 
 app.post('/api/posts/:id/replies', upload.single('file'), h(async (req, res) => {
+  if (!(await ownPost(req))) {
+    if (req.file) await unlink(req.file.path).catch(() => {});
+    return res.status(404).json(errorBody('post_not_found'));
+  }
   await pool.query('insert into replies (id, post_id, author_id, kind, media, text, seconds) values ($1,$2,$3,$4,$5,$6,$7)', [
     id(), req.params.id, req.member!.id, req.file ? 'voice' : 'text', media(req.file), String(req.body.text || '').slice(0, 300) || null,
     Number(req.body.seconds) || null,

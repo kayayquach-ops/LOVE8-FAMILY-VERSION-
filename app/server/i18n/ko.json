@@ -24,6 +24,7 @@
   "error.push_bad_subscription": "알림 등록이 올바르지 않아요",
   "error.too_many_tries": "너무 여러 번 시도했어요. 10분쯤 기다렸다가 다시 해 주세요",
   "error.slow_down": "조금 빨랐어요. 잠시 후 다시 해 주세요",
+  "error.post_not_found": "이 게시물은 더 이상 없어요",
 
   "member.defaultName": "나",
   "family.defaultName": "우리 집",

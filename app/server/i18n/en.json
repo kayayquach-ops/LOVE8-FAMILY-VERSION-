@@ -24,6 +24,7 @@
   "error.push_bad_subscription": "Invalid subscription",
   "error.too_many_tries": "Too many tries. Wait about ten minutes and try again",
   "error.slow_down": "That was a bit fast. Wait a moment and try again",
+  "error.post_not_found": "This post isn't here anymore",
 
   "member.defaultName": "Me",
   "family.defaultName": "Our Home",
