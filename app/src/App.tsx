@@ -15,6 +15,7 @@ import { Chat } from './Chat';
 import { Incoming } from './Incoming';
 import { connectLive, livePost, onLive, type LiveRoom } from './live';
 import { onPushOpen, syncPush } from './push';
+import { resumeOutbox } from './outbox';
 import { TabBar, type Tab } from './TabBar';
 import { applyMascot } from './mascotStore';
 import { Mesh, Toaster } from './ui';
@@ -94,6 +95,8 @@ export function App() {
   };
   useEffect(() => {
     if (token.get()) void load(); else setReady(true);
+    // Lần trước tắt app khi câu trả lời cuộc gọi chưa gửi xong: gửi tiếp.
+    if (token.get()) void resumeOutbox();
     // Màn gọi video tải sau cùng, lúc rảnh hẳn: chỉ là mã và khai báo chữ, tệp phông của phần chụp chung chỉ tải khi vẽ đến.
     const w = window as Window & { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number };
     const idle = (f: () => void) => (w.requestIdleCallback ? w.requestIdleCallback(f, { timeout: 4000 }) : f());

@@ -201,6 +201,7 @@
   "call.photoFailed": "Couldn't send the photo",
   "call.pickPhoto": "Choose a photo",
   "call.podcastSoon": "Your voice will become a podcast episode. Give it a few minutes.",
+  "call.sendLater": "The connection is weak. Your answers will send on their own once you're back online.",
   "call.end": "End call",
   "call.card.bo": "I'd love a little chat with Dad. Will you pick up?",
   "call.card.me": "I'd love a little chat with Mom. Will you pick up?",

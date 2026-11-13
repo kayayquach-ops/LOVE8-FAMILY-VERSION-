@@ -3,6 +3,7 @@ import { errorText, token } from './api';
 import { type Drive, type MascotMode } from './Mascot';
 import { MascotAny as Mascot } from './Mascot3D';
 import { AUDIO_TYPE, fileName, record, type Recording } from './media';
+import { send as outbox } from './outbox';
 import { callLines, type CallScript, type Me } from './shared';
 import { buzz, sfx, startRing, stopRing, tap } from './sound';
 import { playVoice, prefetchVoice, resetVoice, setVoiceContext, speak, stopSpeaking, ttsReady, unlockSpeech, voiceCut, voiceReady, warmVoice, type Kind } from './speech';
@@ -59,7 +60,8 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
   const [i, setI] = useState(0);
   const [caption, setCaption] = useState('');
   const [heard, setHeard] = useState('');
-  const [answered, setAnswered] = useState(0);
+  // Lệnh kết thúc cuộc gọi: 'ok' khi máy chủ đã nhận (mới báo có podcast), 'later' khi mạng chập và hàng chờ còn đang gửi.
+  const [sent, setSent] = useState<'none' | 'wait' | 'ok' | 'later'>('none');
   const drive = useRef<Drive>({ talking: false, pulse: 0, level: 0 });
   const prep = useRef<Promise<Session> | null>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -68,7 +70,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
   const rec = useRef<any>(null);
   const live = useRef(true);
   const idx = useRef(0);
-  const uploads = useRef<Promise<unknown>[]>([]);
+  // Số câu trả lời đã vào hàng chờ gửi (outbox.ts giữ tới khi máy chủ nhận).
   const count = useRef(0);
   const hearing = useRef<Promise<Heard | null> | null>(null);
   const endHear = useRef<(() => void) | null>(null);
@@ -136,12 +138,15 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     } catch {
       toast(t('call.needMic'));
     }
+    let s: Session | null = session;
     try {
-      const s = session ?? (await prep.current!);
+      s = s ?? (await prep.current!);
       setSession(s);
       await run(s);
     } catch (e) {
       toast((e as Error).message);
+      // Đã kể được câu nào thì vẫn chốt cuộc gọi, để câu chuyện không nằm mãi ở trạng thái dở dang.
+      if (s && count.current) void finishCall(s);
       onClose(false);
     }
   }
@@ -275,20 +280,18 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     return p.finally(() => { if (hearing.current === p) hearing.current = null; });
   }
 
-  /** Gửi câu trả lời. Máy không chép được lời thì máy chủ nhờ Gemini chép và trả về luôn câu đáp. */
+  /** Gửi câu trả lời qua hàng chờ: mạng chập thì tự thử lại, bản ghi không mất. Máy không chép được lời thì máy chủ nhờ Gemini chép và trả về luôn câu đáp. */
   function upload(s: Session, n: number, h: Heard): Promise<Saved> {
     if (!h.recording || h.recording.seconds < 1) return Promise.resolve(null);
-    const f = new FormData();
-    f.set('idx', String(n));
-    f.set('transcript', h.transcript);
-    f.set('seconds', String(h.recording.seconds));
-    f.set('file', h.recording.blob, fileName(h.recording.blob, 'answer'));
-    const p = call<Saved>(`/api/call/${s.id}/answer`, { method: 'POST', body: f }).catch(() => { toast(t('call.answerFailed')); return null; });
-    uploads.current.push(p);
     count.current += 1;
-    setAnswered(count.current);
-    return p;
+    return outbox({
+      group: s.id, url: `/api/call/${s.id}/answer`, blob: h.recording.blob, file: fileName(h.recording.blob, 'answer'),
+      fields: { idx: String(n), transcript: h.transcript, seconds: String(h.recording.seconds) },
+    }).then((r: Saved) => { if (r === null) toast(t('call.answerFailed')); return r; });
   }
+
+  /** Báo máy chủ cuộc gọi đã xong (rút ngày vào lịch, ghép podcast). Hàng chờ chỉ gửi lệnh này sau mọi câu trả lời và ảnh của cuộc gọi. */
+  const finishCall = (s: Session): Promise<boolean> => outbox({ group: s.id, url: `/api/call/${s.id}/finish`, last: true }).then((r) => r !== null);
 
   /** Câu đáp ngắn theo điều vừa kể. Có lời chép thì hỏi AI (quá 2 giây thôi); không có thì chờ Gemini chép (quá 4 giây thôi). */
   async function replyFor(s: Session, n: number, h: Heard, saved: Promise<Saved>): Promise<string | null> {
@@ -371,10 +374,8 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
   function sendPhoto(file?: File | null) {
     tap();
     if (file && session) {
-      const f = new FormData();
-      f.set('idx', String(idx.current));
-      f.set('file', file);
-      uploads.current.push(call(`/api/call/${session.id}/photo`, { method: 'POST', body: f }).then(() => toast(t('call.photoSaved'))).catch(() => toast(t('call.photoFailed'))));
+      void outbox({ group: session.id, url: `/api/call/${session.id}/photo`, fields: { idx: String(idx.current) }, blob: file, file: file.name })
+        .then((r) => toast(t(r === null ? 'call.photoFailed' : 'call.photoSaved')));
     }
     stopSpeaking();
     photoDone.current?.();
@@ -389,9 +390,12 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     stream.current?.getTracks().forEach((t) => t.stop());
     if (!count.current) { snooze(); return; }
     // Chào trong lúc máy chủ còn chép lời câu cuối, không bắt người nghe chờ.
-    const finished = Promise.all(uploads.current).then(() => call(`/api/call/${s.id}/finish`, { method: 'POST' })).catch(() => {});
+    setSent('wait');
+    const finished = finishCall(s);
+    void finished.then((ok) => { if (live.current) setSent(ok ? 'ok' : 'none'); });
     if (spoke) { await say(s.script.goodbye); setMode('happy'); }
-    await finished;
+    // Chào xong mà vẫn chưa gửi được (mạng chập): nói thật là đang gửi tiếp, không báo có podcast.
+    if (!(await Promise.race([finished, wait(5000).then(() => null)])) && live.current) setSent((v) => (v === 'wait' ? 'later' : v));
   }
 
   async function hangUp() {
@@ -404,14 +408,13 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     endHear.current?.();
     const h = pending ? await pending : null;
     const s = session;
-    if (s && h) upload(s, idx.current, h);
+    if (s && h) void upload(s, idx.current, h);
     cleanup();
-    if (s && count.current > 0 && phase !== 'bye') {
-      // Máy chủ có thể còn đang chép lời: gửi xong thì báo kết thúc, không giữ màn hình lại.
-      void Promise.all(uploads.current).then(() => call(`/api/call/${s.id}/finish`, { method: 'POST' })).catch(() => {});
-    }
+    // Hàng chờ gửi tiếp ở nền kể cả khi đóng màn. Chỉ mở Podcast khi máy chủ nhận lệnh kết thúc ngay (chờ tối đa 1,5 giây).
+    let done = false;
+    if (s && count.current > 0) done = await Promise.race([finishCall(s), wait(1500).then(() => false)]);
     if (!count.current) snooze();
-    onClose(count.current > 0);
+    onClose(done);
   }
 
   const total = session?.script.questions.length ?? 0;
@@ -447,11 +450,11 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
                 <button className="link" onClick={() => sendPhoto(null)}>{t('common.later')}</button>
               </div>
             )}
-            {phase === 'bye' && answered > 0 && <p className="call-note fade">{t('call.podcastSoon')}</p>}
+            {phase === 'bye' && (sent === 'ok' || sent === 'later') && <p key={sent} className="call-note fade">{t(sent === 'ok' ? 'call.podcastSoon' : 'call.sendLater')}</p>}
           </div>
           <div className="call-foot">
             {phase === 'bye'
-              ? <button className="btn ghost" onClick={() => { tap(); live.current = false; cleanup(); onClose(answered > 0); }}>{t('common.done')}</button>
+              ? <button className="btn ghost" onClick={() => { tap(); live.current = false; cleanup(); onClose(sent === 'ok'); }}>{t('common.done')}</button>
               : <button className="call-end" onClick={hangUp} aria-label={t('call.end')}><Icon name="phone" size={26} /></button>}
           </div>
         </div>
