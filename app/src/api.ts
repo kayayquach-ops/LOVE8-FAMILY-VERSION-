@@ -54,9 +54,52 @@ export function upload<T>(path: string, form: FormData, onProgress?: (p: number)
 
 const json = (body: unknown) => ({ method: 'POST', body: JSON.stringify(body) });
 
+// Đăng nhập Google đang dở: state và bind (bí mật của máy, không lên URL) giữ trong máy suốt lúc sang trang Google rồi quay về,
+// và suốt phần làm quen nếu tài khoản chưa có nhà. join: mã nhà trong link mời, để quay về vẫn vào đúng nhà.
+export type GooglePending = { state: string; bind: string; intent: 'signin' | 'link'; at: number; join?: string };
+const GKEY = 'sh-google';
+export const googlePending = {
+  get: (): GooglePending | null => {
+    try {
+      const p: GooglePending | null = JSON.parse(localStorage.getItem(GKEY) ?? 'null');
+      return p && Date.now() - p.at < 2 * 3600e3 ? p : null;
+    } catch { return null; }
+  },
+  set: (p: GooglePending) => { try { localStorage.setItem(GKEY, JSON.stringify(p)); } catch {} },
+  clear: () => { try { localStorage.removeItem(GKEY); } catch {} },
+};
+export type GoogleResult =
+  | { status: 'pending' | 'cancel' }
+  | { status: 'signin'; token: string }
+  | { status: 'new'; name: string | null; email: string | null }
+  | { status: 'linked'; email: string | null };
+
+/** Vừa từ Google quay về (/?google=1): đọc một lần lúc mở app rồi bỏ khỏi thanh địa chỉ (trên đó không có gì bí mật). */
+export const fromGoogle = (() => {
+  if (typeof location === 'undefined') return false;
+  const u = new URL(location.href);
+  if (!u.searchParams.has('google')) return false;
+  u.searchParams.delete('google');
+  history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+  return true;
+})();
+
+/** Sang trang Google (cả trang, không popup: app trên Màn hình chính iPhone không giữ được popup). */
+export async function startGoogle(intent: 'signin' | 'link', join?: string) {
+  const r = await call<{ url: string; state: string; bind: string }>('/api/google/start', json({ intent }));
+  googlePending.set({ state: r.state, bind: r.bind, intent, at: Date.now(), ...(join ? { join } : {}) });
+  location.assign(r.url);
+}
+
+type Joining = { name: string; role: string; city: string; lang?: string; intro?: Record<string, string | boolean>; google?: { state: string; bind: string } };
+
 export const api = {
-  create: (b: { family: string; name: string; role: string; city: string; lang?: string; intro?: Record<string, string | boolean> }) => call<{ token: string }>('/api/families', json(b)),
-  join: (b: { code: string; name: string; role: string; city: string; lang?: string; intro?: Record<string, string | boolean> }) => call<{ token: string }>('/api/join', json(b)),
+  create: (b: Joining & { family: string }) => call<{ token: string; google?: boolean }>('/api/families', json(b)),
+  join: (b: Joining & { code: string }) => call<{ token: string; google?: boolean }>('/api/join', json(b)),
+  google: () => call<{ enabled: boolean }>('/api/google'),
+  googleFinish: (p: GooglePending) => call<GoogleResult>('/api/google/finish', json({ state: p.state, bind: p.bind })),
+  googleMe: () => call<{ enabled: boolean; linked: boolean; email: string | null }>('/api/google/me'),
+  googleUnlink: () => call('/api/google/link', { method: 'DELETE' }),
   familyName: (code: string) => call<{ name: string }>(`/api/family/${code}`),
   me: () => call<Me>('/api/me'),
   updateMe: (f: FormData) => call('/api/me', { method: 'PATCH', body: f }),

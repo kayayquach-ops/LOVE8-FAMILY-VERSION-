@@ -1,15 +1,17 @@
-import { useState } from 'react';
-import { token } from './api';
+import { useEffect, useRef, useState } from 'react';
+import { api, googlePending, startGoogle, token } from './api';
 import { LANG_NAMES, LANGS, setLang, t, useLang } from './i18n';
 import { Notify } from './Notify';
+import { GoogleMark } from './Onboarding';
 import { mascotNameOf, type Me } from './shared';
 import { setUiSounds, tap, uiSoundsOn } from './sound';
-import { Avatar, Icon } from './ui';
+import { Avatar, Icon, toast } from './ui';
 
-/** Cài đặt: hồ sơ, ngôn ngữ, thông báo, âm thanh, tải lại app, rời nhà. */
+/** Cài đặt: hồ sơ, ngôn ngữ, thông báo, âm thanh, tài khoản Google, tải lại app, rời nhà. */
 export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose: () => void; onProfile: () => void; onMascot: () => void }) {
   const lang = useLang();
   const [sound, setSound] = useState(uiSoundsOn());
+  const google = useGoogleLink();
 
   return (
     <div className="sheet">
@@ -48,6 +50,28 @@ export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose
           </button>
         </div>
 
+        {google.state?.enabled && (
+          <>
+            <div className="h2">{t('settings.google')}</div>
+            <div className="panel">
+              {google.state.linked ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44 }}>
+                  <GoogleMark />
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{google.state.email ?? t('settings.googleOn')}</span>
+                  <button className="chip" disabled={google.busy} onClick={() => { tap(); void google.unlink(); }}>{t('settings.googleUnlink')}</button>
+                </div>
+              ) : (
+                <>
+                  <button className="btn ghost" disabled={google.busy} onClick={() => { tap(); google.link(); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                    <GoogleMark /> {t('settings.googleLink')}
+                  </button>
+                  <div className="muted" style={{ marginTop: 8 }}>{t('settings.googleHint')}</div>
+                </>
+              )}
+            </div>
+          </>
+        )}
+
         <div className="h2">{t('settings.app')}</div>
         <div className="panel">
           <button className="btn ghost" onClick={() => { tap(); location.reload(); }}>{t('settings.reload')}</button>
@@ -58,4 +82,50 @@ export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose
       </div>
     </div>
   );
+}
+
+/** Liên kết Google của chính mình. Vừa từ Google quay về (hoặc app hiện lại sau khi Google mở ở cửa sổ khác) thì hỏi máy chủ kết quả. */
+function useGoogleLink() {
+  const [state, setState] = useState<{ enabled: boolean; linked: boolean; email: string | null } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const resuming = useRef(false);
+  const refresh = () => api.googleMe().then(setState).catch(() => {});
+
+  useEffect(() => {
+    const resume = async () => {
+      const p = googlePending.get();
+      if (p?.intent === 'link' && !resuming.current) {
+        resuming.current = true;
+        try {
+          const r = await api.googleFinish(p);
+          if (r.status !== 'pending') googlePending.clear();
+          if (r.status === 'linked') toast(t('settings.googleLinked'));
+        } catch (e) {
+          googlePending.clear();
+          if (Date.now() - p.at < 16 * 60e3) toast((e as Error).message);
+        } finally {
+          resuming.current = false;
+        }
+      }
+      await refresh();
+    };
+    void resume();
+    const onShow = () => { if (document.visibilityState === 'visible') void resume(); };
+    document.addEventListener('visibilitychange', onShow);
+    return () => document.removeEventListener('visibilitychange', onShow);
+  }, []);
+
+  return {
+    state,
+    busy,
+    link: () => {
+      setBusy(true);
+      startGoogle('link').catch((e) => { toast((e as Error).message); setBusy(false); });
+    },
+    unlink: async () => {
+      if (!confirm(t('settings.googleUnlinkConfirm'))) return;
+      setBusy(true);
+      try { await api.googleUnlink(); await refresh(); } catch (e) { toast((e as Error).message); } finally { setBusy(false); }
+    },
+  };
 }
