@@ -3,9 +3,10 @@ import { errorText, token } from './api';
 import { type Drive, type MascotMode } from './Mascot';
 import { MascotAny as Mascot } from './Mascot3D';
 import { AUDIO_TYPE, fileName, record, type Recording } from './media';
+import { send as outbox } from './outbox';
 import { callLines, type CallScript, type Me } from './shared';
 import { buzz, sfx, startRing, stopRing, tap } from './sound';
-import { playVoice, prefetchVoice, resetVoice, setVoiceContext, speak, stopSpeaking, ttsReady, unlockSpeech, voiceCut, voiceReady, warmVoice, type Kind } from './speech';
+import { playVoice, prefetchVoice, resetVoice, setVoiceContext, speak, stopSpeaking, ttsReady, unlockSpeech, voiceCut, voiceProvider, voiceReady, warmVoice, type Kind } from './speech';
 import { Icon, toast } from './ui';
 import { snooze } from './callSnooze';
 import { shownLang, speechLang, t, type Key, type Lang } from './i18n';
@@ -59,7 +60,8 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
   const [i, setI] = useState(0);
   const [caption, setCaption] = useState('');
   const [heard, setHeard] = useState('');
-  const [answered, setAnswered] = useState(0);
+  // Lệnh kết thúc cuộc gọi: 'ok' khi máy chủ đã nhận (mới báo có podcast), 'later' khi mạng chập và hàng chờ còn đang gửi.
+  const [sent, setSent] = useState<'none' | 'wait' | 'ok' | 'later'>('none');
   const drive = useRef<Drive>({ talking: false, pulse: 0, level: 0 });
   const prep = useRef<Promise<Session> | null>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -68,7 +70,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
   const rec = useRef<any>(null);
   const live = useRef(true);
   const idx = useRef(0);
-  const uploads = useRef<Promise<unknown>[]>([]);
+  // Số câu trả lời đã vào hàng chờ gửi (outbox.ts giữ tới khi máy chủ nhận).
   const count = useRef(0);
   const hearing = useRef<Promise<Heard | null> | null>(null);
   const endHear = useRef<(() => void) | null>(null);
@@ -136,12 +138,15 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     } catch {
       toast(t('call.needMic'));
     }
+    let s: Session | null = session;
     try {
-      const s = session ?? (await prep.current!);
+      s = s ?? (await prep.current!);
       setSession(s);
       await run(s);
     } catch (e) {
       toast((e as Error).message);
+      // Đã kể được câu nào thì vẫn chốt cuộc gọi, để câu chuyện không nằm mãi ở trạng thái dở dang.
+      if (s && count.current) void finishCall(s);
       onClose(false);
     }
   }
@@ -185,6 +190,9 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     if (!live.current) return Promise.resolve(null);
     setMode('listen');
     setHeard('');
+    // Sau khi chọn ảnh, có cuộc gọi đến hay khoá màn hình, iPhone có thể treo AudioContext ('interrupted'): đánh thức lại trước khi nghe.
+    const ac = audio.current;
+    if (ac && ac.state !== 'running' && ac.state !== 'closed') void ac.resume().catch(() => {});
     const p = new Promise<Heard | null>((resolve) => {
       const a = analyser.current;
       const buf = a ? new Float32Array(a.fftSize) : null;
@@ -194,6 +202,10 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       let floorSum = 0, floorN = 0, floor = 0.004;
       let started = false, inSpeech = false, voiceRun = 0, lastVoice = 0, segStart = 0, lastSeg = 0, speechMs = 0;
       let ended = false;
+      // Mức âm lớn nhất đo được: bộ đo có mà toàn số 0 (iPhone đôi khi) thì coi như không đo được, lấy chữ chép làm dấu hiệu đang nói.
+      let peak = 0;
+      // Nhận dạng tự tắt thì bật lại, nhưng có giới hạn; máy không cho dùng (iOS PWA báo service-not-allowed) thì thôi hẳn.
+      let restarts = 0, denied = false;
 
       const R = Recognition();
       let r: any = null;
@@ -214,10 +226,10 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
             text = (final + interim).trim();
             setHeard(text);
             // Không đo được âm lượng thì lấy chữ chép được làm dấu hiệu đang nói.
-            if (!a) { const now = performance.now(); if (!started) { started = true; segStart = now; } inSpeech = true; lastVoice = now; }
+            if (!a || peak < 0.002) { const now = performance.now(); if (!started) { started = true; segStart = now; } inSpeech = true; lastVoice = now; }
           };
-          r.onend = () => { if (!ended) { try { r.start(); } catch {} } };
-          r.onerror = () => {};
+          r.onend = () => { if (!ended && !denied && restarts++ < 30) { try { r.start(); } catch {} } };
+          r.onerror = (e: any) => { if (['not-allowed', 'service-not-allowed', 'audio-capture'].includes(e?.error)) denied = true; };
           rec.current = r;
           r.start();
         } catch { r = null; }
@@ -244,6 +256,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
           let sum = 0;
           for (let k = 0; k < buf.length; k++) sum += buf[k] * buf[k];
           const rms = Math.sqrt(sum / buf.length);
+          peak = Math.max(peak, rms);
           drive.current.level = Math.min(1, Math.max(0, (rms - floor) * 14));
           if (elapsed < VAD.calibrate) { floorSum += rms; floorN++; return; }
           if (floorN) { floor = Math.min(0.02, Math.max(0.002, floorSum / floorN)); floorN = 0; }
@@ -275,20 +288,18 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     return p.finally(() => { if (hearing.current === p) hearing.current = null; });
   }
 
-  /** Gửi câu trả lời. Máy không chép được lời thì máy chủ nhờ Gemini chép và trả về luôn câu đáp. */
+  /** Gửi câu trả lời qua hàng chờ: mạng chập thì tự thử lại, bản ghi không mất. Máy không chép được lời thì máy chủ nhờ Gemini chép và trả về luôn câu đáp. */
   function upload(s: Session, n: number, h: Heard): Promise<Saved> {
     if (!h.recording || h.recording.seconds < 1) return Promise.resolve(null);
-    const f = new FormData();
-    f.set('idx', String(n));
-    f.set('transcript', h.transcript);
-    f.set('seconds', String(h.recording.seconds));
-    f.set('file', h.recording.blob, fileName(h.recording.blob, 'answer'));
-    const p = call<Saved>(`/api/call/${s.id}/answer`, { method: 'POST', body: f }).catch(() => { toast(t('call.answerFailed')); return null; });
-    uploads.current.push(p);
     count.current += 1;
-    setAnswered(count.current);
-    return p;
+    return outbox({
+      group: s.id, url: `/api/call/${s.id}/answer`, blob: h.recording.blob, file: fileName(h.recording.blob, 'answer'),
+      fields: { idx: String(n), transcript: h.transcript, seconds: String(h.recording.seconds), provider: (!machine.current && voiceProvider()) || '' },
+    }).then((r: Saved) => { if (r === null) toast(t('call.answerFailed')); return r; });
   }
+
+  /** Báo máy chủ cuộc gọi đã xong (rút ngày vào lịch, ghép podcast). Hàng chờ chỉ gửi lệnh này sau mọi câu trả lời và ảnh của cuộc gọi. */
+  const finishCall = (s: Session): Promise<boolean> => outbox({ group: s.id, url: `/api/call/${s.id}/finish`, last: true }).then((r) => r !== null);
 
   /** Câu đáp ngắn theo điều vừa kể. Có lời chép thì hỏi AI (quá 2 giây thôi); không có thì chờ Gemini chép (quá 4 giây thôi). */
   async function replyFor(s: Session, n: number, h: Heard, saved: Promise<Saved>): Promise<string | null> {
@@ -299,7 +310,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 2000);
     try {
-      const r = await call<{ text: string | null }>(`/api/call/${s.id}/reply`, { method: 'POST', body: JSON.stringify({ idx: n, transcript: h.transcript }), signal: ctrl.signal });
+      const r = await call<{ text: string | null }>(`/api/call/${s.id}/reply`, { method: 'POST', body: JSON.stringify({ idx: n, transcript: h.transcript, provider: machine.current ? null : voiceProvider() }), signal: ctrl.signal });
       return r.text || null;
     } catch { return null; } finally { clearTimeout(t); }
   }
@@ -371,10 +382,8 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
   function sendPhoto(file?: File | null) {
     tap();
     if (file && session) {
-      const f = new FormData();
-      f.set('idx', String(idx.current));
-      f.set('file', file);
-      uploads.current.push(call(`/api/call/${session.id}/photo`, { method: 'POST', body: f }).then(() => toast(t('call.photoSaved'))).catch(() => toast(t('call.photoFailed'))));
+      void outbox({ group: session.id, url: `/api/call/${session.id}/photo`, fields: { idx: String(idx.current) }, blob: file, file: file.name })
+        .then((r) => toast(t(r === null ? 'call.photoFailed' : 'call.photoSaved')));
     }
     stopSpeaking();
     photoDone.current?.();
@@ -389,9 +398,12 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     stream.current?.getTracks().forEach((t) => t.stop());
     if (!count.current) { snooze(); return; }
     // Chào trong lúc máy chủ còn chép lời câu cuối, không bắt người nghe chờ.
-    const finished = Promise.all(uploads.current).then(() => call(`/api/call/${s.id}/finish`, { method: 'POST' })).catch(() => {});
+    setSent('wait');
+    const finished = finishCall(s);
+    void finished.then((ok) => { if (live.current) setSent(ok ? 'ok' : 'none'); });
     if (spoke) { await say(s.script.goodbye); setMode('happy'); }
-    await finished;
+    // Chào xong mà vẫn chưa gửi được (mạng chập): nói thật là đang gửi tiếp, không báo có podcast.
+    if (!(await Promise.race([finished, wait(5000).then(() => null)])) && live.current) setSent((v) => (v === 'wait' ? 'later' : v));
   }
 
   async function hangUp() {
@@ -404,14 +416,13 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     endHear.current?.();
     const h = pending ? await pending : null;
     const s = session;
-    if (s && h) upload(s, idx.current, h);
+    if (s && h) void upload(s, idx.current, h);
     cleanup();
-    if (s && count.current > 0 && phase !== 'bye') {
-      // Máy chủ có thể còn đang chép lời: gửi xong thì báo kết thúc, không giữ màn hình lại.
-      void Promise.all(uploads.current).then(() => call(`/api/call/${s.id}/finish`, { method: 'POST' })).catch(() => {});
-    }
+    // Hàng chờ gửi tiếp ở nền kể cả khi đóng màn. Chỉ mở Podcast khi máy chủ nhận lệnh kết thúc ngay (chờ tối đa 1,5 giây).
+    let done = false;
+    if (s && count.current > 0) done = await Promise.race([finishCall(s), wait(1500).then(() => false)]);
     if (!count.current) snooze();
-    onClose(count.current > 0);
+    onClose(done);
   }
 
   const total = session?.script.questions.length ?? 0;
@@ -447,11 +458,11 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
                 <button className="link" onClick={() => sendPhoto(null)}>{t('common.later')}</button>
               </div>
             )}
-            {phase === 'bye' && answered > 0 && <p className="call-note fade">{t('call.podcastSoon')}</p>}
+            {phase === 'bye' && (sent === 'ok' || sent === 'later') && <p key={sent} className="call-note fade">{t(sent === 'ok' ? 'call.podcastSoon' : 'call.sendLater')}</p>}
           </div>
           <div className="call-foot">
             {phase === 'bye'
-              ? <button className="btn ghost" onClick={() => { tap(); live.current = false; cleanup(); onClose(answered > 0); }}>{t('common.done')}</button>
+              ? <button className="btn ghost" onClick={() => { tap(); live.current = false; cleanup(); onClose(sent === 'ok'); }}>{t('common.done')}</button>
               : <button className="call-end" onClick={hangUp} aria-label={t('call.end')}><Icon name="phone" size={26} /></button>}
           </div>
         </div>

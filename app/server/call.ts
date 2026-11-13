@@ -14,6 +14,8 @@ import { weekKey } from './recap.ts';
 import { buildPodcastsForCall } from './podcast.ts';
 import { cachedSpeech, defaultProvider, gateOf, hasVoice, initTtsBudget, pickProvider, providerOn, speech, transcribe, ttsStatus, TTS_MAX, type Provider } from './voice.ts';
 import path from 'node:path';
+import { unlink } from 'node:fs/promises';
+import { Limit, limitBy } from './limit.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 
@@ -329,13 +331,13 @@ export function scriptFacts(c: Ctx) {
 
 const MONTH_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-export async function aiScript(c: Ctx, week: string): Promise<CallScript | null> {
+export async function aiScript(c: Ctx, week: string, timeoutMs?: number): Promise<CallScript | null> {
   const facts = scriptFacts(c);
   // Tên tháng tiếng Anh của các ngày có trong lịch cũng tính là dữ liệu thật ("your birthday in March").
   // Mã vai (bo, me, con) không phải tên: bỏ khỏi dữ liệu đối chiếu để câu "Hi Bo" bị chặn.
   const hay = JSON.stringify(facts).replace(/"role":"(bo|me|con)"/g, '') + ' ' + c.events.map((e) => MONTH_EN[e.month - 1] ?? '').join(' ') + ' ' + (c.mascot ?? '');
   const allow: Allow = { prevCall: c.doneCalls.length > 0, ownStory: c.stories.length > 0, photos: c.photoCount > 0 };
-  const r = await askJSON<Omit<CallScript, 'source'>>(scriptSystem(c.lang, c.mascot), JSON.stringify(facts, null, 1), SCRIPT_SCHEMA);
+  const r = await askJSON<Omit<CallScript, 'source'>>(scriptSystem(c.lang, c.mascot), JSON.stringify(facts, null, 1), SCRIPT_SCHEMA, undefined, timeoutMs);
   if (!r || !Array.isArray(r.questions) || !r.questions.length) return null;
   const clean = (s: string) => String(s || '').replace(/\s*[—–]\s*/g, ', ').replace(/["“”]/g, '').trim();
   const tpl = templateScript(c, week);
@@ -405,7 +407,7 @@ Reply in ${LANG_NAME[lang]}.`, name);
 }
 
 // i18n-ok-end
-export async function quickReply(who: { name: string; role: string } | undefined, question: string, said: string, memberId: string) {
+export async function quickReply(who: { name: string; role: string } | undefined, question: string, said: string, memberId: string, provider?: Provider | null) {
   const lang = reqLang();
   // Lời chép quá ngắn thì không đủ để đáp theo ý: để máy khách dùng câu đáp mẫu. Tiếng Hàn đếm âm tiết (ít dấu cách hơn).
   const short = lang === 'ko'
@@ -420,10 +422,14 @@ export async function quickReply(who: { name: string; role: string } | undefined
   // Chỉ nhận câu đáp không có tên, số hay mốc thời gian lạ so với điều người ấy vừa nói.
   const why = suspect(clean, `${said} ${who?.name ?? ''} ${bot}`, { prevCall: false, ownStory: false, photos: false }, lang);
   if (why) { console.warn(`[call] bỏ câu đáp "${clean}": ${why}`); return null; }
-  // Đọc sẵn câu đáp ngay (chỉ khi còn dư ngân sách): lúc máy khách xin giọng sẽ nhận chung kết quả, đỡ một lượt mạng.
-  void speech(clean, memberId, { optional: true });
+  // Đọc sẵn câu đáp ngay (chỉ khi còn dư ngân sách) bằng đúng nhà cung cấp máy khách đã chốt lúc nhấc máy: lúc máy khách xin giọng
+  // sẽ nhận chung kết quả, đỡ một lượt mạng. Không biết nhà cung cấp (giọng máy, bản app cũ) thì không đọc trước, khỏi tốn hạn mức.
+  if (provider) void speech(clean, memberId, { optional: true, provider });
   return clean;
 }
+
+/** Nhà cung cấp giọng máy khách gửi kèm (đã chốt lúc nhấc máy). */
+const providerOf = (v: unknown): Provider | null => (v === 'openai' || v === 'gemini' ? v : null);
 
 // i18n-ok-begin: prompt rút ngày tháng (tiếng Anh) và nhãn nội bộ.
 // ---------- Rút ngày tháng sau cuộc gọi ----------
@@ -546,6 +552,21 @@ const h = (fn: Fn) => (req: any, res: express.Response) =>
     res.status(500).json({ error: err.message || tReq('error.server') });
   });
 
+/** Hạn chờ AI soạn bộ câu hỏi lúc nhấc máy (máy khách xin ngay khi chuông reo nên thường đã có trước khi bấm). */
+const START_AI_MS = 7000;
+
+// Giới hạn tần suất: người có mã máy không gọi dồn được để đốt ngân sách Gemini, OpenAI. Máy khách gặp 429 thì dùng câu mẫu, chữ phụ đề,
+// hoặc (câu trả lời) để hàng chờ thử lại sau, nên người dùng thật không thấy lỗi.
+const byMember = (req: express.Request) => (req as express.Request & { member: { id: string } }).member.id;
+const limitStart = limitBy({ name: 'call-start', per: new Limit(30, 3600e3), key: byMember });
+const limitAnswer = limitBy({ name: 'call-answer', per: new Limit(30, 10 * 60e3), key: byMember });
+const limitReply = limitBy({ name: 'call-reply', per: new Limit(20, 10 * 60e3), key: byMember });
+const limitTts = limitBy({ name: 'call-tts', per: new Limit(150, 10 * 60e3), key: byMember });
+// Nhiều thành viên giả cùng một nơi: thêm trần theo IP (cả nhà dùng chung wifi vẫn dư).
+const limitTtsIp = limitBy({ name: 'call-tts-ip', per: new Limit(400, 10 * 60e3) });
+// AI soạn bộ câu mới: mỗi người 4 lần mỗi giờ (đổi ngôn ngữ, đổi tên linh vật), quá thì dùng bộ câu mẫu chứ không báo lỗi.
+const aiScripts = new Limit(4, 3600e3);
+
 export function callRouter(upload: multer.Multer) {
   const r = express.Router();
   const media = (f?: Express.Multer.File) => (f ? `/media/${f.filename}` : null);
@@ -559,7 +580,7 @@ export function callRouter(upload: multer.Multer) {
   }));
 
   // Nhấc máy: lấy bộ câu hỏi của tuần (soạn một lần, gọi lại thì dùng tiếp).
-  r.post('/call/start', h(async (req, res) => {
+  r.post('/call/start', limitStart, h(async (req, res) => {
     const { id: mid, family_id: fid } = req.member;
     const week = weekKey();
     const c = await context(mid, fid);
@@ -569,20 +590,23 @@ export function callRouter(upload: multer.Multer) {
     // Chưa từng có cuộc gọi nào thì chỉ dùng bộ câu chào hỏi đơn giản, kể cả khi đã lỡ soạn một bộ khác.
     // Bộ câu soạn bằng thứ tiếng khác với ngôn ngữ hiện tại (đổi ngôn ngữ giữa tuần), hoặc nhà vừa đổi tên linh vật, thì soạn lại.
     if (old && (old.lang ?? 'vi') === c.lang && (old.mascot ?? DEFAULT_MASCOT_NAME) === (c.mascot ?? DEFAULT_MASCOT_NAME) && (!first || old.source === 'first')) return res.json({ id: rows[0].id, script: old });
-    const script = first ? firstScript(c) : (await aiScript(c, week)) ?? templateScript(c, week);
+    // Người dùng đã bấm Nghe máy và đang chờ: AI soạn quá 7 giây thì dùng bộ câu mẫu, không để màn hình im lặng.
+    const script = first ? firstScript(c) : (aiScripts.take(mid) ? await aiScript(c, week, START_AI_MS) : null) ?? templateScript(c, week);
     const id = randomUUID();
     await pool.query('insert into calls (id, family_id, member_id, week, script) values ($1,$2,$3,$4,$5)', [id, fid, mid, week, JSON.stringify(script)]);
     res.json({ id, script });
     // Giọng đọc do máy khách xin khi cần (lời chào + câu đầu một lần, mỗi câu sau xin trước một câu), máy chủ không tự đọc trước.
   }));
 
-  r.post('/call/:id/answer', upload.single('file'), h(async (req, res) => {
+  r.post('/call/:id/answer', limitAnswer, upload.single('file'), h(async (req, res) => {
     const { rows: [call] } = await pool.query('select * from calls where id = $1 and member_id = $2', [req.params.id, req.member.id]);
-    if (!call) return res.status(404).json(errorBody('call_not_found'));
+    // multer đã ghi tệp trước khi kiểm: từ chối thì xoá luôn, không để tệp mồ côi.
+    const drop = () => (req.file ? unlink(req.file.path).catch(() => {}) : undefined);
+    if (!call) { await drop(); return res.status(404).json(errorBody('call_not_found')); }
     const script: CallScript = JSON.parse(call.script);
     const idx = Number(req.body.idx);
     const q = script.questions[idx];
-    if (!q) return res.status(400).json(errorBody('question_not_found'));
+    if (!q) { await drop(); return res.status(400).json(errorBody('question_not_found')); }
     const aid = randomUUID();
     let transcript = String(req.body.transcript || '').trim().slice(0, 4000) || null;
     await pool.query('delete from call_answers where call_id = $1 and idx = $2', [call.id, idx]);
@@ -597,20 +621,20 @@ export function callRouter(upload: multer.Multer) {
       if (transcript) {
         await pool.query('update call_answers set transcript = $2 where id = $1', [aid, transcript]);
         const { rows: [m] } = await pool.query('select name, role from members where id = $1', [call.member_id]);
-        reply = await quickReply(m, q.text, transcript, req.member.id);
+        reply = await quickReply(m, q.text, transcript, req.member.id, providerOf(req.body.provider));
       }
     }
     res.json({ ok: true, transcript, reply });
   }));
 
   // Nghe xong một câu: AI đáp một câu ngắn theo điều vừa kể. Không có khoá hay quá 2 giây thì máy khách dùng câu mẫu.
-  r.post('/call/:id/reply', h(async (req, res) => {
+  r.post('/call/:id/reply', limitReply, h(async (req, res) => {
     const said = String(req.body.transcript || '').trim().slice(0, 1500);
     if (!said) return res.json({ text: null });
     const { rows: [call] } = await pool.query('select c.script, m.name, m.role from calls c join members m on m.id = c.member_id where c.id = $1 and c.member_id = $2', [req.params.id, req.member.id]);
     if (!call) return res.status(404).json(errorBody('call_not_found'));
     const q = (JSON.parse(call.script) as CallScript).questions[Number(req.body.idx)];
-    res.json({ text: await quickReply(call, q?.text ?? '', said, req.member.id) });
+    res.json({ text: await quickReply(call, q?.text ?? '', said, req.member.id, providerOf(req.body.provider)) });
   }));
 
   // Nhấc máy là hỏi trước một lần: cả cuộc gọi dùng giọng OpenAI, Gemini hay giọng máy ('device'). Con số dùng/hạn mức chỉ trả cho thành viên (đã qua auth).
@@ -622,7 +646,7 @@ export function callRouter(upload: multer.Multer) {
   // Giọng đọc của Mây: trả về đường dẫn file âm thanh. url null thì kèm reason (budget, cooldown, nokey, skip, fail) để máy hiện chữ.
   // provider: nhà cung cấp đã chốt lúc nhấc máy, máy chủ dùng đúng nhà đó và không tự đổi giữa chừng.
   // kind 'fixed': chỉ lấy từ kho, không bao giờ gọi nhà cung cấp. kind 'reply': câu đáp theo nội dung, chỉ đọc khi còn dư ngân sách.
-  r.post('/call/tts', h(async (req, res) => {
+  r.post('/call/tts', limitTts, limitTtsIp, h(async (req, res) => {
     const text = String(req.body.text || '').replace(/\s+/g, ' ').trim();
     if (!text || text.length > TTS_MAX) return res.json({ url: null, reason: 'fail' });
     const kind = req.body.kind === 'fixed' || req.body.kind === 'reply' ? req.body.kind : undefined;

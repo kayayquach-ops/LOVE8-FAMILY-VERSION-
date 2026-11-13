@@ -55,12 +55,12 @@ export async function askQuick(system: string, user: string, timeoutMs = 1800): 
   }
 }
 
-/** Hỏi AI, nhận về JSON đúng schema. Lỗi gì cũng trả null để máy chủ không sập. */
-export async function askJSON<T>(system: string, user: string, schema: Record<string, unknown>, maxTokens = 4000): Promise<T | null> {
+/** Hỏi AI, nhận về JSON đúng schema. Lỗi gì cũng trả null để máy chủ không sập. timeoutMs: chỗ có người đang chờ thì đặt ngắn, quá hạn trả null. */
+export async function askJSON<T>(system: string, user: string, schema: Record<string, unknown>, maxTokens = 4000, timeoutMs = 60_000): Promise<T | null> {
   if (!hasAI()) return null;
   try {
     if (useGemini()) {
-      const text = await gemini(system, user, { schema, maxTokens, timeoutMs: 60_000 });
+      const text = await gemini(system, user, { schema, maxTokens, timeoutMs });
       return text ? JSON.parse(text) as T : null;
     }
     client ??= new Anthropic({ timeout: 90_000, maxRetries: 1 });
@@ -72,7 +72,7 @@ export async function askJSON<T>(system: string, user: string, schema: Record<st
       output_config: { effort: 'low', format: { type: 'json_schema', schema } },
       system,
       messages: [{ role: 'user', content: user }],
-    });
+    }, timeoutMs < 60_000 ? { timeout: timeoutMs, maxRetries: 0 } : undefined);
     if (res.stop_reason === 'refusal' || res.stop_reason === 'max_tokens') {
       console.error('[ai] không nhận được câu trả lời:', res.stop_reason);
       return null;

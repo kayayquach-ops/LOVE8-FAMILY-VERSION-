@@ -91,6 +91,19 @@ for (const f of files) {
   // Câu hỏi soạn sẵn ở call.ts: S('k') thuộc callScript.first|template.parent|child.k, ít nhất một bản.
   if (f.endsWith('call.ts')) for (const m of src.matchAll(/\bS\('(\w+)'\)/g)) patterns.push({ f, tpl: `callScript.*.${m[1]}`, re: new RegExp(`^callScript\\.(first|template)\\.(parent|child)\\.${m[1]}$`) });
 }
+// Khoá ghép động từ danh sách mã, ví dụ t(`letters.font.${f.id}`) với f trong FONTS: mẫu trên chỉ biết có khoá nào khớp,
+// không biết mã nào thiếu. Đọc mã trong từng danh sách rồi đòi đủ khoá (mục { id: '...' } hoặc mảng chuỗi).
+const LISTS = [
+  ['src/letterStyle.ts', 'PAPERS', 'letters.paper'], ['src/letterStyle.ts', 'INKS', 'letters.ink'], ['src/letterStyle.ts', 'FONTS', 'letters.font'],
+  ['src/letterStyle.ts', 'BGS', 'letters.bg'], ['src/letterStyle.ts', 'FRAMES', 'letters.frame'], ['src/letterStyle.ts', 'TEMPLATES', 'letters.tpl'],
+  ['src/stickers.tsx', 'STICKER_LIST', 'sticker'],
+];
+for (const [f, list, prefix] of LISTS) {
+  const m = read(f).match(new RegExp(`export const ${list}\\b[^=]*=\\s*\\[([\\s\\S]*?)\\]\\s*(?:as const)?;`));
+  if (!m) { errors.push(`${f}: không thấy danh sách ${list}`); continue; }
+  const ids = [...m[1].matchAll(/\bid:\s*'([\w-]+)'/g)].map((x) => x[1]);
+  for (const id of ids.length ? ids : [...m[1].matchAll(/'([\w-]+)'/g)].map((x) => x[1])) used.add(`${prefix}.${id}`);
+}
 for (const k of used) if (!viKeys.has(k)) errors.push(`khoá "${k}" dùng trong mã nhưng không có trong vi.json`);
 for (const p of patterns) if (![...viKeys].some((k) => p.re.test(k))) errors.push(`${p.f}: khoá dạng \`${p.tpl}\` không khớp khoá nào trong vi.json`);
 const unused = [...viKeys].filter((k) => !used.has(k) && !patterns.some((p) => p.re.test(k)));

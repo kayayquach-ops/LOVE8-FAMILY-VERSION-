@@ -97,11 +97,16 @@ calendarRouter.post('/calendar', h(async (req, res) => {
     return res.status(400).json(errorBody('calendar_date'));
   }
   if (year !== null && (!Number.isInteger(year) || year < 1900 || year > 2100)) return res.status(400).json(errorBody('calendar_year'));
+  // Ngày phải có thật (không nhận 31/4, 30/2). Chưa biết năm thì cho 29/2; tháng âm lịch dài tối đa 30 ngày.
+  if (day > (b.lunar ? 30 : new Date(Date.UTC(year ?? 2000, month, 0)).getUTCDate())) return res.status(400).json(errorBody('calendar_date'));
+  // Ngày của một người: người đó phải ở trong nhà mình, không thì coi như ngày chung.
+  let memberId: string | null = b.memberId ? String(b.memberId) : null;
+  if (memberId && !(await pool.query('select 1 from members where id = $1 and family_id = $2', [memberId, req.member.family_id])).rowCount) memberId = null;
   const eid = randomUUID();
   await pool.query(
     `insert into events (id, family_id, member_id, kind, title, day, month, year, lunar, leap, note, created_by)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-    [eid, req.member.family_id, b.memberId ? String(b.memberId) : null, b.kind, title, day, month, year, !!b.lunar, !!b.lunar && !!b.leap,
+    [eid, req.member.family_id, memberId, b.kind, title, day, month, year, !!b.lunar, !!b.lunar && !!b.leap,
       b.note ? String(b.note).slice(0, 500) : null, req.member.id],
   );
   res.json({ id: eid });
@@ -114,7 +119,8 @@ calendarRouter.delete('/calendar/:id', h(async (req, res) => {
 
 calendarRouter.put('/me/dob', h(async (req, res) => {
   const dob = String(req.body?.dob ?? '');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || Number.isNaN(Date.parse(dob))) return res.status(400).json(errorBody('dob_invalid'));
+  // Date.parse vẫn nhận 2001-02-31 (Postgres thì báo lỗi): đổi qua lại phải ra đúng chuỗi cũ mới là ngày có thật.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || Number.isNaN(Date.parse(dob)) || new Date(dob).toISOString().slice(0, 10) !== dob) return res.status(400).json(errorBody('dob_invalid'));
   await pool.query('update members set dob = $2 where id = $1', [req.member.id, dob]);
   res.json({ ok: true });
 }));

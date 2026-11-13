@@ -2,7 +2,7 @@ import { token } from './api';
 import { t } from './i18n';
 
 // Thông báo đẩy ở máy khách: đăng ký service worker, xin quyền, gửi đăng ký lên máy chủ.
-export type PushKind = 'call' | 'chat' | 'post' | 'calendar' | 'weekly';
+export type PushKind = 'call' | 'chat' | 'post' | 'calendar' | 'weekly' | 'letter';
 export type PushPrefs = Record<PushKind, boolean>;
 export type PushState = 'on' | 'off' | 'denied' | 'ios-browser' | 'unsupported';
 
@@ -65,9 +65,11 @@ export async function syncPush() {
   } catch {}
 }
 
-export const getPrefs = (): Promise<PushPrefs> => fetch('/api/push/prefs', { headers: headers() }).then((r) => r.json());
+// Máy chủ trả lỗi (mã máy hết hạn, 500) thì ném lỗi, đừng để thân lỗi thành bộ công tắc (mọi công tắc sẽ hiện "bật").
+const prefsOf = async (r: Response): Promise<PushPrefs> => { if (!r.ok) throw new Error(t('notify.failed')); return r.json(); };
+export const getPrefs = (): Promise<PushPrefs> => fetch('/api/push/prefs', { headers: headers() }).then(prefsOf);
 export const setPrefs = (p: Partial<PushPrefs>): Promise<PushPrefs> =>
-  fetch('/api/push/prefs', { method: 'PUT', headers: headers(), body: JSON.stringify(p) }).then((r) => r.json());
+  fetch('/api/push/prefs', { method: 'PUT', headers: headers(), body: JSON.stringify(p) }).then(prefsOf);
 
 /** Chạm vào thông báo: service worker gửi tin nhắn, hoặc app mở mới với ?open=. */
 export function onPushOpen(cb: (open: string) => void) {

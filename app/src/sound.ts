@@ -11,17 +11,21 @@ let ctx: AudioContext | null = null;
 const buffers: Partial<Record<Name, AudioBuffer>> = {};
 
 const loading = new Set<Name>();
+// Tải hỏng (mất mạng) thì 30 giây sau mới thử lại, không phải mỗi cú chạm lại tải cả 11 tệp.
+let failedAt = 0;
 
 function unlock() {
   try {
     ctx ??= new AudioContext();
-    if (ctx.state === 'suspended') void ctx.resume();
+    // iPhone còn có trạng thái 'interrupted' (cuộc gọi đến, Siri), không chỉ 'suspended'.
+    if (ctx.state !== 'running' && ctx.state !== 'closed') void ctx.resume().catch(() => {});
+    if (Date.now() - failedAt < 30_000) return;
     for (const n of Object.keys(VOLUME) as Name[]) {
       // Đang tải dở thì thôi, không tải lại mỗi lần chạm (trước đây mỗi cú chạm đầu tải lại cả 11 file).
       if (buffers[n] || loading.has(n)) continue;
       loading.add(n);
       fetch(`/sfx/${n}.mp3`).then((r) => r.arrayBuffer()).then((b) => ctx!.decodeAudioData(b)).then((buf) => { buffers[n] = buf; })
-        .catch(() => {}).finally(() => loading.delete(n));
+        .catch(() => { failedAt = Date.now(); }).finally(() => loading.delete(n));
     }
   } catch {}
 }

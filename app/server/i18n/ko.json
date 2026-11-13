@@ -1,7 +1,7 @@
 {
   "error.server": "서버에 문제가 생겼어요",
   "error.not_signed_in": "아직 집에 들어오지 않았어요",
-  "error.family_code_not_found": "이 코드로 찾을 수 있는 집이 없어요",
+  "error.family_code_not_found": "이 코드의 집을 찾지 못했어요. 코드를 다시 확인해 주세요",
   "error.family_not_found": "집을 찾을 수 없어요",
   "error.missing_media": "사진이나 녹음이 없어요",
   "error.missing_audio": "녹음이 없어요",
@@ -27,6 +27,11 @@
   "error.seed_not_found": "없는 씨앗이에요",
   "error.seed_locked": "아직 열리지 않은 씨앗이에요",
   "error.push_bad_subscription": "알림 등록이 올바르지 않아요",
+  "error.too_many_tries": "너무 여러 번 시도했어요. 10분쯤 기다렸다가 다시 해 주세요",
+  "error.slow_down": "조금 빨랐어요. 잠시 후 다시 해 주세요",
+  "error.post_not_found": "이 게시물은 더 이상 없어요",
+  "error.file_too_big": "파일이 너무 커요. 더 작은 파일을 골라 주세요",
+  "error.photo_type": "이 사진 형식은 아직 쓸 수 없어요. JPG나 PNG 사진을 골라 주세요",
 
   "member.defaultName": "나",
   "family.defaultName": "우리 집",

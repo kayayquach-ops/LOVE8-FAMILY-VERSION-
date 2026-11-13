@@ -73,16 +73,21 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
     let alive = true;
     // Bản mới thay bản lưu, giữ lại các tin mình đang gửi dở.
     call<Msg[]>('/api/chat').then((r) => { if (alive) { setMsgs((p) => [...r, ...p.filter((m) => m.id.startsWith('tmp-'))]); markRead(); } }).catch((e) => toast(e.message));
+    const catchUp = () => {
+      const q = latest.current ? `?after=${encodeURIComponent(latest.current)}` : '';
+      call<Msg[]>(`/api/chat${q}`).then((r) => alive && merge(r)).catch(() => {});
+    };
     const poll = setInterval(() => {
       // Kênh tin tức thời đang nối thì không cần hỏi thêm; chỉ hỏi khi kênh rớt.
       if (document.hidden || es?.readyState === 1) return;
-      const q = latest.current ? `?after=${encodeURIComponent(latest.current)}` : '';
-      call<Msg[]>(`/api/chat${q}`).then((r) => alive && merge(r)).catch(() => {});
+      catchUp();
     }, 8000);
     let es: EventSource | undefined;
     try {
       es = new EventSource(`/api/chat/stream?token=${encodeURIComponent(token.get() ?? '')}`);
       es.onmessage = (e) => { try { merge([JSON.parse(e.data)]); } catch {} };
+      // Kênh vừa nối (hoặc nối lại): hỏi bù các tin tới đúng khe kênh chưa nối, vì kênh nối rồi thì lần hỏi 8 giây bị bỏ qua. Tin trùng tự lọc.
+      es.onopen = catchUp;
     } catch {}
     return () => { alive = false; clearInterval(poll); es?.close(); };
   }, [merge, markRead]);

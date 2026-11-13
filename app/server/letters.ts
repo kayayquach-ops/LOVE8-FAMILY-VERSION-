@@ -21,7 +21,8 @@ const EXT: Record<string, string> = { 'image/jpeg': '.jpg', 'image/png': '.png',
 const upload = multer({
   storage: multer.diskStorage({ destination: MEDIA_DIR, filename: (_req, file, cb) => cb(null, `${randomUUID()}${EXT[file.mimetype] ?? '.jpg'}`) }),
   limits: { fileSize: 12 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => cb(null, file.mimetype in EXT),
+  // Loại ảnh không dùng được (GIF, HEIC máy không đổi kịp): bỏ qua tệp và đánh dấu để báo đúng ý thay vì "thiếu ảnh".
+  fileFilter: (req, file, cb) => { if (!(file.mimetype in EXT)) (req as { badType?: boolean }).badType = true; cb(null, file.mimetype in EXT); },
 });
 
 export async function migrateLetters(db: { query: (q: string, v?: any[]) => Promise<any> } = pool) {
@@ -97,7 +98,7 @@ lettersRouter.get('/letters', h(async (req, res) => {
 
 /** Ảnh gắn vào thư (chụp hoặc chọn): trả về đường dẫn để đưa vào items khi gửi. */
 lettersRouter.post('/letters/photo', upload.single('file'), h(async (req, res) => {
-  if (!req.file) return res.status(400).json(errorBody('missing_media'));
+  if (!req.file) return res.status(400).json(errorBody(req.badType ? 'photo_type' : 'missing_media'));
   const media = `/media/${req.file.filename}`;
   warmThumbs(MEDIA_DIR, media, [360, 1080]);
   res.json({ media });
@@ -117,9 +118,9 @@ lettersRouter.post('/letters', h(async (req, res) => {
       String(req.body?.title ?? '').trim().slice(0, 40) || null, String(req.body?.footer ?? '').trim().slice(0, 40) || null]);
   const { rows: me } = await pool.query('select name from members where id = $1', [req.member.id]);
   const name = String(me[0]?.name || '');
-  // Chạy nền; nội dung thư không nằm trong thông báo.
-  void notifyMembers([to], (l) => ({
-    kind: 'chat', title: tServer(l, 'push.letter.title', { name: name || tServer(l, 'push.someone') }), body: tServer(l, 'push.letter.body'),
+  // Chạy nền; nội dung thư không nằm trong thông báo. Thư viết cho chính mình thì không báo.
+  if (to !== req.member.id) void notifyMembers([to], (l) => ({
+    kind: 'letter', title: tServer(l, 'push.letter.title', { name: name || tServer(l, 'push.someone') }), body: tServer(l, 'push.letter.body'),
     tag: `letter-${id}`, open: 'letter', ttl: 7 * 24 * 3600,
   }));
   res.json(view(rows[0]));

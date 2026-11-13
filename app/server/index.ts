@@ -4,6 +4,7 @@ import compression from 'compression';
 import multer from 'multer';
 import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
+import { unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { cleanMascotName, DEFAULT_MASCOT_NAME, isMascotShape, type Member, type Post, type Reply, type Week } from '../src/shared.ts';
 import { migrate, pool } from './db.ts';
@@ -20,16 +21,26 @@ import { liveRouter, liveStreamRouter } from './facetime.ts';
 import { migratePush, notifyPost, notifyReply, pushRouter, startPushScheduler } from './push.ts';
 import { thumbRoute, warmThumbs } from './thumb.ts';
 import { googlePublicRouter, googleRouter, linkPendingGoogle } from './google.ts';
+import { Limit, limitBy } from './limit.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
 
 const app = express();
+// Railway đứng sau đúng một tầng proxy: req.ip là địa chỉ cuối trong x-forwarded-for (proxy gắn vào), người gọi tự thêm header cũng không giả được.
 app.set('trust proxy', 1);
 // Nén chữ (JS, CSS, JSON) trước khi gửi: bản JS 400 kB còn khoảng 130 kB trên mạng 4G. Kênh SSE không nén để tin đến ngay.
 app.use(compression({ filter: (req, res) => !req.path.endsWith('/stream') && compression.filter(req, res) }));
-app.use(express.json({ limit: '1mb' }));
+// Bỏ ký tự \u0000 trong mọi chuỗi gửi lên: Postgres không lưu được ký tự này và báo lỗi.
+app.use(express.json({ limit: '1mb', reviver: (_k, v) => (typeof v === 'string' ? v.replace(/\u0000/g, '') : v) }));
 app.use(langMiddleware);
+// Lỗi 500 không gửi câu lỗi nội bộ (câu Postgres, đường dẫn tệp) cho người dùng: hàm h của từng router đã ghi chi tiết vào log,
+// máy khách chỉ nhận mã chung error.server đúng thứ tiếng. Đặt một chỗ ở đây để áp cho mọi router.
+app.use((_req, res, next) => {
+  const json = res.json.bind(res);
+  res.json = (body?: unknown) => json(res.statusCode >= 500 && body && typeof body === 'object' && !('code' in body) ? errorBody('server') : body);
+  next();
+});
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -58,7 +69,7 @@ type Req = express.Request & { member?: { id: string; family_id: string; lang?: 
 const h = (fn: (req: Req, res: express.Response) => Promise<unknown>) => (req: Req, res: express.Response) =>
   fn(req, res).catch((err: Error) => {
     console.error(err);
-    res.status(500).json({ error: err.message || tReq('error.server') });
+    res.status(500).json(errorBody('server'));
   });
 
 // Không mật khẩu: mỗi máy giữ một mã riêng, gửi kèm mọi lần gọi. Mỗi lần gọi cũng là một lần "còn hoạt động".
@@ -104,19 +115,25 @@ async function addMember(familyId: string, b: any) {
   return { token, google: await linkPendingGoogle(mid, b.google) };
 }
 
-app.post('/api/families', h(async (req, res) => {
+// Mã nhà chỉ 6 hoặc 7 chữ số và vào nhà không cần đăng nhập: mỗi IP được sai 15 lần mỗi 10 phút, cả máy chủ 100 lần sai mỗi giờ
+// (đổi IP liên tục cũng không quét nổi). Nhập đúng thì không tốn lượt.
+const codeTries = limitBy({ name: 'family-code', per: new Limit(15, 10 * 60e3), total: new Limit(100, 3600e3), onlyFailed: true, code: 'too_many_tries' });
+// Tạo nhà mới không cần mã: mỗi IP 20 nhà mỗi giờ, cả máy chủ 200, để không ai đẻ hàng loạt thành viên giả đốt ngân sách giọng đọc.
+const newFamilies = limitBy({ name: 'new-family', per: new Limit(20, 3600e3), total: new Limit(200, 3600e3) });
+
+app.post('/api/families', newFamilies, h(async (req, res) => {
   const fid = id();
   await pool.query('insert into families (id, name, code) values ($1,$2,$3)', [fid, String(req.body.family || tReq('family.defaultName')).slice(0, 40), await newCode()]);
   res.json(await addMember(fid, req.body));
 }));
 
-app.post('/api/join', h(async (req, res) => {
+app.post('/api/join', codeTries, h(async (req, res) => {
   const { rows } = await pool.query('select id from families where code = $1', [String(req.body.code || '').trim()]);
   if (!rows[0]) return res.status(404).json(errorBody('family_code_not_found'));
   res.json(await addMember(rows[0].id, req.body));
 }));
 
-app.get('/api/family/:code', h(async (req, res) => {
+app.get('/api/family/:code', codeTries, h(async (req, res) => {
   const { rows } = await pool.query('select name from families where code = $1', [req.params.code]);
   if (!rows[0]) return res.status(404).json(errorBody('family_not_found'));
   res.json({ name: rows[0].name });
@@ -267,8 +284,15 @@ app.post('/api/me/first-voice', upload.single('file'), h(async (req, res) => {
   res.json({ ok: true });
 }));
 
+/** Bài có thuộc nhà của người gọi không: thả cảm xúc, trả lời chỉ được vào bài trong nhà mình. */
+async function ownPost(req: Req) {
+  const { rowCount } = await pool.query('select 1 from posts where id = $1 and family_id = $2', [req.params.id, req.member!.family_id]);
+  return !!rowCount;
+}
+
 app.post('/api/posts/:id/react', h(async (req, res) => {
-  const emoji = String(req.body.emoji || '');
+  if (!(await ownPost(req))) return res.status(404).json(errorBody('post_not_found'));
+  const emoji = String(req.body.emoji || '').slice(0, 16);
   if (!emoji) await pool.query('delete from reactions where post_id = $1 and member_id = $2', [req.params.id, req.member!.id]);
   else await pool.query(
     'insert into reactions (post_id, member_id, emoji) values ($1,$2,$3) on conflict (post_id, member_id) do update set emoji = excluded.emoji',
@@ -279,6 +303,10 @@ app.post('/api/posts/:id/react', h(async (req, res) => {
 }));
 
 app.post('/api/posts/:id/replies', upload.single('file'), h(async (req, res) => {
+  if (!(await ownPost(req))) {
+    if (req.file) await unlink(req.file.path).catch(() => {});
+    return res.status(404).json(errorBody('post_not_found'));
+  }
   await pool.query('insert into replies (id, post_id, author_id, kind, media, text, seconds) values ($1,$2,$3,$4,$5,$6,$7)', [
     id(), req.params.id, req.member!.id, req.file ? 'voice' : 'text', media(req.file), String(req.body.text || '').slice(0, 300) || null,
     Number(req.body.seconds) || null,
@@ -364,9 +392,20 @@ const dist = path.resolve('dist');
 if (existsSync(dist)) {
   // File trong assets có mã băm trong tên, giữ lâu được; các file khác giữ 1 giờ.
   app.use('/assets', express.static(path.join(dist, 'assets'), { maxAge: '1y', immutable: true }));
+  // Tệp không còn (máy đang mở bản cũ sau khi deploy): trả 404 thật để máy khách biết mà tải lại, không trả index.html giả làm JS.
+  app.use('/assets', (_req, res) => { res.status(404).set('Cache-Control', 'no-store').end(); });
   app.use(express.static(dist, { index: false, maxAge: '1h' }));
   app.get(/^(?!\/api|\/media).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
 }
+
+// Lỗi lọt ra ngoài hàm h (tệp quá cỡ ở multer, thân JSON quá 1 MB hay hỏng): trả JSON có mã lỗi thay vì trang lỗi HTML.
+app.use((err: Error & { type?: string; status?: number }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const big = (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') || err.type === 'entity.too.large';
+  if (big) return void res.status(413).json(errorBody('file_too_big'));
+  if (err instanceof multer.MulterError) return void res.status(400).json(errorBody('missing_media'));
+  if (!err.status || err.status >= 500) console.error(err);
+  res.status(err.status && err.status >= 400 && err.status < 500 ? err.status : 500).json(errorBody('server'));
+});
 
 const port = Number(process.env.PORT || 3010);
 await migrate();

@@ -70,6 +70,11 @@ export function FaceTime({ me, to, onClose }: { me: Me; to?: string | null; onCl
   const state = useRef({ mic: true, cam: true });
   const videos = useRef(new Map<string, HTMLVideoElement>());
   const counted = useRef(false);
+  // Phòng gần nhất có mình (để vào lại đúng phòng khi máy chủ quên), phòng gần nhất nhận được, hạn giữ kết nối khi đang vào lại.
+  const known = useRef<LiveRoom>(null);
+  const lastRoom = useRef<LiveRoom>(null);
+  const grace = useRef(0);
+  const graceEnd = useRef(0);
 
   const signal = (to: string, data: unknown) => livePost('signal', { to, data }).catch(() => {});
 
@@ -124,13 +129,39 @@ export function FaceTime({ me, to, onClose }: { me: Me; to?: string | null; onCl
     void signal(id, { sdp: p.pc.localDescription });
   }
 
+  /** Vào phòng; về tới nơi mà mình đã cúp máy (bấm cúp đúng lúc đang vào) thì rời ngay, không để lại phòng ma đổ chuông cả nhà. */
+  async function enter(body: Record<string, unknown>) {
+    const r = await livePost<{ room: LiveRoom }>('join', body);
+    if (ended.current) { void livePost('leave').catch(() => {}); return null; }
+    return r;
+  }
+
+  /** Máy chủ quên phòng (khởi động lại khi deploy) hoặc đã cho mình ra: vào lại đúng phòng cũ (cùng mã phòng, người gọi, người được gọi riêng)
+   * với cờ rejoin để máy chủ không đổ chuông cả nhà. 15 giây đầu giữ các kết nối đang chạy tốt trong lúc người khác lần lượt vào lại. */
+  function rejoin() {
+    const old = known.current;
+    void enter(old ? { rejoin: true, id: old.id, by: old.by, to: old.to ?? null, started: old.started } : { rejoin: true, ...(to ? { to } : {}) }).catch(() => {});
+  }
+
   // Mỗi cặp hai người chỉ một bên mời (mã nhỏ hơn), nên không bao giờ hai bên cùng mời nhau.
   function sync(room: LiveRoom) {
+    lastRoom.current = room;
     const ids = room?.members ?? [];
-    setMembers(ids);
-    for (const id of [...peers.current.keys()]) if (!ids.includes(id)) { close(id); pending.current.delete(id); }
+    if (room && ids.includes(meId)) known.current = room;
+    const lost = joined.current && !ended.current && !ids.includes(meId);
+    if (lost) {
+      grace.current = Date.now() + 15_000;
+      clearTimeout(graceEnd.current);
+      graceEnd.current = window.setTimeout(() => { if (!ended.current) sync(lastRoom.current); }, 15_500);
+    }
+    const keep = Date.now() < grace.current;
+    for (const id of [...peers.current.keys()]) {
+      if (ids.includes(id) || (keep && peers.current.get(id)?.state === 'connected')) continue;
+      close(id); pending.current.delete(id);
+    }
+    setMembers(keep ? [...new Set([...ids, ...peers.current.keys()])] : ids);
     if (!joined.current || ended.current) return;
-    if (!ids.includes(meId)) { void livePost('join').catch(() => {}); return; }
+    if (lost) return rejoin();
     for (const id of ids) if (id !== meId && !peers.current.has(id) && meId < id) void offer(id).catch(() => {});
   }
 
@@ -182,11 +213,12 @@ export function FaceTime({ me, to, onClose }: { me: Me; to?: string | null; onCl
       setLocal(media.stream);
       setFake(media.fake);
       if (media.fake) toast(media.stream.getAudioTracks().length ? t('facetime.noCam') : t('facetime.noCamMic'));
-      const r = await livePost<{ room: LiveRoom }>('join', to ? { to } : {});
+      const r = await enter(to ? { to } : {});
+      if (!r) return;
       joined.current = true;
       sync(r.room);
     })().catch((e) => toast((e as Error).message));
-    return () => { alive = false; off(); hangUp(true); };
+    return () => { alive = false; off(); clearTimeout(graceEnd.current); hangUp(true); };
   }, []);
 
   // Còn một mình thì nghe tiếng chờ nhẹ.

@@ -27,6 +27,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 const changed = () => window.dispatchEvent(new Event('hl-letters'));
+const hasHangul = (s: string) => /[ᄀ-ᇿ㄰-㆏가-힣]/.test(s);
 const MAX = 1500;
 const MAX_PHOTOS = 3;
 const MAX_ITEMS = 12;
@@ -159,8 +160,10 @@ export function Letters({ me, start, onClose }: { me: Me; start?: string | null;
   const byId = (id: string): Member | undefined => me.members.find((m) => m.id === id);
 
   useEffect(() => { void loadLetterFonts(getLang() === 'ko'); }, []);
+  // Thư có chữ Hàn (du học sinh hay viết) thì tải phông Hàn dù app đang tiếng Việt, khỏi rơi về phông hệ thống to và lệch.
+  useEffect(() => { if ([...(lists.in ?? []), ...(lists.out ?? [])].some((l) => hasHangul(`${l.body}${l.title ?? ''}${l.footer ?? ''}`))) void loadLetterFonts(true); }, [lists]);
 
-  const reload = (which: 'in' | 'out') => call<Letter[]>(`/api/letters?box=${which}`).then((r) => setLists((p) => ({ ...p, [which]: r }))).catch((e) => toast(e.message));
+  const reload =(which: 'in' | 'out') => call<Letter[]>(`/api/letters?box=${which}`).then((r) => setLists((p) => ({ ...p, [which]: r }))).catch((e) => toast(e.message));
   useEffect(() => { void reload('in'); void reload('out'); }, []);
   useEffect(() => { if (start === 'write') setView({ type: 'write' }); }, [start]);
 
@@ -278,16 +281,50 @@ function TplChip({ s }: { s: Required<LetterStyle> }) {
   return <span className="lt-tpl" style={{ background: r.bg.css }}><i className={r.layout === 'postage' ? 'post' : ''} style={{ background: r.paper.c, borderColor: r.ink.c }} /></span>;
 }
 
+/** Thư viết dở lưu trong máy, mỗi người nhận một bản (khoá '' khi chưa chọn người nhận). */
+type Saved = { text: string; title: string; footer: string; items: Draft[]; at: number };
+const draftKey = (meId: string) => `hl-letter-drafts:${meId}`;
+function loadDrafts(meId: string): Record<string, Saved> {
+  try { const d = JSON.parse(localStorage.getItem(draftKey(meId)) || '{}'); return d && typeof d === 'object' ? d : {}; } catch { return {}; }
+}
+/** Ghi (hoặc xoá khi d là null) bản nháp gửi `to`; đổi người nhận thì bỏ bản ghi dưới người nhận cũ `from`. */
+function saveDraft(meId: string, to: string, d: Saved | null, from = to) {
+  const all = loadDrafts(meId);
+  delete all[from];
+  if (d) all[to] = d; else delete all[to];
+  try { if (Object.keys(all).length) localStorage.setItem(draftKey(meId), JSON.stringify(all)); else localStorage.removeItem(draftKey(meId)); } catch {}
+}
+
 function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Member[]; to?: string; onBack: () => void; onSent: (l: Letter) => void }) {
-  const [to, setTo] = useState<string | null>(first ?? (others.length <= 2 ? others[0].id : null));
-  const [text, setText] = useState('');
+  // Mở lại màn viết: có thư viết dở thì hiện lại (trả lời ai thì lấy bản nháp gửi người đó, không thì bản viết gần nhất).
+  const [saved] = useState(() => {
+    const all = loadDrafts(me.me.id);
+    const ok = (k: string) => !!all[k] && (k === '' || others.some((m) => m.id === k));
+    const key = first !== undefined ? first : Object.keys(all).filter(ok).sort((a, b) => all[b].at - all[a].at)[0];
+    return key !== undefined && ok(key) ? { to: key, ...all[key] } : null;
+  });
+  const [to, setTo] = useState<string | null>(first ?? (saved?.to || null) ?? (others.length <= 2 ? others[0].id : null));
+  const [text, setText] = useState(saved?.text ?? '');
   const [style, setStyle] = useState<Required<LetterStyle>>(() => {
     try { return { ...DEFAULT_STYLE, ...JSON.parse(localStorage.getItem('hl-letter-style') || '{}') }; } catch { return DEFAULT_STYLE; }
   });
   const [tab, setTab] = useState<Tab>('layout');
-  const [title, setTitle] = useState('');
-  const [footer, setFooter] = useState('');
-  const [items, setItems] = useState<Draft[]>([]);
+  const [title, setTitle] = useState(saved?.title ?? '');
+  const [footer, setFooter] = useState(saved?.footer ?? '');
+  const [items, setItems] = useState<Draft[]>(saved?.items ?? []);
+  // Gõ tới đâu lưu tới đó: bấm quay lại, hay iPhone nạp lại app khi quay về từ máy ảnh, cũng không mất thư. Gửi xong thì xoá.
+  const draftTo = useRef(to ?? '');
+  const opened = useRef(false);
+  useEffect(() => {
+    if (!opened.current) { opened.current = true; return; }
+    const kept = items.filter((i) => i.type === 'sticker' || i.media).map(({ preview: _, ...i }) => i);
+    const empty = !text.trim() && !title.trim() && !footer.trim() && !kept.length;
+    saveDraft(me.me.id, to ?? '', empty ? null : { text, title, footer, items: kept, at: Date.now() }, draftTo.current);
+    draftTo.current = to ?? '';
+  }, [to, text, title, footer, items]);
+  // Gõ chữ Hàn thì tải phông Hàn (một lần).
+  const ko = hasHangul(`${text}${title}${footer}`);
+  useEffect(() => { if (ko) void loadLetterFonts(true); }, [ko]);
   const [sel, setSel] = useState<string | null>(null);
   const [uploading, setUploading] = useState(0);
   const [cut, setCut] = useState(false);
@@ -380,6 +417,7 @@ function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Memb
     try {
       const out = items.map(({ type, media, sticker, shape, x, y, w, rot }) => ({ type, media, sticker, shape, x, y, w, rot }));
       const l = await call<Letter>('/api/letters', { method: 'POST', body: JSON.stringify({ to, body: text, style, items: out, title, footer }) });
+      saveDraft(me.me.id, to ?? '', null, draftTo.current);
       onSent(l);
     } catch (e) {
       toast((e as Error).message);
