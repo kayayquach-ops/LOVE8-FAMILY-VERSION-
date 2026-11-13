@@ -1,8 +1,8 @@
 # Sweet Home (tên cũ Homeletter): bàn giao cho phiên làm việc tiếp theo
 
-App gia đình cho du học sinh ở xa và bố mẹ. Bản thật: **https://homeletter-production.up.railway.app** (tên miền giữ tên cũ). Cập nhật lần cuối: 2026-11-13, nhánh `ux-simple-poetic`. Bản live vẫn là `f0e9258` (26/10); mọi thứ ở mục "Đợt 13/11/2026" dưới đây CHƯA deploy.
+App gia đình cho du học sinh ở xa và bố mẹ. Bản thật: **https://homeletter-production.up.railway.app** (tên miền giữ tên cũ). Cập nhật lần cuối: 2026-11-13, nhánh `ux-simple-poetic`. Đã deploy ngày 13/11/2026 bản `1b00abb` (gồm cả đợt dưới đây và lọ yêu thương mới), đã đẩy `ux-simple-poetic` và `main` lên origin.
 
-## Đợt 13/11/2026 (đã gộp vào `ux-simple-poetic`, chưa deploy)
+## Đợt 13/11/2026 (đã deploy 13/11, commit `1b00abb`)
 
 Làm song song bằng nhiều agent, mỗi agent một nhánh `worktree-agent-*` (trong `.claude/worktrees`, đã gộp hết). Lưu ý khi dùng worktree: nhánh mới được tách từ `origin` (bản đã push), không phải HEAD trên máy, nên phải `git reset --hard <commit>` hoặc rebase trước khi làm.
 
