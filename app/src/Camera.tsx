@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { upload } from './api';
-import { fileName, record, shrinkImage, snap, useHoldMic, VIDEO_TYPE, type Recording } from './media';
+import { fileName, record, recordZoomed, shrinkImage, snap, useHoldMic, VIDEO_TYPE, type Recording } from './media';
 import { SILENT_HOURS, type Me } from './shared';
 import { buzz, tap } from './sound';
 import { Letter } from './Letter';
@@ -10,6 +10,8 @@ import { t } from './i18n';
 
 type Draft = { kind: 'photo' | 'video' | 'voice'; blob: Blob; url: string; seconds?: number };
 const MAX_VIDEO = 15;
+const MAX_DIGITAL = 5, MAX_HW = 10;
+const fmtZoom = (z: number) => `${z.toFixed(1)}×`;
 
 // Màn chính kiểu Locket: mở ra là camera. Chạm để chụp, giữ để quay. Giữ nút dưới để nói.
 export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?: boolean; onOpen: (s: 'feed' | 'jar' | 'family' | 'calendar') => void; onSent: () => void }) {
@@ -28,9 +30,75 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
   const holdTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const maxTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const touchY = useRef(0);
+  const swipeOk = useRef(false);
+  const finder = useRef<HTMLDivElement>(null);
+  // Zoom: phần cứng (Android Chrome) nếu track cho phép, không thì phóng số bằng transform và cắt đúng vùng đó khi chụp, quay.
+  const [zoom, setZoom] = useState(1);
+  const [zoomHint, setZoomHint] = useState(false);
+  const zoomNow = useRef(1);
+  const hw = useRef<{ min: number; max: number } | null>(null);
+  const hwNext = useRef<number | null>(null);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ d: number; z: number } | null>(null);
+  const hintTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const gen = useRef(0);
   const pressed = useRef(false);
   const talk = useHoldMic((r) => setDraft({ kind: 'voice', blob: r.blob, url: r.url, seconds: r.seconds }), () => stream.current);
+
+  function setZ(z: number) {
+    const lo = hw.current?.min ?? 1, hi = hw.current ? Math.min(hw.current.max, MAX_HW) : MAX_DIGITAL;
+    z = Math.min(hi, Math.max(lo, z));
+    zoomNow.current = z;
+    setZoom(z);
+    const track = stream.current?.getVideoTracks()[0];
+    if (hw.current && track && hwNext.current === null) {
+      hwNext.current = z;
+      requestAnimationFrame(() => {
+        const v = hwNext.current; hwNext.current = null;
+        if (v !== null) void track.applyConstraints({ advanced: [{ zoom: v } as MediaTrackConstraintSet] }).catch(() => {});
+      });
+    }
+  }
+  function showHint() {
+    setZoomHint(true);
+    clearTimeout(hintTimer.current);
+    hintTimer.current = setTimeout(() => setZoomHint(false), 900);
+  }
+  function pinchStart() {
+    const [a, b] = [...pointers.current.values()];
+    pinch.current = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, z: zoomNow.current };
+  }
+  function onFinderDown(e: React.PointerEvent) {
+    if (e.pointerType === 'mouse') return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size === 2) pinchStart(); else pinch.current = null;
+  }
+  function onFinderMove(e: React.PointerEvent) {
+    if (!pointers.current.has(e.pointerId)) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size !== 2 || !pinch.current || (stopRec.current && !hw.current)) return;
+    const [a, b] = [...pointers.current.values()];
+    setZ(pinch.current.z * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.current.d));
+    showHint();
+  }
+  function onFinderUp(e: React.PointerEvent) {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size === 2) pinchStart(); else pinch.current = null;
+  }
+  function zoomTo(z: number) {
+    tap();
+    if (stopRec.current && !hw.current) return;
+    setZ(z); showHint();
+  }
+  // iPhone còn có cử chỉ chụm riêng của trang (gesturestart): chặn để không phóng cả trang.
+  useEffect(() => {
+    const el = finder.current;
+    if (!el) return;
+    const stop = (e: Event) => e.preventDefault();
+    el.addEventListener('gesturestart', stop); el.addEventListener('gesturechange', stop);
+    return () => { el.removeEventListener('gesturestart', stop); el.removeEventListener('gesturechange', stop); };
+  }, []);
+  useEffect(() => () => clearTimeout(hintTimer.current), []);
 
   function stopCam() {
     gen.current++;
@@ -47,6 +115,12 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
       // Trong lúc chờ quyền mà người dùng đã rời màn (mở tin nhà, gọi video) thì tắt ngay, không giữ camera.
       if (my !== gen.current) { s.getTracks().forEach((t) => t.stop()); return; }
       stream.current = s;
+      // Về 1× mỗi lần bật hay đổi camera; dò xem track có zoom phần cứng không.
+      pointers.current.clear(); pinch.current = null;
+      const cap = (s.getVideoTracks()[0]?.getCapabilities?.() ?? {}) as { zoom?: { min: number; max: number } };
+      hw.current = cap.zoom && cap.zoom.max > cap.zoom.min ? { min: cap.zoom.min, max: cap.zoom.max } : null;
+      zoomNow.current = 1; setZoom(1);
+      if (hw.current) void s.getVideoTracks()[0].applyConstraints({ advanced: [{ zoom: Math.max(1, hw.current.min) } as MediaTrackConstraintSet] }).catch(() => {});
       if (video.current) { video.current.srcObject = s; await video.current.play().catch(() => {}); }
       setError('');
     } catch {
@@ -74,12 +148,14 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
     pressed.current = true;
     holdTimer.current = setTimeout(() => {
       if (!stream.current) return;
-      stopRec.current = record(stream.current, VIDEO_TYPE());
+      const v = video.current;
+      stopRec.current = v && !hw.current && zoomNow.current > 1.001
+        ? recordZoomed(stream.current, v, () => zoomNow.current, VIDEO_TYPE())
+        : record(stream.current, VIDEO_TYPE());
       setRec('video');
       buzz(12);
       maxTimer.current = setTimeout(() => void finishRec(), MAX_VIDEO * 1000);
       // Safari iOS hay làm khung xem trước đứng hình khi bắt đầu ghi cùng luồng: bật lại nếu bị dừng.
-      const v = video.current;
       if (v?.paused) void v.play().catch(() => {});
     }, 350);
   }
@@ -91,7 +167,7 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
     pressed.current = false;
     if (!video.current || !stream.current) return;
     buzz(12);
-    const blob = await snap(video.current, facing === 'user');
+    const blob = await snap(video.current, facing === 'user', hw.current ? 1 : zoomNow.current);
     setDraft({ kind: 'photo', blob, url: URL.createObjectURL(blob) });
   }
   // Ngón tay trượt ra ngoài hoặc máy huỷ cú chạm: đang quay thì dừng và giữ đoạn đã quay, chưa quay thì thôi.
@@ -149,8 +225,8 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
 
   return (
     <div className="screen with-tabs cam-screen"
-      onTouchStart={(e) => { touchY.current = e.touches[0].clientY; }}
-      onTouchEnd={(e) => { if (!draft && !recording && touchY.current - e.changedTouches[0].clientY > 80) onOpen('feed'); }}>
+      onTouchStart={(e) => { touchY.current = e.touches[0].clientY; swipeOk.current = e.touches.length === 1; }}
+      onTouchEnd={(e) => { if (swipeOk.current && !draft && !recording && touchY.current - e.changedTouches[0].clientY > 80) onOpen('feed'); }}>
       <div className="top">
         <div style={{ display: 'flex' }}>
           {me.members.slice(0, 4).map((m, i) => <div key={m.id} style={{ marginLeft: i ? -10 : 0, borderRadius: 99, border: '2px solid var(--bg)' }}><Avatar m={m} size={32} /></div>)}
@@ -166,7 +242,7 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
         </div>
       )}
 
-      <div className="viewfinder">
+      <div className="viewfinder" ref={finder} onPointerDown={onFinderDown} onPointerMove={onFinderMove} onPointerUp={onFinderUp} onPointerCancel={onFinderUp}>
         {draft?.kind === 'photo' && <img src={draft.url} alt="" />}
         {draft?.kind === 'video' && <video src={draft.url} autoPlay loop playsInline />}
         {draft?.kind === 'voice' && (
@@ -174,7 +250,7 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
             <VoiceDot url={draft.url} seconds={draft.seconds} />
           </div>
         )}
-        {!draft && <video ref={video} className={facing === 'user' ? 'mirror' : ''} muted playsInline autoPlay onPause={(e) => { if (stream.current) void e.currentTarget.play().catch(() => {}); }} />}
+        {!draft && <video ref={video} className={facing === 'user' ? 'mirror' : ''} style={hw.current || zoom <= 1 ? undefined : { transform: facing === 'user' ? `scale(${-zoom}, ${zoom})` : `scale(${zoom})` }} muted playsInline autoPlay onPause={(e) => { if (stream.current) void e.currentTarget.play().catch(() => {}); }} />}
         {!draft && error && (
           <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 30, textAlign: 'center' }}>
             <div>
@@ -186,6 +262,16 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
         )}
         {draft && draft.kind !== 'voice' && <input className="cap-input" value={caption} maxLength={60} onChange={(e) => setCaption(e.target.value)} placeholder={t('camera.captionPlaceholder')} enterKeyHint="done" onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />}
         {rec === 'video' && <span className="rec-dot" aria-hidden="true" />}
+        {!draft && !error && (
+          <>
+            <span className={`zoom-hint ${zoomHint ? 'on' : ''}`} aria-hidden="true">{fmtZoom(zoom)}</span>
+            <div className="zoom-pills">
+              {[1, 2].map((z) => (
+                <button key={z} className={Math.abs(zoom - z) < 0.05 ? 'on' : ''} onClick={() => zoomTo(z)} onPointerDown={(e) => e.stopPropagation()} aria-label={t('camera.zoomTo', { n: z })}>{z}×</button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {draft ? (

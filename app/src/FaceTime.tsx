@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { api } from './api';
-import { drawBooth, H, THEMES, W, type Tile } from './booth';
-import { FH, FW, loadStripFonts, renderStrip, snap, snapInto, STRIPS, stripTheme, tone as toneOver, type Tone } from './strip';
+import { drawBooth, H, stageColor, THEMES, W, type Tile } from './booth';
+import { FH, FW, loadStripFonts, renderStrip, snap, snapInto, STRIPS, stripStage, stripTheme, tone as toneOver, type Tone } from './strip';
 import './booth.css';
 import { livePost, onLive, type LiveMsg, type LiveRoom } from './live';
 import type { Me } from './shared';
@@ -504,6 +504,8 @@ function Booth({ me, tiles, onShoot, onClose }: { me: Me; tiles: () => Tile[]; o
 
   const busy = running || count > 0;
   const stripDone = mode === 'strip' && !!when;
+  const th1 = THEMES.find((x) => x.id === theme) ?? THEMES[0];
+  const stage = mode === 'one' ? stageColor(th1.body, th1.frame) : stripStage(strip);
   const list = mode === 'one' ? THEMES : STRIPS;
   const current = mode === 'one' ? theme : strip;
   const choose = (id: string) => {
@@ -522,7 +524,7 @@ function Booth({ me, tiles, onShoot, onClose }: { me: Me; tiles: () => Tile[]; o
         </div>
         <span style={{ width: 44 }} />
       </header>
-      <div className="ft-stage">
+      <div className="ft-stage" style={{ background: stage }}>
         {mode === 'one' ? (
           <>
             <canvas ref={cv} width={W} height={H} className="ft-canvas" style={shot ? { display: 'none' } : undefined} />

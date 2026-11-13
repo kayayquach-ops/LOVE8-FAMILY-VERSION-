@@ -6,7 +6,7 @@ export const W = 1080, H = 1350;
 
 export type Tile = { id?: string; video: HTMLVideoElement | null; name: string; mirror: boolean };
 type Ctx = CanvasRenderingContext2D;
-type Theme = { id: string; ink: string; frame: string; radius: number; bg: (c: Ctx, photo?: HTMLImageElement | null) => void };
+type Theme = { id: string; ink: string; frame: string; body: string; radius: number; bg: (c: Ctx, photo?: HTMLImageElement | null) => void };
 
 // Ngẫu nhiên có hạt giống: vẽ lại mỗi khung hình mà hoạ tiết không nhảy.
 function rand(seed: number) {
@@ -41,7 +41,7 @@ function flower(c: Ctx, x: number, y: number, s: number, color: string) {
 
 export const THEMES: Theme[] = [
   {
-    id: 'mist', ink: '#2B2723', frame: '#FFFFFF', radius: 34,
+    id: 'mist', ink: '#2B2723', frame: '#FFFFFF', body: '#ECEAE8', radius: 34,
     bg: (c) => {
       c.fillStyle = '#ECEAE8'; c.fillRect(0, 0, W, H);
       blob(c, 540, 520, 700, 'rgba(255,255,255,.95)');
@@ -51,7 +51,7 @@ export const THEMES: Theme[] = [
     },
   },
   {
-    id: 'film', ink: '#F3E7D3', frame: '#F3E7D3', radius: 6,
+    id: 'film', ink: '#F3E7D3', frame: '#F3E7D3', body: '#2A211C', radius: 6,
     bg: (c) => {
       c.fillStyle = '#2A211C'; c.fillRect(0, 0, W, H);
       c.fillStyle = '#F3E7D3';
@@ -60,7 +60,7 @@ export const THEMES: Theme[] = [
     },
   },
   {
-    id: 'tet', ink: '#FFF4EE', frame: '#FFF4EE', radius: 30,
+    id: 'tet', ink: '#FFF4EE', frame: '#FFF4EE', body: '#A8322D', radius: 30,
     bg: (c) => {
       const g = c.createLinearGradient(0, 0, 0, H);
       g.addColorStop(0, '#A8322D'); g.addColorStop(1, '#7C1F22');
@@ -70,7 +70,7 @@ export const THEMES: Theme[] = [
     },
   },
   {
-    id: 'sea', ink: '#24425A', frame: '#FFFFFF', radius: 40,
+    id: 'sea', ink: '#24425A', frame: '#FFFFFF', body: '#BFD8E2', radius: 40,
     bg: (c) => {
       const g = c.createLinearGradient(0, 0, 0, H);
       g.addColorStop(0, '#F4EFE6'); g.addColorStop(0.55, '#BFD8E2'); g.addColorStop(1, '#6E9BB4');
@@ -85,7 +85,7 @@ export const THEMES: Theme[] = [
     },
   },
   {
-    id: 'night', ink: '#F2EEE6', frame: 'rgba(242,238,230,.9)', radius: 999,
+    id: 'night', ink: '#F2EEE6', frame: 'rgba(242,238,230,.9)', body: '#1C2340', radius: 999,
     bg: (c) => {
       const g = c.createLinearGradient(0, 0, 0, H);
       g.addColorStop(0, '#1C2340'); g.addColorStop(1, '#3B3355');
@@ -97,7 +97,7 @@ export const THEMES: Theme[] = [
     },
   },
   {
-    id: 'letter', ink: '#5A4636', frame: '#FFFDF8', radius: 8,
+    id: 'letter', ink: '#5A4636', frame: '#FFFDF8', body: '#F6EEDF', radius: 8,
     bg: (c) => {
       c.fillStyle = '#F6EEDF'; c.fillRect(0, 0, W, H);
       c.strokeStyle = 'rgba(154,90,68,.18)'; c.lineWidth = 2;
@@ -107,7 +107,7 @@ export const THEMES: Theme[] = [
     },
   },
   {
-    id: 'photo', ink: '#FFFFFF', frame: '#FFFFFF', radius: 30,
+    id: 'photo', ink: '#FFFFFF', frame: '#FFFFFF', body: '#8A8278', radius: 30,
     bg: (c, photo) => {
       c.fillStyle = '#8A8278'; c.fillRect(0, 0, W, H);
       if (photo?.naturalWidth) cover(c, photo, photo.naturalWidth, photo.naturalHeight, 0, 0, W, H, false);
@@ -115,6 +115,29 @@ export const THEMES: Theme[] = [
     },
   },
 ];
+
+function hsl(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+  if (!d) return [0, 0, l];
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+
+/**
+ * Nền sau tấm ảnh, tự chọn để dải nổi lên: sáng thì nền sâu, tối thì nền nhạt;
+ * màu rực thì lấy tông đối diện cho dịu, màu trung tính thì lấy nâu kem ấm.
+ */
+export function stageColor(body: string, frame?: string | null): string {
+  const [bh, bs, bl] = hsl(body);
+  const fl = frame && frame.startsWith('#') && frame.length === 7 ? hsl(frame)[2] : bl;
+  const deep = bl * 0.7 + fl * 0.3 > 0.5;
+  const h = bs > 0.25 ? (bh + 180) % 360 : deep ? 24 : 38;
+  const s = bs > 0.25 ? 0.3 : 0.22;
+  return `hsl(${Math.round(h)} ${Math.round(s * 100)}% ${deep ? 24 : 90}%)`;
+}
 
 export function cover(c: Ctx, src: CanvasImageSource, sw: number, sh: number, x: number, y: number, w: number, h: number, mirror: boolean) {
   const s = Math.max(w / sw, h / sh);

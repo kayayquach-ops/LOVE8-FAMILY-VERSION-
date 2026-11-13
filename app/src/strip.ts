@@ -1,7 +1,7 @@
 // Dải ảnh kiểu photobooth: 3 hoặc 4 tấm xếp dọc, mỗi chủ đề tự vẽ nền, khung, hoạ tiết và chữ bằng canvas.
 // Toạ độ logic: dải rộng 600, cao 1800 (3 ô) hoặc 2200 (4 ô); khi xuất thì phóng to cho nét.
 
-import { cover } from './booth';
+import { cover, stageColor } from './booth';
 
 type Ctx = CanvasRenderingContext2D;
 export type Tone = 'color' | 'bw' | 'wine';
@@ -12,7 +12,7 @@ type StripTheme = {
   id: string; tone: Tone;
   top: number; bottom: number; side: number; gap: number;
   frame: string | null; pad: number; radius: number; shadow?: boolean;
-  pair: string; tilt?: number;
+  body: string; tilt?: number;
   under: (c: Ctx, l: L) => void;
   over?: (c: Ctx, l: L) => void;
 };
@@ -426,7 +426,7 @@ const WINE = '#5E0F1B', CREAM = '#F5EBDC';
 export const STRIPS: StripTheme[] = [
   {
     id: 'mist', tone: 'color', top: 64, bottom: 250, side: 44, gap: 24,
-    frame: '#FFFFFF', pad: 10, radius: 24, shadow: true, pair: '#E5E0DA',
+    frame: '#FFFFFF', pad: 10, radius: 24, shadow: true, body: '#ECEAE8',
     under: (c, l) => {
       soft(c, l.h, '#ECEAE8', [[300, 0.3, 520, 'rgba(255,255,255,.95)'], [40, 0.95, 560, 'rgba(241,200,182,.85)'], [580, 0.88, 520, 'rgba(190,182,204,.8)']]);
       grain(c, SW, l.h, 0.07);
@@ -447,7 +447,7 @@ export const STRIPS: StripTheme[] = [
   },
   {
     id: 'ticket', tone: 'color', top: 262, bottom: 248, side: 58, gap: 16,
-    frame: WINE, pad: 4, radius: 3, pair: WINE,
+    frame: WINE, pad: 4, radius: 3, body: WINE,
     under: (c, l) => {
       const h = l.h;
       c.fillStyle = WINE; c.fillRect(0, 0, SW, h);
@@ -487,7 +487,7 @@ export const STRIPS: StripTheme[] = [
   },
   {
     id: 'film', tone: 'bw', top: 66, bottom: 150, side: 54, gap: 22,
-    frame: null, pad: 0, radius: 3, pair: '#E9E6E1', tilt: 0.04,
+    frame: null, pad: 0, radius: 3, body: '#121110', tilt: 0.04,
     under: (c, l) => {
       c.fillStyle = '#121110'; c.fillRect(0, 0, SW, l.h);
       c.fillStyle = '#E9E2D4';
@@ -520,7 +520,7 @@ export const STRIPS: StripTheme[] = [
   },
   {
     id: 'music', tone: 'color', top: 46, bottom: 426, side: 40, gap: 20,
-    frame: null, pad: 0, radius: 20, pair: '#E2DAE0',
+    frame: null, pad: 0, radius: 20, body: '#E8E1DA',
     under: (c, l) => {
       soft(c, l.h, '#E8E1DA', [[80, 0.1, 480, 'rgba(255,255,255,.9)'], [560, 0.45, 520, 'rgba(214,196,214,.85)'], [60, 0.9, 520, 'rgba(240,205,190,.85)']]);
       grain(c, SW, l.h, 0.05);
@@ -570,7 +570,7 @@ export const STRIPS: StripTheme[] = [
   },
   {
     id: 'halloween', tone: 'color', top: 232, bottom: 236, side: 48, gap: 24,
-    frame: '#0E0A10', pad: 7, radius: 26, shadow: true, pair: '#B9A6D9',
+    frame: '#0E0A10', pad: 7, radius: 26, shadow: true, body: '#2A1638',
     under: (c, l) => {
       const g = c.createLinearGradient(0, 0, 0, l.h);
       g.addColorStop(0, '#4A2466'); g.addColorStop(0.55, '#2A1638'); g.addColorStop(1, '#120B18');
@@ -612,7 +612,7 @@ export const STRIPS: StripTheme[] = [
   },
   {
     id: 'tet', tone: 'color', top: 236, bottom: 236, side: 52, gap: 22,
-    frame: '#FFF3DC', pad: 8, radius: 14, shadow: true, pair: '#F4E3C3',
+    frame: '#FFF3DC', pad: 8, radius: 14, shadow: true, body: '#9A1E19',
     under: (c, l) => {
       const g = c.createLinearGradient(0, 0, 0, l.h);
       g.addColorStop(0, '#B8261E'); g.addColorStop(1, '#7E1414');
@@ -646,7 +646,7 @@ export const STRIPS: StripTheme[] = [
   },
   {
     id: 'xmas', tone: 'color', top: 226, bottom: 262, side: 48, gap: 22,
-    frame: '#FFFFFF', pad: 8, radius: 18, shadow: true, pair: '#E7EEE8',
+    frame: '#FFFFFF', pad: 8, radius: 18, shadow: true, body: '#174834',
     under: (c, l) => {
       const g = c.createLinearGradient(0, 0, 0, l.h);
       g.addColorStop(0, '#1F5A43'); g.addColorStop(1, '#0F2E24');
@@ -690,7 +690,7 @@ export const STRIPS: StripTheme[] = [
   },
   {
     id: 'photo', tone: 'color', top: 60, bottom: 226, side: 44, gap: 22,
-    frame: '#FFFFFF', pad: 9, radius: 22, shadow: true, pair: '#2B2723',
+    frame: '#FFFFFF', pad: 9, radius: 22, shadow: true, body: '#8A8278',
     under: (c, l) => {
       c.fillStyle = '#8A8278'; c.fillRect(0, 0, SW, l.h);
       const p = l.info.photo;
@@ -711,6 +711,8 @@ export const STRIPS: StripTheme[] = [
   },
 ];
 
+/** Màu nền sau dải ảnh, tự chọn theo màu dải và khung. */
+export const stripStage = (id: string) => { const th = stripTheme(id); return stageColor(th.body, th.frame); };
 export const stripTheme = (id: string) => STRIPS.find((t) => t.id === id) ?? STRIPS[0];
 
 function layout(t: StripTheme, n: number, info: StripInfo): L {
@@ -756,7 +758,7 @@ export function renderStrip(id: string, frames: (CanvasImageSource | null)[], n:
   out.width = Math.round(PW * s1); out.height = Math.round(PH * s1);
   const c = out.getContext('2d')!;
   c.scale(s1, s1);
-  c.fillStyle = th.pair; c.fillRect(0, 0, PW, PH);
+  c.fillStyle = stageColor(th.body, th.frame); c.fillRect(0, 0, PW, PH);
   if (th.tilt) {
     // Chữ viền lặp lại phía sau, như tờ lót ảnh.
     c.save();
