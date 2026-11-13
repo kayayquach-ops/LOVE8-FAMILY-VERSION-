@@ -18,8 +18,70 @@ async function get<T>(path: string): Promise<T> {
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-// Nghe podcast nhà mình: file ghép giọng thật và nhạc; lời dẫn đọc bằng giọng máy đúng mốc, giọng thật chờ lời dẫn đọc xong.
+const MODE_KEY = 'sh-pod-mode';
+const readMode = (): 'video' | 'audio' => { try { return localStorage.getItem(MODE_KEY) === 'audio' ? 'audio' : 'video'; } catch { return 'video'; } };
+
+// Tập có video thì mặc định xem video, chuyển được sang chỉ nghe (tải nhẹ hơn nhiều). Tập cũ chỉ có tiếng vẫn nghe như trước.
 function Player({ ep, me }: { ep: Ep; me: Me }) {
+  // Video dựng xong trong lúc đang nghe thì không tự chuyển (khỏi ngắt tiếng), chỉ hiện nút chọn.
+  const [mode, setMode] = useState<'video' | 'audio'>(() => (ep.video ? readMode() : 'audio'));
+  const pick = (m: 'video' | 'audio') => { tap(); setMode(m); try { localStorage.setItem(MODE_KEY, m); } catch {} };
+  const video = !!ep.video && mode === 'video';
+  return (
+    <>
+      {video ? <VideoPlayer ep={ep} me={me} /> : <AudioPlayer ep={ep} me={me} />}
+      {ep.video ? (
+        <div className="pod-mode-wrap">
+          <div className="pod-mode" role="tablist">
+            <button role="tab" aria-selected={video} className={video ? 'on' : ''} onClick={() => pick('video')}>{t('podcast.watch')}</button>
+            <button role="tab" aria-selected={!video} className={video ? '' : 'on'} onClick={() => pick('audio')}>{t('podcast.listenOnly')}</button>
+          </div>
+        </div>
+      ) : ep.videoStatus === 'rendering' && <p className="pod-note">{t('podcast.videoSoon')}</p>}
+    </>
+  );
+}
+
+function VideoPlayer({ ep, me }: { ep: Ep; me: Me }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [time, setTime] = useState(0);
+  const who = ep.memberId ? me.members.find((m) => m.id === ep.memberId) : null;
+
+  function toggle() {
+    const v = ref.current;
+    if (!v) return;
+    tap();
+    if (v.paused) { if (v.ended) v.currentTime = 0; void v.play().catch(() => toast(t('podcast.tapAgain'))); }
+    else v.pause();
+  }
+  function seek(x: number) {
+    const v = ref.current;
+    if (!v) return;
+    v.currentTime = x;
+    setTime(x);
+  }
+
+  return (
+    <div className="pod-player fade" key={ep.id}>
+      <button className={`pod-video${playing ? ' on' : ''}`} onClick={toggle} aria-label={playing ? t('common.stop') : t('podcast.watch')}>
+        <video ref={ref} src={ep.video ?? undefined} poster={ep.poster ?? undefined} playsInline preload="metadata"
+          onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => { setPlaying(false); setTime(ep.duration); }}
+          onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)} />
+        <span className="pod-vplay" aria-hidden><Icon name="play" size={30} /></span>
+      </button>
+      <div className="pod-title">{ep.title}</div>
+      <div className="pod-meta">{who ? who.name : t('podcast.family')} · {mmss(ep.duration)}</div>
+      <input className="pod-seek" type="range" min={0} max={ep.duration} step={0.1} value={Math.min(time, ep.duration)}
+        onChange={(e) => seek(Number(e.target.value))} style={{ ['--p' as string]: `${(time / ep.duration) * 100}%` }} />
+      <div className="pod-times"><span>{mmss(time)}</span><span>{mmss(ep.duration)}</span></div>
+    </div>
+  );
+}
+
+// Nghe podcast nhà mình: file ghép giọng thật và nhạc. Tập cũ còn lời dẫn đọc bằng giọng máy đúng mốc (giọng thật chờ lời dẫn đọc xong);
+// tập mới chỉ có giọng người kể nên mốc không có lời dẫn, chỉ hiện câu hỏi đang nghe.
+function AudioPlayer({ ep, me }: { ep: Ep; me: Me }) {
   const audio = useRef<HTMLAudioElement>(null);
   const [want, setWant] = useState(false);
   const [time, setTime] = useState(0);
@@ -98,7 +160,7 @@ function Player({ ep, me }: { ep: Ep; me: Me }) {
   const c = ep.chapters[cur];
   return (
     <div className="pod-player fade" key={ep.id}>
-      <div className="pod-cover">{ep.cover ? <img src={thumb(ep.cover, 1080)} alt="" decoding="async" /> : <Icon name="mic" size={44} />}</div>
+      <div className="pod-cover">{ep.poster || ep.cover ? <img src={thumb(ep.poster ?? ep.cover, 1080)} alt="" decoding="async" /> : <Icon name="mic" size={44} />}</div>
       <div className="pod-title">{ep.title}</div>
       <div className="pod-meta">{who ? who.name : t('podcast.family')} · {mmss(ep.duration)}</div>
       <audio ref={audio} src={ep.media ?? undefined} preload="metadata"
@@ -123,7 +185,7 @@ function Shelf({ list, sel, onPick }: { list: Ep[]; sel?: string; onPick: (id: s
     <div className="pod-shelf">
       {list.map((e) => (
         <button key={e.id} className={`pod-ep${e.id === sel ? ' on' : ''}`} onClick={() => { tap(); onPick(e.id); }} disabled={e.status !== 'ready'}>
-          <span className="pod-thumb">{e.cover ? <img src={thumb(e.cover, 360)} alt="" loading="lazy" decoding="async" /> : <Icon name="mic" size={22} />}</span>
+          <span className="pod-thumb">{e.poster || e.cover ? <img src={thumb(e.poster ?? e.cover, 360)} alt="" loading="lazy" decoding="async" /> : <Icon name="mic" size={22} />}</span>
           <b>{e.title}</b>
           <span className="muted">{e.status === 'ready' ? mmss(e.duration) : t('podcast.rendering')}</span>
         </button>
@@ -143,11 +205,12 @@ export function Podcast({ me, start, onClose, onCall }: { me: Me; start?: string
     get<Photo[]>('/api/vault').then(setPhotos).catch(() => {});
   }, []);
   const busy = eps?.some((e) => e.status === 'rendering');
+  const videoBusy = eps?.some((e) => e.videoStatus === 'rendering');
   useEffect(() => {
-    if (!busy) return;
-    const iv = setInterval(load, 5000);
+    if (!busy && !videoBusy) return;
+    const iv = setInterval(load, busy ? 5000 : 15000);
     return () => clearInterval(iv);
-  }, [busy]);
+  }, [busy, videoBusy]);
 
   const ready = eps?.filter((e) => e.status === 'ready') ?? [];
   const shown = ready.find((e) => e.id === sel) ?? ready[0];
@@ -162,7 +225,7 @@ export function Podcast({ me, start, onClose, onCall }: { me: Me; start?: string
         <span style={{ width: 44 }} />
       </div>
       <div className="scroll" style={{ flex: 1, padding: '6px 20px calc(var(--safe-bottom) + 30px)' }}>
-        {eps === null ? null : shown ? <Player ep={shown} me={me} /> : (
+        {eps === null ? null : shown ? <Player key={shown.id} ep={shown} me={me} /> : (
           <div className="recap-empty">
             <div className="h1">{busy ? t('podcast.busy.title') : t('podcast.empty.title')}</div>
             <p>{busy ? t('podcast.busy.body') : t('podcast.empty.body')}</p>
