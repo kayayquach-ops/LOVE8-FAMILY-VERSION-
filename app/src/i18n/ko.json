@@ -254,7 +254,6 @@
   "home.greet.afternoon": "좋은 오후예요",
   "home.greet.evening": "좋은 저녁이에요",
   "home.hi": "{greet}, {name}님",
-  "home.familyAria": "가족",
   "home.now": "지금 우리 가족",
   "home.noTime": "시간 정보 없음",
   "home.quietDays": "{n}일째 앱을 안 열었어요",
@@ -271,7 +270,8 @@
   "home.podcasts": "우리 집 팟캐스트",
   "home.callWaiting": "기다리는 전화가 있어요",
   "home.podcastEmpty": "이번 주 통화가 끝나면 첫 편이 생겨요",
-  "home.jar": "사랑 항아리: {level}/{capacity}알",
+  "home.jar.of": "/ {capacity}알",
+  "home.jar.left": "{n}알 더 모이면 선물이 열려요",
 
   "chat.videoCall": "영상 통화",
   "chat.empty": "아직 메시지가 없어요. 가족에게 한마디 남겨 봐요.",

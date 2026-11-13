@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { api, errorText, token } from './api';
 import { locale, t, type Key } from './i18n';
 import type { Me, Week } from './shared';
@@ -62,7 +62,9 @@ function prng(seed: number) {
 
 const JAR_PATH = 'M50 30h60v18c22 10 32 30 32 54v60a26 26 0 01-26 26H44a26 26 0 01-26-26v-60c0-24 10-44 32-54z';
 
-function JarArt({ list }: { list: string[] }) {
+/** Hình lọ với các hạt bên trong. Trang chủ dùng bản nhỏ; id riêng mỗi lọ vì Trang chủ và màn lọ cùng nằm trên trang. */
+export function JarArt({ list, width = 230 }: { list: string[]; width?: number }) {
+  const uid = useId().replace(/:/g, '');
   const placed = useMemo(() => {
     const r = prng(list.length * 7919 + 13);
     const order = list.map((s) => ({ s, k: r() })).sort((a, b) => a.k - b.k).map((x) => x.s);
@@ -75,16 +77,16 @@ function JarArt({ list }: { list: string[] }) {
     });
   }, [list]);
   return (
-    <svg viewBox="0 0 160 200" width="230" height="288" aria-hidden className="jar-svg">
+    <svg viewBox="0 0 160 200" width={width} height={Math.round(width * 1.25)} aria-hidden className="jar-svg">
       <defs>
-        <clipPath id="jarclip"><path d={JAR_PATH} /></clipPath>
-        <linearGradient id="jarglass" x1="0" x2="1">
+        <clipPath id={`jarclip${uid}`}><path d={JAR_PATH} /></clipPath>
+        <linearGradient id={`jarglass${uid}`} x1="0" x2="1">
           <stop offset="0" stopColor="#fff" stopOpacity=".7" /><stop offset=".5" stopColor="#fff" stopOpacity=".18" /><stop offset="1" stopColor="#fff" stopOpacity=".5" />
         </linearGradient>
       </defs>
       <ellipse cx="80" cy="192" rx="56" ry="5" fill="#2B2723" opacity=".08" />
-      <path d={JAR_PATH} fill="url(#jarglass)" />
-      <g clipPath="url(#jarclip)">
+      <path d={JAR_PATH} fill={`url(#jarglass${uid})`} />
+      <g clipPath={`url(#jarclip${uid})`}>
         {placed.map((p, i) => {
           const d = seedOf(p.s);
           return (

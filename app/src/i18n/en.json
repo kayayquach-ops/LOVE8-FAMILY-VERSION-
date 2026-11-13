@@ -260,7 +260,6 @@
   "home.greet.afternoon": "Good afternoon",
   "home.greet.evening": "Good evening",
   "home.hi": "{greet}, {name}",
-  "home.familyAria": "The whole family",
   "home.now": "Everyone right now",
   "home.noTime": "No time yet",
   "home.quietDays": "{n} days since last visit",
@@ -279,7 +278,9 @@
   "home.podcasts": "Our family podcast",
   "home.callWaiting": "A call is waiting",
   "home.podcastEmpty": "Your first episode arrives after this week's call",
-  "home.jar": "Love jar: {level}/{capacity} seeds",
+  "home.jar.of": "/ {capacity} seeds",
+  "home.jar.left": "{n} more seeds to open a gift",
+  "home.jar.left.one": "{n} more seed to open a gift",
 
   "chat.videoCall": "Video call",
   "chat.empty": "No messages yet. Say something to everyone.",
