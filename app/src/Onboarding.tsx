@@ -3,14 +3,49 @@ import { api, fromGoogle, googlePending, startGoogle, token } from './api';
 import { CityPicker } from './CityPicker';
 import { getLang, LANGS, rememberLang, setLang, t, useLang } from './i18n';
 import { fileName, type Recording } from './media';
-import type { Role } from './shared';
+import { cityOf, type Role } from './shared';
 import { sfx, startMusic, stopMusic, tapSoft } from './sound';
-import { Icon, SKIP_EVENT, toast, Typed } from './ui';
+import { Doodle, Icon, LuckyStar, SKIP_EVENT, toast, Typed } from './ui';
 import { VoiceNote } from './VoiceNote';
 import './onboarding.css';
 
-type Step = 'hello' | 'role' | 'kid' | 'name' | 'dob' | 'city' | 'seen' | 'hug' | 'food' | 'love' | 'voice' | 'unsaid' | 'story' | 'home' | 'code' | 'invite';
+// home: bước dựng nhà (tạo nhà mới, vào nhà bằng mã, Google). family: đặt tên nhà sau khi chọn tạo nhà mới.
+type Step = 'hello' | 'role' | 'kid' | 'name' | 'dob' | 'city' | 'seen' | 'hug' | 'food' | 'love' | 'voice' | 'unsaid' | 'story' | 'home' | 'family' | 'code' | 'invite';
 const FLOW: Step[] = ['hello', 'role', 'kid', 'name', 'dob', 'city', 'seen', 'hug', 'food', 'love', 'voice', 'unsaid', 'story', 'home'];
+
+// Bấm Google ở bước dựng nhà thì cả trang sang Google rồi tải lại: giữ tạm câu trả lời trong máy (cả câu thu âm) để quay về đúng bước dựng nhà.
+// Chỉ đọc lại khi máy này đang dở một lượt Google; tạo nhà, vào nhà xong hay huỷ Google thì xoá.
+type Draft = { at: number; role: Role | null; kid: Kid | ''; name: string; city: string; dob: { d: string; m: string; y: string }; a: Record<string, string>; wantHug: boolean | null; voice?: { data: string; seconds: number } };
+const DRAFT = 'sh-ob-draft';
+function readDraft(): Draft | null {
+  try {
+    const d: Draft | null = JSON.parse(localStorage.getItem(DRAFT) ?? 'null');
+    return d && Date.now() - d.at < 2 * 3600e3 ? d : null;
+  } catch { return null; }
+}
+const clearDraft = () => { try { localStorage.removeItem(DRAFT); } catch { /* bỏ qua */ } };
+async function saveDraft(d: Omit<Draft, 'at' | 'voice'>, voice: Recording | null) {
+  const data = voice ? await new Promise<string | null>((res) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result));
+    r.onerror = () => res(null);
+    r.readAsDataURL(voice.blob);
+  }) : null;
+  const put = (x: Draft) => localStorage.setItem(DRAFT, JSON.stringify(x));
+  // Máy hết chỗ thì bỏ câu thu âm, vẫn giữ câu trả lời.
+  try { put({ ...d, at: Date.now(), ...(data && voice ? { voice: { data, seconds: voice.seconds } } : {}) }); } catch { try { put({ ...d, at: Date.now() }); } catch { /* bỏ qua */ } }
+}
+function draftVoice(d: Draft | null): Recording | null {
+  if (!d?.voice) return null;
+  try {
+    const [head, b64] = d.voice.data.split(',');
+    const bin = atob(b64);
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    const blob = new Blob([buf], { type: head.match(/^data:([^;,]+)/)?.[1] ?? '' });
+    return { blob, seconds: d.voice.seconds, url: URL.createObjectURL(blob) };
+  } catch { return null; }
+}
 
 // Chuyện vì sao có Sweet Home, kể chậm từng trang (chữ ở khoá onboarding.story.<trang>.a / .b).
 const STORY = ['room', 'room', 'home', 'letter', 'letter'] as const;
@@ -26,16 +61,20 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const lang = useLang();
   // Đi Google rồi quay về thì link mời đã rời thanh địa chỉ: lấy lại mã nhà đã giữ cùng phiên Google.
   const [invite] = useState(() => new URLSearchParams(location.search).get('join') ?? googlePending.get()?.join ?? '');
-  const [step, setStep] = useState<Step>('hello');
-  const [role, setRole] = useState<Role | null>(null);
-  const [kid, setKid] = useState<Kid | ''>('');
-  const [name, setName] = useState('');
-  const [city, setCity] = useState('');
-  const [dob, setDob] = useState({ d: '', m: '', y: '' });
-  const [a, setA] = useState<Record<string, string>>({});
-  const [wantHug, setWantHug] = useState<boolean | null>(null);
+  // Quay về từ Google đã bấm ở bước dựng nhà: lấy lại câu trả lời, vào thẳng bước dựng nhà.
+  const [draft] = useState(() => (googlePending.get()?.intent === 'signin' ? readDraft() : null));
+  const [step, setStep] = useState<Step>(draft ? 'home' : 'hello');
+  const stepRef = useRef(step);
+  stepRef.current = step;
+  const [role, setRole] = useState<Role | null>(draft?.role ?? null);
+  const [kid, setKid] = useState<Kid | ''>(draft?.kid ?? '');
+  const [name, setName] = useState(draft?.name ?? '');
+  const [city, setCity] = useState(draft?.city ?? '');
+  const [dob, setDob] = useState(draft?.dob ?? { d: '', m: '', y: '' });
+  const [a, setA] = useState<Record<string, string>>(draft?.a ?? {});
+  const [wantHug, setWantHug] = useState<boolean | null>(draft?.wantHug ?? null);
   // Câu "thương" đầu tiên bằng giọng mình: chỉ giữ trong máy, tạo nhà xong mới gửi lên.
-  const [voice, setVoice] = useState<Recording | null>(null);
+  const [voice, setVoice] = useState<Recording | null>(() => draftVoice(draft));
   const [micDenied, setMicDenied] = useState(false);
   const [page, setPage] = useState(0);
   // null: chưa sửa, hiện tên nhà mặc định theo ngôn ngữ đang chọn (đổi ngôn ngữ ở màn chào vẫn đúng).
@@ -79,21 +118,29 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         const r = await api.googleFinish(p);
         if (r.status === 'signin') {
           googlePending.clear();
+          clearDraft();
           token.set(r.token);
           rememberLang();
           sfx('arrive');
           return onDone();
         }
-        if (r.status === 'cancel') googlePending.clear();
+        if (r.status === 'cancel') { googlePending.clear(); clearDraft(); }
         if (r.status === 'new') {
           // Giữ phiên Google để tạo nhà hoặc vào nhà xong thì nối luôn.
           const first = gNameRef.current === null;
           gNameRef.current = r.name ?? '';
           setGName(gNameRef.current);
-          if (first) { setName(gNameRef.current); setStep((s) => (s === 'hello' ? 'role' : s)); toast(t('onboarding.google.new')); }
+          if (first) {
+            // Bấm Google ở màn chào: đi tiếp phần làm quen, tên lấy từ Google. Bấm ở bước dựng nhà: giữ tên đã gõ, ở lại bước dựng nhà.
+            const atStart = stepRef.current !== 'hello';
+            setName((n) => (n.trim() ? n : gNameRef.current ?? ''));
+            setStep((s) => (s === 'hello' ? 'role' : s));
+            toast(t(atStart ? 'onboarding.google.newHome' : 'onboarding.google.new'));
+          }
         }
       } catch (e) {
         googlePending.clear();
+        clearDraft();
         // Phiên cũ đã hết hạn từ lâu thì bỏ lặng lẽ; vừa quay về thì báo.
         if (Date.now() - p.at < 16 * 60e3) toast((e as Error).message);
       } finally {
@@ -105,11 +152,15 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     document.addEventListener('visibilitychange', onShow);
     return () => document.removeEventListener('visibilitychange', onShow);
   }, []);
-  const google = () => {
+  const google = async () => {
     if (gBusy) return;
     sfx('button', true);
     setGBusy(true);
-    startGoogle('signin', invite || undefined).catch((e) => { toast((e as Error).message); setGBusy(false); });
+    try {
+      if (step === 'hello') clearDraft();
+      else await saveDraft({ role, kid, name, city, dob, a, wantHug }, voice);
+      await startGoogle('signin', invite || undefined);
+    } catch (e) { toast((e as Error).message); setGBusy(false); }
   };
   // Quay lại câu ôm thì hỏi lại từ đầu.
   useEffect(() => { if (step === 'hug') { setWantHug(null); setA((x) => { const { hug: _, ...r } = x; return r; }); } }, [step]);
@@ -130,7 +181,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     // Đang chờ tự sang câu sau mà bấm quay lại thì huỷ, không bị đẩy tới câu khác.
     clearTimeout(auto.current); choosing.current = false;
     if (step === 'story' && page > 0) return setPage(page - 1);
-    setStep(step === 'code' ? 'home' : FLOW[Math.max(0, FLOW.indexOf(step) - 1)]);
+    setStep(step === 'code' || step === 'family' ? 'home' : FLOW[Math.max(0, FLOW.indexOf(step) - 1)]);
   };
   // Chọn xong thì để lời đáp hiện một lúc rồi tự sang câu sau.
   // Quay lại câu đã trả lời thì vẫn chọn lại được; chỉ chặn bấm thêm trong lúc đang chờ sang câu sau.
@@ -151,6 +202,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         ...(gp?.intent === 'signin' ? { google: { state: gp.state, bind: gp.bind } } : {}) };
       const r = join ? await api.join({ ...body, code: code.trim() }) : await api.create({ ...body, family: familyName.trim() || t('onboarding.home.default') });
       token.set(r.token);
+      clearDraft();
       // Phiên Google hết hạn giữa chừng (làm quen quá lâu) hay tài khoản vừa bị nối ở máy khác: vẫn vào nhà, nhắc nối lại sau.
       if (gName !== null) { googlePending.clear(); if (r.google !== true) toast(t('onboarding.google.linkLater')); }
       // Từ giờ máy này có mã: ghi nhớ ngôn ngữ đang dùng để lần mở sau không bị coi là người cũ của bản tiếng Việt.
@@ -218,17 +270,16 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   const dobValid = +dob.d >= 1 && +dob.d <= 31 && +dob.m >= 1 && +dob.m <= 12 && +dob.y >= 1920 && +dob.y <= new Date().getFullYear();
   const dobIso = `${dob.y}-${dob.m.padStart(2, '0')}-${dob.d.padStart(2, '0')}`;
-  const done = FLOW.indexOf(step === 'code' || step === 'invite' ? 'home' : step);
+  const done = FLOW.indexOf(step === 'code' || step === 'family' || step === 'invite' ? 'home' : step);
   const T = { typed, onTyped: setTyped, fast };
 
+  // Từ câu hỏi đầu tiên trở đi: nền giấy trắng của bộ giao diện mới (màn chào vẫn là cánh đồng).
   return (
-    <>
-    <Meadow />
-    <div className="screen" onPointerDownCapture={skip}>
+    <div className="screen ob" onPointerDownCapture={skip}>
       {step === 'role' && hint && <div className="skip-hint" aria-hidden onAnimationStart={() => { try { localStorage.setItem('hl-skip-hint', '1'); } catch { /* bỏ qua */ } }}>{t('onboarding.skipHint')}</div>}
       <div className="top">
         {step !== 'invite' ? <button className="icon-btn" onClick={back} aria-label={t('common.back')}><Icon name="back" /></button> : <span style={{ width: 44 }} />}
-        <div className="progress"><i style={{ width: `${(done / (FLOW.length - 1)) * 100}%` }} /></div>
+        <div className="progress"><i style={{ transform: `scaleX(${done / (FLOW.length - 1)})` }} /></div>
         <span style={{ width: 44 }} />
       </div>
 
@@ -331,24 +382,24 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         </div>
       )}
 
-      {step === 'home' && (invite ? (
-        <Ask key="join" q={inviteName ? t('onboarding.join.q', { family: inviteName }) : t('onboarding.join.qHome')} {...T}
-          footer={<button className="btn" disabled={busy} onClick={() => finish(true)}>{t('onboarding.join.btn')}</button>} />
-      ) : (
-        <Ask key="home" q={t('onboarding.home.q')} sub={t('onboarding.home.sub')} {...T}
-          footer={<>
-            <button className="btn" disabled={busy || !familyName.trim()} onClick={() => finish(false)}>{t('onboarding.home.create')}</button>
-            <button className="link" onClick={() => go('code')}>{t('onboarding.home.haveCode')}</button>
-          </>}>
+      {step === 'home' && (
+        <BuildHome role={role} name={name} city={city} invite={!!invite} inviteName={inviteName} busy={busy}
+          google={gOn && gName === null} gBusy={gBusy} onGoogle={google}
+          onCreate={() => go('family')} onCode={() => go('code')} onJoin={() => void finish(true)} />
+      )}
+
+      {step === 'family' && (
+        <Ask key="family" q={t('onboarding.home.q')} sub={t('onboarding.home.sub')} {...T}
+          footer={<button className="btn" disabled={busy || !familyName.trim()} onClick={() => finish(false)}>{t('onboarding.home.create')}</button>}>
           <input className="field fade" value={familyName} maxLength={40} onChange={(e) => setFamily(e.target.value)} />
         </Ask>
-      ))}
+      )}
 
       {step === 'code' && (
         <Ask key="code" q={t('onboarding.code.q')} sub={t('onboarding.code.sub')} {...T}
           footer={<button className="btn" disabled={busy || !/^\d{6,7}$/.test(code.trim())} onClick={() => finish(true)}>{t('onboarding.join.btn')}</button>}>
           {/* Không đặt maxLength: dán cả câu mời ("Mã nhà: 123456") vẫn lấy được đủ 6 số. */}
-          <input className="field fade" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => { const found = e.target.value.match(/\d{6,7}/g); setCode(found ? found[found.length - 1] : e.target.value.replace(/\D/g, '').slice(0, 7)); }} placeholder="1234567" style={{ letterSpacing: 6, fontSize: 24 }} />
+          <input className="field ob-code fade" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => { const found = e.target.value.match(/\d{6,7}/g); setCode(found ? found[found.length - 1] : e.target.value.replace(/\D/g, '').slice(0, 7)); }} placeholder="1234567" />
         </Ask>
       )}
 
@@ -358,7 +409,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <button className="btn" onClick={() => { sfx('button', true); void shareInvite(made.code, made.family); }}><Icon name="share" size={20} /> {t('invite.send')}</button>
             <button className="link" onClick={onDone}>{t('onboarding.invite.skip')}</button>
           </>}>
-          <div className="panel fade" style={{ alignSelf: 'center', width: '86%', textAlign: 'center' }}>
+          <div className="panel ob-invite fade">
             <img className="invite-logo" src="/logo-mark.png" alt="" />
             <div className="muted">{t('onboarding.invite.codeOf', { family: made.family })}</div>
             <button className="code" onClick={() => void copyCode(made.code)} aria-label={t('invite.codeAria', { code: made.code })}>{made.code}</button>
@@ -368,7 +419,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         </Ask>
       )}
     </div>
-    </>
   );
 }
 
@@ -418,7 +468,7 @@ function Opt({ on, onClick, children }: { on: boolean; onClick: () => void; chil
   return <button className={`opt ${on ? 'on' : ''}`} onClick={onClick}>{children}</button>;
 }
 
-/** Câu hỏi gõ từng chữ; gõ xong các đáp án hiện lên lần lượt với tiếng "bụp" nhẹ. */
+/** Câu hỏi hiện từng chữ; xong thì các đáp án hiện lên lần lượt với tiếng "bụp" nhẹ. Câu hỏi là tiêu đề chữ thường, cụm trong *...* viết tay mực tím. */
 function Ask({ q, sub, echo, typed, onTyped, fast, children, footer }: {
   q: string; sub?: string; echo?: string | false; typed: boolean; onTyped: () => void; fast?: boolean; children?: React.ReactNode; footer?: React.ReactNode;
 }) {
@@ -426,13 +476,165 @@ function Ask({ q, sub, echo, typed, onTyped, fast, children, footer }: {
   return (
     <>
       <div className="center">
-        <h1 className="q"><Typed text={q} onDone={onTyped} /></h1>
+        <h1 className="q display"><Line text={q} onDone={onTyped} /></h1>
         {sub && <p className={`sub ${typed ? (fast ? 'quick-in' : 'slow-in') : 'reserve'}`}>{sub}</p>}
-        <div className="options">{items.map((c, i) => <div key={i} className={typed ? (fast ? 'quick-in' : 'slow-in') : 'reserve'} style={{ animationDelay: fast ? undefined : `${i * 130}ms`, width: '100%', display: 'flex', justifyContent: 'center' }}>{c}</div>)}</div>
+        <div className="options">{items.map((c, i) => <div key={i} className={`ob-item ${typed ? (fast ? 'quick-in' : 'slow-in') : 'reserve'}`} style={{ animationDelay: fast ? undefined : `${i * 130}ms` }}>{c}</div>)}</div>
         <div className="echo">{echo && <span className="slow-in" key={echo} style={{ animationDelay: '300ms' }}>{echo}</span>}</div>
       </div>
-      <div className={fast ? 'quick-in' : 'slow-in'} key={String(typed)} style={{ display: 'flex', flexDirection: 'column', minHeight: 56, animationDelay: fast ? undefined : "350ms" }}>{typed && footer}</div>
+      <div className={`ob-foot ${fast ? 'quick-in' : 'slow-in'}`} key={String(typed)} style={{ animationDelay: fast ? undefined : '350ms' }}>{typed && footer}</div>
     </>
+  );
+}
+
+/** Tách câu thành từng từ để hiện dần; cụm trong *...* đánh dấu viết tay. Dấu câu dính liền sau cụm (như "đâu*?") vẫn chung một từ. */
+type Piece = { s: string; hand: boolean };
+function words(text: string): Piece[][] {
+  const out: Piece[][] = [];
+  let glue = false;
+  text.split('*').forEach((seg, i) => {
+    seg.split(' ').forEach((s, j) => {
+      if (j > 0) glue = false;
+      if (!s) return;
+      if (glue && out.length) out[out.length - 1].push({ s, hand: i % 2 === 1 });
+      else out.push([{ s, hand: i % 2 === 1 }]);
+      glue = true;
+    });
+  });
+  return out;
+}
+
+/** Như Typed ở ui.tsx (hiện từng từ, tiếng lật trang, chạm là hiện đủ), thêm cụm viết tay. */
+function Line({ text, onDone }: { text: string; onDone?: () => void }) {
+  const list = words(text);
+  const [done, setDone] = useState(false);
+  const fired = useRef(false);
+  useEffect(() => {
+    setDone(false);
+    fired.current = false;
+    sfx('reveal');
+    // Safari iOS đôi khi kẹt chữ ở trạng thái mờ, nên hết giờ thì ép về rõ hẳn.
+    const clear = setTimeout(() => setDone(true), 600 + list.length * 220 + 1700);
+    const early = setTimeout(() => { fired.current = true; onDone?.(); }, 600 + (list.length - 1) * 220 + 700);
+    const skip = () => {
+      clearTimeout(clear); clearTimeout(early);
+      setDone(true);
+      if (!fired.current) { fired.current = true; onDone?.(); }
+    };
+    window.addEventListener(SKIP_EVENT, skip);
+    return () => { clearTimeout(clear); clearTimeout(early); window.removeEventListener(SKIP_EVENT, skip); };
+  }, [text]);
+  return (
+    <span key={text}>
+      {list.map((w, i) => (
+        <span key={i} className={done ? 'word done' : 'word'} style={{ animationDelay: `${600 + i * 220}ms` }}>
+          {w.map((p, j) => (p.hand ? <span key={j} className="hand">{p.s}</span> : p.s))}{i < list.length - 1 ? ' ' : ''}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** Tiêu đề đứng yên, cụm trong *...* viết tay mực tím. */
+function Hand({ text }: { text: string }) {
+  return <>{text.split('*').map((s, i) => (i % 2 ? <span key={i} className="hand">{s}</span> : s))}</>;
+}
+
+// Bước dựng nhà, theo màn "tạo nhóm đầu tiên" của YOPE: trên là ba tấm giấy màu bay vào (chưa có ảnh nhà thật nên không giả ảnh),
+// giờ thật ở nơi mỗi người, hai tin nhắn, máy bay giấy từ Việt Nam sang Hàn; dưới là tiêu đề và các nút.
+const VN_TZ = 'Asia/Ho_Chi_Minh';
+const KR_TZ = 'Asia/Seoul';
+// Nét máy bay giấy, cùng nét với Doodle "plane" ở ui.tsx, đặt ở cuối đường bay.
+const PLANE = 'M2.8 11.2 20.9 3.6 15.6 20.3 11.4 13.1Z M11.4 13.1 20.9 3.6 M11.4 13.1 10.9 18.4 13.4 16.2';
+// Cảnh bay vào chỉ chạy lần đầu; quay lại từ màn nhập mã thì đứng yên.
+let startPlayed = false;
+
+/** Giờ 24 tiếng ở múi giờ tz, dạng 19:40. */
+function hhmm(now: Date, tz: string) {
+  try { return new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: tz }).format(now); }
+  catch { return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`; }
+}
+
+/** Giờ hiện tại, cập nhật đúng lúc sang phút mới. */
+function useNow() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    let id = 0;
+    const tick = () => { setNow(new Date()); id = window.setTimeout(tick, 60e3 - (Date.now() % 60e3) + 50); };
+    id = window.setTimeout(tick, 60e3 - (Date.now() % 60e3) + 50);
+    return () => clearTimeout(id);
+  }, []);
+  return now;
+}
+
+function BuildHome({ role, name, city, invite, inviteName, busy, google, gBusy, onGoogle, onCreate, onCode, onJoin }: {
+  role: Role | null; name: string; city: string; invite: boolean; inviteName: string; busy: boolean;
+  google: boolean; gBusy: boolean; onGoogle: () => void; onCreate: () => void; onCode: () => void; onJoin: () => void;
+}) {
+  const [play] = useState(() => !startPlayed);
+  useEffect(() => { startPlayed = true; }, []);
+  const now = useNow();
+  const parent = role === 'bo' || role === 'me';
+  // Nơi mình chọn ở câu hỏi thành phố nằm đúng phía mình; phía kia chưa biết thì lấy Hải Phòng (bố mẹ) và Busan (con).
+  const mine = cityOf(city);
+  const home = parent && mine ? mine : { name: t('onboarding.start.cityHome'), tz: VN_TZ };
+  const away = !parent && mine ? mine : { name: t('onboarding.start.cityAway'), tz: KR_TZ };
+  const me = name.trim();
+  const pName = parent ? me || t(role === 'bo' ? 'onboarding.start.dad' : 'onboarding.start.mom') : t('onboarding.start.mom');
+  const kName = parent ? t('onboarding.start.kid') : me || t('onboarding.start.kid');
+  const pColor = role === 'bo' ? 'var(--s-bien)' : 'var(--s-hong)';
+  const kColor = 'var(--s-tim)';
+  // Tấm của con đổi theo giờ thật bên đó: tối thì trăng trên giấy xanh đêm, ngày thì mặt trời trên giấy xanh trời.
+  const h = parseInt(hhmm(now, away.tz), 10);
+  const night = !(h >= 6 && h < 18);
+  return (
+    <div className={`ob-start${play ? ' ob-play' : ''}`}>
+      <div className="ob-collage" aria-hidden>
+        <div className="ob-stage">
+          <div className="ob-card a">
+            <span className="ob-who"><LuckyStar color={pColor} /><i>{pName}</i></span>
+            <Doodle name="bowl" className="ob-art" />
+            <span className="ob-stamp"><b>{hhmm(now, home.tz)}</b><span>{home.name}</span></span>
+          </div>
+          <div className={`ob-card b${night ? ' night' : ''}`}>
+            <span className="ob-who"><LuckyStar color={kColor} /><i>{kName}</i></span>
+            <Doodle name={night ? 'moon' : 'sun'} className="ob-art" />
+            {night && <><Doodle name="star" className="ob-tw t1" /><Doodle name="star" className="ob-tw t2" /></>}
+            <span className="ob-stamp"><b>{hhmm(now, away.tz)}</b><span>{away.name}</span></span>
+          </div>
+          {/* Tấm thứ ba là ngôi nhà sắp dựng: tên nhà viết tay mực tím dưới hình nhà. */}
+          <div className="ob-card c">
+            <Doodle name="house" className="ob-art" />
+            <Doodle name="heart" className="ob-heart" />
+            <span className="ob-note">{inviteName || t('onboarding.home.default')}</span>
+          </div>
+          <svg className="ob-plane" viewBox="0 0 120 90">
+            <g filter="url(#hl-wob)">
+              <path className="ob-route" d="M8 80C20 40 60 20 100 18" />
+              <path d={PLANE} transform="translate(92 4)" />
+            </g>
+          </svg>
+          <div className={`ob-bub one${parent ? ' me' : ''}`}><LuckyStar color={pColor} /><i>{t('onboarding.start.ask')}</i></div>
+          <div className={`ob-bub two${parent ? '' : ' me'}`}><LuckyStar color={kColor} /><i>{t(role === 'bo' ? 'onboarding.start.replyDad' : 'onboarding.start.replyMom')}</i></div>
+          <div className="ob-streak"><Doodle name="heartFill" wobble={false} />{t('onboarding.start.streak', { n: 36 })}</div>
+        </div>
+      </div>
+      <div className="ob-body">
+        <h1 className="display ob-title">
+          <Hand text={invite ? (inviteName ? t('onboarding.join.q', { family: inviteName }) : t('onboarding.join.qHome')) : t('onboarding.start.title')} />
+        </h1>
+        <p className="ob-lede">{t('onboarding.start.sub')}</p>
+        {invite ? (
+          <button className="btn" disabled={busy} onClick={onJoin}>{t('onboarding.join.btn')}</button>
+        ) : (
+          <>
+            <button className="btn" disabled={busy} onClick={onCreate}>{t('onboarding.start.create')}</button>
+            <div className="ob-or">{t('onboarding.start.or')}</div>
+            <button className="btn line" disabled={busy} onClick={onCode}>{t('onboarding.start.code')}</button>
+          </>
+        )}
+        {google && <button className="ob-google" disabled={gBusy} onClick={onGoogle}><GoogleMark size={18} />{t('onboarding.start.google')}</button>}
+      </div>
+    </div>
   );
 }
 
