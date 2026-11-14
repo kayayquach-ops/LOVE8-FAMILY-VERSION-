@@ -2,6 +2,8 @@ Font cho video podcast (ffmpeg/libass), lấy từ gói @fontsource và public/f
 - sh-sans.ttf: Be Vietnam Pro Medium (Copyright 2021 The Be Vietnam Pro Project Authors)
 - sh-serif.ttf, sh-serif-italic.ttf: Playfair Display 400 (Copyright 2017 The Playfair Display Project Authors, Reserved Font Name "Playfair Display")
 - sh-sans-kr.ttf: Noto Sans KR 500; sh-serif-kr.ttf: Noto Serif KR 500, chỉ 2350 chữ Hàn KS X 1001 (Copyright Google Inc.)
+- sh-display.ttf: Bricolage Grotesque, bản tĩnh độ đậm 700 (latin, latin-ext, vietnamese) (Copyright 2022 The Bricolage Grotesque Project Authors)
+- sh-hand.ttf: Patrick Hand 400 (latin, latin-ext, vietnamese) (Copyright (c) 2010-2012 Patrick Wagesreiter)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

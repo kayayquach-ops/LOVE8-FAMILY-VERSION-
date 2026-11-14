@@ -1,0 +1,15 @@
+/* Tập theo câu chuyện (14/11): nút thêm ảnh viết tay mực tím, tập chưa có ảnh là tờ giấy ô ly. Màu chỉ qua biến, chỉ animate transform và opacity. */
+.st-add-wrap { display: flex; justify-content: center; margin-top: 18px; }
+.st-add { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 18px 8px 14px; border-radius: 999px;
+  background: var(--paper); color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--line);
+  font-family: var(--f-hand); font-size: 20px; line-height: 1; transition: transform .15s, opacity .2s; }
+.st-add svg { flex: none; width: 20px; height: 20px; }
+.st-add:active { transform: scale(.96); transition-duration: 0s; }
+.st-add:disabled { opacity: .6; }
+.st-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* Chưa có ảnh: giấy ô ly, hình micro vẽ tay mực đen, viền mảnh như tờ vở. */
+.pd-art.st-note, .pd-cover.st-note { color: var(--ink); background-color: var(--bg); box-shadow: inset 0 0 0 1px var(--line);
+  background-image: linear-gradient(var(--oly) 1px, transparent 1px), linear-gradient(90deg, var(--oly) 1px, transparent 1px); background-size: 18px 18px; }
+
+@media (prefers-reduced-motion: reduce) { .st-add { transition: opacity .2s; } .st-add:active { transform: none; } }

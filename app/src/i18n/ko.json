@@ -445,6 +445,10 @@
   "podcast.watch": "영상 보기",
   "podcast.listenOnly": "듣기만",
   "podcast.videoSoon": "영상은 만드는 중이에요. 먼저 들어 보세요.",
+  "podcast.videoRedo": "새 사진으로 영상을 다시 만드는 중이에요.",
+  "podcast.addPhotos": "이 이야기에 사진 더하기",
+  "podcast.adding": "사진 보내는 중...",
+  "podcast.photosAdded": "사진 받았어요. 영상이 곧 나와요.",
 
   "family.title": "가족",
   "family.language": "언어 / Language",

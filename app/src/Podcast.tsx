@@ -1,13 +1,18 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { errorText, token } from './api';
 import { t } from './i18n';
-import { thumb, type Me, type Podcast as Ep } from './shared';
+import { fileName, shrinkImage } from './media';
+import { thumb, type Me, type Podcast } from './shared';
 import { tap } from './sound';
 import { speak, stopSpeaking, unlockSpeech } from './speech';
 import { Avatar, Doodle, Icon, toast } from './ui';
 import './podcast.css';
+import './story.css';
 
 type Photo = { id: string; memberId: string; media: string; caption: string | null; createdAt: string };
+/** Tập theo câu chuyện (key story:...) thêm được ảnh; tập cũ không có cờ này. */
+type Ep = Podcast & { story?: boolean };
+const MAX_PHOTOS = 12;
 
 async function get<T>(path: string): Promise<T> {
   const tk = token.get();
@@ -42,8 +47,47 @@ function Seek({ time, duration, onSeek }: { time: number; duration: number; onSe
 const MODE_KEY = 'sh-pod-mode';
 const readMode = (): 'video' | 'audio' => { try { return localStorage.getItem(MODE_KEY) === 'audio' ? 'audio' : 'video'; } catch { return 'video'; } };
 
+/** Thêm nhiều ảnh cho một tập câu chuyện: ảnh thu nhỏ trên máy rồi gửi một lần, máy chủ dựng lại video. */
+function AddPhotos({ ep, onDone }: { ep: Ep; onDone: () => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function send(list: FileList | null) {
+    const files = [...(list ?? [])].slice(0, MAX_PHOTOS);
+    if (input.current) input.current.value = '';
+    if (!files.length) return;
+    setBusy(true);
+    try {
+      const form = new FormData();
+      for (const [i, f] of files.entries()) {
+        const b = await shrinkImage(f);
+        form.append('files', b, b === f ? f.name : fileName(b, `photo-${i}`));
+      }
+      const tk = token.get();
+      const res = await fetch(`/api/podcasts/${ep.id}/photos`, { method: 'POST', headers: tk ? { authorization: `Bearer ${tk}` } : {}, body: form });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(errorText(data));
+      toast(t('podcast.photosAdded'));
+      onDone();
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="st-add-wrap">
+      <button className="st-add" onClick={() => { tap(); input.current?.click(); }} disabled={busy}>
+        <Icon name="image" size={20} /><span>{busy ? t('podcast.adding') : t('podcast.addPhotos')}</span>
+      </button>
+      <input ref={input} type="file" accept="image/*" multiple hidden onChange={(e) => void send(e.target.files)} />
+    </div>
+  );
+}
+
 // Tập có video thì mặc định xem video, chuyển được sang chỉ nghe (tải nhẹ hơn nhiều). Tập cũ chỉ có tiếng vẫn nghe như trước.
-function Player({ ep, me }: { ep: Ep; me: Me }) {
+function Player({ ep, me, onChange }: { ep: Ep; me: Me; onChange: () => void }) {
   // Video dựng xong trong lúc đang nghe thì không tự chuyển (khỏi ngắt tiếng), chỉ hiện nút chọn.
   const [mode, setMode] = useState<'video' | 'audio'>(() => (ep.video ? readMode() : 'audio'));
   const pick = (m: 'video' | 'audio') => { tap(); setMode(m); try { localStorage.setItem(MODE_KEY, m); } catch {} };
@@ -59,6 +103,8 @@ function Player({ ep, me }: { ep: Ep; me: Me }) {
           </div>
         </div>
       ) : ep.videoStatus === 'rendering' && <p className="pd-note">{t('podcast.videoSoon')}</p>}
+      {ep.video && ep.videoStatus === 'rendering' && <p className="pd-note">{t('podcast.videoRedo')}</p>}
+      {ep.story && <AddPhotos ep={ep} onDone={onChange} />}
     </>
   );
 }
@@ -171,7 +217,7 @@ function AudioPlayer({ ep, me }: { ep: Ep; me: Me }) {
   const c = ep.chapters[cur];
   return (
     <div className="pd-player fade" key={ep.id}>
-      <div className="pd-art">{ep.poster || ep.cover ? <img src={thumb(ep.poster ?? ep.cover, 1080)} alt="" decoding="async" /> : <Doodle name="mic" size={56} />}</div>
+      <div className={`pd-art${ep.story && !(ep.poster || ep.cover) ? ' st-note' : ''}`}>{ep.poster || ep.cover ? <img src={thumb(ep.poster ?? ep.cover, 1080)} alt="" decoding="async" /> : <Doodle name="mic" size={56} />}</div>
       <div className="pd-title">{ep.title}</div>
       <div className="pd-meta">{teller(ep, me)} · {mmss(ep.duration)}</div>
       <audio ref={audio} src={ep.media ?? undefined} preload="metadata"
@@ -194,7 +240,7 @@ function Shelf({ list, sel, me, onPick }: { list: Ep[]; sel?: string; me: Me; on
     <div className="pd-shelf">
       {list.map((e) => (
         <button key={e.id} className={`pd-ep${e.id === sel ? ' on' : ''}`} onClick={() => { tap(); onPick(e.id); }} disabled={e.status !== 'ready'}>
-          <span className="pd-cover">{e.poster || e.cover ? <img src={thumb(e.poster ?? e.cover, 360)} alt="" loading="lazy" decoding="async" /> : <Doodle name="mic" size={30} />}</span>
+          <span className={`pd-cover${e.story && !(e.poster || e.cover) ? ' st-note' : ''}`}>{e.poster || e.cover ? <img src={thumb(e.poster ?? e.cover, 360)} alt="" loading="lazy" decoding="async" /> : <Doodle name="mic" size={30} />}</span>
           <b>{e.title}</b>
           <span className="pd-meta">{e.status === 'ready' ? `${teller(e, me)} · ${mmss(e.duration)}` : t('podcast.rendering')}</span>
         </button>
@@ -236,7 +282,7 @@ export function Podcast({ me, start, onClose, onCall }: { me: Me; start?: string
         <button className="pd-x" onClick={onClose} aria-label={t('common.close')}><Icon name="down" /></button>
       </header>
       <div className="scroll pd-body">
-        {eps === null ? null : shown ? <Player key={shown.id} ep={shown} me={me} /> : busy ? (
+        {eps === null ? null : shown ? <Player key={shown.id} ep={shown} me={me} onChange={load} /> : busy ? (
           <div className="pd-empty">
             <Doodle name="mic" size={52} />
             <b className="display">{t('podcast.busy.title')}</b>

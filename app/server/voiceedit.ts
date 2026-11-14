@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pool } from './db.ts';
 import type { Lang } from './i18n.ts';
-import { pickTrack } from './music.ts';
+import { pickTrack, type MusicKind } from './music.ts';
 import { musicExpr } from './recap.ts';
 
 const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
@@ -251,6 +251,13 @@ export async function cleanClip(src: string, work: string, name: string, o: Clip
   return { file, dur: clipDur, gain: lufs == null ? 0 : clamp(CLIP_LUFS - lufs, -12, 12), words, text, voiced };
 }
 
+/** Tổng thời gian có tiếng nói (giây) của một bản ghi gốc, đo như cleanClip (để chấm câu chuyện trước khi dựng). */
+export async function voicedSeconds(src: string, work: string): Promise<number> {
+  const env = await envelope(src, work);
+  if (env.level < -60) return 0;
+  return speech(env).reduce((a, [s, e]) => a + e - s, 0);
+}
+
 /** Không có mốc từng từ: chia chữ theo độ dài vào các đoạn có tiếng. */
 export function spread(text: string, voiced: Array<[number, number]>): Word[] {
   const toks = text.normalize('NFC').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
@@ -410,11 +417,14 @@ async function saveWords(key: string, dur: number, v: { words: Word[]; text: str
 
 // ---------- Ghép cả tập ----------
 
-export type Placed = { clip: Clip; at: number };
+/** fadeIn, fadeOut (giây): nối mềm ở hai đầu đoạn (tập theo câu chuyện ghép nhiều lượt kể liền nhau). */
+export type Placed = { clip: Clip; at: number; fadeIn?: number; fadeOut?: number };
+/** music: thư mục nhạc; gapLufs: độ to của nhạc lúc không có giọng (mặc định -19, tập câu chuyện để nhỏ hơn). */
+export type MixOpts = { music?: MusicKind; gapLufs?: number };
 const trackLufs = new Map<string, number>();
 
-async function musicInput(work: string, total: number, seed: string): Promise<{ args: string[]; graph: (i: number) => string; lufs: number }> {
-  const track = pickTrack(seed, 'podcast');
+async function musicInput(work: string, total: number, seed: string, kind: MusicKind): Promise<{ args: string[]; graph: (i: number) => string; lufs: number }> {
+  const track = pickTrack(seed, kind);
   if (track) {
     try {
       const st = statSync(track);
@@ -464,20 +474,22 @@ function synthLoop(work: string) {
 }
 
 /** Ghép giọng đã làm sạch theo mốc với nhạc nền, chuẩn âm lượng, ra tệp m4a (AAC 160 kbps). */
-export async function mixEpisode(work: string, placed: Placed[], total: number, seed: string, outFile: string) {
-  const music = await musicInput(work, total, seed);
+export async function mixEpisode(work: string, placed: Placed[], total: number, seed: string, outFile: string, opts: MixOpts = {}) {
+  const music = await musicInput(work, total, seed, opts.music ?? 'podcast');
   const inputs: string[] = [];
   const fc: string[] = [];
   placed.forEach((p, i) => {
     inputs.push('-i', p.clip.file);
     const ms = Math.round(p.at * 1000);
-    fc.push(`[${i}:a]volume=${p.clip.gain.toFixed(2)}dB,adelay=delays=${ms}:all=1[v${i}]`);
+    const fin = p.fadeIn ? `,afade=t=in:d=${f3(Math.min(p.fadeIn, p.clip.dur / 4))}` : '';
+    const fout = p.fadeOut ? `,afade=t=out:st=${f3(Math.max(0, p.clip.dur - Math.min(p.fadeOut, p.clip.dur / 4)))}:d=${f3(Math.min(p.fadeOut, p.clip.dur / 4))}` : '';
+    fc.push(`[${i}:a]volume=${p.clip.gain.toFixed(2)}dB${fin}${fout},adelay=delays=${ms}:all=1[v${i}]`);
   });
   const mi = placed.length;
   inputs.push(...music.args);
   fc.push(`${placed.map((_, i) => `[v${i}]`).join('')}amix=inputs=${placed.length}:normalize=0:duration=longest,apad=whole_dur=${f3(total)},atrim=0:${f3(total)},asplit=2[vm][vk0]`);
   fc.push('[vk0]pan=stereo|c0=c0|c1=c0[vk]');
-  const mg = clamp(MUSIC_GAP_LUFS - music.lufs, -30, 20);
+  const mg = clamp((opts.gapLufs ?? MUSIC_GAP_LUFS) - music.lufs, -30, 20);
   fc.push(`${music.graph(mi)}atrim=0:${f3(total)},asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=flt:channel_layouts=stereo,` +
     `highpass=f=60,equalizer=f=2800:t=q:w=1.2:g=-3,volume=${mg.toFixed(2)}dB,afade=t=in:d=2.5,afade=t=out:st=${f3(Math.max(0, total - 4.5))}:d=4.5[mus]`);
   fc.push('[mus][vk]sidechaincompress=threshold=0.015:ratio=8:attack=60:release=900:knee=4[duck]');

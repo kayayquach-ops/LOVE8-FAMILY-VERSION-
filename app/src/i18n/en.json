@@ -456,6 +456,10 @@
   "podcast.watch": "watch",
   "podcast.listenOnly": "listen only",
   "podcast.videoSoon": "The video is still being made. Listen for now.",
+  "podcast.videoRedo": "Remaking the video with the new photos.",
+  "podcast.addPhotos": "add photos to this story",
+  "podcast.adding": "sending photos...",
+  "podcast.photosAdded": "Got them. The video is on its way.",
 
   "family.title": "Family",
   "family.language": "Language",

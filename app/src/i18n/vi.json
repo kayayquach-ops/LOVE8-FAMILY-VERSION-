@@ -445,6 +445,10 @@
   "podcast.watch": "xem video",
   "podcast.listenOnly": "chỉ nghe",
   "podcast.videoSoon": "Video đang dựng, nghe trước nhé.",
+  "podcast.videoRedo": "Video đang dựng lại với ảnh mới.",
+  "podcast.addPhotos": "thêm ảnh cho chuyện này",
+  "podcast.adding": "đang gửi ảnh...",
+  "podcast.photosAdded": "Nhận ảnh rồi, chờ chút video xong nhé.",
 
   "family.title": "Gia đình",
   "family.language": "Ngôn ngữ / Language",
