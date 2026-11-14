@@ -2,7 +2,7 @@
 // phụ đề đốt vào video, thẻ câu hỏi giữa các đoạn, mở đầu và kết ngắn. Không ảnh thì thẻ màu ấm có sóng âm nhẹ.
 // Dựng một lượt ffmpeg: nền giấy và khung ảnh vẽ bằng JS (PPM/PAM), ảnh chỉnh màu một lần, chữ bằng libass (font trong server/fonts).
 // 720x1280, 24 khung/giây, tiếng lấy nguyên tệp m4a của tập podcast (cùng một bản tiếng, khỏi mã hoá lại).
-// Tập theo câu chuyện (renderStoryVideo, cuối tệp): chỉ đúng các ảnh của câu chuyện, tràn khung, trôi chậm, màu phim cũ nhẹ
+// Tập theo câu chuyện và tập chủ đề có ảnh (renderStoryVideo, cuối tệp): chỉ đúng các ảnh của các câu chuyện trong tập, tràn khung, trôi chậm, màu phim cũ nhẹ
 // (ấm, hơi bạc, hạt phim, tối góc), chữ trắng to kiểu nhật ký ảnh (ngày, tên chuyện), phụ đề trắng có quầng mềm.
 import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -483,12 +483,14 @@ export const fontsReady = () => existsSync(path.join(FONT_DIR, 'sh-sans.ttf'));
 
 // ---------- Video câu chuyện ----------
 
-export type StoryText = { name: string; title: string; stamp: string; family: string; brand: string };
+export type StoryText = { title: string; stamp: string; family: string; brand: string };
 export type StoryInput = {
   audio: string; total: number; lang: Lang; photos: string[]; text: StoryText;
   /** Lúc hiện tên chuyện (giây) và lúc kết. */
   intro: { s: number; e: number }; outro: { s: number; e: number };
   voices: Array<{ s: number; e: number; words: Word[] }>;
+  /** Tên người đang kể ở góc trên (tập chủ đề đổi người theo từng câu chuyện). */
+  names: Array<{ s: number; e: number; name: string }>;
   /** Chỗ chuyển sang phần đuôi: câu hỏi của đoạn sau, viết tay, hiện nhẹ trong khoảng nhạc. */
   turns: Array<{ s: number; e: number; question: string }>;
 };
@@ -559,10 +561,9 @@ function buildStoryAss(v: StoryInput) {
   const add = (s: number, e: number, tags: string, text: string, layer = 1) => { if (e - s > 0.05) ev.push(`Dialogue: ${layer},${ts(s)},${ts(e)},Base,,0,0,0,,{${tags}}${text}`); };
   const low = (s: string) => s.toLocaleLowerCase(v.lang === 'vi' ? 'vi-VN' : v.lang === 'ko' ? 'ko-KR' : 'en-US');
   const rise = (x: number, y: number, ms: number) => `\\move(${x},${y + 14},${x},${y},0,${ms})`;
-  const bodyS = v.intro.s, bodyE = v.outro.s + 0.4;
 
-  // Tên người kể, viết tay ở góc trên bên trái suốt phim.
-  add(bodyS + 0.2, bodyE, `\\an7\\pos(44,62)\\fn${hand}\\fs${fs(hand, f.kr ? 28 : 38)}\\c${SC.white}${halo(2)}${fade(0.8, 0.6)}`, esc(T.name, hand, f));
+  // Tên người đang kể, viết tay ở góc trên bên trái.
+  for (const n of v.names) add(n.s, n.e, `\\an7\\pos(44,62)\\fn${hand}\\fs${fs(hand, f.kr ? 28 : 38)}\\c${SC.white}${halo(2)}${fade(0.8, 0.6)}`, esc(n.name, hand, f));
 
   // Mở đầu: ngày kể thật to, tên chuyện chữ thường bên dưới (đáy khối ở y = 1000, trên vùng phụ đề).
   const tEm = f.kr ? 42 : 50, lh = Math.round(tEm * (f.kr ? 1.32 : 1.1));

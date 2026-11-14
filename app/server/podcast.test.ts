@@ -153,8 +153,29 @@ test('nhịp dựng: các lượt nối liền, phần đuôi sau khoảng nhạ
   assert.equal(lay.story.turns[0].question, 'Q3');
   assert.ok(lay.story.turns[0].s < at[2] && lay.story.turns[0].e > at[2]);
   assert.equal(lay.story.voices[1].words[0].s, at[1] + 0.2);
+  // Cùng một người kể cả chuyện chính lẫn phần đuôi: một khoảng tên.
+  assert.deepEqual(lay.story.names.map((n) => n.name), ['Mẹ']);
   // Chỉ tiếng: mở đầu ngắn hơn.
   assert.equal(P.layoutStory([{ clip: clip(10, 'x'), who: 'Mẹ', question: 'Q', transcript: null, group: 0 }], false).placed[0].at, G.leadAudio);
+});
+
+test('tập chủ đề: tên người kể đổi theo từng chuyện', () => {
+  const lay = P.layoutStory([
+    { clip: clip(8, 'a'), who: 'Mẹ', question: 'Q', transcript: null, group: 0 },
+    { clip: clip(6, 'b'), who: 'Bố', question: 'Q', transcript: null, group: 1 },
+    { clip: clip(3, 'c'), who: 'Bố', question: 'Q2', transcript: null, group: 2 },
+  ], true);
+  assert.deepEqual(lay.story.names.map((n) => n.name), ['Mẹ', 'Bố']);
+  assert.equal(lay.story.names[0].e, lay.story.names[1].s);
+  assert.equal(lay.story.turns.length, 2);
+});
+
+test('ảnh của câu chuyện: theo cột story, ảnh kiểu cũ (story trống) thuộc câu hỏi xin ảnh', () => {
+  const rows = [{ media: 'a', story: 0 }, { media: 'b', story: null }, { media: 'c', story: 2 }, { media: 'd', story: 0 }];
+  assert.deepEqual(P.pickStoryPhotos(rows, 0, 1), ['a', 'd']);
+  assert.deepEqual(P.pickStoryPhotos(rows, 1, 1), ['b']);
+  assert.deepEqual(P.pickStoryPhotos(rows, 2, -1), ['c']);
+  assert.deepEqual(P.pickStoryPhotos(rows, 3, -1), []);
 });
 
 test('xếp cảnh: phủ đúng độ dài phim, phim dài thì lặp ảnh, nhiều ảnh quá thì bớt', () => {

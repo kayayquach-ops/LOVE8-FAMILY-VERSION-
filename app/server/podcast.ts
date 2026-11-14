@@ -4,7 +4,8 @@
 // nào có thật, có chi tiết, đủ dài thì thành một tập riêng (key story:<callId>:<idx>), các lượt kể ghép liền không có giọng Mây,
 // câu trả lời khác hợp chuyện thì nối vào đuôi. Câu chuyện có ảnh (vault.story) thì thêm video dọc chỉ dùng đúng các ảnh đó,
 // không có ảnh thì chỉ có tiếng. Câu trả lời lời nhắn (topic 'loi-nhan') không bao giờ vào podcast.
-// Tập cũ theo cả cuộc gọi (key call:<id>, có thẻ câu hỏi), tập theo chủ đề (chỉ tiếng) và tập lời thương đầu tiên vẫn giữ.
+// Tập theo chủ đề dựng cùng kiểu đó: chuyện nào trong tập có ảnh thì tập có video, chỉ khi không có ảnh nào mới chỉ có tiếng.
+// Tập cũ theo cả cuộc gọi (key call:<id>, có thẻ câu hỏi) và tập lời thương đầu tiên (không có ảnh) vẫn giữ.
 // Ghép tiếng và dựng video là hai hàng riêng, mỗi hàng một việc một lúc; tập đang dựng dở khi máy chủ khởi động lại
 // thì được dựng lại (tối đa 3 lần).
 import express from 'express';
@@ -67,12 +68,12 @@ type Mode = 'call' | 'topic' | 'first' | 'story';
 type Job = {
   fid: string; key: string; kind: 'person' | 'topic'; memberId: string | null; topic: string; title: string; cover: string | null;
   lang: Lang; mode: Mode; pieces: Piece[]; video: VideoText | null;
-  /** Tập câu chuyện có ảnh: chữ trong video và các tệp ảnh (đúng ảnh của câu chuyện). */
+  /** Tập câu chuyện hay tập chủ đề có ảnh: chữ trong video và các tệp ảnh (đúng ảnh của các câu chuyện trong tập). */
   story?: StoryText | null; photos?: string[];
   /** Dựng lại tập đã có (thêm ảnh): tập vẫn nghe được trong lúc dựng, giữ nguyên ngày của tập. */
   keepDate?: boolean;
 };
-type StoryLay = Pick<StoryInput, 'intro' | 'outro' | 'voices' | 'turns'>;
+type StoryLay = Pick<StoryInput, 'intro' | 'outro' | 'voices' | 'turns' | 'names'>;
 type Laid = { total: number; placed: Placed[]; segs: VSeg[]; chapters: Chapter[]; story?: StoryLay };
 type Item = Piece & { clip: Clip };
 
@@ -107,24 +108,26 @@ function layout(items: Item[], mode: Mode, lang: Lang): Laid {
 /** Nhịp của tập câu chuyện (giây): nhạc mở đầu (có video thì dài hơn cho tên chuyện), chỗ nối các lượt kể, chỗ chuyển sang phần đuôi, kết. */
 export const STORY_GAPS = { leadVideo: 2.4, leadAudio: 1.0, join: 0.25, toTail: 2.6, tailJoin: 0.5, outro: 3.2 };
 
-/** Tập câu chuyện: các lượt kể nối liền (nối mềm, không giọng Mây), rồi phần đuôi sau một khoảng nhạc. */
+/** Tập câu chuyện (và tập chủ đề): các lượt kể của một chuyện nối liền (nối mềm, không giọng Mây), chuyện sau cách một khoảng nhạc. */
 export function layoutStory(items: Array<Pick<Item, 'clip' | 'who' | 'question' | 'transcript' | 'group' | 'tail'>>, video: boolean): Laid & { story: StoryLay } {
   const G = STORY_GAPS;
   const placed: Placed[] = [], chapters: Chapter[] = [];
   const voices: StoryLay['voices'] = [], turns: StoryLay['turns'] = [];
+  const starts: Array<{ s: number; who: string }> = [];
   const lead = video ? G.leadVideo : G.leadAudio;
   let t = lead, prev: number | undefined;
   const text = (it: (typeof items)[number]) => it.clip.text ?? it.transcript ?? '';
   items.forEach((it, i) => {
     if (i && it.group === prev) t += it.tail ? G.tailJoin : G.join;
     else if (i) {
-      // Câu chuyện khác (phần đuôi): khoảng nhạc, câu hỏi của đoạn đó hiện viết tay trong video.
+      // Câu chuyện khác (phần đuôi, hay chuyện kế trong tập chủ đề): khoảng nhạc, câu hỏi của đoạn đó hiện viết tay trong video.
       t += G.toTail;
       turns.push({ s: t - G.toTail + 0.3, e: t + 0.8, question: it.question });
     }
     if (!i || it.group !== prev) {
       const same = items.filter((x) => x.group === it.group);
       chapters.push({ at: i ? Math.max(0, t - G.toTail + 0.3) : 0, until: t, say: '', who: it.who, question: it.question, transcript: same.map(text).filter(Boolean).join(' ') || null });
+      starts.push({ s: i ? t - G.toTail + 0.3 : 0.5, who: it.who });
     }
     placed.push({ clip: it.clip, at: t, fadeIn: 0.06, fadeOut: 0.12 });
     voices.push({ s: t, e: t + it.clip.dur, words: (it.clip.words ?? []).map((w) => ({ w: w.w, s: w.s + t, e: w.e + t })) });
@@ -132,7 +135,14 @@ export function layoutStory(items: Array<Pick<Item, 'clip' | 'who' | 'question' 
     prev = it.group;
   });
   const total = t + G.outro;
-  return { total, placed, segs: [], chapters, story: { intro: { s: 0.3, e: lead + 0.9 }, outro: { s: t + 0.3, e: total }, voices, turns } };
+  // Tên người kể: một khoảng cho mỗi chuyện, chuyện liền nhau cùng người thì gộp.
+  const names: StoryLay['names'] = [];
+  starts.forEach((g, k) => {
+    const e = starts[k + 1]?.s ?? t + 0.7;
+    const last = names[names.length - 1];
+    if (last && last.name === g.who) last.e = e; else names.push({ s: g.s, e, name: g.who });
+  });
+  return { total, placed, segs: [], chapters, story: { intro: { s: 0.3, e: lead + 0.9 }, outro: { s: t + 0.3, e: total }, voices, turns, names } };
 }
 
 // ---------- Hàng đợi: một việc lỗi không làm chết cả hàng ----------
@@ -173,7 +183,9 @@ function moveInto(src: string, dest: string) {
   renameSync(part, dest);
 }
 const safeQuery = (sql: string, args: unknown[]) => pool.query(sql, args).catch((e) => { console.error('[podcast] lỗi DB:', (e as Error).message); });
-const wantsVideo = (job: Job) => (job.mode === 'story' ? !!job.story && !!job.photos?.length : !!job.video);
+/** Tập câu chuyện và tập chủ đề dựng cùng một kiểu: chuyện nối liền, có ảnh thì video ảnh cổ điển, không ảnh mới chỉ có tiếng. */
+const storyLike = (job: Job) => job.mode === 'story' || job.mode === 'topic';
+const wantsVideo = (job: Job) => (storyLike(job) ? !!job.story && !!job.photos?.length : !!job.video);
 
 async function render(job: Job) {
   const video = wantsVideo(job), keep = !!job.keepDate;
@@ -190,16 +202,16 @@ async function render(job: Job) {
     for (const [i, p] of job.pieces.entries()) {
       try {
         // Tập câu chuyện luôn nhờ Whisper (cắt ậm ờ, phụ đề đúng lời); mốc từ được giữ lại nên thêm ảnh dựng lại không tốn thêm.
-        const clip = await cleanClip(p.file, work, `c${i}`, { lang: job.lang, cacheKey: p.key, transcript: p.transcript, whisper: video || job.mode === 'story' });
+        const clip = await cleanClip(p.file, work, `c${i}`, { lang: job.lang, cacheKey: p.key, transcript: p.transcript, whisper: video || storyLike(job) });
         if (clip) items.push({ ...p, clip });
       } catch (e) {
         console.error(`[podcast] bỏ qua ${path.basename(p.file)}:`, (e as Error).message.split('\n')[0]);
       }
     }
     if (!items.length) throw new Error('Không có đoạn giọng nào dùng được');
-    const lay = job.mode === 'story' ? layoutStory(items, video) : layout(items, job.mode, job.lang);
+    const lay = storyLike(job) ? layoutStory(items, video) : layout(items, job.mode, job.lang);
     const audio = path.join(work, 'episode.m4a');
-    await mixEpisode(work, lay.placed, lay.total, `${job.fid}:${job.key}`, audio, job.mode === 'story' ? { music: 'story', gapLufs: -21 } : {});
+    await mixEpisode(work, lay.placed, lay.total, `${job.fid}:${job.key}`, audio, storyLike(job) ? { music: 'story', gapLufs: -21 } : {});
     moveInto(audio, path.join(MEDIA_DIR, 'podcasts', `${row.id}.m4a`));
     await pool.query(`update podcasts set status = 'ready', media = $2, duration = $3, chapters = $4, created_at = case when $6 then created_at else now() end,
       tries = case when $5 then tries else 0 end where id = $1`,
@@ -227,7 +239,7 @@ async function renderVideo(id: string, job: Job, lay: Laid, work: string, audio:
   const t0 = Date.now();
   try {
     const mp4 = path.join(work, 'video.mp4'), jpg = path.join(work, 'poster.jpg');
-    if (job.mode === 'story') {
+    if (storyLike(job)) {
       await renderStoryVideo({ audio, total: lay.total, lang: job.lang, photos: job.photos!, text: job.story!, ...lay.story! }, work, mp4, jpg);
     } else {
       await renderCallVideo({ audio, total: lay.total, segs: lay.segs, lang: job.lang, text: job.video! }, work, mp4, jpg);
@@ -397,10 +409,22 @@ async function storyPlan(call: any, answers: AnswerRow[], lang: Lang): Promise<S
   return plan;
 }
 
-/** Ảnh của một câu chuyện (gửi trong cuộc gọi hoặc thêm sau ở tab podcast), cũ trước mới sau. */
-async function storyPhotos(callId: string, idx: number): Promise<string[]> {
-  const { rows } = await pool.query('select media from vault where call_id = $1 and story = $2 order by created_at, id', [callId, idx]);
-  return rows.map((r) => r.media as string).filter((m) => PHOTO.test(m.split('?')[0]) && existsSync(mediaFile(m)));
+/** Ảnh thuộc câu chuyện idx: hàng vault có story = idx; ảnh gửi trong cuộc gọi kiểu cũ (chưa có cột story) thuộc câu hỏi xin ảnh. */
+export function pickStoryPhotos(rows: Array<{ media: string; story: number | null }>, idx: number, photoIdx: number) {
+  return rows.filter((r) => r.story === idx || (r.story == null && idx === photoIdx)).map((r) => r.media);
+}
+
+/** Ảnh của các câu chuyện idxs trong một cuộc gọi (gửi trong cuộc gọi hoặc thêm sau ở tab podcast): theo thứ tự chuyện, cũ trước mới sau. */
+async function storyPhotos(callId: string, idxs: number[]): Promise<string[]> {
+  const { rows } = await pool.query('select media, story from vault where call_id = $1 order by created_at, id', [callId]);
+  if (!rows.length) return [];
+  let photoIdx = -1;
+  try {
+    const { rows: [c] } = await pool.query('select script from calls where id = $1', [callId]);
+    photoIdx = (JSON.parse(c.script).questions as Array<{ photo?: boolean }>).findIndex((q) => q.photo);
+  } catch {}
+  const ok = (m: string) => PHOTO.test(m.split('?')[0]) && existsSync(mediaFile(m));
+  return [...new Set(idxs.flatMap((i) => pickStoryPhotos(rows, i, photoIdx)).filter(ok))];
 }
 
 /** Ngày kể in to ở đầu video (kiểu nhật ký ảnh): 14.11 (vi), 11.14 (ko), Nov 14 (en). */
@@ -421,14 +445,15 @@ async function enqueueStory(call: any, lang: Lang, answers: AnswerRow[], ep: Pla
   const tails = ep.tail.flatMap((i) => answers.filter((a) => a.idx === i).map((a) => piece(a, true)));
   const topic = (main.find((a) => a.turn === 0) ?? main[0]).topic;
   const title = ep.title ?? tReq('podcastGen.person.title', { name, what: titleOf(topic) });
-  const photos = await storyPhotos(call.id, ep.idx);
+  // Có ảnh là có video: ảnh của chính câu chuyện trước, rồi ảnh của các chuyện ở phần đuôi.
+  const photos = await storyPhotos(call.id, [ep.idx, ...ep.tail]);
   const { rows: [fam] } = await pool.query('select name from families where id = $1', [call.family_id]);
   await enqueue({
     fid: call.family_id, key: `story:${call.id}:${ep.idx}`, kind: 'person', memberId: call.member_id, topic, title,
     cover: photos[0] ?? null, lang, mode: 'story', video: null, keepDate,
     pieces: [...main.map((a) => piece(a, false)), ...tails],
     photos: photos.map(mediaFile),
-    story: photos.length ? { name, title, stamp: stampOf(new Date(call.done_at ?? call.created_at), lang), family: fam?.name ?? '', brand: 'sweet home' } : null,
+    story: photos.length ? { title, stamp: stampOf(new Date(call.done_at ?? call.created_at), lang), family: fam?.name ?? '', brand: 'sweet home' } : null,
   });
   return true;
 }
@@ -552,22 +577,42 @@ async function buildCallEpisode(callId: string) {
   });
 }
 
-/** Tập theo chủ đề (chỉ tiếng): 8 câu chuyện gần nhất của cả nhà về chủ đề đó, mỗi chuyện đủ các lượt. Không bao giờ có lời nhắn. */
-async function buildTopic(fid: string, topic: string, lang: Lang) {
+/** Tập theo chủ đề: 8 câu chuyện gần nhất của cả nhà về chủ đề đó, mỗi chuyện đủ các lượt, dựng như tập câu chuyện.
+ *  Chuyện nào trong tập có ảnh thì tập có video ảnh cổ điển; không chuyện nào có ảnh mới chỉ có tiếng. Không bao giờ có lời nhắn. */
+async function buildTopic(fid: string, topic: string, lang: Lang, keepDate = false) {
   if (topic === PRIVATE_TOPIC) return;
   const { rows } = await pool.query(
     `with s as (
        select call_id, idx, max(created_at) at from call_answers
        where family_id = $1 and topic = $2 and media is not null group by call_id, idx order by at desc limit ${MAX_TOPIC_STORIES}
      )
-     select a.*, m.name who from call_answers a join s on s.call_id = a.call_id and s.idx = a.idx join members m on m.id = a.member_id
+     select a.*, m.name who, s.at from call_answers a join s on s.call_id = a.call_id and s.idx = a.idx join members m on m.id = a.member_id
      where a.media is not null and a.topic <> $3 order by s.at, a.turn, a.created_at`, [fid, topic, PRIVATE_TOPIC]);
   const clips = rows.filter((a) => existsSync(mediaFile(a.media)));
   if (!clips.length) return;
+  // Mỗi câu chuyện (cuộc gọi, idx) một nhóm, theo thứ tự trong tập.
+  const groups = [...new Map(clips.map((a) => [`${a.call_id}:${a.idx}`, { call: a.call_id as string, idx: a.idx as number }])).entries()];
+  const gid = new Map(groups.map(([k], i) => [k, i]));
+  const photos: string[] = [];
+  for (const [, g] of groups) photos.push(...await storyPhotos(g.call, [g.idx]));
+  const { rows: [fam] } = await pool.query('select name from families where id = $1', [fid]);
+  const latest = new Date(Math.max(...clips.map((a) => new Date(a.at).getTime())));
   await runWithLang(lang, async () => enqueue({
-    fid, key: `topic:${topic}`, kind: 'topic', memberId: null, topic, title: topicLabel(topic), cover: await coverFor(fid, null), lang, mode: 'topic', video: null,
-    pieces: clips.map((a) => ({ key: `ans:${a.id}`, file: mediaFile(a.media), who: a.who, question: a.question, topic: a.topic, transcript: a.transcript, photo: null })),
+    fid, key: `topic:${topic}`, kind: 'topic', memberId: null, topic, title: topicLabel(topic), cover: photos[0] ?? await coverFor(fid, null), lang, mode: 'topic', video: null, keepDate,
+    pieces: clips.map((a) => ({ key: `ans:${a.id}`, file: mediaFile(a.media), who: a.who, question: a.question, topic: a.topic, transcript: a.transcript, photo: null, group: gid.get(`${a.call_id}:${a.idx}`) })),
+    photos: photos.map(mediaFile),
+    story: photos.length ? { title: topicLabel(topic), stamp: stampOf(latest, lang), family: fam?.name ?? '', brand: 'sweet home' } : null,
   }));
+}
+
+/** Thêm ảnh cho một câu chuyện: dựng lại tập chủ đề có câu chuyện đó (giữ ngày của tập). */
+async function refreshTopicsOf(callId: string, idx: number) {
+  const call = await loadCall(callId);
+  if (!call) return;
+  const { rows } = await pool.query(
+    `select distinct a.topic from call_answers a join podcasts p on p.family_id = a.family_id and p.key = 'topic:' || a.topic
+     where a.call_id = $1 and a.idx = $2 and a.topic <> $3`, [callId, idx, PRIVATE_TOPIC]);
+  for (const r of rows) await buildTopic(call.family_id, r.topic, langOf(call.lang), true);
 }
 
 // Câu trả lời tới muộn (máy khách gửi lại sau khi đã báo xong cuộc gọi): gom lại rồi dựng lại tập của cuộc gọi đó một lần.
@@ -633,7 +678,7 @@ async function resume() {
       } else if (kind === 'call') await buildCallEpisode(ref);
       else if (kind === 'topic') {
         const { rows: [m] } = await pool.query('select lang from members where family_id = $1 order by created_at limit 1', [r.family_id]);
-        await buildTopic(r.family_id, ref, langOf(m?.lang));
+        await buildTopic(r.family_id, ref, langOf(m?.lang), !!r.media);
       } else if (kind === 'first') {
         const { rows: [m] } = await pool.query('select name, lang from members where id = $1', [ref]);
         const media = m ? await firstVoiceMedia(ref, m.name) : null;
@@ -714,7 +759,7 @@ podcastRouter.post('/podcasts/:id/photos', limitPhotos, upload.array('files', MA
     }
     await pool.query(`update podcasts set video_status = 'rendering' where id = $1`, [ep.id]);
     res.json({ ok: true, added: saved.length });
-    void rebuildStory(m[1], idx).catch((e) => console.error('[podcast] dựng lại sau khi thêm ảnh:', e));
+    void rebuildStory(m[1], idx).then(() => refreshTopicsOf(m[1], idx)).catch((e) => console.error('[podcast] dựng lại sau khi thêm ảnh:', e));
   } catch (e) {
     await drop();
     console.error(e);
