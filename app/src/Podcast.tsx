@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { errorText, token } from './api';
 import { t } from './i18n';
 import { thumb, type Me, type Podcast as Ep } from './shared';
 import { tap } from './sound';
 import { speak, stopSpeaking, unlockSpeech } from './speech';
-import { Avatar, Icon, toast } from './ui';
+import { Avatar, Doodle, Icon, toast } from './ui';
+import './podcast.css';
 
 type Photo = { id: string; memberId: string; media: string; caption: string | null; createdAt: string };
 
@@ -17,6 +18,26 @@ async function get<T>(path: string): Promise<T> {
 }
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+/** Câu dịch giữ chỗ {hand}; cụm ở chỗ đó viết tay mực tím. */
+function withHand(s: string, hand: string): ReactNode {
+  const [a, b = ''] = s.split('{hand}');
+  return <>{a}<span className="hand">{hand}</span>{b}</>;
+}
+
+/** Ai kể tập này: tên người trong nhà, tập theo chủ đề là cả nhà. */
+const teller = (ep: Ep, me: Me) => (ep.memberId ? me.members.find((m) => m.id === ep.memberId)?.name : null) ?? t('podcast.family');
+
+/** Thanh tua: tiến độ mực đen trên nền vạch mảnh. */
+function Seek({ time, duration, onSeek }: { time: number; duration: number; onSeek: (x: number) => void }) {
+  return (
+    <>
+      <input className="pd-seek" type="range" min={0} max={duration} step={0.1} value={Math.min(time, duration)}
+        onChange={(e) => onSeek(Number(e.target.value))} style={{ ['--p' as string]: `${(Math.min(time, duration) / duration) * 100}%` }} />
+      <div className="pd-times"><span>{mmss(time)}</span><span>{mmss(duration)}</span></div>
+    </>
+  );
+}
 
 const MODE_KEY = 'sh-pod-mode';
 const readMode = (): 'video' | 'audio' => { try { return localStorage.getItem(MODE_KEY) === 'audio' ? 'audio' : 'video'; } catch { return 'video'; } };
@@ -31,13 +52,13 @@ function Player({ ep, me }: { ep: Ep; me: Me }) {
     <>
       {video ? <VideoPlayer ep={ep} me={me} /> : <AudioPlayer ep={ep} me={me} />}
       {ep.video ? (
-        <div className="pod-mode-wrap">
-          <div className="pod-mode" role="tablist">
+        <div className="pd-mode-wrap">
+          <div className="pd-mode" role="tablist">
             <button role="tab" aria-selected={video} className={video ? 'on' : ''} onClick={() => pick('video')}>{t('podcast.watch')}</button>
             <button role="tab" aria-selected={!video} className={video ? '' : 'on'} onClick={() => pick('audio')}>{t('podcast.listenOnly')}</button>
           </div>
         </div>
-      ) : ep.videoStatus === 'rendering' && <p className="pod-note">{t('podcast.videoSoon')}</p>}
+      ) : ep.videoStatus === 'rendering' && <p className="pd-note">{t('podcast.videoSoon')}</p>}
     </>
   );
 }
@@ -46,7 +67,6 @@ function VideoPlayer({ ep, me }: { ep: Ep; me: Me }) {
   const ref = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
-  const who = ep.memberId ? me.members.find((m) => m.id === ep.memberId) : null;
 
   function toggle() {
     const v = ref.current;
@@ -63,18 +83,16 @@ function VideoPlayer({ ep, me }: { ep: Ep; me: Me }) {
   }
 
   return (
-    <div className="pod-player fade" key={ep.id}>
-      <button className={`pod-video${playing ? ' on' : ''}`} onClick={toggle} aria-label={playing ? t('common.stop') : t('podcast.watch')}>
+    <div className="pd-player fade" key={ep.id}>
+      <button className={`pd-video${playing ? ' on' : ''}`} onClick={toggle} aria-label={playing ? t('common.stop') : t('podcast.watch')}>
         <video ref={ref} src={ep.video ?? undefined} poster={ep.poster ?? undefined} playsInline preload="metadata"
           onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => { setPlaying(false); setTime(ep.duration); }}
           onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)} />
-        <span className="pod-vplay" aria-hidden><Icon name="play" size={30} /></span>
+        <span className="pd-vplay" aria-hidden><Icon name="play" size={30} /></span>
       </button>
-      <div className="pod-title">{ep.title}</div>
-      <div className="pod-meta">{who ? who.name : t('podcast.family')} · {mmss(ep.duration)}</div>
-      <input className="pod-seek" type="range" min={0} max={ep.duration} step={0.1} value={Math.min(time, ep.duration)}
-        onChange={(e) => seek(Number(e.target.value))} style={{ ['--p' as string]: `${(time / ep.duration) * 100}%` }} />
-      <div className="pod-times"><span>{mmss(time)}</span><span>{mmss(ep.duration)}</span></div>
+      <div className="pd-title">{ep.title}</div>
+      <div className="pd-meta">{teller(ep, me)} · {mmss(ep.duration)}</div>
+      <Seek time={time} duration={ep.duration} onSeek={seek} />
     </div>
   );
 }
@@ -90,7 +108,6 @@ function AudioPlayer({ ep, me }: { ep: Ep; me: Me }) {
   const speaking = useRef(false);
   const holding = useRef(false);
   const wantRef = useRef(false);
-  const who = ep.memberId ? me.members.find((m) => m.id === ep.memberId) : null;
 
   useEffect(() => () => { stopSpeaking(); }, []);
   useEffect(() => { spoken.current.clear(); setTime(0); setCur(0); setWant(false); wantRef.current = false; stopSpeaking(); }, [ep.id]);
@@ -159,18 +176,16 @@ function AudioPlayer({ ep, me }: { ep: Ep; me: Me }) {
 
   const c = ep.chapters[cur];
   return (
-    <div className="pod-player fade" key={ep.id}>
-      <div className="pod-cover">{ep.poster || ep.cover ? <img src={thumb(ep.poster ?? ep.cover, 1080)} alt="" decoding="async" /> : <Icon name="mic" size={44} />}</div>
-      <div className="pod-title">{ep.title}</div>
-      <div className="pod-meta">{who ? who.name : t('podcast.family')} · {mmss(ep.duration)}</div>
+    <div className="pd-player fade" key={ep.id}>
+      <div className="pd-art">{ep.poster || ep.cover ? <img src={thumb(ep.poster ?? ep.cover, 1080)} alt="" decoding="async" /> : <Doodle name="mic" size={56} />}</div>
+      <div className="pd-title">{ep.title}</div>
+      <div className="pd-meta">{teller(ep, me)} · {mmss(ep.duration)}</div>
       <audio ref={audio} src={ep.media ?? undefined} preload="metadata"
         onEnded={() => { wantRef.current = false; setWant(false); setTime(ep.duration); }} />
-      <input className="pod-seek" type="range" min={0} max={ep.duration} step={0.1} value={Math.min(time, ep.duration)}
-        onChange={(e) => seek(Number(e.target.value))} style={{ ['--p' as string]: `${(time / ep.duration) * 100}%` }} />
-      <div className="pod-times"><span>{mmss(time)}</span><span>{mmss(ep.duration)}</span></div>
-      <button className="pod-play" onClick={toggle} aria-label={want ? t('common.stop') : t('common.listen')}><Icon name={want ? 'pause' : 'play'} size={30} /></button>
+      <Seek time={time} duration={ep.duration} onSeek={seek} />
+      <button className="pd-play" onClick={toggle} aria-label={want ? t('common.stop') : t('common.listen')}><Icon name={want ? 'pause' : 'play'} size={30} /></button>
       {c?.question && (
-        <div className="pod-now" key={cur}>
+        <div className="pd-now" key={cur}>
           <b>{c.who}</b>
           <p>{c.question}</p>
           {c.transcript && <q>{c.transcript}</q>}
@@ -180,14 +195,14 @@ function AudioPlayer({ ep, me }: { ep: Ep; me: Me }) {
   );
 }
 
-function Shelf({ list, sel, onPick }: { list: Ep[]; sel?: string; onPick: (id: string) => void }) {
+function Shelf({ list, sel, me, onPick }: { list: Ep[]; sel?: string; me: Me; onPick: (id: string) => void }) {
   return (
-    <div className="pod-shelf">
+    <div className="pd-shelf">
       {list.map((e) => (
-        <button key={e.id} className={`pod-ep${e.id === sel ? ' on' : ''}`} onClick={() => { tap(); onPick(e.id); }} disabled={e.status !== 'ready'}>
-          <span className="pod-thumb">{e.poster || e.cover ? <img src={thumb(e.poster ?? e.cover, 360)} alt="" loading="lazy" decoding="async" /> : <Icon name="mic" size={22} />}</span>
+        <button key={e.id} className={`pd-ep${e.id === sel ? ' on' : ''}`} onClick={() => { tap(); onPick(e.id); }} disabled={e.status !== 'ready'}>
+          <span className="pd-cover">{e.poster || e.cover ? <img src={thumb(e.poster ?? e.cover, 360)} alt="" loading="lazy" decoding="async" /> : <Doodle name="mic" size={30} />}</span>
           <b>{e.title}</b>
-          <span className="muted">{e.status === 'ready' ? mmss(e.duration) : t('podcast.rendering')}</span>
+          <span className="pd-meta">{e.status === 'ready' ? `${teller(e, me)} · ${mmss(e.duration)}` : t('podcast.rendering')}</span>
         </button>
       ))}
     </div>
@@ -216,48 +231,59 @@ export function Podcast({ me, start, onClose, onCall }: { me: Me; start?: string
   const shown = ready.find((e) => e.id === sel) ?? ready[0];
   const people = me.members.map((m) => ({ m, list: (eps ?? []).filter((e) => e.kind === 'person' && e.memberId === m.id) })).filter((x) => x.list.length);
   const topics = (eps ?? []).filter((e) => e.kind === 'topic');
+  const call = () => { tap(); onCall(); };
+  // Chưa có tập nào và cũng không có tập đang ghép: một dòng và một nút gọi; còn lại nút gọi nằm cuối màn.
+  const empty = eps !== null && !shown && !busy;
 
   return (
-    <div className="sheet podcast">
-      <div className="top" style={{ padding: 'calc(var(--safe-top) + 10px) 16px 6px' }}>
-        <button className="icon-btn" onClick={onClose} aria-label={t('common.close')}><Icon name="down" /></button>
-        <div style={{ flex: 1, textAlign: 'center', fontWeight: 500 }}>{t('podcast.title')}</div>
-        <span style={{ width: 44 }} />
-      </div>
-      <div className="scroll" style={{ flex: 1, padding: '6px 20px calc(var(--safe-bottom) + 30px)' }}>
-        {eps === null ? null : shown ? <Player key={shown.id} ep={shown} me={me} /> : (
-          <div className="recap-empty">
-            <div className="h1">{busy ? t('podcast.busy.title') : t('podcast.empty.title')}</div>
-            <p>{busy ? t('podcast.busy.body') : t('podcast.empty.body')}</p>
+    <div className="sheet pd">
+      <header className="pd-head">
+        <h1 className="display">{withHand(t('podcast.title'), t('podcast.titleHand'))}</h1>
+        <button className="pd-x" onClick={onClose} aria-label={t('common.close')}><Icon name="down" /></button>
+      </header>
+      <div className="scroll pd-body">
+        {eps === null ? null : shown ? <Player key={shown.id} ep={shown} me={me} /> : busy ? (
+          <div className="pd-empty">
+            <Doodle name="mic" size={52} />
+            <b className="display">{t('podcast.busy.title')}</b>
+            <p>{t('podcast.busy.body')}</p>
+          </div>
+        ) : (
+          <div className="pd-empty">
+            <Doodle name="mic" size={52} />
+            <p>{t('podcast.emptyLine')}</p>
+            <button className="btn" onClick={call}><Icon name="phone" size={20} />{t('podcast.callNow')}</button>
           </div>
         )}
 
         {people.map(({ m, list }) => (
           <section key={m.id}>
-            <div className="h2 pod-h"><Avatar m={m} size={28} />{m.id === me.me.id ? t('podcast.youTell') : t('podcast.tells', { name: m.name })}</div>
-            <Shelf list={list} sel={shown?.id} onPick={setSel} />
+            <h2 className="pd-h"><Avatar m={m} size={28} />{m.id === me.me.id ? t('podcast.youTell') : t('podcast.tells', { name: m.name })}</h2>
+            <Shelf list={list} sel={shown?.id} me={me} onPick={setSel} />
           </section>
         ))}
 
         {!!topics.length && (
           <section>
-            <div className="h2">{t('podcast.topics')}</div>
-            <Shelf list={topics} sel={shown?.id} onPick={setSel} />
+            <h2 className="pd-h">{t('podcast.topics')}</h2>
+            <Shelf list={topics} sel={shown?.id} me={me} onPick={setSel} />
           </section>
         )}
 
         {!!photos.length && (
           <section>
-            <div className="h2">{t('podcast.photos')}</div>
-            <div className="pod-photos">
+            <h2 className="pd-h">{t('podcast.photos')}</h2>
+            <div className="pd-photos">
               {photos.map((p) => <img key={p.id} src={thumb(p.media, 360)} alt={p.caption ?? ''} loading="lazy" decoding="async" />)}
             </div>
           </section>
         )}
 
-        <button className="btn ghost" style={{ marginTop: 26 }} onClick={() => { tap(); onCall(); }}>
-          <Icon name="phone" size={20} /> {ready.length ? t('podcast.more') : t('podcast.callNow')}
-        </button>
+        {eps !== null && !empty && (
+          <button className="btn line pd-call" onClick={call}>
+            <Icon name="phone" size={20} /> {ready.length ? t('podcast.more') : t('podcast.callNow')}
+          </button>
+        )}
       </div>
     </div>
   );

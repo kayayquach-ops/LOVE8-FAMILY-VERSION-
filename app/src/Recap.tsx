@@ -1,13 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { errorText, token } from './api';
+import { cached } from './cache';
 import { fmtDayMonth, shownLang, t } from './i18n';
-import type { Me } from './shared';
+import { thumb, type Me } from './shared';
 import { tap } from './sound';
-import { Icon, toast } from './ui';
+import { Doodle, Icon, toast } from './ui';
 import './recap.css';
 
 type RecapRow = { week: string; status: 'rendering' | 'ready' | 'failed'; media: string | null; cover: string | null; postsCount: number; createdAt: string };
 type WeekNow = { week: string; posts: number; minPosts: number; dueAt: string };
+/** Ảnh, video mới nhất của nhà (phần `latest` của /api/home, Trang chủ cũng lưu bản này). */
+type Shot = { id: string; media: string; kind: string; createdAt: string };
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const tk = token.get();
@@ -24,7 +27,22 @@ function label(week: string) {
   return am === bm ? `${a.getUTCDate()} - ${b.getUTCDate()}/${bm}` : `${a.getUTCDate()}/${am} - ${b.getUTCDate()}/${bm}`;
 }
 
-// Phim đã xem trên máy này (để thôi hiện chữ "Mới"). Không đọc được bộ nhớ máy thì coi như chưa xem.
+/** Số tuần ISO của tuần bắt đầu thứ Hai `week`: tuần 1 là tuần có ngày 4/1. */
+function weekNo(week: string) {
+  const monday = new Date(`${week}T00:00:00Z`);
+  const year = new Date(monday.getTime() + 3 * 86400e3).getUTCFullYear();
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const first = jan4.getTime() - ((jan4.getUTCDay() + 6) % 7) * 86400e3;
+  return 1 + Math.round((monday.getTime() - first) / (7 * 86400e3));
+}
+
+/** Câu dịch giữ chỗ {hand}; cụm ở chỗ đó viết tay mực tím. */
+function withHand(s: string, hand: string): ReactNode {
+  const [a, b = ''] = s.split('{hand}');
+  return <>{a}<span className="hand">{hand}</span>{b}</>;
+}
+
+// Phim đã xem trên máy này (để thôi hiện chữ "mới"). Không đọc được bộ nhớ máy thì coi như chưa xem.
 const SEEN = 'recapSeen';
 const seenKey = (r: RecapRow) => `${r.week}@${r.createdAt}`;
 const isSeen = (r: RecapRow) => { try { return localStorage.getItem(SEEN) === seenKey(r); } catch { return false; } };
@@ -35,11 +53,15 @@ function Cover({ r }: { r: RecapRow }) {
   return r.cover ? <img src={r.cover} alt="" decoding="async" /> : <video src={`${r.media}#t=0.1`} muted playsInline preload="metadata" />;
 }
 
-// Phim tuần: bìa phim mới nhất, chạm là xem toàn màn hình kiểu story; dưới là tuần đang dở và các tuần trước.
-// Phim tự có vào tối Chủ nhật, không cần bấm; nút xem trước chỉ để xem sớm tuần đang dở.
-export function Recap({ me, onClose }: { me: Me; onClose: () => void }) {
+const SLOTS = 5;
+const TILT = [-4, 3, -2, 4, -3];
+
+// Phim tuần kiểu mục tổng kết của YOPE: hàng thẻ dọc các tuần đã có phim, vuốt ngang, chạm là xem toàn màn hình.
+// Dưới là tuần đang dở: ô ảnh đã gửi, còn thiếu mấy tấm. Phim tự có vào tối Chủ nhật; nút xem trước chỉ để xem sớm tuần đang dở.
+export function Recap({ me, onClose, onCamera }: { me: Me; onClose: () => void; onCamera?: () => void }) {
   const [list, setList] = useState<RecapRow[] | null>(null);
   const [now, setNow] = useState<WeekNow | null>(null);
+  const [shots, setShots] = useState<Shot[]>(() => cached<{ latest?: Shot[] }>('home')?.latest ?? []);
   const [open, setOpen] = useState<RecapRow | null>(null);
   const [paused, setPaused] = useState(false);
   const [ended, setEnded] = useState(false);
@@ -52,6 +74,7 @@ export function Recap({ me, onClose }: { me: Me; onClose: () => void }) {
   useEffect(() => {
     void load();
     call<WeekNow>('/api/recaps/week').then(setNow).catch(() => {});
+    call<{ latest?: Shot[] }>('/api/home').then((d) => setShots(d.latest ?? [])).catch(() => {});
   }, []);
 
   const rendering = list?.some((r) => r.status === 'rendering');
@@ -63,7 +86,6 @@ export function Recap({ me, onClose }: { me: Me; onClose: () => void }) {
 
   const films = list?.filter((r) => r.media) ?? [];
   const hero = films[0];
-  const past = films.slice(1);
   const thisWeek = list?.find((r) => r.week === now?.week);
   const fresh = !!hero && !isSeen(hero) && Date.now() - new Date(hero.createdAt).getTime() < 4 * 86400e3;
 
@@ -127,60 +149,70 @@ export function Recap({ me, onClose }: { me: Me; onClose: () => void }) {
     } catch {}
   }
 
+  // Tuần đang dở: ô đã có ảnh (ảnh mới nhất trong tuần), ô còn thiếu cho đủ phim, ô thêm cho vui.
+  const need = now ? Math.max(0, now.minPosts - now.posts) : 0;
+  const filled = now ? Math.min(SLOTS, now.posts) : 0;
+  const since = now ? new Date(`${now.week}T00:00:00+07:00`).getTime() : 0;
+  const weekShots = shots.filter((s) => new Date(s.createdAt).getTime() >= since);
+  const canPreview = !!now && now.posts >= now.minPosts && !(thisWeek?.status === 'ready' && thisWeek.postsCount >= now.posts);
+  const headline = rendering
+    ? list?.find((r) => r.status === 'rendering')?.media ? t('recap.updating') : t('recap.rendering')
+    : thisWeek?.status === 'ready' ? withHand(t('recap.ready'), t('recap.readyHand'))
+    : need > 0 ? withHand(t('recap.need'), t('recap.needHand', { n: need }))
+    : withHand(t('recap.enough'), t('recap.enoughHand', { n: now?.posts ?? 0 }));
+
   return (
     <div className="sheet rc">
-      <div className="rc-top">
-        <button className="icon-btn" onClick={onClose} aria-label={t('common.close')}><Icon name="down" /></button>
-        <div className="rc-title">{t('recap.title')}</div>
-        <span style={{ width: 44 }} />
-      </div>
+      <header className="rc-head">
+        <div>
+          <h1 className="display">{t('recap.title')}</h1>
+          <span>{t('recap.private')}</span>
+        </div>
+        <button className="rc-x" onClick={onClose} aria-label={t('common.close')}><Icon name="down" /></button>
+      </header>
       <div className="scroll rc-body">
-        {list === null ? null : hero ? (
-          <>
-            <button className="rc-hero" onClick={() => play(hero)} aria-label={t('recap.play')}>
-              <Cover r={hero} />
-              {fresh && <span className="rc-new">{t('recap.new')}</span>}
-              <span className="rc-play"><Icon name="play" /></span>
-            </button>
-            <div className="rc-cap">{t('recap.caption', { week: label(hero.week), n: hero.postsCount })}</div>
-          </>
-        ) : !rendering && (
-          <div className="recap-empty">
-            <div className="h1">{t('recap.empty.title')}</div>
-            <p>{t('recap.empty.body')}</p>
+        {list && (
+          <div className="rc-rail">
+            {films.length ? films.map((r, i) => (
+              <button key={r.week} className="rc-card" style={{ '--i': i } as CSSProperties} onClick={() => play(r)}
+                aria-label={`${t('recap.play')}, ${t('recap.weekNo', { n: weekNo(r.week) })}`}>
+                <Cover r={r} />
+                {r === hero && fresh && <span className="rc-new">{t('recap.new')}</span>}
+                <span className="rc-badge"><Icon name="play" /></span>
+                <span className="rc-stamp"><b>{t('recap.weekNo', { n: weekNo(r.week) })}</b><span>{label(r.week)}</span></span>
+              </button>
+            )) : (
+              <div className="rc-card rc-blank"><Doodle name="film" size={40} /><span className="hand">{t('recap.first')}</span></div>
+            )}
           </div>
         )}
 
         {list && now && (
           <div className="rc-now">
-            {rendering ? (
-              <div className="rc-busy"><i />{list.find((r) => r.status === 'rendering')?.media ? t('recap.updating') : t('recap.rendering')}</div>
-            ) : (
-              <>
-                <p>{now.posts ? t('recap.soFar', { n: now.posts }) : t('recap.soFarNone')}</p>
-                <small>{t('recap.next')}</small>
-                {/* Xem trước khi tuần này chưa có phim, hoặc đã có thêm khoảnh khắc từ lần dựng trước. */}
-                {now.posts >= now.minPosts && !(thisWeek?.status === 'ready' && thisWeek.postsCount >= now.posts) && (
-                  <button className="rc-preview" onClick={preview} disabled={asking}>{t('recap.preview')}</button>
-                )}
-                {thisWeek?.status === 'failed' && <small className="rc-fail">{t('recap.failed')}</small>}
-              </>
-            )}
-          </div>
-        )}
-
-        {past.length > 0 && (
-          <>
-            <div className="h2 rc-h">{t('recap.past')}</div>
-            <div className="rc-grid">
-              {past.map((r) => (
-                <button key={r.week} className="rc-tile" onClick={() => play(r)}>
-                  <span className="rc-thumb"><Cover r={r} /></span>
-                  <span className="rc-tile-label">{label(r.week)}</span>
-                </button>
-              ))}
+            <div className="rc-slots" aria-hidden>
+              {Array.from({ length: SLOTS }, (_, i) => {
+                const s = i < filled ? weekShots[i] : null;
+                const kind = i < filled ? 'got' : i < filled + need ? 'need' : 'free';
+                return (
+                  <i key={i} className={`rc-slot ${kind}`} style={{ '--r': `${TILT[i]}deg` } as CSSProperties}>
+                    {s && <img src={thumb(s.media, 160)} alt="" decoding="async" />}
+                  </i>
+                );
+              })}
             </div>
-          </>
+            <h2 className={`display rc-line${rendering ? ' busy' : ''}`}>{rendering && <i aria-hidden />}{headline}</h2>
+            {!rendering && <p>{t('recap.sub')}</p>}
+            {thisWeek?.status === 'failed' && !rendering && <p className="rc-fail">{t('recap.failed')}</p>}
+            <div className="rc-acts">
+              <button className="rc-pill" onClick={() => { tap(); (onCamera ?? onClose)(); }}>
+                <Doodle name="camera" size={18} wobble={false} />{t('recap.camera')}
+              </button>
+              {/* Xem trước khi tuần này chưa có phim, hoặc đã có thêm khoảnh khắc từ lần dựng trước. */}
+              {canPreview && !rendering && (
+                <button className="rc-pill line" onClick={preview} disabled={asking}>{t('recap.preview')}</button>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

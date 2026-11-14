@@ -4,6 +4,9 @@ import { t } from './i18n';
 
 // Gửi xong: máy bay giấy bay theo đường thư qua biển, rồi lá thư thả xuống tới cả nhà (từ bản vẽ tay ý tưởng).
 const ROUTE = 'M30 560 C 110 360, 250 250, 330 300';
+// Bộ giao diện 14/11: giấy ô ly, nét mực đen, đường thư và chữ viết tay mực tím. Lớp .letter nằm ở styles.css (khung chung), phần màu đặt ở đây.
+const INK_STYLE = '.letter svg .ink path,.letter svg .ink circle{stroke:var(--ink)}.letter svg .route{stroke:var(--accent)!important}'
+  + '.letter svg .route-text{font-family:var(--f-hand);font-size:24px;fill:var(--accent)}.letter .letter-note{color:var(--soft)}';
 
 export function Letter({ onDone }: { onDone: () => void }) {
   useEffect(() => {
@@ -12,8 +15,9 @@ export function Letter({ onDone }: { onDone: () => void }) {
     return () => { clearTimeout(b); };
   }, []);
   return (
-    <button className="letter" onClick={onDone} aria-label={t('letter.aria')}>
+    <button className="letter oly" onClick={onDone} aria-label={t('letter.aria')}>
       <svg viewBox="0 0 390 700" preserveAspectRatio="xMidYMid meet">
+        <style>{INK_STYLE}</style>
         <g className="ink">
           {/* biển */}
           <path d="M0 470 H390" opacity=".35" />
@@ -33,13 +37,13 @@ export function Letter({ onDone }: { onDone: () => void }) {
         </g>
         <text className="route-text"><textPath href="#route" startOffset="34%">{t('letter.route')}</textPath></text>
         <g className="drop">
-          <rect x="316" y="505" width="28" height="22" rx="3" fill="#FBF7F0" stroke="#2B2723" strokeWidth="1.6" />
-          <path d="M316 507 l14 10 l14 -10" fill="none" stroke="#2B2723" strokeWidth="1.4" />
-          <path d="M330 492 c-4 -4 -9 -2 -9 2 c0 4 5 6 9 9 c4 -3 9 -5 9 -9 c0 -4 -5 -6 -9 -2z" fill="#9A5A44" className="pop-heart" />
+          <rect x="316" y="505" width="28" height="22" rx="3" fill="#fff" stroke="var(--ink)" strokeWidth="1.6" />
+          <path d="M316 507 l14 10 l14 -10" fill="none" stroke="var(--ink)" strokeWidth="1.4" />
+          <path d="M330 492 c-4 -4 -9 -2 -9 2 c0 4 5 6 9 9 c4 -3 9 -5 9 -9 c0 -4 -5 -6 -9 -2z" fill="var(--accent)" className="pop-heart" />
         </g>
         <g className="plane">
-          <path d="M-14 -8 L16 0 L-14 8 L-6 0 Z" fill="#FBF7F0" stroke="#2B2723" strokeWidth="1.5" strokeLinejoin="round" />
-          <path d="M-6 0 L16 0" stroke="#2B2723" strokeWidth="1" />
+          <path d="M-14 -8 L16 0 L-14 8 L-6 0 Z" fill="#fff" stroke="var(--ink)" strokeWidth="1.5" strokeLinejoin="round" />
+          <path d="M-6 0 L16 0" stroke="var(--ink)" strokeWidth="1" />
           <animateMotion dur="2s" begin="0.2s" fill="freeze" rotate="auto" path={ROUTE} keyTimes="0;1" keySplines=".4 0 .2 1" calcMode="spline" />
         </g>
       </svg>
