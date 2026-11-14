@@ -702,6 +702,10 @@
 
   "settings.title": "설정",
   "settings.profileEdit": "프로필 고치기",
+  "settings.theme": "화면 모드",
+  "settings.theme.auto": "기기 설정 따라가기",
+  "settings.theme.light": "밝게",
+  "settings.theme.dark": "어둡게",
   "settings.sound": "소리",
   "settings.soundTap": "누를 때 소리",
   "settings.app": "앱",

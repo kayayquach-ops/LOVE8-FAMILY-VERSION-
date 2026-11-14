@@ -1,0 +1,77 @@
+/* Giao diện tối "đêm mực" (14/11/2026): cùng bộ "vở ô ly, mực tím", đổi giấy sang đêm, mực sang sáng.
+   Bật bằng data-theme="dark" trên <html> (index.html đặt trước khi vẽ, src/theme.ts giữ cho khớp). Bản sáng là :root trong styles.css, không đổi.
+   File này chỉ có giá trị token và các chỗ cần đổi riêng. Hình minh hoạ (thư máy bay, sao giấy, hình dán, linh vật) giữ màu gốc,
+   chỉ đặt lại token chữ bên trong chúng để chữ vẫn đọc được trên nền sáng của hình. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121116;
+  --paper: #1C1A21;
+  --ink: #EEEBF3;
+  --soft: #B5B0C0;
+  --muted: #8F8A9C;
+  --line: rgba(255, 255, 255, .1);
+  --accent: #A28BF2;
+  --accent-soft: #2A2440;
+  --warn: #E8845A;
+  --glass: rgba(28, 26, 33, .78);
+  --oly: #24212C;
+  --oly-dam: #3C3750;
+  --on-ink: #121116;
+  --on-accent: #121116;
+  --g45: rgba(28, 26, 33, .45); --g5: rgba(28, 26, 33, .5); --g55: rgba(28, 26, 33, .55); --g6: rgba(28, 26, 33, .6);
+  --g7: rgba(28, 26, 33, .7); --g9: rgba(28, 26, 33, .9); --g92: rgba(28, 26, 33, .92);
+  --bg-veil: rgba(18, 17, 22, .97);
+  --bg-bar: rgba(28, 26, 33, .94);
+  --warn-bg: #3A2A1F;
+  --warn-ink: #F0C9A0;
+  --home-hair: rgba(255, 255, 255, .08);
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] .home { --home-hair: rgba(255, 255, 255, .08); }
+
+/* Hình minh hoạ nền sáng: chữ và nét mực bên trong vẫn là mực đen */
+[data-theme="dark"] :is(.lt-card, .ob-card, .ob-who, .rc-player, .lt-env-body, .lt-env-flap, .voice-card, .hug-card) {
+  --ink: #17151C; --soft: #5D5968; --muted: #8F8A9B; --accent: #5B3CC4; --accent-soft: #EEE9FC; --paper: #FFFFFF; --line: rgba(23, 21, 28, .1);
+}
+[data-theme="dark"] .lt-env small { color: var(--soft); }
+[data-theme="dark"] .rc-player { --on-ink: #fff; }
+[data-theme="dark"] .ob-card.b.night { color: #FBF6EA; }
+
+/* Nét nhỏ vẽ bằng mực đen mờ trong bản sáng thì sang mực trắng mờ */
+[data-theme="dark"] .jr-x { box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .22); }
+[data-theme="dark"] .jr-list { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
+[data-theme="dark"] .jr .jr-task, [data-theme="dark"] .jr-gift { border-bottom-color: rgba(255, 255, 255, .08); }
+[data-theme="dark"] .jr .jr-paper { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+[data-theme="dark"] .jr .jr-paper.on { box-shadow: inset 0 0 0 1.5px var(--ink); }
+[data-theme="dark"] .ob-bub { box-shadow: 0 8px 20px -10px rgba(0, 0, 0, .6), inset 0 0 0 1px rgba(255, 255, 255, .1); }
+[data-theme="dark"] .ob-bub.me { box-shadow: 0 8px 20px -10px rgba(0, 0, 0, .6); }
+[data-theme="dark"] .rc-pill { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12); }
+[data-theme="dark"] .rc-pill.line { box-shadow: inset 0 0 0 1.5px var(--ink); }
+[data-theme="dark"] .rc-slot.got { box-shadow: 0 4px 10px -4px rgba(0, 0, 0, .6); }
+[data-theme="dark"] .ob .field.ob-code::placeholder { color: rgba(255, 255, 255, .2); }
+[data-theme="dark"] .tabbar { box-shadow: 0 12px 30px -12px rgba(0, 0, 0, .7), inset 0 0 0 1px rgba(255, 255, 255, .08); }
+[data-theme="dark"] .panel, [data-theme="dark"] .bubble { box-shadow: none; }
+[data-theme="dark"] .city-list { box-shadow: 0 10px 30px rgba(0, 0, 0, .5); }
+[data-theme="dark"] .ob .city-list { box-shadow: 0 14px 30px -18px rgba(0, 0, 0, .7); }
+[data-theme="dark"] .jar-modal, [data-theme="dark"] .nask { background: rgba(0, 0, 0, .55); }
+[data-theme="dark"] .call-orb b { box-shadow: 0 14px 36px rgba(0, 0, 0, .5); }
+[data-theme="dark"] .pod-cover, [data-theme="dark"] .pod-video { box-shadow: 0 18px 40px rgba(0, 0, 0, .5); }
+[data-theme="dark"] .pd-art, [data-theme="dark"] .pd-video { box-shadow: 0 18px 40px -16px rgba(0, 0, 0, .7); }
+[data-theme="dark"] .ft-view, [data-theme="dark"] .ft-canvas { box-shadow: 0 14px 40px rgba(0, 0, 0, .5); }
+
+/* Sao giấy: viền và nếp gấp mực tối trên giấy màu */
+[data-theme="dark"] .paper-star .ps-ink, [data-theme="dark"] .paper-star .ps-fold:not(.white) { stroke: #2A2438; }
+
+/* Nút nổi mực: nền mực sáng nên chữ và chấm bên trong tối */
+[data-theme="dark"] .toast { color: var(--on-ink); }
+
+/* Lớp phủ trong camera.css còn dùng nền mực + chữ trắng cố định */
+[data-theme="dark"] .cam-screen.cam-ui .cam-voice .play,
+[data-theme="dark"] .cam-screen.cam-ui .shutter.send,
+[data-theme="dark"] .cam-screen.cam-ui .chip.on,
+[data-theme="dark"] .feed-sheet .post-react.on small { color: var(--on-ink); }
+
+/* Lưới ô ly của màn dựng nhà, lọ sao, thư: dùng --oly nên đã theo token. Nút chọn khung ảnh, ô xem trước mẫu thư giữ màu giấy. */
+[data-theme="dark"] .lt-sel button.del { color: #E8846F; }
+[data-theme="dark"] .lt-lay.postage { border-color: #17151C; }
+[data-theme="dark"] .lt-sw { border-color: rgba(255, 255, 255, .25); }

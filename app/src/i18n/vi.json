@@ -702,6 +702,10 @@
 
   "settings.title": "Cài đặt",
   "settings.profileEdit": "Sửa hồ sơ",
+  "settings.theme": "Giao diện",
+  "settings.theme.auto": "Theo máy",
+  "settings.theme.light": "Sáng",
+  "settings.theme.dark": "Tối",
   "settings.sound": "Âm thanh",
   "settings.soundTap": "Tiếng khi chạm nút",
   "settings.app": "Ứng dụng",

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, googlePending, startGoogle, token } from './api';
-import { LANG_NAMES, LANGS, setLang, t, useLang } from './i18n';
+import { LANG_NAMES, LANGS, setLang, t, useLang, type Key } from './i18n';
+import { setThemeMode, THEME_MODES, useThemeMode } from './theme';
 import { Notify } from './Notify';
 import { GoogleMark } from './Onboarding';
 import { mascotNameOf, type Me } from './shared';
@@ -10,6 +11,7 @@ import { Avatar, Icon, toast } from './ui';
 /** Cài đặt: hồ sơ, ngôn ngữ, thông báo, âm thanh, tài khoản Google, tải lại app, rời nhà. */
 export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose: () => void; onProfile: () => void; onMascot: () => void }) {
   const lang = useLang();
+  const theme = useThemeMode();
   const [sound, setSound] = useState(uiSoundsOn());
   const google = useGoogleLink();
 
@@ -37,6 +39,13 @@ export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose
         <div className="panel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {LANGS.map((l) => (
             <button key={l} className={`chip ${lang === l ? 'on' : ''}`} style={{ minHeight: 44 }} lang={l} aria-pressed={lang === l} onClick={() => { tap(); setLang(l); }}>{LANG_NAMES[l]}</button>
+          ))}
+        </div>
+
+        <div className="h2">{t('settings.theme')}</div>
+        <div className="panel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {THEME_MODES.map((m) => (
+            <button key={m} className={`chip ${theme === m ? 'on' : ''}`} style={{ minHeight: 44 }} aria-pressed={theme === m} onClick={() => { tap(); setThemeMode(m); }}>{t(`settings.theme.${m}` as Key)}</button>
           ))}
         </div>
 

@@ -9,7 +9,7 @@
 .lt-x svg { width: 20px; height: 20px; }
 .lt-bar { flex: none; display: flex; align-items: center; gap: 12px; padding: calc(var(--safe-top) + 10px) 16px 8px; background: var(--bg); }
 .lt-bar-title { flex: 1; min-width: 0; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lt-send { flex: none; height: 38px; padding: 0 18px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 15px; font-weight: 600; transition: opacity .2s, transform .15s; }
+.lt-send { flex: none; height: 38px; padding: 0 18px; border-radius: 999px; background: var(--ink); color: var(--on-ink); font-size: 15px; font-weight: 600; transition: opacity .2s, transform .15s; }
 .lt-send:disabled { opacity: .3; }
 .lt-send:not(:disabled):active { transform: scale(.95); transition-duration: 0s; }
 
@@ -62,7 +62,7 @@
 /* Người nhận */
 .lt-to { display: flex; gap: 8px; padding: 6px 16px 10px; overflow-x: auto; flex: none; scrollbar-width: none; background: var(--bg); }
 .lt-to::-webkit-scrollbar { display: none; }
-.lt-to button { display: flex; align-items: center; gap: 8px; padding: 5px 14px 5px 6px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); font-size: 15px; white-space: nowrap; }
+.lt-to button { display: flex; align-items: center; gap: 8px; padding: 5px 14px 5px 6px; border-radius: 999px; background: var(--paper); box-shadow: inset 0 0 0 1px var(--line); font-size: 15px; white-space: nowrap; }
 .lt-to button.on { box-shadow: inset 0 0 0 1.5px var(--ink); font-weight: 600; }
 
 /* Nền và tờ giấy: tỉ lệ 3:4 cố định, mọi cỡ chữ và lề tính theo bề rộng giấy (cqw) nên chữ và hình dán xuống dòng, nằm chỗ giống nhau trên mọi máy */
@@ -109,10 +109,10 @@ html[lang="ko"] .lp-text { word-break: keep-all; }
 .lt-opts { display: flex; gap: 10px; padding: 10px 12px 6px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .lt-opts::-webkit-scrollbar { display: none; }
 .lt-opts button { flex: none; width: 64px; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 4px 0; border-radius: 12px; border: 2px solid transparent; }
-.lt-opts button.on { border-color: var(--ink); background: #fff; }
+.lt-opts button.on { border-color: var(--ink); background: var(--paper); }
 .lt-opts small { font-size: 11px; color: var(--soft); max-width: 60px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lt-sw { width: 38px; height: 38px; border-radius: 50%; border: 1px solid rgba(0,0,0,.14); display: block; }
-.lt-font { width: 38px; height: 38px; display: grid; place-items: center; font-size: 22px; font-weight: 400; color: var(--ink); background: #fff; border-radius: 12px; border: 1px solid var(--line); }
+.lt-font { width: 38px; height: 38px; display: grid; place-items: center; font-size: 22px; font-weight: 400; color: var(--ink); background: var(--paper); border-radius: 12px; border: 1px solid var(--line); }
 .lp.lt-chip { width: 38px; height: 38px; aspect-ratio: auto; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,.18); display: block; }
 .lp.lt-chip span { display: none; }
 .lp.lt-chip::before, .lp.lt-chip::after { transform: scale(.5); transform-origin: top left; }
@@ -122,10 +122,10 @@ html[lang="ko"] .lp-text { word-break: keep-all; }
 
 /* Thanh chỉnh món đang chọn và ô dán */
 .lt-sel { display: flex; justify-content: center; gap: 10px; padding: 8px 12px 0; }
-.lt-sel button { width: 42px; height: 38px; border-radius: 12px; border: 1px solid var(--line); background: #fff; font-size: 20px; line-height: 1; display: grid; place-items: center; color: var(--ink); }
+.lt-sel button { width: 42px; height: 38px; border-radius: 12px; border: 1px solid var(--line); background: var(--paper); font-size: 20px; line-height: 1; display: grid; place-items: center; color: var(--ink); }
 .lt-sel button.del { color: #b24a3a; }
 .lt-opts.scrap { align-items: center; }
-.lt-photo-btn { flex: none; width: 64px; height: 64px; border-radius: 16px; border: 1.5px dashed var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; background: #fff; cursor: pointer; }
+.lt-photo-btn { flex: none; width: 64px; height: 64px; border-radius: 16px; border: 1.5px dashed var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; background: var(--paper); cursor: pointer; }
 .lt-photo-btn small { font-size: 11px; color: var(--soft); }
 .lt-stk { width: 56px; height: 56px; padding: 4px; border: 0; background: transparent; }
 
@@ -171,7 +171,7 @@ input.lp-footer::placeholder { color: var(--lp-ink); opacity: .4; }
 .lp-photo.cutout { background: none; padding: 0; }
 .lp-photo.cutout::before { display: none; }
 .lp-photo.cutout img { aspect-ratio: auto; object-fit: contain; background: none; }
-.lt-cut { flex: none; width: 64px; height: 64px; border-radius: 16px; border: 1.5px solid var(--line); background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.lt-cut { flex: none; width: 64px; height: 64px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--paper); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
 .lt-cut i { font-style: normal; font-size: 20px; line-height: 1; }
 .lt-cut small { font-size: 11px; color: var(--soft); max-width: 60px; text-align: center; }
 .lt-cut.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }

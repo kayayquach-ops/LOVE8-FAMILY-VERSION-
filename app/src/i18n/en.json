@@ -716,6 +716,10 @@
 
   "settings.title": "Settings",
   "settings.profileEdit": "Edit profile",
+  "settings.theme": "Appearance",
+  "settings.theme.auto": "Match phone",
+  "settings.theme.light": "Light",
+  "settings.theme.dark": "Dark",
   "settings.sound": "Sound",
   "settings.soundTap": "Sound when tapping",
   "settings.app": "App",

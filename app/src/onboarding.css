@@ -212,7 +212,7 @@ html[lang="ko"] .wl-right { font-family: 'Noto Serif KR', serif; font-weight: 70
 .ob-bub {
   position: absolute; z-index: 3; display: flex; align-items: center; gap: calc(var(--u) * 7); max-width: calc(var(--u) * 300);
   padding: calc(var(--u) * 6) calc(var(--u) * 12) calc(var(--u) * 6) calc(var(--u) * 6); border-radius: calc(var(--u) * 18);
-  background: #fff; color: var(--ink); font-size: calc(var(--u) * 14); font-weight: 500; line-height: 1.25; white-space: nowrap;
+  background: var(--paper); color: var(--ink); font-size: calc(var(--u) * 14); font-weight: 500; line-height: 1.25; white-space: nowrap;
   box-shadow: 0 8px 20px -10px rgba(23, 21, 28, .35), inset 0 0 0 1px rgba(23, 21, 28, .06);
 }
 .ob-bub svg { width: calc(var(--u) * 20); height: calc(var(--u) * 20); }
