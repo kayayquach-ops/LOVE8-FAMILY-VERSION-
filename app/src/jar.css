@@ -1,0 +1,72 @@
+/* Lọ sao giấy (JarArt.tsx) và màn lọ (Jar.tsx), theo màn 5 của app/docs/ui-moi/ban-mau.html.
+   Chỉ animate transform và opacity. Lớp sao và lớp nét mực tách riêng để sao rơi/rung không vẽ lại bộ lọc nét run. */
+.jar-art { position: relative; flex: none; }
+.jar-art.tappable { cursor: pointer; }
+.jar-art > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.jar-stars { will-change: transform; }
+.jar-ink path { fill: none; stroke: var(--ink); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.jar-ink .jar-paper { fill: var(--paper); }
+.jar-ink .jar-thin { stroke-width: 1.4; opacity: .5; }
+.jar-ink .jar-glass { stroke-width: 2; opacity: .55; }
+.jar-ink .jar-string { stroke-width: 1.8; }
+.jar-tag { font-family: var(--f-hand); font-size: 9px; fill: var(--accent); }
+
+/* Một ngôi sao giấy: viền mực, nếp gấp mờ; giấy pha lê có nếp trắng, giấy nhũ vàng có một nét sáng ngắn. */
+.paper-star { display: block; flex: none; overflow: visible; }
+.ps-ink { fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-linejoin: round; }
+.ps-fold { fill: none; stroke: var(--ink); stroke-width: 1; stroke-linecap: round; opacity: .4; }
+.ps-fold.white { stroke: #fff; stroke-width: 1.1; opacity: .95; }
+.ps-shine { fill: none; stroke: #fff; stroke-width: 1.5; stroke-linecap: round; }
+
+/* Màn lọ: nền ô ly, đầu màn có nút đóng và tên lọ. */
+.jr { color: var(--ink); }
+.jr-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: calc(var(--safe-top) + 8px) 16px 4px; }
+.jr-head b { font-size: 15px; font-weight: 600; text-align: center; }
+.jr-x, .jr-x-sp { width: 44px; height: 44px; flex: none; }
+.jr-x { border-radius: 50%; display: grid; place-items: center; box-shadow: inset 0 0 0 1.5px rgba(23, 21, 28, .14); }
+.jr-body { flex: 1; padding: 0 16px calc(var(--safe-bottom) + 36px); }
+.jr-wait { text-align: center; padding-top: 30vh; }
+
+.jr-stage { display: grid; place-items: center; padding: 10px 0 4px; scroll-margin-top: 8px; }
+.jr-count { text-align: center; }
+.jr-count b { font-family: var(--f-display); font-weight: 800; font-size: 44px; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.jr-count small { font-size: 18px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
+.jr-count p { margin: 6px 0 0; font-size: 15px; color: var(--soft); }
+
+.jr-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; margin: 16px 6px 0; }
+.jr-legend span { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; color: var(--soft); font-variant-numeric: tabular-nums; }
+
+.jr-h { margin: 28px 4px 10px; font-family: var(--f-display); font-weight: 700; font-size: 19px; letter-spacing: -0.01em; }
+
+/* Danh sách trắng bo tròn: nhiệm vụ tuần (ô tích vẽ tay) và quà. */
+.jr-list { background: var(--paper); border-radius: 24px; box-shadow: inset 0 0 0 1px rgba(23, 21, 28, .07); padding: 4px 16px; }
+.jr .jr-task, .jr-gift { width: 100%; display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; min-height: 56px; padding: 10px 0; border-bottom: 1px solid rgba(23, 21, 28, .07); text-align: left; font-size: 15.5px; line-height: 1.4; color: var(--ink); }
+.jr .jr-task:last-child, .jr-gift:last-child { border-bottom: 0; }
+.jr-task .doodle { color: var(--ink); }
+.jr-task-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.jr-task-text small { font-size: 12.5px; color: var(--muted); }
+.jr-task em, .jr-gift em { font-style: normal; }
+.jr-task em { font-size: 18px; }
+.jr-task.done .jr-task-text > span { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--accent); text-decoration-thickness: 2px; }
+.jr-task.done em { opacity: .45; }
+.jr .jr-task:not(:disabled):active .doodle { transform: scale(.9); }
+.jr-gift .doodle { color: var(--muted); }
+.jr-gift em { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.jr-gift > span { color: var(--soft); }
+.jr-gift.open .doodle { color: var(--accent); }
+.jr-gift.open > span { color: var(--ink); }
+.jr-gift.open em { font-size: 17px; color: var(--accent); }
+
+/* Cửa hàng giấy gấp sao: ô giấy có ngôi sao, tên giấy, giá. Giữ nguyên luồng mua (chưa bán thì hộp thoại "sắp mở bán"). */
+.jr-papers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.jr .jr-paper { display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 112px; padding: 14px 6px 10px; border-radius: 18px; background: var(--paper); box-shadow: inset 0 0 0 1px rgba(23, 21, 28, .08); text-align: center; transition: transform .15s; }
+.jr-paper b { font-size: 13px; font-weight: 500; line-height: 1.25; }
+.jr-paper i { font-style: normal; font-size: 12px; color: var(--muted); }
+.jr-paper i.hand { font-size: 15px; line-height: 1; }
+.jr .jr-paper.on { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.jr .jr-paper:active { transform: scale(.95); transition-duration: 0s; }
+
+.jr-soon { gap: 4px; text-align: center; }
+.jr-soon h3 { margin: 12px 0 0; font-size: 26px; }
+.jr-soon p { margin: 6px 0 0; color: var(--soft); font-size: 15px; line-height: 1.5; }
+.jr-soon .btn { margin-top: 18px; }
