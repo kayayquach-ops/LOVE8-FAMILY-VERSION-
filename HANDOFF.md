@@ -93,7 +93,7 @@ Dọn nhà thử trên live (CHỈ khi người dùng bảo, vì nay đã có ng
 - Gemini Live (nói chuyện thời gian thực) nếu muốn cuộc gọi tự nhiên hơn nữa.
 - Dịch tự động tin nhắn giữa các thành viên (tính năng riêng, tốn token theo số tin).
 
-## Đợt 14/11/2026: bộ giao diện mới "vở ô ly, mực tím" (USER ĐÃ DUYỆT, ĐÃ LÀM VÀO APP, CHƯA DEPLOY)
+## Đợt 14/11/2026: bộ giao diện mới "vở ô ly, mực tím" (ĐÃ DEPLOY 14/11 bản 5e10ee3, kèm nhạc Suno; đã push ux-simple-poetic và main)
 - User gửi 2 video quay màn hình YOPE (Drive 1iORefJD5VMTkxfofhI5dlIjYiVbneD8e) và bảo tham khảo YOPE + Setlog để làm một bộ UI riêng, không "AI slop"; chê lọ và hạt trong lọ vẫn "AI lắm".
 - Bản mẫu 7 màn: `app/docs/ui-moi/ban-mau.html`, link artifact https://claude.ai/artifact/4EnWrwB8wvrzHSHz44twd7 (riêng tư). Ảnh trong bản mẫu là ảnh vẽ tạm làm mờ (không được phép tải ảnh Unsplash hay sinh ảnh Gemini bằng key của topik-app).
 - Hướng: giấy trắng + lưới ô ly nhạt, mực đen (logo bút lông) cho chữ và nút chính, mực tím học trò `#5B3CC4` chỉ cho nét viết tay (cụm chữ nhấn trong tiêu đề, hình vẽ, dấu tích), đỏ xanh thư máy bay chỉ ở mục thư. Chữ: Bricolage Grotesque (tiêu đề, chữ thường, đậm), Be Vietnam Pro (chữ thường), Patrick Hand (viết tay). Hình vẽ tay nét mực thay biểu tượng tròn; bỏ khung thẻ, nhãn nhỏ trên thẻ, ô có biểu tượng trong vòng tròn.
