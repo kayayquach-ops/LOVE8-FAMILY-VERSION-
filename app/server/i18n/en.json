@@ -30,6 +30,7 @@
   "error.too_many_tries": "Too many tries. Wait about ten minutes and try again",
   "error.slow_down": "That was a bit fast. Wait a moment and try again",
   "error.post_not_found": "This post isn't here anymore",
+  "error.podcast_not_found": "This episode isn't here anymore",
   "error.file_too_big": "That file is too big. Pick a smaller one",
   "error.photo_type": "This photo type can't be used yet. Pick a JPG or PNG",
 

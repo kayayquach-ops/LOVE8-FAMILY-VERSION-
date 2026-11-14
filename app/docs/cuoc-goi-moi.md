@@ -46,6 +46,8 @@ File chính: `server/podcast.ts`, `server/voiceedit.ts`, `server/callvideo.ts`, 
 5. **Thêm ảnh sau.** Ở tab podcast, tập câu chuyện có chỗ thêm nhiều ảnh. Thêm xong thì dựng lại video.
 6. Tập cũ (theo cả cuộc gọi, theo chủ đề) vẫn giữ và phát được. Tập theo chủ đề loại bỏ mọi câu `loi-nhan`.
 
+**Đã làm (A2):** `podcast.ts` chấm một lần mỗi cuộc gọi rồi giữ ở bảng `podcast_plans` (khoá theo câu trả lời, đổi câu trả lời thì chấm lại; thêm ảnh hay dựng lại không gọi AI). AI (`rateStories`) báo `good`, `title`, `joins`; chuyện AI khen mà dưới 15 giây tiếng nói vẫn không thành tập; tên qua `suspect()`, không ổn thì dùng "{tên} kể {chủ đề}". Không có AI: đạt khi tiếng nói thật (đo bằng `voicedSeconds`, bỏ lặng) từ 25 giây và lời chép từ 25 từ (không có lời chép thì 30 giây); phần đuôi chỉ nối chuyện cùng chủ đề. Đuôi tối đa 3 chuyện, 90 giây. Ảnh: `vault.call_id` + `vault.story`; thêm sau qua `POST /api/podcasts/:id/photos` (trường `files`, tối đa 12 ảnh, sharp xoay đúng chiều, thu về 2048 px JPEG), tập vẫn nghe được trong lúc dựng lại và giữ ngày. Video câu chuyện ở `renderStoryVideo` (`callvideo.ts`), font mới `sh-display.ttf` (Bricolage 700) và `sh-hand.ttf` (Patrick Hand). Nhạc: thư mục `server/music/story`, trống thì dùng `music/podcast`. Kiểm: `node --import tsx --test server/podcast.test.ts`.
+
 ## C. Camera giống YOPE thật
 
 File chính: `src/Camera.tsx`, `src/camera.css`. Xem kỹ `b_sheet_0*.jpg` và video `b.mp4`.

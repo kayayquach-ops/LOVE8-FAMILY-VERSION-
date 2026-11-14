@@ -1,0 +1,172 @@
+// Kiểm thử phần chấm câu chuyện, kế hoạch tập, nhịp dựng và xếp cảnh của tập câu chuyện. Không gọi Gemini thật (fetch giả), không đụng DB.
+// Chạy: node --import tsx --test server/podcast.test.ts
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+process.env.MEDIA_DIR = mkdtempSync(path.join(tmpdir(), 'podcast-test-'));
+process.env.GEMINI_API_KEY = 'test-key-not-real';
+delete process.env.AI_PROVIDER;
+
+const P = await import('./podcast.ts');
+const { storyShots } = await import('./callvideo.ts');
+
+type A = Parameters<typeof P.groupStories>[0][number];
+const ans = (idx: number, turn: number, speech: number, transcript: string | null, topic = 'tuoi-tho', question = `q${idx}.${turn}`): A =>
+  ({ id: `a${idx}-${turn}`, idx, turn, question, topic, transcript, speech });
+const words = (n: number, w = 'nhà') => Array.from({ length: n }, () => w).join(' ');
+
+const realFetch = globalThis.fetch;
+function fakeGemini(reply: unknown, seen: string[] = []) {
+  globalThis.fetch = (async (_url: string, init: { body: string }) => {
+    seen.push(init.body);
+    return new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(reply) }] } }] }), { status: 200 });
+  }) as unknown as typeof fetch;
+}
+test.afterEach(() => { globalThis.fetch = realFetch; });
+
+test('gom câu chuyện theo idx, lượt theo thứ tự, bỏ hẳn lời nhắn', () => {
+  const st = P.groupStories([ans(1, 1, 10, 'sau'), ans(0, 0, 12, 'một'), ans(1, 0, 20, 'trước'), ans(2, 0, 30, 'bí mật', 'loi-nhan')]);
+  assert.deepEqual(st.map((s) => s.idx), [0, 1]);
+  assert.deepEqual(st[1].turns.map((t) => t.turn), [0, 1]);
+  assert.equal(st[1].speech, 30);
+  assert.equal(st[1].text, 'trước sau');
+  assert.equal(st[1].question, 'q1.0');
+});
+
+test('luật khi không có AI: đủ 25 giây tiếng nói và lời chép đủ dài', () => {
+  const [ok, short, few, bare, bareLong] = P.groupStories([
+    ans(0, 0, 18, words(30)), ans(0, 1, 9, words(10)), // 27 giây, 40 từ
+    ans(1, 0, 12, words(40)),
+    ans(2, 0, 40, 'vâng ạ'),
+    ans(3, 0, 28, null),
+    ans(4, 0, 31, null),
+  ]);
+  assert.equal(P.ruleGood(ok, 'vi'), true);
+  assert.equal(P.ruleGood(short, 'vi'), false);
+  assert.equal(P.ruleGood(few, 'vi'), false);
+  assert.equal(P.ruleGood(bare, 'vi'), false);
+  assert.equal(P.ruleGood(bareLong, 'vi'), true);
+  // Tiếng Hàn đếm theo âm tiết.
+  const [ko] = P.groupStories([ans(0, 0, 30, '어릴 때 할머니 집 마당에서 동생이랑 매일 놀았어요 '.repeat(4))]);
+  assert.equal(P.ruleGood(ko, 'ko'), true);
+});
+
+test('kế hoạch theo luật: mỗi chuyện đạt một tập, phần đuôi chỉ chuyện cùng chủ đề, mỗi đoạn một tập', () => {
+  const stories = P.groupStories([
+    ans(0, 0, 40, words(60), 'tuoi-tho'),
+    ans(1, 0, 8, words(12), 'mon-an'),       // đuôi: cùng chủ đề với tập 2 dù tập 0 gần hơn
+    ans(2, 0, 35, words(50), 'mon-an'),
+    ans(3, 0, 6, words(8), 'mon-an'),        // đuôi: cùng chủ đề, vào tập 2
+    ans(6, 0, 7, words(9), 'que-nha'),       // không chuyện nào cùng chủ đề: không nối (không biết có hợp không)
+    ans(4, 0, 1, 'ừ', 'tuoi-tho'),           // quá ít, không vào đâu
+    ans(5, 0, 50, words(80), 'loi-nhan'),    // lời nhắn, không bao giờ vào
+  ]);
+  const plan = P.planStories(stories, null, 'vi', '');
+  assert.equal(plan.by, 'rule');
+  assert.deepEqual(plan.eps.map((e) => e.idx), [0, 2]);
+  assert.ok(plan.eps.every((e) => e.title === null));
+  const used = plan.eps.flatMap((e) => [e.idx, ...e.tail]);
+  assert.equal(new Set(used).size, used.length);
+  assert.ok(!used.includes(4) && !used.includes(5) && !used.includes(6));
+  assert.deepEqual(plan.eps.find((e) => e.idx === 2)!.tail, [1, 3]);
+  assert.deepEqual(plan.eps.find((e) => e.idx === 0)!.tail, []);
+});
+
+test('không chuyện nào đạt thì không có tập', () => {
+  const plan = P.planStories(P.groupStories([ans(0, 0, 9, words(10)), ans(1, 0, 12, words(20))]), null, 'vi', '');
+  assert.equal(plan.eps.length, 0);
+});
+
+test('AI chấm (fetch giả): theo lời AI, sàn 15 giây, tên qua lớp lọc chống bịa, phần đuôi theo joins', async () => {
+  const stories = P.groupStories([
+    ans(0, 0, 22, 'Hồi nhỏ mẹ ở Nam Định, chiều nào cũng ra bờ sông với bà ngoại.'), ans(0, 1, 9, 'Bà hay mua kẹo lạc.'),
+    ans(1, 0, 11, 'Món canh cua của bà.'),
+    ans(2, 0, 30, 'Năm 1995 bố mẹ cưới ở Hải Phòng, trời mưa to.'),
+    ans(3, 0, 12, 'Tuần này con bận lắm.'),
+    ans(4, 0, 6, 'Dạ vâng.'),
+  ]);
+  const seen: string[] = [];
+  fakeGemini({ stories: [
+    { idx: 0, good: true, title: 'Chiều bên sông với bà', joins: -1 },
+    { idx: 1, good: false, title: '', joins: 0 },
+    { idx: 2, good: true, title: 'Đám cưới năm 1996 ở Hà Nội', joins: -1 }, // năm và nơi chốn không có trong lời kể: bỏ tên
+    { idx: 3, good: true, title: 'Một tuần bận rộn', joins: -1 },            // AI khen nhưng dưới 15 giây
+    { idx: 4, good: false, title: '', joins: 7 },                            // joins không phải tập: bỏ
+  ] }, seen);
+  const verdicts = await P.rateStories(stories, { name: 'Mẹ', role: 'me' }, 'vi');
+  assert.ok(verdicts);
+  const body = JSON.parse(seen[0]);
+  const sent = JSON.parse(body.contents[0].parts[0].text);
+  assert.equal(sent.language, 'vi');
+  assert.equal(sent.stories.length, 5);
+  assert.deepEqual(sent.stories[0].turns.map((t: { said: string }) => t.said), ['Hồi nhỏ mẹ ở Nam Định, chiều nào cũng ra bờ sông với bà ngoại.', 'Bà hay mua kẹo lạc.']);
+  const hay = ['Mẹ', ...stories.flatMap((s) => s.turns.flatMap((t) => [t.question, t.transcript ?? '']))].join('\n');
+  const plan = P.planStories(stories, verdicts, 'vi', hay);
+  assert.equal(plan.by, 'ai');
+  assert.deepEqual(plan.eps.map((e) => e.idx), [0, 2]);
+  assert.equal(plan.eps[0].title, 'Chiều bên sông với bà');
+  assert.equal(plan.eps[1].title, null);
+  assert.deepEqual(plan.eps[0].tail, [1]);
+  assert.deepEqual(plan.eps[1].tail, []);
+});
+
+test('AI lỗi hoặc quá hạn thì trả null, kế hoạch đi theo luật', async () => {
+  globalThis.fetch = (async () => { throw new Error('timeout'); }) as unknown as typeof fetch;
+  const stories = P.groupStories([ans(0, 0, 40, words(60))]);
+  const v = await P.rateStories(stories, { name: 'Bố' }, 'vi');
+  assert.equal(v, null);
+  assert.deepEqual(P.planStories(stories, v, 'vi', '').eps.map((e) => e.idx), [0]);
+});
+
+test('tên tập: bỏ dấu gạch dài, ngoặc kép, chấm cuối; bỏ tên người không có trong dữ liệu', () => {
+  assert.equal(P.cleanTitle('“Chiếc xe đạp — của bố.”', 'chiếc xe đạp của bố', 'vi'), 'Chiếc xe đạp, của bố');
+  assert.equal(P.cleanTitle('Bố và chú Tuấn đi câu', 'bố đi câu cá', 'vi'), null);
+  assert.equal(P.cleanTitle('', 'x', 'vi'), null);
+  assert.equal(P.cleanTitle('a'.repeat(80), 'a', 'vi'), null);
+});
+
+const clip = (dur: number, text: string) => ({ file: 'x.wav', dur, gain: 0, words: [{ w: text, s: 0.2, e: 0.6 }], text, voiced: [[0, dur]] as Array<[number, number]> });
+
+test('nhịp dựng: các lượt nối liền, phần đuôi sau khoảng nhạc, mục lục theo câu chuyện', () => {
+  const G = P.STORY_GAPS;
+  const lay = P.layoutStory([
+    { clip: clip(10, 'một'), who: 'Mẹ', question: 'Q0', transcript: null, group: 0, tail: false },
+    { clip: clip(5, 'hai'), who: 'Mẹ', question: 'Q0b', transcript: null, group: 0, tail: false },
+    { clip: clip(4, 'ba'), who: 'Mẹ', question: 'Q3', transcript: null, group: 3, tail: true },
+    { clip: clip(2, 'bốn'), who: 'Mẹ', question: 'Q3b', transcript: null, group: 3, tail: true },
+  ], true);
+  const at = lay.placed.map((p) => p.at);
+  assert.equal(at[0], G.leadVideo);
+  assert.equal(at[1], G.leadVideo + 10 + G.join);
+  assert.equal(at[2], at[1] + 5 + G.toTail);
+  assert.equal(at[3], at[2] + 4 + G.tailJoin);
+  assert.equal(lay.total, at[3] + 2 + G.outro);
+  assert.ok(lay.placed.every((p) => p.fadeIn && p.fadeOut));
+  assert.equal(lay.chapters.length, 2);
+  assert.equal(lay.chapters[0].question, 'Q0');
+  assert.equal(lay.chapters[0].transcript, 'một hai');
+  assert.equal(lay.chapters[1].question, 'Q3');
+  assert.equal(lay.story.turns.length, 1);
+  assert.equal(lay.story.turns[0].question, 'Q3');
+  assert.ok(lay.story.turns[0].s < at[2] && lay.story.turns[0].e > at[2]);
+  assert.equal(lay.story.voices[1].words[0].s, at[1] + 0.2);
+  // Chỉ tiếng: mở đầu ngắn hơn.
+  assert.equal(P.layoutStory([{ clip: clip(10, 'x'), who: 'Mẹ', question: 'Q', transcript: null, group: 0 }], false).placed[0].at, G.leadAudio);
+});
+
+test('xếp cảnh: phủ đúng độ dài phim, phim dài thì lặp ảnh, nhiều ảnh quá thì bớt', () => {
+  const end = (p: ReturnType<typeof storyShots>) => p.shots[p.shots.length - 1].start + p.L;
+  const a = storyShots(40, 3);
+  assert.ok(Math.abs(end(a) - 40) < 1e-6);
+  assert.ok(a.L <= 9 + a.X + 1e-6);
+  assert.deepEqual(a.shots.slice(0, 4).map((s) => s.photo), [0, 1, 2, 0]);
+  const one = storyShots(60, 1);
+  assert.ok(one.shots.length >= 7 && one.shots.every((s) => s.photo === 0));
+  const many = storyShots(10, 12);
+  assert.equal(many.used, 5);
+  assert.ok(Math.abs(end(many) - 10) < 1e-6);
+  for (let i = 1; i < a.shots.length; i++) assert.ok(a.shots[i].start > a.shots[i - 1].start);
+});

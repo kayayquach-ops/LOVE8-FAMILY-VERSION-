@@ -2,6 +2,8 @@
 // phụ đề đốt vào video, thẻ câu hỏi giữa các đoạn, mở đầu và kết ngắn. Không ảnh thì thẻ màu ấm có sóng âm nhẹ.
 // Dựng một lượt ffmpeg: nền giấy và khung ảnh vẽ bằng JS (PPM/PAM), ảnh chỉnh màu một lần, chữ bằng libass (font trong server/fonts).
 // 720x1280, 24 khung/giây, tiếng lấy nguyên tệp m4a của tập podcast (cùng một bản tiếng, khỏi mã hoá lại).
+// Tập theo câu chuyện (renderStoryVideo, cuối tệp): chỉ đúng các ảnh của câu chuyện, tràn khung, trôi chậm, màu phim cũ nhẹ
+// (ấm, hơi bạc, hạt phim, tối góc), chữ trắng to kiểu nhật ký ảnh (ngày, tên chuyện), phụ đề trắng có quầng mềm.
 import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -247,10 +249,10 @@ export function wrap(text: string, size: number, maxW: number, maxLines: number)
 }
 
 type Cue = { s: number; e: number; lines: string[] };
-const SUB_SIZE = 40, SUB_W = 600;
+const SUB_SIZE = 40;
 
 /** Chia lời thành từng cụm tối đa 2 dòng: ngắt ở cuối câu, dấu phẩy, chỗ ngừng, hoặc khi cụm quá dài/quá lâu. */
-export function cues(words: Word[], segStart: number, segEnd: number): Cue[] {
+export function cues(words: Word[], segStart: number, segEnd: number, SUB_SIZE = 40, SUB_W = 600): Cue[] {
   const out: Cue[] = [];
   let cur: Word[] = [];
   const w2 = (ws: Word[]) => textWidth(ws.map((w) => w.w).join(' '), SUB_SIZE);
@@ -478,3 +480,173 @@ export async function renderCallVideo(v: VideoInput, work: string, outMp4: strin
 }
 
 export const fontsReady = () => existsSync(path.join(FONT_DIR, 'sh-sans.ttf'));
+
+// ---------- Video câu chuyện ----------
+
+export type StoryText = { name: string; title: string; stamp: string; family: string; brand: string };
+export type StoryInput = {
+  audio: string; total: number; lang: Lang; photos: string[]; text: StoryText;
+  /** Lúc hiện tên chuyện (giây) và lúc kết. */
+  intro: { s: number; e: number }; outro: { s: number; e: number };
+  voices: Array<{ s: number; e: number; words: Word[] }>;
+  /** Chỗ chuyển sang phần đuôi: câu hỏi của đoạn sau, viết tay, hiện nhẹ trong khoảng nhạc. */
+  turns: Array<{ s: number; e: number; question: string }>;
+};
+
+const SSW = 806, SSH = 1434; // ảnh tĩnh lớn hơn khung 12% để có chỗ trôi
+const STORY_FADE = 0.9;
+
+/** Xếp cảnh: mỗi ảnh một cảnh, phim dài thì lặp lại các ảnh (mỗi cảnh không quá maxShot giây); quá nhiều ảnh cho phim ngắn thì bớt ảnh cuối. */
+export function storyShots(total: number, photos: number, maxShot = 9) {
+  const n = Math.max(1, Math.min(photos, Math.floor(total / 2)));
+  const count = Math.max(n, Math.ceil(total / maxShot));
+  const X = Math.min(STORY_FADE, (total / count) * 0.25);
+  const L = (total + (count - 1) * X) / count;
+  return { X, L, used: n, shots: Array.from({ length: count }, (_, k) => ({ photo: k % n, start: k * (L - X) })) };
+}
+
+/** Tỉ lệ rộng/cao của ảnh sau khi xoay theo EXIF (không đọc được thì coi như ảnh dọc). */
+async function aspectOf(src: string) {
+  try {
+    const sharp = (await import('sharp')).default;
+    const m = await sharp(src, { failOn: 'none' }).metadata();
+    if (!m.width || !m.height) return 0.75;
+    return (m.orientation ?? 1) >= 5 ? m.height / m.width : m.width / m.height;
+  } catch { return 0.75; }
+}
+
+async function prepStoryPhoto(src: string, out: string, work: string) {
+  const o = /\.jpe?g$/i.test(src) ? jpegOrientation(src) : 1;
+  // Phim cũ nhẹ: bớt tương phản và độ rực, ấm lên, đen nhấc lên hơi bạc, trắng ngả kem.
+  const grade = [
+    'eq=contrast=0.94:saturation=0.8:gamma=1.02',
+    'colorbalance=rs=0.04:bs=-0.03:rm=0.035:gm=0.01:bm=-0.035:rh=0.02:bh=-0.04',
+    "curves=r='0/0.07 0.5/0.53 1/0.97':g='0/0.06 0.5/0.51 1/0.95':b='0/0.09 0.5/0.48 1/0.9'",
+  ].join(',');
+  const cover = `scale=${SSW}:${SSH}:force_original_aspect_ratio=increase:flags=lanczos,crop=${SSW}:${SSH}:(iw-${SSW})/2:(ih-${SSH})*0.4`;
+  // Ảnh dọc tràn khung. Ảnh ngang (ảnh cả nhà hay chụp ngang) thì giữ trọn bề ngang, nền là chính ảnh đó phóng to, mờ và tối đi.
+  const graph = (await aspectOf(src)) <= 0.8
+    ? `[0:v]${ORIENT[o]}${cover},${grade}[v]`
+    : `[0:v]${ORIENT[o]}split[a][b];[a]${cover},gblur=sigma=26,eq=brightness=-0.07:saturation=0.85[bg];[b]scale=${SSW}:-2:flags=lanczos[fg];` +
+      `[bg][fg]overlay=(W-w)/2:(H-h)*0.42,${grade}[v]`;
+  await ffmpeg(['-v', 'error', '-noautorotate', '-i', src, '-frames:v', '1', '-filter_complex', graph, '-map', '[v]', '-pix_fmt', 'rgb24', out], work, 60_000);
+}
+
+/** Lớp phủ tĩnh: tối góc, dải tối mềm ở chân (cho phụ đề) và ở đầu (cho tên người kể). */
+function writeShade(work: string) {
+  writePAM(path.join(work, 'shade.pam'), W, H, (x, y) => {
+    const u = (x + 0.5 - W / 2) / (W / 2), v = (y + 0.5 - H / 2) / (H / 2);
+    const av = 0.5 * smooth(0.62, 1.42, Math.sqrt(u * u * 0.9 + v * v * 0.8));
+    const ab = 0.52 * Math.pow(smooth(800, H, y), 1.3);
+    const at = 0.26 * (1 - smooth(0, 260, y));
+    const a = 1 - (1 - av) * (1 - ab) * (1 - at);
+    return [22, 16, 12, a];
+  });
+}
+
+const SC = { white: '&H00FFFFFF&', cream: '&H00E6F1F8&', halo: '&H00101418&' };
+/** libass đo cỡ chữ theo winAscent + winDescent của font: hệ số đổi cỡ chữ thật (px một em) sang \fs, và bề rộng thật (px) sang bề rộng ước của textWidth. */
+const WIN: Record<string, number> = { 'SH Display': 1.56, 'SH Hand': 1.354, 'SH Sans': 1.526, 'SH Sans KR': 1.448 };
+
+function buildStoryAss(v: StoryInput) {
+  const f = fontsFor(v.lang), T = v.text;
+  const display = f.kr ? 'SH Sans KR' : 'SH Display', hand = f.kr ? 'SH Sans KR' : 'SH Hand', sans = f.sans;
+  const fs = (font: string, em: number) => Math.round(em * WIN[font]);
+  const fit = (text: string, font: string, em: number, width: number, lines: number) => wrap(text, fs(font, em), width * WIN[font], lines);
+  const ev: string[] = [];
+  const fade = (a: number, b: number) => `\\fad(${Math.round(a * 1000)},${Math.round(b * 1000)})`;
+  const halo = (n: number, a = '78') => `\\bord${n}\\3c${SC.halo}\\3a&H${a}&\\blur${n * 2}\\shad0`;
+  const add = (s: number, e: number, tags: string, text: string, layer = 1) => { if (e - s > 0.05) ev.push(`Dialogue: ${layer},${ts(s)},${ts(e)},Base,,0,0,0,,{${tags}}${text}`); };
+  const low = (s: string) => s.toLocaleLowerCase(v.lang === 'vi' ? 'vi-VN' : v.lang === 'ko' ? 'ko-KR' : 'en-US');
+  const rise = (x: number, y: number, ms: number) => `\\move(${x},${y + 14},${x},${y},0,${ms})`;
+  const bodyS = v.intro.s, bodyE = v.outro.s + 0.4;
+
+  // Tên người kể, viết tay ở góc trên bên trái suốt phim.
+  add(bodyS + 0.2, bodyE, `\\an7\\pos(44,62)\\fn${hand}\\fs${fs(hand, f.kr ? 28 : 38)}\\c${SC.white}${halo(2)}${fade(0.8, 0.6)}`, esc(T.name, hand, f));
+
+  // Mở đầu: ngày kể thật to, tên chuyện chữ thường bên dưới (đáy khối ở y = 1000, trên vùng phụ đề).
+  const tEm = f.kr ? 42 : 50, lh = Math.round(tEm * (f.kr ? 1.32 : 1.1));
+  const lines = fit(low(T.title), display, tEm, 620, 3);
+  const top = 1000 - lines.length * lh;
+  add(v.intro.s, v.intro.e, `\\an1${rise(40, top - 4, 900)}\\fnSH Display\\fs${fs('SH Display', 112)}\\fsp-3\\c${SC.white}${halo(3, '88')}${fade(0.7, 0.6)}`, esc(T.stamp, 'SH Display', f), 2);
+  lines.forEach((l, i) => add(v.intro.s + 0.25, v.intro.e, `\\an1${rise(44, top + lh * (i + 1), 900)}\\fn${display}\\fs${fs(display, tEm)}\\c${SC.white}${halo(3, '80')}${fade(0.8, 0.6)}`, esc(l, display, f), 2));
+
+  // Chỗ chuyển sang phần đuôi: câu hỏi viết tay giữa khung, nhạc dâng lên.
+  for (const tr of v.turns) {
+    const em = f.kr ? 32 : 40, qh = Math.round(em * 1.25);
+    const ql = fit(tr.question, hand, em, 560, 3);
+    const qt = 600 - (ql.length * qh) / 2;
+    ql.forEach((l, i) => add(tr.s, tr.e, `\\an5\\pos(360,${Math.round(qt + qh * (i + 0.5))})\\fn${hand}\\fs${fs(hand, em)}\\c${SC.cream}${halo(3, '70')}${fade(0.7, 0.7)}`, esc(l, hand, f), 2));
+  }
+
+  // Phụ đề: chữ trắng, quầng tối mềm, tối đa 2 dòng rộng chừng 600 px, đáy ở y = 1196.
+  const subFs = fs(sans, f.kr ? 30 : 32);
+  for (const s of v.voices) {
+    for (const c of cues(s.words, s.s, s.e + 0.25, subFs, 600 * WIN[sans])) {
+      add(c.s, c.e, `\\an2\\pos(360,1196)\\fn${sans}\\fs${subFs}\\c${SC.white}${halo(3, '70')}\\q2${fade(0.12, 0.12)}`, c.lines.map((l) => esc(l, sans, f)).join('\\N'), 3);
+    }
+  }
+
+  // Kết: tên app chữ thường và tên nhà viết tay.
+  const o = v.outro;
+  add(o.s + 0.2, v.total, `\\an5\\pos(360,610)\\fnSH Display\\fs${fs('SH Display', 36)}\\c${SC.white}${halo(3)}${fade(0.8, 0.9)}`, esc(low(T.brand), 'SH Display', f), 2);
+  if (T.family) add(o.s + 0.5, v.total, `\\an5\\pos(360,666)\\fn${hand}\\fs${fs(hand, f.kr ? 28 : 34)}\\c${SC.white}${halo(3, '60')}${fade(0.8, 0.9)}`, esc(T.family, hand, f), 2);
+
+  return [
+    '[Script Info]', 'ScriptType: v4.00+', `PlayResX: ${W}`, `PlayResY: ${H}`, 'WrapStyle: 2', 'ScaledBorderAndShadow: yes', 'YCbCr Matrix: None', '',
+    '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    `Style: Base,${sans},40,${SC.white},&H000000FF,${SC.halo},&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1`, '',
+    '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text', ...ev, '',
+  ].join('\n');
+}
+
+/** Video dọc cho tập câu chuyện: chỉ dùng đúng các ảnh được đưa vào (ít nhất một ảnh dùng được, không thì báo lỗi). */
+export async function renderStoryVideo(v: StoryInput, work: string, outMp4: string, outPoster: string) {
+  const f = fontsFor(v.lang);
+  const fontsDir = path.join(work, 'sfonts');
+  mkdirSync(fontsDir, { recursive: true });
+  for (const n of ['sh-display.ttf', 'sh-hand.ttf', 'sh-sans-kr.ttf', ...(f.kr ? [] : ['sh-sans.ttf'])]) copyFileSync(path.join(FONT_DIR, n), path.join(fontsDir, n));
+
+  const stills: string[] = [];
+  for (const [k, p] of v.photos.entries()) {
+    const name = `sp${k}.ppm`;
+    try { await prepStoryPhoto(p, name, work); stills.push(name); }
+    catch (e) { console.error('[video] bỏ qua ảnh', path.basename(p), (e as Error).message.split('\n')[0]); }
+  }
+  if (!stills.length) throw new Error('Không có ảnh nào dùng được');
+  writeShade(work);
+  writeFileSync(path.join(work, 'story.ass'), buildStoryAss(v));
+
+  const plan = storyShots(v.total, stills.length);
+  const inputs: string[] = [];
+  const fc: string[] = [];
+  const N = Math.round(plan.L * FPS);
+  plan.shots.forEach((s, k) => {
+    inputs.push('-loop', '1', '-framerate', String(FPS), '-t', plan.L.toFixed(3), '-i', stills[s.photo]);
+    fc.push(`[${k}:v]${kenBurns(k, N)},scale=${W}:${H}:flags=bicubic,setsar=1,format=yuv420p[s${k}]`);
+  });
+  let cur = 's0';
+  for (let k = 1; k < plan.shots.length; k++) {
+    fc.push(`[${cur}][s${k}]xfade=transition=fade:duration=${plan.X.toFixed(3)}:offset=${plan.shots[k].start.toFixed(3)}[x${k}]`);
+    cur = `x${k}`;
+  }
+  const iS = plan.shots.length;
+  inputs.push('-loop', '1', '-framerate', String(FPS), '-t', v.total.toFixed(3), '-i', 'shade.pam');
+  fc.push(`[${iS}:v]format=rgba[sh]`, `[${cur}][sh]overlay=0:0:format=yuv420[o]`);
+  // Hạt phim trên độ sáng, mở và kết bằng màn tối dịu.
+  fc.push(`[o]ass=story.ass:fontsdir=sfonts,noise=c0s=7:c0f=t+u,fade=t=in:st=0:d=0.6,fade=t=out:st=${Math.max(0, v.total - 1.3).toFixed(3)}:d=1.3,format=yuv420p[v]`);
+  const audioIdx = iS + 1;
+  inputs.push('-i', v.audio);
+  const threads = String(Number(process.env.PODCAST_VIDEO_THREADS) || 2);
+  const tmp = path.join(work, 'story.mp4');
+  await ffmpeg(['-v', 'error', '-filter_complex_threads', threads, ...inputs, '-filter_complex', fc.join(';'), '-map', '[v]', '-map', `${audioIdx}:a`,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '24', '-maxrate', '2200k', '-bufsize', '4400k', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-r', String(FPS), '-g', String(FPS * 4),
+    '-colorspace', 'smpte170m', '-color_primaries', 'smpte170m', '-color_trc', 'smpte170m', '-threads', threads,
+    '-c:a', 'copy', '-movflags', '+faststart', '-t', v.total.toFixed(3), tmp], work, Math.max(900_000, v.total * 12_000));
+  const at = Math.max(0.8, Math.min(v.intro.e - 0.5, 2.2));
+  await ffmpeg(['-v', 'error', '-ss', at.toFixed(2), '-i', tmp, '-frames:v', '1', '-q:v', '3', path.join(work, 'poster.jpg')], work, 60_000);
+  copyFileSync(tmp, outMp4);
+  copyFileSync(path.join(work, 'poster.jpg'), outPoster);
+  return { photos: plan.used };
+}
