@@ -317,8 +317,9 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
 
   async function run(s: Session) {
     const qs = s.script.questions;
-    // Kiểm giọng Gemini một lần ngay lúc nhấc máy bằng câu đã nạp sẵn; hỏng thì cả cuộc gọi dùng giọng máy.
-    machine.current = !audio.current || !(await ttsReady());
+    // Kiểm giọng Gemini một lần ngay lúc nhấc máy. Không bao giờ dùng giọng máy: Gemini không dùng được thì câu đó hiện chữ + chuông nhẹ.
+    await ttsReady();
+    machine.current = false;
     if (!live.current) return;
     // Lời chào + câu đầu đọc trong MỘT yêu cầu (một file) nếu vừa độ dài cho phép.
     const first = opening(s.script);

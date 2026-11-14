@@ -55,9 +55,9 @@ export async function migrateCall(p: pg.Pool) {
 }
 
 /** Các câu cố định cần có giọng sẵn: mỗi (vai, ngôn ngữ) 7 câu. Câu "ack" không nạp (chỉ dùng nếu tình cờ đã có trong kho). */
-export function fixedLines() {
+export function fixedLines(langs: readonly Lang[] = LANGS) {
   const out = new Set<string>();
-  for (const lang of LANGS) {
+  for (const lang of langs) {
     for (const role of CALL_ROLES) {
       const L = callLines(role, (k, v) => tServer(lang, k, v));
       for (const text of [L.slow, L.busy, L.skip, L.photo, ...L.short, ...L.long]) out.add(text);
@@ -73,7 +73,10 @@ export async function warmFixedVoices(gapMs?: number) {
   const gap = gapMs ?? (provider === 'openai' ? 1_000 : 10_000);
   const gate = gateOf(provider);
   let n = 0;
-  for (const text of fixedLines()) {
+  // Chỉ nạp thứ tiếng nhà nào đó đang dùng: hạn mức giọng Gemini mỗi ngày ít, đừng tiêu cho tiếng Anh, tiếng Hàn khi chưa ai dùng.
+  const { rows } = await pool.query(`select distinct coalesce(lang, 'vi') as lang from members`).catch(() => ({ rows: [] as { lang: string }[] }));
+  const used = LANGS.filter((l) => l === 'vi' || rows.some((r) => r.lang === l));
+  for (const text of fixedLines(used)) {
     if (cachedSpeech(text, provider)) continue;
     if (gate.blocked(true)) { console.log('[call] dừng nạp sẵn giọng: ngân sách ngày còn ít hoặc đang bị chặn'); break; }
     const p = speech(text, 'warm', { prio: 1, optional: true, provider });
