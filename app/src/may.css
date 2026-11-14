@@ -1,6 +1,6 @@
 /* Tab Mây: gọi và chờ Mây gọi. Chỉ animate opacity và transform. */
 .may { display: flex; flex-direction: column; align-items: center; padding: calc(var(--safe-top) + 28px) 24px calc(var(--safe-bottom) + 110px); text-align: center; }
-.may-hero { position: relative; width: 220px; height: 220px; display: grid; place-items: center; margin-top: 8px; }
+.may-hero, .may-hero.ring { position: relative; inset: auto; width: 220px; height: 220px; display: grid; place-items: center; margin-top: 8px; }
 .may-mascot { position: relative; z-index: 1; }
 .may-ring { position: absolute; inset: 14px; border-radius: 50%; border: 2px solid var(--oly-dam); animation: call-ring 2s ease-out infinite; }
 .may-title { font-size: 38px; margin: 10px 0 8px; }
