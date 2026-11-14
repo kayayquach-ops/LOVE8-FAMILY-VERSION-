@@ -229,6 +229,7 @@ html[lang="ko"] .wl-right { font-family: 'Noto Serif KR', serif; font-weight: 70
 /* Nửa dưới: tiêu đề, một dòng nói nhà để làm gì, nút đen tạo nhà, nút viền vào bằng mã, Google dạng chữ. */
 .ob-body { flex: none; display: grid; gap: 10px; width: 100%; max-width: 440px; margin: 0 auto; padding-top: 8px; }
 .ob-body .ob-title { margin: 0; font-size: clamp(30px, 9.4vw, 40px); line-height: 1.04; }
+.ob-body .ob-title .hand { white-space: nowrap; }
 .ob-lede { margin: 0 0 6px; font-size: 15.5px; line-height: 1.45; color: var(--soft); }
 .ob-or { text-align: center; font-size: 14px; line-height: 1; color: var(--muted); }
 .ob-google { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; font-size: 15px; font-weight: 500; color: var(--soft); }
