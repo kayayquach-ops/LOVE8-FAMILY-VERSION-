@@ -1,0 +1,190 @@
+/* Camera (màn mở app) và ảnh nhà mình (Feed), bộ giao diện 14/11 "vở ô ly, mực tím" (bản mẫu app/docs/ui-moi/ban-mau.html, màn 2 và 3).
+   File này nạp trước styles.css (App được import trước styles.css trong main.tsx), nên luật nào đè lớp chung
+   (.viewfinder, .shutter, .talk, .page, .play...) đều gắn hai lớp gốc .cam-screen.cam-ui hoặc .sheet.feed-sheet để thắng.
+   Chỉ animate transform và opacity. */
+
+/* ---------- Camera ---------- */
+.cam-screen.cam-ui { padding-left: 12px; padding-right: 12px; padding-top: calc(var(--safe-top) + 10px); }
+.cam-ui button:focus-visible, .cam-ui label:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* Hàng cả nhà: mỗi người một viên trắng, có giờ nơi người đó. Đông người thì vuốt ngang. */
+.cam-ui .cam-fam { display: flex; align-items: center; gap: 6px; min-height: 40px; padding-left: 6px; flex: none; }
+.cam-ui .cam-fam-list { flex: 1; min-width: 0; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.cam-ui .cam-fam-list::-webkit-scrollbar { display: none; }
+.cam-ui .cam-who {
+  flex: none; display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 11px 0 4px; border-radius: 999px;
+  background: var(--paper); box-shadow: inset 0 0 0 1px rgba(23, 21, 28, .08); font-size: 12.5px; color: var(--soft);
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.cam-ui .cam-who b { color: var(--ink); font-weight: 600; max-width: 7.5em; overflow: hidden; text-overflow: ellipsis; }
+.cam-ui .cam-set { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--ink); transition: transform .15s; }
+.cam-ui .cam-set svg { width: 22px; height: 22px; }
+.cam-ui .cam-set:not(:disabled):active { transform: scale(.92); transition-duration: 0s; }
+
+/* Dòng nhắc (ai đó lâu chưa mở app): giấy trắng, chữ dịu, chữ hành động gạch chân mực tím. */
+.cam-ui .cam-note {
+  flex: none; display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 6px 4px 6px 8px; border-radius: 20px;
+  background: var(--paper); box-shadow: inset 0 0 0 1px var(--line); font-size: 13.5px; line-height: 1.4; color: var(--soft);
+}
+.cam-ui .cam-note > span { flex: 1; min-width: 0; }
+.cam-ui .cam-note a, .cam-ui .cam-note button {
+  flex: none; min-height: 40px; padding: 0 12px; display: grid; place-items: center; white-space: nowrap;
+  color: var(--ink); font-weight: 600; text-decoration: underline; text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px; text-underline-offset: 4px;
+}
+
+/* Khung chụp: bo 32px, máy nhỏ tự thu lại cho vừa nút và thanh dưới. */
+.cam-screen.cam-ui .viewfinder { margin-top: 10px; border-radius: 32px; background: #ECEAF0; width: min(100%, calc(100dvh - 372px - var(--safe-top) - var(--safe-bottom))); }
+.cam-screen.cam-ui.has-note .viewfinder { width: min(100%, calc(100dvh - 430px - var(--safe-top) - var(--safe-bottom))); }
+.cam-screen.cam-ui .zoom-pills { gap: 6px; bottom: 14px; }
+.cam-screen.cam-ui .zoom-pills button { width: 38px; height: 38px; background: rgba(0, 0, 0, .35); color: #fff; font-size: 12.5px; font-weight: 600; transition: transform .15s; }
+.cam-screen.cam-ui .zoom-pills button.on { background: rgba(255, 255, 255, .92); color: var(--ink); }
+.cam-screen.cam-ui .zoom-pills button:active { transform: scale(.92); transition-duration: 0s; }
+.cam-screen.cam-ui .zoom-hint { background: rgba(23, 21, 28, .5); }
+.cam-screen.cam-ui .rec-dot { background: var(--air-red); }
+.cam-screen.cam-ui .cap-input { background: rgba(255, 255, 255, .92); color: var(--ink); box-shadow: 0 6px 18px -8px rgba(0, 0, 0, .35); }
+.cam-screen.cam-ui .cap-input::placeholder { color: var(--muted); }
+
+/* Lời nói vừa thu, đang chờ gửi */
+.cam-ui .cam-voice { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: #F1EFF5; color: var(--ink); }
+.cam-screen.cam-ui .cam-voice .play { background: var(--ink); color: #fff; }
+.cam-screen.cam-ui .cam-voice .bars i { background: rgba(23, 21, 28, .2); }
+.cam-screen.cam-ui .cam-voice .bars i.on { background: var(--ink); }
+
+/* Hàng nút: ảnh trong máy trái, nút chụp giữa, đổi camera phải. */
+.cam-screen.cam-ui .shutter-row { display: grid; grid-template-columns: 1fr 84px 1fr; align-items: center; justify-items: center; margin-top: 18px; padding: 0; }
+.cam-ui .cam-gallery, .cam-ui .cam-round { width: 46px; height: 46px; display: grid; place-items: center; color: var(--ink); cursor: pointer; transition: transform .15s; }
+.cam-ui .cam-gallery { position: relative; border-radius: 14px; overflow: hidden; background: var(--paper); box-shadow: inset 0 0 0 1px var(--line); }
+.cam-ui .cam-gallery img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cam-ui .cam-round { border-radius: 50%; box-shadow: inset 0 0 0 1.5px rgba(23, 21, 28, .15); }
+.cam-ui .cam-gallery svg, .cam-ui .cam-round svg { width: 22px; height: 22px; }
+.cam-ui .cam-gallery:active, .cam-ui .cam-round:not(:disabled):active { transform: scale(.92); transition-duration: 0s; }
+.cam-ui .cam-round:disabled { opacity: .35; }
+
+/* Nút chụp: vòng mực đen 78px, lòng mực tím. Đang quay: vòng đỏ chạy hết 15 giây, lòng đỏ thu nhỏ. */
+.cam-screen.cam-ui .shutter { width: 78px; height: 78px; border: 0; box-shadow: inset 0 0 0 4px var(--ink); }
+.cam-screen.cam-ui .shutter i { width: 60px; height: 60px; background: var(--accent); }
+.cam-screen.cam-ui .shutter-ring { left: 0; top: 0; width: 78px; height: 78px; }
+.cam-screen.cam-ui .shutter-ring circle { stroke: var(--air-red); stroke-dasharray: 232.5; stroke-dashoffset: 232.5; }
+.cam-screen.cam-ui .shutter.rec i { background: var(--air-red); }
+.cam-screen.cam-ui .shutter.send { background: var(--ink); color: #fff; box-shadow: none; }
+.cam-screen.cam-ui .shutter.send svg { width: 32px; height: 32px; }
+.cam-screen.cam-ui .shutter.send:active { transform: scale(.95); }
+
+/* Giữ để nói: viên trắng như bản mẫu, đang nghe thì đỏ thư máy bay. */
+.cam-screen.cam-ui .talk {
+  margin-top: 12px; height: 44px; padding: 0 18px; gap: 8px; border: 0; background: var(--paper); color: var(--ink);
+  font-size: 15px; font-weight: 600; box-shadow: 0 1px 0 rgba(23, 21, 28, .06), inset 0 0 0 1px rgba(23, 21, 28, .1); -webkit-touch-callout: none;
+}
+.cam-screen.cam-ui .talk svg { width: 18px; height: 18px; }
+.cam-screen.cam-ui .talk.rec { background: var(--air-red); color: #fff; box-shadow: none; }
+.cam-screen.cam-ui .chips { margin-top: 14px; }
+.cam-screen.cam-ui .chip { background: var(--paper); border: 0; box-shadow: inset 0 0 0 1px var(--line); font-weight: 500; }
+.cam-screen.cam-ui .chip.on { background: var(--ink); color: #fff; box-shadow: none; }
+
+/* Gợi ý vuốt lên thay nút "Tin nhà": chữ nhỏ, mũi tên nhỏ; có ảnh mới thì mực tím viết tay. */
+.cam-ui .cam-peek { flex: none; margin-top: auto; align-self: center; min-height: 44px; padding: 4px 16px 6px; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12.5px; color: var(--muted); }
+.cam-ui .cam-peek svg { width: 22px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.cam-ui .cam-peek .hand { font-size: 16px; }
+.cam-ui .cam-peek.new svg { color: var(--accent); animation: cam-peek 1.8s ease-in-out infinite; }
+@keyframes cam-peek { 50% { transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .cam-ui .cam-peek.new svg { animation: none; } }
+
+/* ---------- Ảnh nhà mình ---------- */
+.sheet.feed-sheet { background: #0f0e12; color: #fff; }
+.feed-sheet button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.feed-sheet .feed-bar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: calc(var(--safe-top) + 8px) 14px 8px; }
+.feed-sheet .feed-back { display: flex; align-items: center; gap: 4px; height: 40px; padding: 0 14px 0 9px; border-radius: 999px; background: rgba(255, 255, 255, .12); color: #fff; font-size: 14px; font-weight: 500; transition: transform .15s; }
+.feed-sheet .feed-back svg { width: 18px; height: 18px; }
+.feed-sheet .feed-back:active { transform: scale(.95); transition-duration: 0s; }
+.feed-sheet .feed-title { font-size: 14px; font-weight: 600; padding-right: 6px; }
+
+/* Mỗi trang một tin. Chừa đáy cho thanh trả lời nằm đè. */
+.feed-sheet.sheet .page { padding: 4px 10px calc(var(--safe-bottom) + 80px); justify-content: center; }
+.feed-sheet .post-card {
+  position: relative; isolation: isolate; flex: 1 1 0; min-height: 220px; max-height: min(calc((100vw - 20px) * 1.25), 680px);
+  width: 100%; max-width: 560px; align-self: center; border-radius: 30px; overflow: hidden; background: #1d1b22; -webkit-touch-callout: none;
+}
+.feed-sheet .post-card::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 46%; background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, .5)); pointer-events: none; z-index: 1; }
+.feed-sheet .post-media { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.feed-sheet .post-media.fit { object-fit: contain; }
+.feed-sheet .post-who {
+  position: absolute; top: 12px; left: 12px; z-index: 2; max-width: 62%; height: 32px; display: flex; align-items: center; gap: 6px;
+  padding: 0 12px 0 4px; border-radius: 999px; background: rgba(255, 255, 255, .92); color: var(--ink); font-size: 13px;
+}
+.feed-sheet .post-who b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-sheet .post-sound { position: absolute; top: 12px; right: 12px; z-index: 2; height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; background: rgba(0, 0, 0, .42); color: #fff; font-size: 12.5px; pointer-events: none; }
+
+/* Dấu giờ kiểu nhật ký: giờ to nơi người chụp, dưới là nơi và lời. */
+.feed-sheet .post-stamp { position: absolute; left: 16px; right: 80px; bottom: 16px; z-index: 2; color: #fff; text-shadow: 0 1px 12px rgba(0, 0, 0, .35); pointer-events: none; }
+.feed-sheet .post-stamp b { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 8px; font-family: var(--f-display); font-weight: 800; font-size: 46px; line-height: .95; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.feed-sheet .post-stamp small { font-family: 'BVP', 'Noto Sans KR', system-ui, sans-serif; font-size: 15px; font-weight: 600; letter-spacing: 0; opacity: .9; }
+.feed-sheet .post-stamp span { margin-top: 6px; font-size: 15px; font-weight: 500; line-height: 1.35; opacity: .95; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* Tim: nút tròn trắng góc phải dưới. Chạm hai lần vào ảnh cũng thả tim, tim to hiện giữa ảnh rồi tan. */
+.feed-sheet .post-heart { position: absolute; right: 14px; bottom: 14px; z-index: 2; width: 52px; height: 52px; border-radius: 50%; background: rgba(255, 255, 255, .95); color: var(--ink); display: grid; place-items: center; transition: transform .15s; }
+.feed-sheet .post-heart.on { color: var(--air-red); }
+.feed-sheet .post-heart:active { transform: scale(.9); transition-duration: 0s; }
+.feed-sheet .post-heart small { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--ink); color: #fff; font-size: 11px; font-weight: 600; display: grid; place-items: center; box-shadow: 0 0 0 2px rgba(255, 255, 255, .95); }
+.feed-sheet .post-pop { position: absolute; left: 50%; top: 50%; z-index: 3; width: 110px; height: 110px; margin: -55px 0 0 -55px; color: #fff; opacity: 0; pointer-events: none; animation: post-pop .8s cubic-bezier(.2, .9, .3, 1.2) both; }
+@keyframes post-pop {
+  0% { opacity: 0; transform: scale(.4); }
+  25% { opacity: .95; transform: scale(1.08); }
+  45% { transform: scale(.96); }
+  75% { opacity: .95; transform: scale(1); }
+  100% { opacity: 0; transform: translate3d(0, -10px, 0) scale(1.1); }
+}
+@keyframes post-pop-fade { 0%, 100% { opacity: 0; } 30%, 70% { opacity: .95; } }
+@media (prefers-reduced-motion: reduce) { .feed-sheet .post-pop { animation: post-pop-fade .6s ease both; } }
+
+/* Tin lời nói, tin ôm: thẻ tối cùng khung. */
+.feed-sheet .post-card.is-voice, .feed-sheet .post-card.is-hug { background: linear-gradient(165deg, #2b2834 0%, #1a181f 70%); }
+.feed-sheet .post-art { position: absolute; inset: 0 0 96px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 56px 20px 0; text-align: center; color: #fff; }
+.feed-sheet .post-art p { margin: 0; max-width: 16em; font-family: var(--f-display); font-weight: 700; font-size: 22px; line-height: 1.2; letter-spacing: -0.02em; text-wrap: balance; }
+.feed-sheet .post-hug { color: #F7A5B7; }
+.feed-sheet .post-label { font-family: var(--f-hand); font-size: 19px; color: #C9B8FF; }
+.feed-sheet.sheet .play { width: 84px; height: 84px; background: #fff; color: var(--ink); }
+.feed-sheet.sheet .bars i { background: rgba(255, 255, 255, .28); }
+.feed-sheet.sheet .bars i.on { background: #fff; }
+
+/* Dưới thẻ: thả cảm xúc, xoá tin của mình, lời trả lời là bong bóng trắng có ảnh người. */
+.feed-sheet .post-meta, .feed-sheet .post-replies { flex: none; width: 100%; max-width: 560px; align-self: center; margin-top: 10px; }
+.feed-sheet .post-meta { display: flex; align-items: center; gap: 8px; padding: 0 2px; }
+.feed-sheet .post-react { position: relative; width: 44px; height: 44px; border-radius: 50%; background: rgba(255, 255, 255, .1); font-size: 20px; display: grid; place-items: center; transition: transform .15s; }
+.feed-sheet .post-react.on { background: rgba(255, 255, 255, .9); }
+.feed-sheet .post-react:active { transform: scale(.92); transition-duration: 0s; }
+.feed-sheet .post-react small { position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #fff; color: var(--ink); font-size: 10.5px; font-weight: 600; display: grid; place-items: center; }
+.feed-sheet .post-react.on small { background: var(--ink); color: #fff; }
+.feed-sheet .post-del { margin-left: auto; min-height: 44px; padding: 0 10px; color: rgba(255, 255, 255, .55); font-size: 14px; }
+.feed-sheet .post-replies { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.feed-sheet .post-reply { display: flex; align-items: flex-end; gap: 8px; max-width: 92%; }
+.feed-sheet .post-bub { min-width: 0; padding: 8px 13px; border-radius: 18px 18px 18px 6px; background: #fff; color: var(--ink); font-size: 14.5px; line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.feed-sheet .post-bub b { font-weight: 600; margin-right: 6px; }
+.feed-sheet .post-more { padding-left: 36px; font-size: 13px; color: rgba(255, 255, 255, .55); }
+
+/* Chưa có tin, đang tải lần đầu */
+.feed-sheet.sheet .feed-empty { align-items: center; text-align: center; gap: 14px; }
+.feed-sheet .feed-empty .doodle { color: rgba(255, 255, 255, .85); }
+.feed-sheet .feed-empty p { margin: 0; max-width: 12em; font-size: 26px; }
+.feed-sheet .feed-empty .btn { width: auto; padding: 0 28px; margin-top: 8px; background: #fff; color: var(--ink); }
+.feed-sheet .feed-muted { color: rgba(255, 255, 255, .6); font-size: 14px; }
+
+/* Thanh trả lời nằm đè đáy: viên "giữ để trả lời bằng giọng nói" có nút mic trắng, nút bên trái để gõ chữ. */
+.feed-sheet .feed-reply { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 14px 16px calc(var(--safe-bottom) + 14px); background: linear-gradient(rgba(15, 14, 18, 0), rgba(15, 14, 18, .9) 45%); }
+.feed-sheet .feed-type, .feed-sheet .feed-send { flex: none; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; transition: transform .15s; }
+.feed-sheet .feed-type { background: rgba(255, 255, 255, .1); color: #fff; }
+.feed-sheet .feed-send { background: #fff; color: var(--ink); }
+.feed-sheet .feed-send:disabled { opacity: .4; }
+.feed-sheet .feed-type svg, .feed-sheet .feed-send svg { width: 22px; height: 22px; }
+.feed-sheet .feed-type:active, .feed-sheet .feed-send:not(:disabled):active { transform: scale(.94); transition-duration: 0s; }
+.feed-sheet .feed-voice {
+  flex: 1; min-width: 0; height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 7px 0 18px; border-radius: 999px;
+  background: rgba(255, 255, 255, .1); color: rgba(255, 255, 255, .8); font-size: 14.5px; text-align: left; touch-action: none; -webkit-touch-callout: none;
+}
+.feed-sheet .feed-voice span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-sheet .feed-voice i { flex: none; width: 38px; height: 38px; border-radius: 50%; background: #fff; color: var(--ink); display: grid; place-items: center; transition: transform .2s; }
+.feed-sheet .feed-voice i svg { width: 19px; height: 19px; }
+.feed-sheet .feed-voice.rec { background: var(--air-red); color: #fff; }
+.feed-sheet .feed-voice.rec i { color: var(--air-red); transform: scale(1.12); }
+.feed-sheet .feed-reply input { flex: 1; min-width: 0; height: 52px; border: 0; border-radius: 26px; background: rgba(255, 255, 255, .12); color: #fff; padding: 0 18px; font-size: 16px; outline: none; }
+.feed-sheet .feed-reply input::placeholder { color: rgba(255, 255, 255, .5); }

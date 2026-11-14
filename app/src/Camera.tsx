@@ -1,20 +1,26 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { upload } from './api';
+import { cached } from './cache';
 import { fileName, record, recordZoomed, shrinkImage, snap, useHoldMic, VIDEO_TYPE, type Recording } from './media';
-import { SILENT_HOURS, type Me } from './shared';
+import { SILENT_HOURS, thumb, type Me, type Member, type Post } from './shared';
 import { buzz, tap } from './sound';
 import { Letter } from './Letter';
-import { hoursSince } from './time';
+import { hoursSince, localTime } from './time';
 import { Avatar, Icon, toast } from './ui';
 import { t } from './i18n';
+import './camera.css';
 
 type Draft = { kind: 'photo' | 'video' | 'voice'; blob: Blob; url: string; seconds?: number };
 const MAX_VIDEO = 15;
 const MAX_DIGITAL = 5, MAX_HW = 10;
 const fmtZoom = (z: number) => `${z.toFixed(1)}×`;
+// Nút zoom kiểu camera điện thoại: ".5", "1×", "2"; nút đang chọn mới có dấu ×.
+const zoomLabel = (z: number, on: boolean) => `${z < 1 ? `.${Math.round(z * 10)}` : z}${on ? '×' : ''}`;
+// Tên ngắn trong viên trên cùng: tên đầy đủ ba chữ trở lên (Nguyễn Văn An) thì lấy chữ cuối; "Mẹ Lan", "Bố An" giữ nguyên.
+const shortName = (n: string) => { const w = n.trim().split(/\s+/); return w.length > 2 ? w[w.length - 1] : n.trim(); };
 
 // Màn chính kiểu Locket: mở ra là camera. Chạm để chụp, giữ để quay. Giữ nút dưới để nói.
-export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?: boolean; onOpen: (s: 'feed' | 'jar' | 'family' | 'calendar') => void; onSent: () => void }) {
+export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?: boolean; onOpen: (s: 'feed' | 'jar' | 'family' | 'calendar' | 'settings') => void; onSent: () => void }) {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const [facing, setFacing] = useState<'user' | 'environment'>('user');
@@ -141,6 +147,8 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
   useEffect(() => () => { clearTimeout(holdTimer.current); clearTimeout(maxTimer.current); stopCam(); }, []);
 
   const recording = rec ?? (talk.rec ? 'voice' : null);
+  // Ô ảnh cạnh nút chụp: ảnh gần nhất mình đã gửi (lấy từ bản lưu tin nhà), chưa có thì là hình bức ảnh. Mỗi lần quay về camera thì xem lại.
+  const lastShot = useMemo(() => cached<Post[]>('feed')?.find((p) => p.authorId === me.me.id && p.kind === 'photo' && p.media)?.media ?? null, [active, me.me.id]);
 
   // Nút chụp: chạm nhanh là ảnh, giữ quá 0,35 giây là quay video.
   function shutterDown() {
@@ -222,23 +230,25 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
   if (flying) return <Letter onDone={() => setFlying(false)} />;
 
   const quiet = me.members.filter((m) => m.id !== me.me.id && hoursSince(m.lastSeen) > SILENT_HOURS);
+  const note = quiet.length > 0 && !draft;
+  const zooms = hw.current && hw.current.min < 0.95 ? [hw.current.min, 1, 2] : [1, 2];
 
   return (
-    <div className="screen with-tabs cam-screen"
+    <div className={`screen with-tabs cam-screen cam-ui ${note ? 'has-note' : ''}`}
       onTouchStart={(e) => { touchY.current = e.touches[0].clientY; swipeOk.current = e.touches.length === 1; }}
       onTouchEnd={(e) => { if (swipeOk.current && !draft && !recording && touchY.current - e.changedTouches[0].clientY > 80) onOpen('feed'); }}>
-      <div className="top">
-        <div style={{ display: 'flex' }}>
-          {me.members.slice(0, 4).map((m, i) => <div key={m.id} style={{ marginLeft: i ? -10 : 0, borderRadius: 99, border: '2px solid var(--bg)' }}><Avatar m={m} size={32} /></div>)}
-        </div>
-        <div style={{ flex: 1, fontSize: 17, fontWeight: 500, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{me.family.name}</div>
-        {draft && <button className="icon-btn" onClick={() => setDraft(null)} disabled={sending !== null} aria-label={t('camera.discard')}><Icon name="close" /></button>}
+      <div className="cam-fam">
+        <FamilyRow members={me.members} />
+        {draft
+          ? <button className="cam-set" onClick={() => setDraft(null)} disabled={sending !== null} aria-label={t('camera.discard')}><Icon name="close" /></button>
+          : <button className="cam-set" onClick={() => onOpen('settings')} aria-label={t('settings.title')}><Icon name="sliders" /></button>}
       </div>
 
-      {quiet.length > 0 && !draft && (
-        <div className="banner fade">
+      {note && (
+        <div className="cam-note fade">
+          <Avatar m={quiet[0]} size={26} />
           <span>{t('camera.quiet', { name: quiet[0].name, days: Math.floor(hoursSince(quiet[0].lastSeen) / 24) })}</span>
-          {quiet[0].phone ? <a href={`tel:${quiet[0].phone}`}>{t('camera.quiet.call')}</a> : <button className="banner-go" onClick={() => onOpen('family')}>{t('camera.quiet.view')}</button>}
+          {quiet[0].phone ? <a href={`tel:${quiet[0].phone}`}>{t('camera.quiet.call')}</a> : <button onClick={() => onOpen('family')}>{t('camera.quiet.view')}</button>}
         </div>
       )}
 
@@ -246,7 +256,7 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
         {draft?.kind === 'photo' && <img src={draft.url} alt="" />}
         {draft?.kind === 'video' && <video src={draft.url} autoPlay loop playsInline />}
         {draft?.kind === 'voice' && (
-          <div className="card voice-card" style={{ borderRadius: 0, height: '100%' }}>
+          <div className="cam-voice">
             <VoiceDot url={draft.url} seconds={draft.seconds} />
           </div>
         )}
@@ -266,9 +276,10 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
           <>
             <span className={`zoom-hint ${zoomHint ? 'on' : ''}`} aria-hidden="true">{fmtZoom(zoom)}</span>
             <div className="zoom-pills">
-              {[1, 2].map((z) => (
-                <button key={z} className={Math.abs(zoom - z) < 0.05 ? 'on' : ''} onClick={() => zoomTo(z)} onPointerDown={(e) => e.stopPropagation()} aria-label={t('camera.zoomTo', { n: z })}>{z}×</button>
-              ))}
+              {zooms.map((z) => {
+                const on = Math.abs(zoom - z) < 0.05;
+                return <button key={z} className={on ? 'on' : ''} onClick={() => zoomTo(z)} onPointerDown={(e) => e.stopPropagation()} aria-label={t('camera.zoomTo', { n: z })}>{zoomLabel(z, on)}</button>;
+              })}
             </div>
           </>
         )}
@@ -276,41 +287,58 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
 
       {draft ? (
         <>
-          <div className="chips" style={{ marginTop: 18 }}>
+          <div className="chips">
             <button className={`chip ${meal ? 'on' : ''}`} onClick={() => { tap(); setMeal(!meal); }}>{t('camera.meal')}</button>
           </div>
           <div className="shutter-row">
-            <button className="icon-btn" onClick={() => setDraft(null)} disabled={sending !== null} aria-label={t('camera.redo')}><Icon name="close" /></button>
-            <button className="shutter" onClick={send} disabled={sending !== null} aria-label={sending !== null ? t('camera.sending') : t('common.send')} style={{ background: 'var(--ink)', borderColor: 'var(--ink)', color: '#fff' }}>
-              {sending !== null ? <span className="send-pct">{Math.round(sending * 100)}%</span> : <Icon name="send" size={34} />}
+            <button className="cam-round" onClick={() => setDraft(null)} disabled={sending !== null} aria-label={t('camera.redo')}><Icon name="close" /></button>
+            <button className="shutter send" onClick={send} disabled={sending !== null} aria-label={sending !== null ? t('camera.sending') : t('common.send')}>
+              {sending !== null ? <span className="send-pct">{Math.round(sending * 100)}%</span> : <Icon name="send" />}
             </button>
-            <span style={{ width: 44 }} />
+            <span />
           </div>
         </>
       ) : (
         <>
           <div className="shutter-row">
-            <label className="icon-btn" aria-label={t('camera.pickAria')}>
-              <Icon name="image" />
+            <label className="cam-gallery" aria-label={t('camera.pickAria')}>
+              {lastShot ? <img src={thumb(lastShot, 160)} alt="" decoding="async" /> : <Icon name="image" />}
               <input type="file" accept="image/*,video/*" hidden onChange={(e) => { void pickFile(e.target.files?.[0]); e.target.value = ''; }} />
             </label>
             <button className={`shutter ${rec === 'video' ? 'rec' : ''}`} aria-label={t('camera.shutterAria')}
               onPointerDown={shutterDown} onPointerUp={shutterUp} onPointerLeave={shutterCancel} onPointerCancel={shutterCancel} onContextMenu={(e) => e.preventDefault()}>
-              <svg className="shutter-ring" viewBox="0 0 86 86" aria-hidden="true"><circle cx="43" cy="43" r="41" /></svg>
+              <svg className="shutter-ring" viewBox="0 0 78 78" aria-hidden="true"><circle cx="39" cy="39" r="37" /></svg>
               <i />
             </button>
-            <button className="icon-btn" onClick={() => { tap(); setFacing(facing === 'user' ? 'environment' : 'user'); }} aria-label={t('camera.flip')}><Icon name="flip" /></button>
+            <button className="cam-round" onClick={() => { tap(); setFacing(facing === 'user' ? 'environment' : 'user'); }} aria-label={t('camera.flip')}><Icon name="flip" /></button>
           </div>
           <button className={`talk ${talk.rec ? 'rec' : ''}`} onPointerDown={() => void talk.down()} onPointerUp={() => void talk.up()}
             onPointerLeave={() => void talk.up()} onPointerCancel={() => void talk.up()} onContextMenu={(e) => e.preventDefault()}>
-            <Icon name="mic" size={20} /> {talk.rec ? t('camera.talk.listening') : t('camera.talk.hold')}
+            <Icon name="mic" /> {talk.rec ? t('camera.talk.listening') : t('camera.talk.hold')}
           </button>
         </>
       )}
 
-      <button className="news-pill" onClick={() => onOpen('feed')}>
-        <Icon name="up" size={16} /> {t('feed.title')}{me.unseen > 0 ? t('camera.news.new', { n: me.unseen }) : ''}
+      <button className={`cam-peek ${me.unseen > 0 ? 'new' : ''}`} onClick={() => onOpen('feed')}>
+        <svg viewBox="0 0 22 12" aria-hidden="true"><path d="M3 9 11 3l8 6" /></svg>
+        <span>{t('camera.peek')}{me.unseen > 0 && <> · <b className="hand">{t('camera.peek.new', { n: me.unseen })}</b></>}</span>
       </button>
+    </div>
+  );
+}
+
+/** Hàng trên cùng: mỗi người một viên, kèm giờ nơi người đó đang ở. Tự vẽ lại nửa phút một lần cho giờ chạy đúng (chỉ hàng này, không vẽ lại cả camera). */
+function FamilyRow({ members }: { members: Member[] }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => { if (!document.hidden) tick((n) => n + 1); }, 30000);
+    return () => clearInterval(iv);
+  }, []);
+  return (
+    <div className="cam-fam-list">
+      {members.map((m) => (
+        <span key={m.id} className="cam-who"><Avatar m={m} size={26} /><b>{shortName(m.name)}</b>{localTime(m.city)}</span>
+      ))}
     </div>
   );
 }
