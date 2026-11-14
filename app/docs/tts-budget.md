@@ -1,4 +1,6 @@
-# Ngân sách TTS (Sweet Home): OpenAI chính, Gemini dự phòng
+# Ngân sách TTS (Sweet Home)
+
+**Từ 14/11/2026: giọng Mây chỉ dùng Gemini.** `TTS_PROVIDER` mặc định là `gemini` (người dùng nghe giọng OpenAI thấy như giọng máy, chốt chỉ dùng Gemini). Gemini hết ngân sách ngày (`GEMINI_TTS_DAILY`, mặc định 70, hạn mức thật Tier 1 chừng 100/ngày cho cả project) hoặc bị 429 thì cuộc gọi dùng giọng máy, không rơi sang OpenAI. Phần OpenAI bên dưới vẫn còn trong code, chỉ chạy khi đặt `TTS_PROVIDER=auto` hoặc `openai`. Chép lời dự phòng OpenAI và chép từng chữ cho podcast (`voiceedit.ts`) chưa đổi.
 
 ## Chọn nhà cung cấp (mới)
 

@@ -169,11 +169,17 @@ function resetOa() {
   voice.gate.used = 0; voice.gate.until = 0; voice.gate.why = null;
 }
 
-test('chọn nhà cung cấp: auto ưu tiên OpenAI, TTS_PROVIDER ép, hỏng thì Gemini rồi giọng máy', () => {
+test('chọn nhà cung cấp: mặc định chỉ Gemini, auto ưu tiên OpenAI, TTS_PROVIDER ép, hỏng thì giọng máy', () => {
   resetOa();
   delete process.env.OPENAI_API_KEY;
+  delete process.env.TTS_PROVIDER;
   assert.equal(voice.pickProvider(), 'gemini');
   process.env.OPENAI_API_KEY = 'sk-test-not-real';
+  assert.equal(voice.pickProvider(), 'gemini'); // có khoá OpenAI vẫn chỉ Gemini
+  voice.gate.block(60_000);
+  assert.equal(voice.pickProvider(), 'device'); // Gemini bị chặn thì không rơi sang OpenAI
+  resetOa();
+  process.env.TTS_PROVIDER = 'auto';
   assert.equal(voice.pickProvider(), 'openai');
   assert.equal(voice.ttsStatus().provider, 'openai');
   process.env.TTS_PROVIDER = 'gemini';

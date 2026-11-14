@@ -41,9 +41,10 @@ const STYLE = (text = '') => process.env.GEMINI_TTS_STYLE || (HANGUL.test(text) 
 // i18n-ok-end
 
 export type Provider = 'openai' | 'gemini';
-const MODE = () => (process.env.TTS_PROVIDER || 'auto').toLowerCase();
+// Giọng Mây chỉ dùng Gemini (chốt 14/11/2026). OpenAI chỉ đọc khi đặt rõ TTS_PROVIDER=openai hoặc auto.
+const MODE = () => (process.env.TTS_PROVIDER || 'gemini').toLowerCase();
 export const openaiKey = () => !!process.env.OPENAI_API_KEY;
-/** Nhà cung cấp nào được bật theo khoá và TTS_PROVIDER (auto | openai | gemini). */
+/** Nhà cung cấp nào được bật theo khoá và TTS_PROVIDER (gemini mặc định | auto | openai). */
 export const providerOn = (p: Provider) => (p === 'openai' ? openaiKey() && MODE() !== 'gemini' : useGemini() && MODE() !== 'openai');
 export const hasVoice = () => providerOn('openai') || providerOn('gemini');
 const styled = () => TTS_MODEL().includes('2.5');
