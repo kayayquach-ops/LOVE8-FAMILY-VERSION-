@@ -6,7 +6,8 @@ import { BGS, DEFAULT_STYLE, FONTS, FRAMES, INKS, PAPERS, TEMPLATES, loadLetterF
 import { fileName, shrinkImage } from './media';
 import { thumb, type Me, type Member } from './shared';
 import { STICKER_LIST, Sticker } from './stickers';
-import { Avatar, Icon, toast } from './ui';
+import { ago } from './time';
+import { Avatar, Doodle, Icon, toast } from './ui';
 import { tap } from './sound';
 import './letters.css';
 
@@ -108,6 +109,29 @@ function Paper({ style, children, className = '', paperRef }: { style: LetterSty
 
 const dayMonth = (d: Date) => d.toLocaleDateString(locale(), { day: '2-digit', month: '2-digit' });
 
+/** Thư tới lúc nào, nói như người: trong ngày thì "3 giờ trước", rồi "hôm qua", "3 ngày trước", xa hơn thì ngày tháng. */
+function when(iso: string) {
+  const d = new Date(iso);
+  const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(iso).setHours(0, 0, 0, 0)) / 86400e3);
+  if (days <= 0) return ago(iso);
+  if (days === 1) return t('letters.yesterday');
+  if (days < 7) return t('time.daysAgo', { n: days });
+  return fmtDate(d, { day: 'numeric', month: 'short' });
+}
+
+// Tem vẽ tay trên phong bì: mỗi lá một hình, cố định theo mã thư. Thẻ nghiêng nhẹ xen kẽ như thư để trên bàn.
+const TEM = ['house', 'bowl', 'sun', 'heart', 'moon', 'star'] as const;
+const temOf = (id: string) => TEM[[...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % TEM.length];
+const TILT = [0, -1.5, 1.2];
+
+function Pen() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4.5 19.5 5.6 15 16.2 4.4l3.4 3.4L9 18.4Z M14 6.6l3.4 3.4" />
+    </svg>
+  );
+}
+
 /** Mặt thư: mẫu trơn hoặc mẫu bưu điện. Viết thì ô chữ sửa được, đọc thì chữ tĩnh. */
 function Face({ layout, mode, to, from, date, body, onBody, title, onTitle, footer, onFooter, area, onFocusBody }: {
   layout: string; mode: 'read' | 'write'; to: string; from: string; date: Date; body: string; onBody?: (v: string) => void;
@@ -194,9 +218,9 @@ export function Letters({ me, start, onClose }: { me: Me; start?: string | null;
     const s = resolveStyle(l.style);
     return (
       <div className="sheet letters" data-view="read">
-        <header className="chat-top">
-          <button className="icon-btn" onClick={() => setView({ type: 'box' })} aria-label={t('common.back')}><Icon name="back" /></button>
-          <div className="chat-title"><b>{mine ? t('letters.toName', { name: to?.name ?? t('common.someone') }) : t('letters.fromName', { name: from?.name ?? t('common.someone') })}</b></div>
+        <header className="lt-bar">
+          <button className="lt-x" onClick={() => setView({ type: 'box' })} aria-label={t('common.back')}><Icon name="back" /></button>
+          <h1 className="display lt-bar-title">{mine ? t('letters.toName', { name: to?.name ?? t('common.someone') }) : t('letters.fromName', { name: from?.name ?? t('common.someone') })}</h1>
         </header>
         <Reading letter={l} fresh={view.fresh} bg={s.bg.css}>
           <Paper style={l.style} className="lt-read">
@@ -214,42 +238,49 @@ export function Letters({ me, start, onClose }: { me: Me; start?: string | null;
   }
 
   const list = lists[box];
+  const someone = t('common.someone');
   return (
-    <div className="sheet letters" data-view="box">
-      <header className="chat-top">
-        <button className="icon-btn" onClick={onClose} aria-label={t('common.back')}><Icon name="back" /></button>
-        <div className="chat-title"><b>{t('letters.title')}</b></div>
+    <div className="sheet letters oly" data-view="box">
+      <header className="lt-head">
+        <h1 className="display">{t('letters.title')}</h1>
+        <button className="lt-x" onClick={onClose} aria-label={t('common.close')}><Icon name="down" /></button>
       </header>
       <div className="lt-tabs" role="tablist">
         {(['in', 'out'] as const).map((k) => (
           <button key={k} role="tab" aria-selected={box === k} className={box === k ? 'on' : ''} onClick={() => setBox(k)}>
             {t(k === 'in' ? 'letters.in' : 'letters.out')}
-            {k === 'in' && !!lists.in?.some((x) => !x.readAt) && <i className="lt-dot" aria-hidden />}
+            {k === 'in' && !!lists.in?.some((x) => !x.readAt) && <i className="lt-tdot" aria-hidden />}
           </button>
         ))}
       </div>
       <div className="lt-list">
-        {list === null && <div className="chat-empty">{t('common.loading')}</div>}
-        {list?.length === 0 && <div className="chat-empty">{t(box === 'in' ? 'letters.empty.in' : 'letters.empty.out')}</div>}
-        {list?.map((l) => {
-          const other = byId(box === 'in' ? l.fromId : l.toId);
-          const s = resolveStyle(l.style);
+        {list === null && <div className="lt-empty">{t('common.loading')}</div>}
+        {list?.length === 0 && <div className="lt-empty"><Doodle name="mail" size={44} />{t(box === 'in' ? 'letters.empty.in' : 'letters.empty.out')}</div>}
+        {list?.map((l, i) => {
+          const from = byId(l.fromId), to = byId(l.toId);
           const unread = box === 'in' && !l.readAt;
+          const words = l.body.replace(/\s+/g, ' ').trim();
+          // Thư không hẹn giờ nên lúc nào cũng "đã tới"; thư mình gửi mà người nhận đã mở thì báo "đã đọc".
+          const status = box === 'out' && l.readAt && l.toId !== l.fromId
+            ? t('letters.seen', { when: when(l.readAt) })
+            : t('letters.arrived', { when: when(l.createdAt) });
           return (
-            <button key={l.id} className={`lt-row${unread ? ' unread' : ''}`} onClick={() => open(l)}>
-              <span className="lt-mini" style={{ background: s.bg.css }}><i style={{ background: s.paper.c, borderColor: s.ink.c }} /></span>
-              <span className="lt-meta">
-                <b>{other?.name ?? t('common.someone')}</b>
-                <span className="lt-prev">{l.body.replace(/\s+/g, ' ').slice(0, 70) || t('letters.photoOnly')}</span>
+            <button key={l.id} className={`lt-card${unread ? ' unread' : ''}`} style={{ '--tilt': `${TILT[i % TILT.length]}deg` } as CSSProperties} onClick={() => open(l)}>
+              <span className="lt-card-in">
+                <span className="lt-card-text">
+                  <b>{l.fromId === l.toId ? t('letters.toSelf') : t('letters.fromTo', { from: from?.name ?? someone, to: to?.name ?? someone })}</b>
+                  <span className="lt-status">{status}</span>
+                  <span className="lt-words">{words.slice(0, 120) || t('letters.photoOnly')}</span>
+                </span>
+                <span className="lt-tem" aria-hidden><Doodle name={temOf(l.id)} size={30} /></span>
               </span>
-              <span className="lt-when">{fmtDate(new Date(l.createdAt), { day: 'numeric', month: 'short' })}</span>
               {unread && <i className="lt-dot" aria-label={t('letters.unread')} />}
             </button>
           );
         })}
       </div>
       <div className="lt-foot">
-        <button className="btn" onClick={() => { tap(); setView({ type: 'write' }); }}>{t('letters.write')}</button>
+        <button className="btn" onClick={() => { tap(); setView({ type: 'write' }); }}><Pen />{t('letters.write')}</button>
       </div>
     </div>
   );
@@ -439,10 +470,10 @@ function Write({ me, others, to: first, onBack, onSent }: { me: Me; others: Memb
 
   return (
     <div className="sheet letters" data-view="write" style={vh ? { height: vh } : undefined}>
-      <header className="chat-top">
-        <button className="icon-btn" onClick={onBack} aria-label={t('common.back')}><Icon name="back" /></button>
-        <div className="chat-title"><b>{t('letters.new')}</b></div>
-        <button className="chip lt-send" disabled={!canSend} onClick={send}>{t('letters.send')}</button>
+      <header className="lt-bar">
+        <button className="lt-x" onClick={onBack} aria-label={t('common.back')}><Icon name="back" /></button>
+        <h1 className="display lt-bar-title">{t('letters.new')}</h1>
+        <button className="lt-send" disabled={!canSend} onClick={send}>{t('letters.send')}</button>
       </header>
       <div className="lt-to" role="radiogroup" aria-label={t('letters.pickTo')}>
         {others.map((m) => (
