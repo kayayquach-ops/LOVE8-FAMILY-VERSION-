@@ -41,13 +41,59 @@ export function Icon({ name, size }: { name: keyof typeof PATHS | string; size?:
   );
 }
 
-/** Nền sương mờ: vùng sáng trắng, hồng đào và xám tím trôi rất chậm, phủ một lớp hạt mịn như ảnh phim. */
+/** Nền giấy trắng phủ hạt rất mịn. Kèm bộ lọc #hl-wob làm nét vẽ tay hơi run như vẽ bút thật (Doodle dùng). */
 export function Mesh() {
   return (
     <div className="mist" aria-hidden>
       <i className="m1" /><i className="m2" /><i className="m3" /><i className="m4" />
       <b className="grain" />
+      <svg width="0" height="0" style={{ position: 'absolute' }}>
+        <filter id="hl-wob" x="-10%" y="-10%" width="120%" height="120%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="7" />
+          <feDisplacementMap in="SourceGraphic" scale="2.2" />
+        </filter>
+      </svg>
     </div>
+  );
+}
+
+// Hình vẽ tay nét mực (bộ giao diện 14/11). Dùng cho trang trí, trạng thái trống, tem thư, ô tích; nút bấm thường vẫn dùng Icon.
+const DOODLES: Record<string, ReactNode> = {
+  heart: <path d="M12.2 20.4C6.3 16 2.6 12.4 3.2 8.3 3.8 4.6 8.6 3.6 11.7 7.6 14.4 3.4 19.9 4 20.8 7.8 21.7 11.6 18.1 15.6 11.6 20.9" />,
+  heartFill: <path fill="currentColor" d="M12.2 20.4C6.3 16 2.6 12.4 3.2 8.3 3.8 4.6 8.6 3.6 11.7 7.6 14.4 3.4 19.9 4 20.8 7.8 21.7 11.6 18.1 15.6 12.2 20.4Z" />,
+  plane: <path d="M2.8 11.2 20.9 3.6 15.6 20.3 11.4 13.1Z M11.4 13.1 20.9 3.6 M11.4 13.1 10.9 18.4 13.4 16.2" />,
+  house: <><path d="M3.4 11.4 12.1 4.1 20.7 11.2 M5.6 9.8V20.2H18.6V9.6 M10 20.1V14.6H14.2V20 M16.4 7.4V4.4H18.4V9" /><path d="M17.6 2.6c.8-.6.4-1.2 1.2-1.6" /></>,
+  moon: <path d="M15.2 3.4A8.6 8.6 0 1 0 20.7 15 7 7 0 0 1 15.2 3.4Z" />,
+  sun: <><circle cx="12" cy="12" r="4.3" /><path d="M12 2.6v2.6M12 18.8v2.6M2.6 12h2.6M18.8 12h2.6M5.3 5.4l1.8 1.8M16.9 17l1.8 1.8M5.4 18.7l1.8-1.8M17 7.1l1.8-1.8" /></>,
+  bowl: <path d="M3.2 11.6H20.8C20.4 16.6 16.8 19.8 12 19.8S3.6 16.6 3.2 11.6Z M8 21H16.1 M9 8.6C8.2 7.4 9.8 6.6 9 5.2 M12.4 8.6C11.6 7.2 13.2 6.2 12.4 4.6 M15.8 8.4C15 7.4 16.6 6.4 15.8 5.2" />,
+  mail: <path d="M3.2 6.2H20.8V18.2H3.2Z M3.6 6.6 12 13.2 20.4 6.4" />,
+  star: <path d="M12 2.8 14.7 8.8 21.1 9.3 16.2 13.4 17.8 20 12.1 16.4 6.3 19.8 7.9 13.3 2.9 9.3 9.4 8.7Z" />,
+  mic: <><path d="M9.2 6.4C9.2 4.6 10.4 3.4 12 3.4S14.8 4.6 14.8 6.4V11.4C14.8 13.2 13.6 14.4 12 14.4S9.2 13.2 9.2 11.4Z" /><path d="M5.8 11.4C6 15 8.6 17.6 12 17.6S18 15 18.2 11.4M12 17.8V20.8" /></>,
+  camera: <><path d="M4 8h3.2L9 5.5h6L16.8 8H20v11H4Z" /><circle cx="12" cy="13.2" r="3.4" /></>,
+  film: <><path d="M4.4 4.6H19.6V19.4H4.4Z M8 4.8V19.2 M16 4.8V19.2" /><path d="M4.6 9H7.8M4.6 15H7.8M16.2 9H19.4M16.2 15H19.4" /></>,
+  arrow: <path d="M21 3.6C15.4 3.2 9 6 5.6 13.8 M3.2 9.6 5.4 14.2 9.6 12.4" />,
+  box: <path d="M5 5.4C9.5 4.8 14.6 4.9 19.2 5.2 19.4 9.8 19.3 14.6 18.9 19 14.4 19.4 9.6 19.3 4.8 18.8 4.6 14.4 4.7 9.8 5 5.4Z" />,
+  check: <><path d="M5 5.4C9.5 4.8 14.6 4.9 19.2 5.2 19.4 9.8 19.3 14.6 18.9 19 14.4 19.4 9.6 19.3 4.8 18.8 4.6 14.4 4.7 9.8 5 5.4Z" /><path stroke="var(--accent)" strokeWidth="2.4" d="M7.6 12.4 10.8 15.6 21.6 3.6" /></>,
+  underline: <path d="M2 14C7 11.6 14 11.4 22 12.8" />,
+};
+
+export function Doodle({ name, size = 24, className, wobble = true }: { name: keyof typeof DOODLES | string; size?: number; className?: string; wobble?: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={`doodle${className ? ` ${className}` : ''}`} aria-hidden>
+      <g filter={wobble ? 'url(#hl-wob)' : undefined}>{DOODLES[name]}</g>
+    </svg>
+  );
+}
+
+// Sao giấy may mắn kiểu học trò gấp bỏ lọ: thân phồng màu giấy, viền mực, nếp gấp mờ. Màu lệch nhẹ khỏi viền như tô tay.
+export const LUCKY_STAR_PATH = 'M12 3C13 3 13.6 6.4 14.6 7.6 15.6 8.6 20.4 8.4 20.8 9.6 21.2 10.8 17.4 13 17 14.4 16.6 15.8 18.6 20.2 17.6 20.9 16.6 21.6 13.3 18.6 12 18.6 10.7 18.6 7.4 21.6 6.4 20.9 5.4 20.2 7.4 15.8 7 14.4 6.6 13 2.8 10.8 3.2 9.6 3.6 8.4 8.4 8.6 9.4 7.6 10.4 6.4 11 3 12 3Z';
+export function LuckyStar({ color, size = 24, className }: { color: string; size?: number; className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden style={{ overflow: 'visible', flex: 'none' }}>
+      <path d={LUCKY_STAR_PATH} fill={color} transform="translate(.9 .9)" />
+      <path d={LUCKY_STAR_PATH} fill="none" stroke="var(--ink)" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M12 12.6 12 5.4M12 12.6 18.6 10M12 12.6 16.4 19.4M12 12.6 7.6 19.4M12 12.6 5.4 10" fill="none" stroke="var(--ink)" strokeWidth="1" strokeLinecap="round" opacity=".4" />
+    </svg>
   );
 }
 

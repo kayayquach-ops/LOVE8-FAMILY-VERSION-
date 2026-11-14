@@ -4,17 +4,26 @@
 @font-face { font-family: 'BVP'; src: url('/fonts/BeVietnamPro-Light.woff') format('woff'), url('/fonts/BeVietnamPro-Light.ttf') format('truetype'); font-weight: 300; font-display: swap; }
 @font-face { font-family: 'Script'; src: url('/fonts/greatvibes-sub.ttf') format('truetype'); font-display: block; }
 
+/* Bộ giao diện "vở ô ly, mực tím" (14/11/2026, bản mẫu app/docs/ui-moi/ban-mau.html):
+   giấy trắng, mực đen cho chữ và nút chính, mực tím (--accent) chỉ cho nét viết tay, chữ nhấn, dấu tích. */
 :root {
-  --bg: #ECEAE8;
-  --paper: #FBF7F0;
-  --ink: #2B2723;
-  --soft: #5A534B;
-  --muted: #8A8278;
-  --line: rgba(43, 39, 35, 0.12);
-  --accent: #9A5A44;
-  --accent-soft: #F1E2D8;
-  --warn: #B86A2E;
-  --glass: rgba(255, 255, 255, 0.6);
+  --bg: #FBFBF8;
+  --paper: #FFFFFF;
+  --ink: #17151C;
+  --soft: #5D5968;
+  --muted: #8F8A9B;
+  --line: rgba(23, 21, 28, 0.1);
+  --accent: #5B3CC4;
+  --accent-soft: #EEE9FC;
+  --warn: #B8562E;
+  --glass: rgba(255, 255, 255, 0.78);
+  --oly: #E6E1F4;
+  --oly-dam: #CFC6EE;
+  --air-red: #D9473A;
+  --air-blue: #2F5BB7;
+  --s-tim: #6F4FD8; --s-do: #E2574C; --s-vang: #F0B23A; --s-la: #5FA35A; --s-bien: #3D7DD8; --s-hong: #E48AAE;
+  --f-display: 'Bricolage Grotesque Variable', 'BVP', 'Noto Sans KR', system-ui, sans-serif;
+  --f-hand: 'Patrick Hand', 'Gaegu', 'BVP', cursive;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -233,8 +242,8 @@ textarea.field { resize: none; text-align: left; line-height: 1.5; }
 .jar-modal-box { width: 100%; max-width: 340px; background: var(--paper); border-radius: 28px; padding: 28px 22px 22px; display: flex; flex-direction: column; align-items: center; }
 
 /* Nền sương mờ theo ảnh tham khảo: trắng sáng giữa, hồng đào dưới trái, xám tím dưới phải, hạt phim mịn. */
-.mist { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background: linear-gradient(170deg, #CDD3D8 0%, #E7E6E5 40%, #E9DED6 75%, #C9C3CB 100%); }
-.mist i { position: absolute; border-radius: 50%; }
+.mist { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background: var(--bg); }
+.mist i { position: absolute; border-radius: 50%; display: none; }
 /* Không dùng filter blur: vùng mờ dựng sẵn bằng radial-gradient nhiều nấc. Nền đứng yên: trên iPhone, lớp gradient lớn trôi liên tục kéo cả trang xuống 30 khung hình mỗi giây và chữ hiện bị giật. */
 .mist .m1 { width: 120vmax; height: 120vmax; left: -30vmax; top: -10vmax; background: radial-gradient(closest-side, rgba(255,255,255,.9), rgba(255,255,255,.55) 45%, rgba(255,255,255,.18) 75%, rgba(255,255,255,0)); }
 .mist .m2 { width: 100vmax; height: 100vmax; left: -45vmax; bottom: -40vmax; background: radial-gradient(closest-side, rgba(236,196,172,.8), rgba(236,196,172,.48) 45%, rgba(236,196,172,.15) 75%, rgba(236,196,172,0)); }
@@ -243,7 +252,7 @@ textarea.field { resize: none; text-align: left; line-height: 1.5; }
 @keyframes mist2 { to { transform: translate3d(14vw, -12vh, 0); } }
 @keyframes mist3 { to { transform: translate3d(-16vw, -8vh, 0); } }
 /* Hạt phim đứng yên, không blend: lớp phủ toàn màn hình mà blend hay chạy là Safari phải vẽ lại cả trang. */
-.mist .grain { position: absolute; inset: 0; opacity: .07;
+.mist .grain { position: absolute; inset: 0; opacity: .035;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
   }
 @media (prefers-reduced-motion: reduce) { .mist i { animation: none; } }
@@ -540,3 +549,14 @@ html[lang="ko"] .bubble { word-break: keep-all; overflow-wrap: anywhere; }
 .set-switch i.on { background: var(--accent); }
 .set-switch i u { position: absolute; left: 3px; top: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform .18s; }
 .set-switch i.on u { transform: translateX(20px); }
+
+/* Bộ giao diện 14/11: vở ô ly, mực tím. Dùng chung cho mọi màn.
+   .display: tiêu đề chữ thường, đậm, ngắn. .hand: cụm chữ viết tay mực tím (chữ nhấn trong tiêu đề, ghi chú nhỏ).
+   .oly: nền giấy có lưới ô ly nhạt (màn dựng nhà, lọ sao, thư). .btn là nút đen chính, .btn.line là nút viền. */
+.display { font-family: var(--f-display); font-weight: 800; letter-spacing: -0.035em; line-height: 1; text-wrap: balance; }
+.hand { font-family: var(--f-hand); font-weight: 400; color: var(--accent); letter-spacing: 0; }
+.display .hand { font-size: 1.12em; line-height: .9; }
+.oly { background-color: var(--bg); background-image: linear-gradient(var(--oly) 1px, transparent 1px), linear-gradient(90deg, var(--oly) 1px, transparent 1px); background-size: 18px 18px; }
+.btn { font-weight: 600; }
+.btn.line { background: transparent; color: var(--ink); border: 0; box-shadow: inset 0 0 0 1.5px var(--ink); }
+.doodle { fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; overflow: visible; flex: none; }
