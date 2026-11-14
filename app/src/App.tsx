@@ -184,7 +184,7 @@ export function App() {
       {sheet === 'settings' && <Settings me={me} onClose={() => setSheet(null)} onProfile={() => setSheet('family')} onMascot={() => setSheet('mascot')} />}
       {sheet === 'mascot' && <MascotSheet me={me} onClose={() => setSheet(null)} onSaved={() => void loadMe().catch(() => {})} />}
       {sheet === 'letters' && <Letters me={me} onClose={() => setSheet(null)} />}
-      {sheet === 'recap' && <Recap me={me} onClose={() => setSheet(null)} />}
+      {sheet === 'recap' && <Recap me={me} onClose={() => setSheet(null)} onCamera={() => { setSheet(null); setTab('camera'); }} />}
       {sheet === 'family' && <Family me={me} onClose={() => setSheet(null)} onChanged={load} onSettings={() => setSheet('settings')} onCallMember={(id) => { setSheet(null); startFaceTime(id); }} />}
       {sheet === 'podcast' && <Podcast me={me} start={podcastId} onClose={() => setSheet(null)} onCall={() => setCalling(true)} />}
       {facetime && <FaceTime me={me} to={callTo} onClose={() => { setFacetime(false); setSkipRoom(room?.id ?? null); }} />}
