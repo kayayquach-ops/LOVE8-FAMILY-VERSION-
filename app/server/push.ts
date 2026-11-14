@@ -9,7 +9,8 @@ import { errorBody, langOf, LANGS, tReq, tServer, type Lang } from './i18n.ts';
 import { upcoming } from './calendar.ts';
 import { weekKey } from './recap.ts';
 
-export type PushKind = 'call' | 'chat' | 'post' | 'calendar' | 'weekly' | 'letter';
+/** relay: lời nhắn khó nói gửi qua Mây, luôn bật (không có công tắc riêng, mỗi lời nhắn chỉ một thông báo cho đúng người nhận). */
+export type PushKind = 'call' | 'chat' | 'post' | 'calendar' | 'weekly' | 'letter' | 'relay';
 export type PushPayload = {
   kind: PushKind;
   title: string;
@@ -23,8 +24,9 @@ export type PushPayload = {
 /** Chữ của thông báo viết theo ngôn ngữ của từng người nhận (members.lang). */
 type Payload = PushPayload | ((lang: Lang) => PushPayload);
 
-const KINDS: PushKind[] = ['call', 'chat', 'post', 'calendar', 'weekly', 'letter'];
-type Prefs = Record<PushKind, boolean>;
+type PrefKind = Exclude<PushKind, 'relay'>;
+const KINDS: PrefKind[] = ['call', 'chat', 'post', 'calendar', 'weekly', 'letter'];
+type Prefs = Record<PrefKind, boolean>;
 const DEFAULT_PREFS: Prefs = { call: true, chat: true, post: true, calendar: true, weekly: true, letter: true };
 // Thư trước đây đi chung công tắc tin nhắn: ai đã tắt tin nhắn mà chưa chọn gì cho thư thì thư vẫn tắt như cũ.
 const withLetter = (p: Partial<Prefs>): Partial<Prefs> => (p.letter === undefined && p.chat === false ? { ...p, letter: false } : p);
@@ -81,7 +83,7 @@ async function deliver(subs: SubRow[], make: Payload) {
     const opts = { TTL: payload.ttl ?? 6 * 3600, urgency: payload.urgency ?? 'normal' } as const;
     let prefs: Partial<Prefs> = {};
     try { if (s.prefs) prefs = JSON.parse(s.prefs); } catch {}
-    if (withLetter(prefs)[payload.kind] === false) return;
+    if (payload.kind !== 'relay' && withLetter(prefs)[payload.kind] === false) return;
     try {
       await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body, opts);
     } catch (e: any) {
@@ -155,6 +157,23 @@ export function notifyReply(postId: string, memberId: string, what: { text?: str
       body: what.text ? short(what.text) : undefined, tag: `reply-${postId}`, open: 'post',
     }));
   })().catch((e) => console.error('[push]', e));
+}
+
+/** Lời nhắn khó nói từ cuộc gọi với Mây (bảng relays): mỗi lời nhắn một thông báo cho đúng người nhận, chữ AI viết theo giọng người gửi.
+ *  pushed_at đặt trong cùng câu update nên gọi lặp hay nhiều chỗ cùng gọi cũng không bao giờ gửi hai lần. Chạm vào thì mở app. */
+export async function pushRelays(callId: string) {
+  const { rows } = await pool.query(
+    `update relays r set pushed_at = now() from members f, members t
+     where r.call_id = $1 and r.pushed_at is null and f.id = r.from_id and t.id = r.to_id
+     returning r.id, r.to_id, r.push, f.name from_name, t.name to_name`, [callId]);
+  for (const r of rows) {
+    await notifyMembers([r.to_id], (l) => ({
+      kind: 'relay', title: tServer(l, 'push.relay.title', { name: who(l, r.from_name) }),
+      body: r.push || tServer(l, 'push.relay.body', { name: who(l, r.from_name), to: r.to_name || '' }),
+      tag: `relay-${r.id}`, ttl: 3 * 86400,
+    }));
+  }
+  return rows.length;
 }
 
 // Tin nhắn: gộp các tin liên tiếp của một người, chờ yên 4 giây (tối đa 12 giây) rồi mới gửi.
