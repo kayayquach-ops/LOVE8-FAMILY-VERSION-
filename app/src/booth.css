@@ -12,7 +12,7 @@
 @import '@fontsource/patrick-hand/400.css';
 
 /* Photobooth: chọn khung, dải ảnh. Tách riêng khỏi styles.css. */
-.ft-seg { display: flex; padding: 3px; border-radius: 999px; background: rgba(255,255,255,.6); border: 1px solid var(--line); transition: opacity .3s; }
+.ft-seg { display: flex; padding: 3px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); transition: opacity .3s; }
 .ft-seg button { padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--ink); }
 .ft-seg button.on { background: var(--ink); color: #fff; }
 .ft-seg.dim { opacity: .45; }

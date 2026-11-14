@@ -38,7 +38,7 @@ export function NotifyAsk() {
   return (
     <div className="nask" role="dialog" aria-modal="true" aria-label={t('notifyAsk.title')}>
       <div className="nask-card">
-        <h2>{t('notifyAsk.title')}</h2>
+        <h2 className="display">{t('notifyAsk.title')}</h2>
         <p>{t('notifyAsk.body')}</p>
         <button className="btn" disabled={busy} onClick={yes}>{t('notifyAsk.yes')}</button>
         <button className="link" onClick={later}>{t('common.later')}</button>

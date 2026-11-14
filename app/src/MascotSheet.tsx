@@ -54,8 +54,8 @@ export function MascotSheet({ me, onClose, onSaved }: { me: Me; onClose: () => v
   return (
     <div className="sheet">
       <div className="top" style={{ padding: 'calc(var(--safe-top) + 10px) 16px 6px' }}>
-        <button className="icon-btn" onClick={onClose} aria-label={t('common.close')}><Icon name="down" /></button>
-        <div style={{ flex: 1, textAlign: 'center', fontWeight: 500 }}>{t('mascot.title')}</div>
+        <button className="icon-btn" onClick={onClose} aria-label={t('common.close')}><Icon name="back" /></button>
+        <div className="sheet-title">{t('mascot.title')}</div>
         <span style={{ width: 44 }} />
       </div>
       <div className="scroll mascot-edit">

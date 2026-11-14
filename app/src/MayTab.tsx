@@ -15,7 +15,7 @@ export function MayTab({ me, callDue, onCall, onPodcast, onCustomize }: { me: Me
         <div className="may-mascot"><MascotAny mode={callDue ? 'wave' : 'idle'} size={190} /></div>
         {callDue && <i className="may-ring" aria-hidden />}
       </div>
-      <h1 className="may-title">{callDue ? t('may.due.title', { name: first }) : t('may.title')}</h1>
+      <h1 className={`display may-title${callDue ? ' due' : ''}`}>{callDue ? t('may.due.title', { name: first }) : <span className="hand">{t('may.title')}</span>}</h1>
       <p className="may-sub">{callDue ? t('may.due.sub') : t('may.wait.sub')}</p>
       <button className="btn may-call" onClick={() => { tap(); onCall(); }}>
         <Icon name="phone" size={22} /> {callDue ? t('call.pickUp') : t('may.call')}

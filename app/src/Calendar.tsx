@@ -4,7 +4,7 @@ import { fmtDate, fmtDayMonth, monthLabel, shownLang, t } from './i18n';
 import type { Me } from './shared';
 import { cached, remember } from './cache';
 import { tap } from './sound';
-import { Icon, toast } from './ui';
+import { Doodle, Icon, toast } from './ui';
 import { lunarEventInSolarYear, nextOccurrence, solarToLunar } from './lunar';
 
 export type CalEvent = {
@@ -28,8 +28,8 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
   return (
     <div className="sheet">
       <div className="top" style={{ padding: 'calc(var(--safe-top) + 10px) 16px 6px' }}>
-        <button className="icon-btn" onClick={onClose} aria-label={t('common.close')}><Icon name="down" /></button>
-        <div style={{ flex: 1, textAlign: 'center', fontWeight: 500 }}>{title}</div>
+        <button className="icon-btn" onClick={onClose} aria-label={t('common.close')}><Icon name="back" /></button>
+        <div className="sheet-title">{title}</div>
         <span style={{ width: 44 }} />
       </div>
       <div className="scroll" style={{ flex: 1, padding: '6px 20px calc(var(--safe-bottom) + 30px)' }}>{children}</div>
@@ -61,13 +61,18 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
   const move = (d: number) => setYm(({ y, m }) => { const t = new Date(y, m + d, 1); return { y: t.getFullYear(), m: t.getMonth() }; });
 
   const byDay = useMemo(() => {
-    const map = new Map<number, number>();
+    // Mỗi ngày: số sự kiện, và có sự kiện lớn (sinh nhật, đám cưới, kỷ niệm, ngày âm như giỗ, Tết) thì vẽ sao.
+    const map = new Map<number, { n: number; star: boolean }>();
+    const put = (day: number, e: CalEvent) => {
+      const v = map.get(day) ?? { n: 0, star: false };
+      map.set(day, { n: v.n + 1, star: v.star || e.lunar || e.kind !== 'other' });
+    };
     for (const e of events ?? []) {
       if (e.lunar) {
         for (const s of lunarEventInSolarYear(e.day, e.month, !!e.leap, ym.y)) {
-          if (s.month === ym.m + 1) map.set(s.day, (map.get(s.day) ?? 0) + 1);
+          if (s.month === ym.m + 1) put(s.day, e);
         }
-      } else if (e.month === ym.m + 1) map.set(e.day, (map.get(e.day) ?? 0) + 1);
+      } else if (e.month === ym.m + 1) put(e.day, e);
     }
     return map;
   }, [events, ym]);
@@ -160,20 +165,20 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
             {Array.from({ length: total }, (_, i) => {
               const d = i + 1;
               const today = isThisMonth && d === now.getDate();
-              const n = byDay.get(d) ?? 0;
+              const ev = byDay.get(d);
               const l = lunarOf[i];
               const mark = l.day === 1 || l.day === 15;
               return (
                 <div key={d} style={{ height: 54, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
                   <div style={{
                     width: 32, height: 32, borderRadius: 16, display: 'grid', placeItems: 'center', fontSize: 15,
-                    background: today ? 'var(--accent)' : 'transparent', color: today ? '#fff' : 'var(--ink)', fontWeight: today ? 600 : 400,
+                    background: today ? 'var(--ink)' : 'transparent', color: today ? 'var(--paper)' : 'var(--ink)', fontWeight: today ? 600 : 400,
                   }}>{d}</div>
                   <div style={{ fontSize: 10, lineHeight: '11px', height: 11, color: 'var(--muted)', fontWeight: mark ? 700 : 400, opacity: mark ? 1 : 0.7 }}>
                     {mark ? `${l.day}/${l.month}${l.leap ? t('calendar.leapMark') : ''}` : l.day}
                   </div>
-                  <div style={{ height: 5, display: 'flex', gap: 3 }}>
-                    {Array.from({ length: Math.min(n, 3) }, (_, k) => <span key={k} style={{ width: 5, height: 5, borderRadius: 3, background: 'var(--accent)' }} />)}
+                  <div style={{ height: 8, display: 'flex', alignItems: 'center', gap: 3, color: 'var(--accent)' }}>
+                    {ev?.star ? <Doodle name="star" size={9} wobble={false} /> : Array.from({ length: Math.min(ev?.n ?? 0, 3) }, (_, k) => <span key={k} style={{ width: 5, height: 5, borderRadius: 3, background: 'var(--accent)' }} />)}
                   </div>
                 </div>
               );
@@ -192,7 +197,8 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
             const other = e.memberId !== me.me.id;
             const wish = onWish && other && (e.kind === 'birthday' || e.kind === 'wedding');
             return (
-              <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0', borderBottom: '1px solid var(--line)', minHeight: 44 }}>
+              <div key={e.id} className="cal-row">
+                <div className="cal-stamp" aria-hidden><b className="display">{occ.day}</b><small>{monthLabel(occ.month - 1)}</small></div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div>{e.title}</div>
                   <div className="muted" style={{ fontSize: 13 }}>

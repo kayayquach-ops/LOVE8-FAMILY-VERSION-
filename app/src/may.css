@@ -2,18 +2,19 @@
 .may { display: flex; flex-direction: column; align-items: center; padding: calc(var(--safe-top) + 28px) 24px calc(var(--safe-bottom) + 110px); text-align: center; }
 .may-hero { position: relative; width: 220px; height: 220px; display: grid; place-items: center; margin-top: 8px; }
 .may-mascot { position: relative; z-index: 1; }
-.may-ring { position: absolute; inset: 14px; border-radius: 50%; border: 2px solid var(--accent); opacity: .6; animation: call-ring 2s ease-out infinite; }
-.may-title { font-size: 26px; font-weight: 500; margin: 10px 0 6px; letter-spacing: -.3px; }
+.may-ring { position: absolute; inset: 14px; border-radius: 50%; border: 2px solid var(--oly-dam); animation: call-ring 2s ease-out infinite; }
+.may-title { font-size: 38px; margin: 10px 0 8px; }
+.may-title.due { font-size: 30px; line-height: 1.1; }
 .may-sub { font-size: 16px; color: var(--soft); line-height: 1.5; max-width: 300px; margin: 0 0 22px; }
 .may-call { max-width: 300px; display: flex; align-items: center; justify-content: center; gap: 10px; }
 .may-note { margin: 14px 0 0; max-width: 280px; font-size: 14px; }
 .may-more { margin-top: 28px; }
-.tab .badge.dot { width: 9px; height: 9px; min-width: 0; padding: 0; right: 14px; top: 0; border-radius: 50%; }
+.tab .badge.dot { width: 9px; height: 9px; min-width: 0; padding: 0; right: calc(50% - 16px); top: 4px; border-radius: 50%; }
 
 /* Hỏi bật thông báo khi mới vào app */
-.nask { position: fixed; inset: 0; z-index: 80; display: flex; align-items: flex-end; justify-content: center; padding: 16px 16px calc(var(--safe-bottom) + 16px); background: rgba(40, 30, 20, .35); animation: slowFade .25s ease both; }
-.nask-card { width: 100%; max-width: 420px; background: var(--bg); border-radius: 24px; padding: 24px 22px 18px; text-align: center; display: flex; flex-direction: column; gap: 10px; animation: chatIn .25s ease-out both; }
-.nask-card h2 { margin: 0; font-size: 21px; font-weight: 500; }
+.nask { position: fixed; inset: 0; z-index: 80; display: flex; align-items: flex-end; justify-content: center; padding: 16px 16px calc(var(--safe-bottom) + 16px); background: rgba(23, 21, 28, .35); animation: slowFade .25s ease both; }
+.nask-card { width: 100%; max-width: 420px; background: var(--paper); border-radius: 22px; box-shadow: inset 0 0 0 1px var(--line); padding: 26px 22px 18px; text-align: center; display: flex; flex-direction: column; gap: 10px; animation: chatIn .25s ease-out both; }
+.nask-card h2 { margin: 0; font-size: 26px; }
 .nask-card p { margin: 0 0 8px; color: var(--soft); font-size: 15px; line-height: 1.5; }
 .may { position: relative; }
 .may-edit { position: absolute; top: calc(var(--safe-top) + 12px); right: 16px; }
@@ -22,9 +23,9 @@
 .mascot-edit { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 0 20px calc(var(--safe-bottom) + 30px); }
 .mascot-stage { height: 232px; display: grid; place-items: center; }
 .mascot-shapes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: 100%; max-width: 380px; margin-top: 6px; }
-.mascot-shape { aspect-ratio: 1; border-radius: 22px; background: rgba(255,255,255,.6); border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden; transition: transform .15s, background-color .2s, box-shadow .2s; }
+.mascot-shape { aspect-ratio: 1; border-radius: 22px; background: var(--paper); border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden; transition: transform .15s, background-color .2s, box-shadow .2s; }
 .mascot-shape:active { transform: scale(.94); transition-duration: 0s; }
-.mascot-shape.on { background: #fff; box-shadow: 0 0 0 2px var(--ink); }
+.mascot-shape.on { box-shadow: 0 0 0 2px var(--ink); }
 .mascot-shape img { width: 100%; height: 100%; object-fit: contain; }
 .mascot-shape i { width: 40%; aspect-ratio: 1; border-radius: 50%; background: var(--accent-soft); }
 .mascot-name { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 8px; margin-top: 24px; }

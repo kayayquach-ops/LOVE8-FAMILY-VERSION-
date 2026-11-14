@@ -16,8 +16,8 @@ export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose
   return (
     <div className="sheet">
       <div className="top" style={{ padding: 'calc(var(--safe-top) + 10px) 16px 6px' }}>
-        <button className="icon-btn" onClick={onClose} aria-label={t('common.close')}><Icon name="down" /></button>
-        <div style={{ flex: 1, textAlign: 'center', fontWeight: 500 }}>{t('settings.title')}</div>
+        <button className="icon-btn" onClick={onClose} aria-label={t('common.close')}><Icon name="back" /></button>
+        <div className="sheet-title">{t('settings.title')}</div>
         <span style={{ width: 44 }} />
       </div>
       <div className="scroll" style={{ flex: 1, padding: '6px 20px calc(var(--safe-bottom) + 30px)' }}>
