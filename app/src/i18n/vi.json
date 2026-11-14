@@ -304,6 +304,7 @@
   "home.status.sent": "gửi ảnh {ago}",
   "home.status.online": "đang mở app",
   "home.status.seen": "ghé app {ago}",
+  "home.nudge": "lâu rồi {name} chưa ghé, gọi hỏi thăm nhé",
   "home.invite.parents": "mời bố mẹ vào nhà",
   "home.invite.kids": "mời con vào nhà",
   "home.invite.more": "Mời thêm người",

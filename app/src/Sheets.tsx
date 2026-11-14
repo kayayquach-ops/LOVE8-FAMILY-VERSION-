@@ -3,7 +3,8 @@ import { api } from './api';
 import { CityPicker } from './CityPicker';
 import { copyCode, shareInvite } from './Onboarding';
 import { shrinkImage } from './media';
-import { cityOf, SILENT_HOURS, type Me, type Week } from './shared';
+import { SILENT_HOURS, type Me, type Week } from './shared';
+import { cityName, usePlaceNames } from './placeName';
 import { t, useLang } from './i18n';
 import { buzz, sfx, tap } from './sound';
 import { ago, hoursSince, localTime, weather } from './time';
@@ -24,6 +25,7 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
 
 // Gia đình: từng người với giờ, thời tiết bên đó, lần hoạt động cuối; mời người mới; sửa thông tin của mình.
 export function Family({ me, onClose, onChanged, onSettings, onCallMember }: { me: Me; onClose: () => void; onChanged: () => void; onSettings: () => void; onCallMember: (id: string) => void }) {
+  usePlaceNames();
   const lang = useLang();
   const [wx, setWx] = useState<Record<string, string>>({});
   const [edit, setEdit] = useState(false);
@@ -72,7 +74,7 @@ export function Family({ me, onClose, onChanged, onSettings, onCallMember }: { m
               <Avatar m={m} size={48} />
               <div className="meta">
                 <div className="name">{m.name}{m.id === me.me.id ? t('family.youSuffix') : ''}</div>
-                <div className="info">{m.city ? `${cityOf(m.city)?.name ?? ''} ${lt ?? ''}` : t(`role.${m.role}`)}{wx[m.id] ? ` · ${wx[m.id]}` : ''}</div>
+                <div className="info">{m.city ? `${cityName(m.city) ?? ''} ${lt ?? ''}` : t(`role.${m.role}`)}{wx[m.id] ? ` · ${wx[m.id]}` : ''}</div>
                 <div className={`info ${quiet ? 'warn' : ''}`}>{m.id === me.me.id ? t('family.online') : quiet ? t('home.quietDays', { n: Math.floor(hoursSince(m.lastSeen) / 24) }) : t('family.active', { ago: ago(m.lastSeen) })}</div>
               </div>
               {m.id !== me.me.id && <button className="round" onClick={() => { tap(); onCallMember(m.id); }} aria-label={t('family.callVideo', { name: m.name })}><Icon name="video" /></button>}

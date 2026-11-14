@@ -304,6 +304,7 @@
   "home.status.sent": "{ago} 사진을 보냈어요",
   "home.status.online": "지금 앱에 있어요",
   "home.status.seen": "{ago} 다녀갔어요",
+  "home.nudge": "{name}님이 한동안 안 들렀어요. 안부 전화 한번 해요.",
   "home.invite.parents": "엄마 아빠를 초대해요",
   "home.invite.kids": "자녀를 초대해요",
   "home.invite.more": "더 초대하기",

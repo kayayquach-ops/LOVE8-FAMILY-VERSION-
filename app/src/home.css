@@ -26,15 +26,16 @@
 .home-go svg { transform: rotate(180deg); }
 
 /* Cả nhà lúc này: danh sách, giờ nơi từng người ở to bên phải */
-.home-person { width: 100%; display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; min-height: 60px; padding: 9px 0; border-bottom: 1px solid var(--home-hair); }
+.home-person { width: 100%; display: grid; grid-template-columns: 32px 1fr auto; gap: 11px; align-items: center; min-height: 46px; padding: 5px 0; border-bottom: 1px solid var(--home-hair); }
 .home-person:last-child { border-bottom: 0; }
-.home-person-main { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.home-person-main b { font-size: 15.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.home-person-main span { font-size: 13.5px; color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.home-person.quiet .home-person-main span { color: var(--warn); }
-.home-person-time { display: flex; flex-direction: column; align-items: flex-end; text-align: right; line-height: 1.3; }
-.home-person-time b { font-family: var(--f-display); font-weight: 700; font-size: 19px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
-.home-person-time small { font-size: 12.5px; color: var(--soft); white-space: nowrap; }
+.home-person-main { min-width: 0; display: flex; flex-direction: column; gap: 0; line-height: 1.25; }
+.home-person-main b { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-person-main span { font-size: 13px; color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-person-time { display: flex; flex-direction: column; align-items: flex-end; text-align: right; line-height: 1.25; }
+.home-person-time b { font-family: var(--f-display); font-weight: 700; font-size: 16.5px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.home-person-time small { font-size: 12px; color: var(--soft); white-space: nowrap; }
+/* Một dòng viết tay nhắc hỏi thăm người vắng lâu nhất */
+.home-nudge { display: flex; align-items: center; min-height: 40px; font-size: 17px; line-height: 1.15; text-align: left; text-decoration: none; }
 
 /* Nhà mới chỉ có mình: một hàng viền mực mời người thân */
 .home-invite { display: flex; align-items: center; gap: 14px; min-height: 76px; padding: 14px 16px; border-radius: 22px; box-shadow: inset 0 0 0 1.5px var(--ink); color: var(--ink); transition: transform .15s; }

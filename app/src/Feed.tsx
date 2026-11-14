@@ -4,6 +4,7 @@ import { VoiceDot } from './Camera';
 import { fileName, useHoldMic, type Recording } from './media';
 import { cached, remember, reuse } from './cache';
 import { cityOf, thumb, type Me, type Member, type Post, type Reply } from './shared';
+import { cityName, usePlaceNames } from './placeName';
 import { tap } from './sound';
 import { Avatar, Doodle, Icon, toast } from './ui';
 import { fmtDayMonth, fmtTime, t } from './i18n';
@@ -34,6 +35,7 @@ function dayLabel(iso: string, tz?: string) {
 // Ảnh nhà mình: mở ra là tin mới nhất, mỗi trang một tin, vuốt lên xem tin tiếp. Kéo xuống ở tin đầu là về camera.
 // start: mở thẳng tới tin này (bấm ảnh ở Trang chủ).
 export function Feed({ me, start, onClose }: { me: Me; start?: string | null; onClose: () => void }) {
+  usePlaceNames();
   // Mở là hiện ngay bản lần trước (không còn chữ "đang tải" trên 4G), máy chủ trả lời thì thay bản mới.
   const [posts, setPosts] = useState<Post[] | null>(() => cached<Post[]>('feed'));
   const [fresh, setFresh] = useState(false);
@@ -209,7 +211,7 @@ const PostPage = memo(function PostPage({ p, members, meId, active, near, onReac
   const count = (e: string) => Object.values(p.reactions).filter((x) => x === e).length;
   const hearts = count(HEART);
   const day = dayLabel(p.createdAt, city?.tz);
-  const line = [city?.name, p.caption].filter(Boolean).join(' · ');
+  const line = [cityName(a?.city), p.caption].filter(Boolean).join(' · ');
   const [muted, setMuted] = useState(true);
   const [pop, setPop] = useState(0);
   const lastTap = useRef(0);

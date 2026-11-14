@@ -11,6 +11,7 @@ import { CallCard } from './CallCard';
 import { snooze, snoozed } from './callSnooze';
 import { shareInvite } from './Onboarding';
 import { JarArt } from './JarArt';
+import { cityName, usePlaceNames } from './placeName';
 import { fmtDate, fmtDayMonth, fmtTime, locale, shownLang, t } from './i18n';
 
 type Screen = 'camera' | 'feed' | 'chat' | 'calendar' | 'jar' | 'family' | 'podcast' | 'recap' | 'letters' | 'settings';
@@ -58,6 +59,7 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
   const [tick, setTick] = useState(0);
   const [, setJarTick] = useState(0);
   const alone = me.members.length < 2;
+  usePlaceNames();
 
   useEffect(() => {
     const run = () => get<HomeData>('/api/home').then((d) => {
@@ -99,15 +101,17 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
   // Ảnh mới nhất của từng người (trong 6 ảnh gần nhất) để viết dòng "vừa gửi ảnh".
   const lastShot = new Map<string, string>();
   for (const p of data?.latest ?? []) if (!lastShot.has(p.authorId)) lastShot.set(p.authorId, p.createdAt);
-  const status = (m: Member): { text: string; quiet?: boolean } => {
+  const status = (m: Member): { text: string } => {
     const h = hoursSince(m.lastSeen);
-    if (h > SILENT_HOURS) return { text: t('home.status.quiet', { n: Math.floor(h / 24) }), quiet: true };
+    if (h > SILENT_HOURS) return { text: t('home.status.quiet', { n: Math.floor(h / 24) }) };
     const shot = lastShot.get(m.id);
     if (shot && hoursSince(shot) < 1) return { text: t('home.status.justSent') };
     if (shot && hoursSince(shot) < 24) return { text: t('home.status.sent', { ago: ago(shot) }) };
     if (h < 0.25) return { text: t('home.status.online') };
     return { text: t('home.status.seen', { ago: ago(m.lastSeen) }) };
   };
+  // Chữ báo vắng để xám như mọi dòng; chỉ người vắng lâu nhất có một dòng nhắc hỏi thăm dưới danh sách.
+  const quietest = others.filter((m) => hoursSince(m.lastSeen) > SILENT_HOURS).sort((a, b) => hoursSince(b.lastSeen) - hoursSince(a.lastSeen))[0];
   // "gấp thêm 26 sao là mở quà": số sao viết tay mực tím, chen giữa câu theo thứ tự từng thứ tiếng.
   const [leftA, leftB] = t('home.jar.left', { stars: '\u0000' }).split('\u0000');
 
@@ -156,10 +160,10 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
             {others.map((m) => {
               const st = status(m);
               const lt = localTime(m.city);
-              const where = [cityOf(m.city)?.name, wx[m.id]?.split(',')[0]].filter(Boolean).join(' · ');
+              const where = [cityName(m.city), wx[m.id]?.split(',')[0]].filter(Boolean).join(' · ');
               return (
-                <button key={m.id} className={`home-person${st.quiet ? ' quiet' : ''}`} onClick={go('family')}>
-                  <Avatar m={m} size={40} />
+                <button key={m.id} className="home-person" onClick={go('family')}>
+                  <Avatar m={m} size={32} />
                   <span className="home-person-main"><b>{given(m.name)}</b><span>{st.text}</span></span>
                   <span className="home-person-time">
                     {lt ? <><b>{lt}</b>{where && <small>{where}</small>}</> : <small>{t('home.noTime')}</small>}
@@ -168,6 +172,9 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
               );
             })}
           </div>
+          {quietest && (quietest.phone
+            ? <a className="home-nudge hand" href={`tel:${quietest.phone}`} onClick={() => tap()}>{t('home.nudge', { name: given(quietest.name) })}</a>
+            : <button className="home-nudge hand" onClick={go('family')}>{t('home.nudge', { name: given(quietest.name) })}</button>)}
         </section>
       )}
 
@@ -202,7 +209,7 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
                     {a && <span className="home-shot-who"><Avatar m={a} size={20} />{given(a.name)}</span>}
                     <span className="home-shot-stamp">
                       <b>{fmtTime(new Date(p.createdAt), c?.tz)}</b>
-                      <small>{c ? `${c.name} · ${ago(p.createdAt)}` : ago(p.createdAt)}</small>
+                      <small>{c ? `${cityName(a?.city)} · ${ago(p.createdAt)}` : ago(p.createdAt)}</small>
                     </span>
                   </button>
                 );

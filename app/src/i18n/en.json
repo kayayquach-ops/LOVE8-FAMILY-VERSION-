@@ -310,6 +310,7 @@
   "home.status.sent": "sent a photo {ago}",
   "home.status.online": "here now",
   "home.status.seen": "stopped by {ago}",
+  "home.nudge": "{name} hasn't stopped by in a while. Give them a call.",
   "home.invite.parents": "invite mom and dad in",
   "home.invite.kids": "invite your kids in",
   "home.invite.more": "Invite more people",

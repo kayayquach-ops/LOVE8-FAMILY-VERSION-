@@ -115,3 +115,10 @@ Thiết kế và các quyết định: `app/docs/cuoc-goi-moi.md`. Làm bằng 4
 - **Camera (C):** kiểu YOPE: nền đen, khung 3:4 bo góc, dải lọc (gốc, ấm, phim, dịu, trắng đen; ảnh lưu xử lý từng điểm ảnh ở `camShot.ts`), flash, 1x/2x, giữ để quay có viền chạy, màn "gửi tới…" (`SendTo.tsx`). Ảnh lưu 3:4 (1080x1440).
 - **Sáng tối (B):** `src/dark.css`, `src/theme.ts`, chọn Tự động/Sáng/Tối trong Cài đặt (localStorage `sh-theme`), áp trước khi vẽ ở `index.html`. Màn chào cánh đồng vẫn sáng.
 - **Chưa kiểm:** Gemini thật cho câu hỏi thêm, lời nhắn, chấm chuyện, Whisper; push thật; iPhone thật (camera, lọc, flash, chọn nhiều ảnh HEIC, giữ để quay); thư và tập podcast ở chế độ tối.
+
+### 14/11 tối: trang chủ, phần "cả nhà lúc này"
+Người dùng hỏi để phần này trên đầu có ổn không; giữ trên đầu, sửa theo góp ý đã duyệt:
+- Chữ "chưa mở app X ngày" thôi màu cam, xám như mọi dòng. Chỉ người vắng lâu nhất (quá `SILENT_HOURS`) có một dòng viết tay dưới danh sách: "lâu rồi {tên} chưa ghé, gọi hỏi thăm nhé" (khoá `home.nudge`), chạm thì gọi số điện thoại nếu có, không thì mở màn cả nhà.
+- Dòng gọn lại (ảnh đại diện 32, cao 46) để mở app là thấy một phần "ảnh tuần này".
+- Tên thành phố lưu theo thứ tiếng lúc chọn ("하노이", "Ho Chi Minh City"); nay hiện lại theo thứ tiếng người xem qua `src/placeName.ts` (tra places.json, khớp tên và gần đúng toạ độ, không khớp thì giữ tên đã lưu). Dùng ở Trang chủ, tin nhà, màn cả nhà.
+- Chưa xem được trên máy với nhà nhiều người (hệ thống chặn tạo nhà thử và đọc database local); đã kiểm tsc, i18n, build và logic tên thành phố trên places.json.
