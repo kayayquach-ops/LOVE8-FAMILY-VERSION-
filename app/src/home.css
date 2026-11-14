@@ -1,113 +1,102 @@
-/* Trang chủ: nền giấy ấm, chữ có nhịp, lọ yêu thương là khối nổi nhất. Chỉ animate opacity và transform, không blur, không gradient chạy. */
+/* Trang chủ (màn 4 của app/docs/ui-moi/ban-mau.html): giấy trắng, chữ mực đen, không khung thẻ, không ô biểu tượng tròn.
+   Lời chào to có tên viết tay mực tím, một việc cần làm (cuộc gọi) màu đen, cả nhà là danh sách có giờ, lọ sao vẽ tay.
+   Chỉ animate opacity và transform. */
 .home {
-  --home-paper: #F7F1E8;
-  --home-card: #FFFCF7;
-  --home-tint: #F0E1D2;
-  --home-chip: #F4EAE0;
-  --home-hair: rgba(43, 39, 35, .08);
-  --home-shadow: 0 1px 2px rgba(74, 52, 32, .05), 0 12px 28px -16px rgba(74, 52, 32, .24);
-  position: fixed; inset: 0; display: flex; flex-direction: column; gap: 28px;
-  padding: calc(var(--safe-top) + 12px) 20px calc(var(--safe-bottom) + 112px);
-  background: var(--home-paper);
+  --home-hair: rgba(23, 21, 28, .07);
+  position: fixed; inset: 0; display: flex; flex-direction: column; gap: 26px;
+  padding: calc(var(--safe-top) + 14px) 20px calc(var(--safe-bottom) + 112px);
+  background: var(--bg); color: var(--ink);
 }
 .home button { text-align: left; }
 
-/* Hoa văn xoáy rất nhạt sau lời chào, theo giấy của logo. Đứng yên, cuộn theo trang. */
-.home-swirl {
-  position: absolute; top: 0; right: 0; width: 300px; height: 260px; z-index: -1; pointer-events: none;
-  background: no-repeat right top / 300px 260px url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 260' fill='none' stroke='%232B2723' stroke-opacity='.075' stroke-width='1.4' stroke-linecap='round'><path d='M210 80a6 6 0 0 1 12 0a12 12 0 0 1-24 0a19 19 0 0 1 38 0a27 27 0 0 1-54 0a36 36 0 0 1 72 0a46 46 0 0 1-92 0c0 50 34 88 96 104'/><path d='M276 214a4 4 0 0 1 8 0a9 9 0 0 1-18 0a15 15 0 0 1 30 0a22 22 0 0 1-44 0a30 30 0 0 1 60 0'/></svg>");
-}
-
 /* Lời chào */
-.home-head { display: flex; flex-direction: column; gap: 4px; }
-.home-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
-.home-fam { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--soft); letter-spacing: .2px; }
-.home-set { width: 44px; height: 44px; border-radius: 22px; margin-right: -4px; background: rgba(255, 255, 255, .72); border-color: var(--home-hair); }
-.home-hi { margin: 0; font-size: 31px; font-weight: 300; line-height: 1.22; letter-spacing: -.6px; color: var(--ink); text-wrap: balance; }
+.home-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.home-hello { min-width: 0; }
+.home-hello small { display: block; margin-bottom: 6px; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-hello h1 { margin: 0; font-size: 34px; }
+.home-set { flex: none; width: 44px; height: 44px; margin: -4px -8px 0 0; display: grid; place-items: center; border-radius: 50%; color: var(--ink); }
 
-/* Lọ yêu thương */
-.home-jar { display: flex; align-items: center; gap: 14px; min-height: 176px; padding: 16px 20px 16px 10px; border-radius: 28px; background: var(--home-tint); transition: transform .15s; }
-.home-jar-art { flex: none; width: 122px; display: grid; place-items: center; }
-.home-jar-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.home-eyebrow { font-size: 14px; font-weight: 500; letter-spacing: .2px; color: var(--accent); }
-.home-jar-count { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 6px; color: var(--ink); transition: opacity .3s; }
-.home-jar-count.wait { opacity: 0; }
-.home-jar-count b { font-size: 50px; font-weight: 300; line-height: 1; letter-spacing: -1.5px; font-variant-numeric: tabular-nums; }
-.home-jar-count small { font-size: 15px; color: var(--soft); }
-.home-jar-bar { height: 4px; margin: 4px 0 2px; border-radius: 2px; overflow: hidden; background: rgba(154, 90, 68, .16); }
-.home-jar-bar i { display: block; height: 100%; background: var(--accent); transform-origin: left center; transition: transform .8s cubic-bezier(.33, 1, .68, 1); }
-.home-jar-note { font-size: 15px; line-height: 1.4; color: var(--ink); text-wrap: balance; }
-
-/* Hai việc hay làm: gửi ảnh, viết thư */
-.home-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-/* Lọ, ô mời (nếu có) và hai ô việc đứng sát nhau thành một cụm. */
-.home-jar + .home-invite, .home-jar + .home-tiles, .home-invite + .home-tiles { margin-top: -14px; }
-.home-tile { position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 14px; min-height: 124px; padding: 16px; border-radius: 24px; background: var(--home-card); box-shadow: var(--home-shadow); transition: transform .15s; }
-.home-tile i { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--home-chip); color: var(--accent); }
-.home-tile b { font-size: 16px; font-weight: 500; line-height: 1.35; letter-spacing: -.1px; text-wrap: balance; }
-.home-tile em { position: absolute; top: 20px; right: 14px; max-width: calc(100% - 76px); padding: 4px 10px; border-radius: 999px; background: var(--accent); color: #fff; font-style: normal; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.home-tile.new i { background: var(--accent); color: #fff; }
-
-/* Mục và tiêu đề */
-.home-sec { display: flex; flex-direction: column; gap: 12px; }
-.home-h { margin: 0; display: flex; align-items: center; font-size: 17px; font-weight: 500; letter-spacing: -.1px; color: var(--ink); }
-.home-hrow { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: -10px 0; }
-.home-link { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 0 0 12px; font-size: 15px; font-weight: 500; color: var(--accent); }
+/* Tiêu đề mục: chữ đậm Bricolage, link nhỏ bên phải */
+.home-sec { display: flex; flex-direction: column; }
+.home-h { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 32px; margin-bottom: 4px; }
+.home-h h2 { margin: 0; display: flex; align-items: center; font-family: var(--f-display); font-weight: 700; font-size: 19px; letter-spacing: -0.01em; }
+.home-link { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; margin: -6px 0; padding: 0 0 0 12px; font-size: 14px; color: var(--soft); }
 .home-link svg { transform: rotate(180deg); }
+.home-go { flex: none; display: grid; place-items: center; color: var(--muted); }
+.home-go svg { transform: rotate(180deg); }
 
-/* Cả nhà lúc này: hàng mặt người, giờ nơi từng người ở */
-.home-row { display: flex; gap: 5px; overflow-x: auto; margin: 0 -20px; padding: 4px 20px 8px; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding: 0 20px; }
-.home-row::-webkit-scrollbar { display: none; }
-.home .home-mem { flex: none; width: 80px; scroll-snap-align: start; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 2px 0 4px; text-align: center; transition: transform .15s; }
-.home-mem .avatar { margin-bottom: 8px; box-shadow: 0 0 0 3px var(--home-paper), 0 0 0 4px var(--home-hair); }
-.home-mem.quiet .avatar { box-shadow: 0 0 0 3px var(--home-paper), 0 0 0 5px rgba(184, 106, 46, .6); }
-.home-mem b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 500; }
-.home-mem span { font-size: 14px; color: var(--soft); font-variant-numeric: tabular-nums; }
-.home-mem small { font-size: 13px; line-height: 1.3; color: var(--muted); }
-.home-mem em { font-style: normal; font-size: 13px; line-height: 1.3; color: var(--warn); }
-.home-more i { width: 52px; height: 52px; margin-bottom: 8px; border-radius: 50%; display: grid; place-items: center; border: 1px dashed rgba(154, 90, 68, .5); color: var(--accent); }
-.home-more b { white-space: normal; line-height: 1.3; }
-.home-more span { font-size: 13px; line-height: 1.3; }
-/* Nhà mới chỉ có mình: ô mời người thân ngay dưới lọ */
-.home-invite { display: flex; align-items: center; gap: 14px; min-height: 80px; padding: 16px; border-radius: 24px; background: var(--home-card); box-shadow: var(--home-shadow); color: var(--ink); transition: transform .15s; }
-.home-invite i { flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #fff; }
-.home-invite span { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.home-invite b { font-size: 16px; font-weight: 500; line-height: 1.3; }
-.home-invite small { font-size: 14px; line-height: 1.35; color: var(--soft); }
+/* Cả nhà lúc này: danh sách, giờ nơi từng người ở to bên phải */
+.home-person { width: 100%; display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; min-height: 60px; padding: 9px 0; border-bottom: 1px solid var(--home-hair); }
+.home-person:last-child { border-bottom: 0; }
+.home-person-main { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.home-person-main b { font-size: 15.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-person-main span { font-size: 13.5px; color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-person.quiet .home-person-main span { color: var(--warn); }
+.home-person-time { display: flex; flex-direction: column; align-items: flex-end; text-align: right; line-height: 1.3; }
+.home-person-time b { font-family: var(--f-display); font-weight: 700; font-size: 19px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.home-person-time small { font-size: 12.5px; color: var(--soft); white-space: nowrap; }
 
-/* Sắp tới */
-.home-list { display: flex; flex-direction: column; padding: 2px 16px; border-radius: 24px; background: var(--home-card); box-shadow: var(--home-shadow); }
-.home-ev { display: flex; align-items: center; gap: 14px; min-height: 68px; padding: 10px 0; border-bottom: 1px solid var(--home-hair); transition: transform .15s; }
+/* Nhà mới chỉ có mình: một hàng viền mực mời người thân */
+.home-invite { display: flex; align-items: center; gap: 14px; min-height: 76px; padding: 14px 16px; border-radius: 22px; box-shadow: inset 0 0 0 1.5px var(--ink); color: var(--ink); transition: transform .15s; }
+.home-invite > .doodle { color: var(--accent); }
+.home-invite > span:not(.home-go) { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.home-invite b { font-size: 16px; font-weight: 600; line-height: 1.3; }
+.home-invite small { font-size: 13.5px; line-height: 1.35; color: var(--soft); }
+
+/* Lọ sao: lọ nhỏ + số sao */
+.home-jar { display: grid; grid-template-columns: 110px 1fr; gap: 16px; align-items: center; padding: 2px 0; transition: transform .15s; }
+.home-jar-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; transition: opacity .3s; }
+.home-jar-text.wait { opacity: 0; }
+.home-jar-text > b { font-family: var(--f-display); font-weight: 800; font-size: 40px; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.home-jar-text > b small { margin-left: 5px; font-size: 16px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
+.home-jar-text > span { font-size: 14.5px; line-height: 1.4; color: var(--soft); text-wrap: balance; }
+.home-jar-text .hand { font-size: 18px; line-height: 1; }
+
+/* Ảnh tuần này, podcast: hàng vuốt ngang */
+.home-rail { display: flex; gap: 10px; overflow-x: auto; margin: 4px -20px 0; padding: 2px 20px 6px; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding: 0 20px; }
+.home-rail::-webkit-scrollbar { display: none; }
+/* Thẻ ảnh dọc kiểu "nổi bật": tên người trên, giờ to và nơi dưới */
+.home-shot { position: relative; flex: none; width: 138px; height: 200px; border-radius: 20px; overflow: hidden; background: var(--accent-soft); scroll-snap-align: start; transition: transform .15s; }
+.home-shot img { width: 100%; height: 100%; object-fit: cover; }
+.home-shot::after { content: ""; position: absolute; inset: 45% 0 0; background: linear-gradient(transparent, rgba(0, 0, 0, .45)); pointer-events: none; }
+.home-shot-who { position: absolute; top: 9px; left: 9px; right: 9px; z-index: 1; width: fit-content; max-width: calc(100% - 18px); display: flex; align-items: center; gap: 5px; padding: 3px 9px 3px 3px; border-radius: 999px; background: rgba(255, 255, 255, .92); font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-shot-stamp { position: absolute; left: 11px; right: 11px; bottom: 10px; z-index: 1; color: #fff; text-shadow: 0 1px 10px rgba(0, 0, 0, .35); }
+.home-shot-stamp b { display: block; font-family: var(--f-display); font-weight: 800; font-size: 24px; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.home-shot-stamp small { display: block; margin-top: 3px; font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Sắp tới: hàng có con dấu ngày nét mực */
+.home-ev { width: 100%; display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 9px 0; border-bottom: 1px solid var(--home-hair); transition: transform .15s; }
 .home-ev:last-child { border-bottom: 0; }
-.home-date { flex: none; width: 52px; height: 48px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; background: var(--home-chip); color: var(--ink); }
-.home-date b { font-size: 19px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.home-date small { margin-top: 2px; font-size: 11px; color: var(--soft); white-space: nowrap; }
-.home-ev.today .home-date { background: var(--accent); color: #fff; }
-.home-ev.today .home-date small { color: rgba(255, 255, 255, .85); }
+.home-stamp { flex: none; width: 50px; height: 50px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; box-shadow: inset 0 0 0 1.5px var(--ink); transform: rotate(-3deg); }
+.home-ev:nth-child(even) .home-stamp { transform: rotate(2.5deg); }
+.home-stamp b { font-family: var(--f-display); font-weight: 800; font-size: 20px; font-variant-numeric: tabular-nums; }
+.home-stamp small { margin-top: 1px; font-size: 10.5px; color: var(--soft); white-space: nowrap; }
+.home-ev.today .home-stamp { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--accent); }
+.home-ev.today .home-stamp small { color: var(--accent); }
 .home-ev-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.home-ev-main b { font-size: 16px; font-weight: 500; line-height: 1.35; }
-.home-ev-main span { font-size: 14px; color: var(--soft); }
+.home-ev-main b { font-size: 15.5px; font-weight: 600; line-height: 1.35; }
+.home-ev-main span { font-size: 13.5px; color: var(--soft); }
 .home-ev.today .home-ev-main span { color: var(--accent); font-weight: 500; }
 
-/* Ảnh tuần này */
-.home-thumbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.home-thumbs button { aspect-ratio: 1; min-height: 44px; border-radius: 14px; overflow: hidden; background: var(--home-chip); transition: transform .15s; }
-.home-thumbs img { width: 100%; height: 100%; object-fit: cover; }
-/* Đủ 3 hoặc 6 ảnh: ảnh mới nhất lớn gấp đôi, đọc như một trang báo ảnh. */
-.home-thumbs.lead button:first-child { grid-column: span 2; grid-row: span 2; border-radius: 18px; }
+/* Thư: một hàng viền thư máy bay (đỏ xanh chỉ dùng ở đây và mục thư) */
+.home-mail { display: block; padding: 6px; border-radius: 18px; background: repeating-linear-gradient(135deg, var(--air-red) 0 11px, #fff 11px 16px, var(--air-blue) 16px 27px, #fff 27px 32px); transition: transform .15s; }
+.home-mail-in { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 10px 12px 10px 14px; border-radius: 12px; background: var(--paper); }
+.home-mail-in > .doodle { color: var(--ink); }
+.home-mail-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.home-mail-text b { font-size: 15.5px; font-weight: 600; }
+.home-mail-text span { font-size: 13.5px; color: var(--soft); }
+.home-mail-text .hand { font-size: 18px; line-height: 1.1; color: var(--accent); }
 
-/* Podcast nhà mình */
-.home-album { flex: none; width: 136px; display: flex; flex-direction: column; gap: 3px; transition: transform .15s; }
-.home-album + .home-album { margin-left: 7px; }
-.home-album b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 15px; font-weight: 500; line-height: 1.3; }
-.home-album > span:last-child:not(.home-cover) { font-size: 13.5px; color: var(--muted); }
-.home-cover { width: 136px; height: 136px; margin-bottom: 7px; border-radius: 20px; display: grid; place-items: center; overflow: hidden; background: var(--home-tint); color: var(--accent); }
+/* Podcast nhà mình: thẻ bìa */
+.home-pod { flex: none; width: 136px; display: flex; flex-direction: column; gap: 3px; scroll-snap-align: start; transition: transform .15s; }
+.home-pod b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 14.5px; font-weight: 600; line-height: 1.3; }
+.home-pod > span:last-child { font-size: 13px; color: var(--muted); }
+.home-cover { width: 136px; height: 136px; margin-bottom: 6px; border-radius: 18px; display: grid; place-items: center; overflow: hidden; background: var(--accent-soft); color: var(--accent); }
 .home-cover img { width: 100%; height: 100%; object-fit: cover; }
-.home-album.empty { width: 100%; flex-direction: row; align-items: center; gap: 14px; padding: 12px; border-radius: 22px; background: var(--home-card); box-shadow: var(--home-shadow); }
-.home-album.empty .home-cover { width: 56px; height: 56px; margin: 0; flex: none; border-radius: 16px; }
-.home-album.empty b { -webkit-line-clamp: 3; font-weight: 400; color: var(--soft); }
+.home-pod-empty { display: flex; align-items: center; gap: 14px; min-height: 60px; padding: 6px 0; color: var(--soft); font-size: 14.5px; line-height: 1.4; }
+.home-pod-empty .doodle { color: var(--accent); }
 
-.home-retry { min-height: 48px; padding: 12px 16px; border-radius: 18px; background: var(--home-card); box-shadow: var(--home-shadow); color: var(--soft); font-size: 15px; }
+.home-retry { min-height: 48px; padding: 12px 0; color: var(--soft); font-size: 15px; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 4px; }
 
 /* Chạm là thấy: khối nhún nhẹ ngay, nhả tay mới chuyển mềm về. */
-.home-jar:active, .home-tile:active, .home-mem:active, .home-invite:active, .home-ev:active, .home-album:active, .home-thumbs button:active, .home-retry:active { transform: scale(.97); transition-duration: 0s; }
+.home-jar:active, .home-invite:active, .home-ev:active, .home-mail:active, .home-shot:active, .home-pod:active { transform: scale(.97); transition-duration: 0s; }

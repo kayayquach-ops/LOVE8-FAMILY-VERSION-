@@ -1,9 +1,9 @@
-.callcard { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 14px; padding: 18px 18px 16px; border-radius: 26px; background: #FFFCF7; box-shadow: 0 1px 2px rgba(74,52,32,.05), 0 12px 28px -16px rgba(74,52,32,.24); }
-.callcard-ico { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
-.callcard p { margin: 0; font-size: 16px; line-height: 1.45; color: var(--ink); text-wrap: pretty; }
-.callcard-btns { grid-column: 1 / -1; display: flex; gap: 8px; }
-.callcard-btns button { min-height: 48px; padding: 0 24px; border-radius: 999px; font-size: 16px; text-align: center; }
-.callcard-yes { background: var(--accent); color: #fff; font-weight: 500; }
-.callcard-later { background: transparent; color: var(--soft); }
-.callcard-btns button:active { transform: scale(.97); }
+/* Thẻ mời gọi: hàng đen bo tròn (việc duy nhất cần làm ở Trang chủ), nút trắng, "để sau" chữ nhỏ ngay dưới nút. */
+.callcard { display: flex; align-items: center; gap: 12px; padding: 12px 12px 10px 18px; border-radius: 22px; background: var(--ink); color: var(--bg); }
+.callcard p { flex: 1; min-width: 0; margin: 0; font-size: 15.5px; line-height: 1.38; text-wrap: pretty; }
+.callcard p small { display: block; margin-top: 3px; font-size: 13px; opacity: .62; }
+.callcard-btns { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 0; }
+.callcard-yes { min-height: 44px; padding: 0 18px; border-radius: 999px; background: var(--bg); color: var(--ink); font-size: 15px; font-weight: 600; white-space: nowrap; transition: transform .15s; }
+.callcard-later { min-height: 32px; padding: 0 8px; color: var(--bg); opacity: .62; font-size: 13px; white-space: nowrap; text-align: center; }
+.callcard-yes:active { transform: scale(.96); transition-duration: 0s; }
 .home-dot { display: inline-block; width: 8px; height: 8px; margin-left: 8px; border-radius: 50%; background: var(--accent); vertical-align: middle; }
