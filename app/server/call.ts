@@ -3,18 +3,19 @@
 // Gọi xong: rút ngày tháng quan trọng vào lịch, ảnh xưa vào kho, rồi ghép podcast.
 import express from 'express';
 import type multer from 'multer';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type pg from 'pg';
-import { CALL_ROLES, DEFAULT_MASCOT_NAME, EVENT_HINTS, TOPICS, callLines, isTopic, type CallQuestion, type CallScript, type Topic } from '../src/shared.ts';
+import { CALL_ROLES, DEFAULT_MASCOT_NAME, EVENT_HINTS, MAX_CALL_FOLLOW, MAX_STORY_FOLLOW, TOPICS, callLines, isTopic, relayNone, type CallQuestion, type CallRelay, type CallScript, type Topic, type TurnAI } from '../src/shared.ts';
 import { errorBody, langOf, LANGS, reqLang, tReq, tServer, type Lang } from './i18n.ts';
-import { askJSON, askQuick } from './ai.ts';
+import { askJSON, askQuick, useGemini } from './ai.ts';
+import { pushRelays } from './push.ts';
 import { parseDate, suspect, type Allow } from './guard.ts';
 import { mascotName, pool } from './db.ts';
 import { weekKey } from './recap.ts';
 import { buildPodcastsForCall, rebuildCallSoon } from './podcast.ts';
 import { cachedSpeech, defaultProvider, gateOf, hasVoice, initTtsBudget, pickProvider, providerOn, speech, transcribe, ttsStatus, TTS_MAX, type Provider } from './voice.ts';
 import path from 'node:path';
-import { unlink } from 'node:fs/promises';
+import { open, rename, unlink } from 'node:fs/promises';
 import { Limit, limitBy } from './limit.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
@@ -38,6 +39,16 @@ export async function migrateCall(p: pg.Pool) {
       media text not null, caption text, call_id text, created_at timestamptz not null default now()
     );
     create index if not exists vault_family on vault (family_id, created_at desc);
+    alter table call_answers add column if not exists turn int not null default 0;
+    alter table vault add column if not exists story int;
+    create table if not exists relays (
+      id text primary key, family_id text not null references families(id) on delete cascade, call_id text references calls(id) on delete cascade,
+      from_id text not null references members(id) on delete cascade, to_id text not null references members(id) on delete cascade,
+      transcript text, media text, said text, push text, created_at timestamptz not null default now(),
+      pushed_at timestamptz, delivered_call_id text, delivered_at timestamptz
+    );
+    create unique index if not exists relays_call_to on relays (call_id, to_id);
+    create index if not exists relays_pending on relays (to_id) where delivered_at is null;
   `);
   // Bộ đếm ngân sách TTS sống qua lần deploy (bảng app_settings: tts_budget, tts_budget_openai, stt_budget_openai).
   await p.query('create table if not exists app_settings (key text primary key, value text not null)');
@@ -54,13 +65,13 @@ export async function migrateCall(p: pg.Pool) {
   setTimeout(() => void warmFixedVoices(), 15_000);
 }
 
-/** Các câu cố định cần có giọng sẵn: mỗi (vai, ngôn ngữ) 7 câu. Câu "ack" không nạp (chỉ dùng nếu tình cờ đã có trong kho). */
+/** Các câu cố định cần có giọng sẵn: mỗi (vai, ngôn ngữ) 11 câu. Câu "ack" không nạp (chỉ dùng nếu tình cờ đã có trong kho); câu "relayIntro" chỉ dùng khi có lời nhắn nên đọc lúc cần rồi nằm trong kho. */
 export function fixedLines() {
   const out = new Set<string>();
   for (const lang of LANGS) {
     for (const role of CALL_ROLES) {
       const L = callLines(role, (k, v) => tServer(lang, k, v));
-      for (const text of [L.slow, L.busy, L.skip, L.photo, ...L.short, ...L.long]) out.add(text);
+      for (const text of [L.slow, L.busy, L.skip, L.photo, ...L.short, ...L.long, L.relay, L.relayOk]) out.add(text);
     }
   }
   return [...out];
@@ -128,9 +139,10 @@ async function context(memberId: string, fid: string): Promise<Ctx> {
     pool.query('select id, name, role, intro from members where id = $1', [memberId]),
     pool.query('select name, role from members where family_id = $1 order by created_at', [fid]),
     pool.query('select kind, title, day, month, year from events where family_id = $1', [fid]),
-    pool.query('select question from call_answers where member_id = $1 order by created_at desc limit 40', [memberId]),
+    pool.query('select question from call_answers where member_id = $1 and turn = 0 order by created_at desc limit 40', [memberId]),
+    // Lời nhắn khó nói là chuyện riêng với người nhận: không đưa vào dữ liệu soạn câu hỏi.
     pool.query(
-      `select question, transcript from call_answers where member_id = $1 and coalesce(transcript, '') <> '' order by created_at desc limit 8`, [memberId]),
+      `select question, transcript from call_answers where member_id = $1 and topic <> 'loi-nhan' and coalesce(transcript, '') <> '' order by created_at desc limit 8`, [memberId]),
     pool.query(`select caption from posts where author_id = $1 and kind = 'photo' and coalesce(caption, '') <> '' order by created_at desc limit 8`, [memberId]),
     pool.query(`select to_char(done_at at time zone 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') d from calls where member_id = $1 and status = 'done' order by done_at desc limit 10`, [memberId]),
     pool.query(`select count(*)::int n from posts where author_id = $1 and kind = 'photo'`, [memberId]),
@@ -198,7 +210,6 @@ export function templateScript(c: Ctx, week: string): CallScript {
     q(S('week'), 'cuoc-song'),
     q(S('taste'), 'mon-an'),
     q(S('dream'), 'tuoi-tho'),
-    q(S('advice'), 'loi-nhan'),
   ] : [
     q(S('week'), 'cuoc-song'),
     ...(food ? [q(S('food'), 'mon-an')] : []),
@@ -207,7 +218,6 @@ export function templateScript(c: Ctx, week: string): CallScript {
     q(S('meal'), 'mon-an'),
     q(S('miss'), 'cuoc-song'),
     q(S('home'), 'ky-niem'),
-    q(S('message'), 'loi-nhan'),
   ];
   const fresh = pool.filter((x) => !c.asked.includes(x.text));
   const list = fresh.length >= 4 ? fresh : pool;
@@ -216,8 +226,8 @@ export function templateScript(c: Ctx, week: string): CallScript {
   const rest = list.filter((x) => x.event !== 'wedding');
   const shift = Math.floor(Date.parse(week) / (7 * 86400e3)) % Math.max(1, rest.length);
   const rotated = [...rest.slice(shift), ...rest.slice(0, shift)];
-  const loi = rotated.filter((x) => x.topic === 'loi-nhan').slice(0, 1);
-  const questions = [...head, ...rotated.filter((x) => x.topic !== 'loi-nhan')].slice(0, 3).concat(loi);
+  const relay = relayQuestion(c);
+  const questions = [...head, ...rotated].slice(0, 3).concat(relay ? [relay] : []);
   return {
     greeting: S('greeting'),
     questions,
@@ -226,6 +236,14 @@ export function templateScript(c: Ctx, week: string): CallScript {
     lang: c.lang,
     mascot: c.mascot ?? DEFAULT_MASCOT_NAME,
   };
+}
+
+/** Câu cuối mỗi cuộc gọi (trừ cuộc gọi đầu): có lời nào khó nói muốn nhắn ai trong nhà không. Con thì gợi ý bố mẹ, bố mẹ thì gợi ý con.
+ * Câu cố định theo vai (giọng nằm sẵn trong kho). Nhà chỉ có một người thì không hỏi. */
+export function relayQuestion(c: Ctx): CallQuestion | null {
+  if (c.family.length < 2) return null;
+  const L = callLines(c.member.role, (k, v) => tServer(c.lang, k, v));
+  return { text: L.relay, topic: 'loi-nhan', photo: false, event: 'none' };
 }
 
 // ---------- Chống bịa: suspect() ở guard.ts (dấu hiệu bịa vi, en, ko + tên riêng, con số phải có trong dữ liệu) ----------
@@ -251,7 +269,7 @@ const SCRIPT_SCHEMA = {
         required: ['text', 'topic', 'photo', 'event'],
         properties: {
           text: { type: 'string' },
-          topic: { type: 'string', enum: [...TOPICS] },
+          topic: { type: 'string', enum: TOPICS.filter((t) => t !== 'loi-nhan') },
           photo: { type: 'boolean' },
           event: { type: 'string', enum: [...EVENT_HINTS] },
         },
@@ -296,7 +314,7 @@ HARD RULES, never break them:
 1. Never mention a photo, message, call, earlier session, memory or detail that is not in the input. Never write ${ex.forbidden} or anything similar unless that exact thing is in the input.
 2. Never guess a name, date, place, country, number, age or relationship. Use only names and facts that appear in the input. Do not assume where anyone lives or studies.
 3. Ask only open, safe questions that assume nothing. Every question must be answerable without any outside data, by a person who just picked up the phone.
-4. Exactly 3 questions, plus at most one last gentle question that invites a message for the rest of the family (topic loi-nhan). Each question is one short sentence, at most two.
+4. Exactly 3 questions. Each question is one short sentence, at most two. Never ask for a message to someone in the family; the app adds its own closing question for that.
 5. Never repeat a question in already_asked, in any language.
 6. Only follow up on an earlier answer if it is listed in own_earlier_answers, and quote nothing that is not there.
 7. A photo question (photo true) is a neutral invitation, for example "${ex.photo}". It must never imply that a photo was already received. Use photo true in at most one question, and only when it fits.
@@ -345,7 +363,7 @@ export async function aiScript(c: Ctx, week: string, timeoutMs?: number): Promis
   const questions: CallQuestion[] = [];
   let photos = 0;
   for (const raw of r.questions.slice(0, 5)) {
-    if (!raw || !raw.text || !isTopic(raw.topic)) continue;
+    if (!raw || !raw.text || !isTopic(raw.topic) || raw.topic === 'loi-nhan') continue;
     const text = clean(raw.text);
     const why = suspect(text, hay, allow, c.lang);
     if (why) { console.warn(`[call] bỏ câu "${text}": ${why}`); continue; }
@@ -355,7 +373,7 @@ export async function aiScript(c: Ctx, week: string, timeoutMs?: number): Promis
     // Chỉ một câu xin ảnh.
     const photo = !!raw.photo && ++photos === 1;
     questions.push({ text, topic: raw.topic, photo, event });
-    if (questions.length >= 4) break;
+    if (questions.length >= 3) break;
   }
   // Thiếu thì bù bằng câu mẫu an toàn, tối thiểu 3 câu.
   for (const t of tpl.questions) {
@@ -366,6 +384,8 @@ export async function aiScript(c: Ctx, week: string, timeoutMs?: number): Promis
     questions.push({ ...t });
   }
   if (!questions.length) return null;
+  const relay = relayQuestion(c);
+  if (relay) questions.push(relay);
   const g = clean(r.greeting), b = clean(r.goodbye);
   // Mây là người gọi: lời tạm biệt "thank you for calling" thì dùng câu mẫu.
   const wrongBye = /\bfor (calling|the call)\b/i.test(b);
@@ -430,6 +450,298 @@ export async function quickReply(who: { name: string; role: string } | undefined
 
 /** Nhà cung cấp giọng máy khách gửi kèm (đã chốt lúc nhấc máy). */
 const providerOf = (v: unknown): Provider | null => (v === 'openai' || v === 'gemini' ? v : null);
+
+// i18n-ok-begin: prompt hỏi thêm (tiếng Anh, có ví dụ theo từng thứ tiếng), mẫu nhận câu hỏi ngày.
+// ---------- Mây hỏi thêm cho câu chuyện liền mạch ----------
+
+/** Hạn chờ AI sau mỗi lượt kể: quá thì đi tiếp như cũ, không hỏi thêm. */
+export const TURN_AI_MS = 2500;
+
+const TURN_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['reaction', 'follow_up', 'day', 'month', 'year', 'real_story'],
+  properties: {
+    reaction: { type: 'string' },
+    follow_up: { type: 'string' },
+    day: { type: 'integer' },
+    month: { type: 'integer' },
+    year: { type: 'integer' },
+    real_story: { type: 'boolean' },
+  },
+};
+
+const FOLLOW_STYLE: Record<Lang, string> = {
+  vi: `Example follow_up (role me, she told about a market trip but not who came): "Hôm đó Mẹ đi chợ với ai ạ?". Same for role con: "Hôm đó bạn đi với ai thế?".
+Example date follow_up: "Mẹ còn nhớ hôm cưới là ngày mấy tháng mấy không ạ?" (role me), "Bạn còn nhớ hôm đó là ngày mấy tháng mấy không?" (role con).`,
+  en: `Example follow_up (she told about a market trip but not who came): "Who went to the market with you that day?".
+Example date follow_up: "Do you remember the day and month of the wedding?".`,
+  ko: `Example follow_up (she told about a market trip but not who came): "그날 시장에는 누구랑 같이 가셨어요?" (role bo or me), "그날 누구랑 같이 갔어요?" (role con).
+Example date follow_up: "결혼식이 몇 월 며칠이었는지 기억나세요?" (role bo or me).`,
+};
+
+function turnSystem(lang: Lang, name = DEFAULT_MASCOT_NAME) {
+  return named(`You are Mây, the mascot of the family app Sweet Home, on a warm voice call with a family member. Mây asked about one story and the person is telling it out loud (speech recognition text, may have errors). "story" lists every turn of this story so far: what Mây asked and what they answered. The last item is the newest answer.
+
+Return JSON with:
+- reaction: ONE short spoken reaction to the newest answer.
+- follow_up: "" or ONE short question that continues exactly this story.
+- day, month, year: the date of the event in this story if the person clearly said both the day and the month anywhere in the story (year only if they said it), otherwise 0. Never guess or compute a date.
+- real_story: true only if the person told a real, concrete story or memory with specific details (people, places, a moment), the kind worth keeping a photo of. false for short, vague or everyday answers.
+
+REACTION. React warmly to the newest answer: when it has a concrete detail (an object, food, place, person or feeling the person actually said), echo that exact detail in your own words. Do not ask a question in the reaction.
+${REPLY_STYLE[lang]}
+
+FOLLOW_UP.
+1. If can_follow is false, follow_up is "".
+2. Ask only when the newest answer is hesitant, very short, or leaves out something important for this story (who was there, where, what happened next, how it felt). When the story already feels told, follow_up is "".
+3. The question continues exactly what they are telling: pick up a detail they actually said and stay on this one story. Never change topic.
+4. If need_date is true and the story has no day and month yet, follow_up must ask for the day and month of that event.
+5. One short, easy question, answerable by voice. Same way of addressing the person as in the reaction.
+${FOLLOW_STYLE[lang]}
+
+HARD RULES. Never add any fact, name, number, place, photo, memory or event that is not in story. Never refer to earlier calls. Never use phrases like "you said", "you mentioned", "last time" or their equivalents. Never say the English app name. No em dash, no emoji, no quotation marks.
+
+Reply in ${LANG_NAME[lang]}.`, name);
+}
+
+/** Câu hỏi thêm có đang hỏi ngày không (để chắc câu hỏi có `event` luôn được hỏi ngày). */
+const DATE_ASK: Record<Lang, RegExp> = {
+  vi: /ngày|tháng|hôm nào|bao giờ|khi nào|năm nào/i,
+  en: /\b(date|day|month|when)\b/i,
+  ko: /날짜|며칠|몇\s*월|언제/,
+};
+// i18n-ok-end
+
+type TurnRaw = { reaction: string; follow_up: string; day: number; month: number; year: number; real_story: boolean };
+
+export type TurnInput = {
+  lang: Lang;
+  who: { name: string; role: string };
+  /** Tên linh vật của nhà. */
+  bot: string;
+  /** Câu hỏi chính của câu chuyện. */
+  q: CallQuestion;
+  /** Các lượt của câu chuyện tới giờ, lượt cuối là câu vừa kể. */
+  story: Array<{ asked: string; answer: string }>;
+  /** Lượt vừa kể: 0 là câu chính, 1, 2 là câu trả lời cho câu hỏi thêm. */
+  turn: number;
+  /** Số câu hỏi thêm đã hỏi trong cả cuộc gọi (gồm lượt vừa kể nếu là hỏi thêm). */
+  follows: number;
+  /** Câu chuyện đã có ngày (đã nhắc lại cho chắc) chưa. */
+  dated: boolean;
+};
+
+const isParent = (role: string) => role === 'bo' || role === 'me';
+function selfOf(lang: Lang, role: string) {
+  const self = role === 'bo' ? tServer(lang, 'call.self.bo') : role === 'me' ? tServer(lang, 'call.self.me') : '';
+  return { self, Self: self ? self[0].toUpperCase() + self.slice(1) : '' };
+}
+const cleanLine = (s: unknown) => String(s ?? '').replace(/\s*[—–]\s*/g, ', ').replace(/["“”«»]/g, '').split('\n')[0].replace(/\s+/g, ' ').trim();
+
+function validDate(day: unknown, month: unknown, year: unknown): TurnAI['date'] {
+  const d = Math.round(Number(day)), m = Math.round(Number(month)), y = Math.round(Number(year));
+  if (!(d >= 1 && d <= 31 && m >= 1 && m <= 12)) return null;
+  return { day: d, month: m, year: y >= 1900 && y <= new Date().getFullYear() ? y : null };
+}
+
+/** Ngày đọc lên theo thứ tiếng (bảng chữ callScript.date.*). */
+export function dateText(lang: Lang, d: { day: number; month: number; year: number | null }) {
+  const month = lang === 'en' ? MONTH_EN[d.month - 1] : d.month;
+  return tServer(lang, d.year ? 'callScript.date.full' : 'callScript.date.short', { day: d.day, month, year: d.year ?? '' });
+}
+
+/** Sau mỗi lượt kể, một lần gọi AI: câu đáp, câu hỏi thêm (nếu cần), ngày nghe được, có chuyện thật để xin ảnh không.
+ *  Không có AI, AI lỗi hay quá hạn: null, máy khách đi tiếp như cũ. Mọi câu AI viết đều qua suspect(). */
+export async function turnAI(p: TurnInput, timeoutMs = TURN_AI_MS): Promise<TurnAI | null> {
+  const last = p.story.at(-1)?.answer?.trim() ?? '';
+  if (!last || p.q.topic === 'loi-nhan') return null;
+  const canFollow = p.turn < MAX_STORY_FOLLOW && p.follows < MAX_CALL_FOLLOW;
+  const needDate = p.q.event !== 'none' && !p.dated;
+  const r = await askJSON<TurnRaw>(turnSystem(p.lang, p.bot), JSON.stringify({
+    person: { name: p.who.name, role: p.who.role },
+    question: p.q.text, event: p.q.event,
+    story: p.story.map((s) => ({ asked: s.asked, answer: s.answer.slice(0, 1500) })),
+    can_follow: canFollow, need_date: canFollow && needDate,
+  }), TURN_SCHEMA, 400, timeoutMs);
+  if (!r) return null;
+  const hay = [p.q.text, ...p.story.flatMap((s) => [s.asked, s.answer]), p.who.name, p.bot].join(' ');
+  // Câu chuyện có trong dữ liệu nên được nói "vừa kể"; cuộc gọi trước, ảnh đã gửi thì không.
+  const allow: Allow = { prevCall: false, ownStory: true, photos: false };
+  const ok = (raw: unknown, max: number, what: string) => {
+    const c = cleanLine(raw);
+    if (!c || c.length > max) return null;
+    const why = suspect(c, hay, allow, p.lang);
+    if (why) { console.warn(`[call] bỏ ${what} "${c}": ${why}`); return null; }
+    return c;
+  };
+  const reply = ok(r.reaction, 160, 'câu đáp'); // i18n-ok: nhãn chỉ để ghi log
+  const date = validDate(r.day, r.month, r.year);
+  const { self, Self } = selfOf(p.lang, p.who.role);
+  const who = isParent(p.who.role) ? 'parent' : 'child';
+  // Có ngày lần đầu: Mây nhắc lại ngắn cho chắc (câu mẫu, số lấy từ ngày đã kiểm).
+  const confirm = date && needDate ? tServer(p.lang, `callScript.dateOk.${who}`, { date: dateText(p.lang, date), self, Self }) : null;
+  let follow = canFollow ? ok(r.follow_up, 200, 'câu hỏi thêm') : null; // i18n-ok
+  // Câu hỏi có event mà chưa nghe ngày: câu hỏi thêm phải hỏi ngày, AI quên thì dùng câu mẫu.
+  if (canFollow && needDate && !date && !(follow && DATE_ASK[p.lang].test(follow))) follow = tServer(p.lang, `callScript.askDate.${who}`, { self, Self });
+  const parts = [reply && follow && /[?？]$/.test(reply) ? null : reply, confirm, follow];
+  let say = parts.filter(Boolean).join(' ');
+  if (say.length > TTS_MAX) say = [confirm, follow].filter(Boolean).join(' ');
+  if (say.length > TTS_MAX) say = follow ?? '';
+  return { reply, follow, date, confirm, story: !!r.real_story, say: say || null };
+}
+
+// i18n-ok-begin: prompt chuyển lời nhắn (tiếng Anh, có ví dụ theo từng thứ tiếng).
+// ---------- Lời nhắn khó nói ----------
+
+const RELAY_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['nothing', 'recipients'],
+  properties: {
+    nothing: { type: 'boolean' },
+    recipients: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['member', 'said', 'push'],
+        properties: { member: { type: 'integer' }, said: { type: 'string' }, push: { type: 'string' } },
+      },
+    },
+  },
+};
+
+const RELAY_EXAMPLES: Record<Lang, string> = {
+  vi: `said (sender An, role con; recipient role me): "An nhắn là dạo này nhớ mẹ lắm mà bận quá. Lát mẹ gọi hay nhắn cho An nhé."
+push (sender role me; recipient An): "An ơi, dạo này mẹ nhớ An lắm đấy, gọi cho mẹ nhé"`,
+  en: `said (sender An, role con; recipient role me): "An wanted me to tell you that An misses you a lot but has been so busy. Maybe give An a call later."
+push (sender role me; recipient An): "An, I've been missing you lots lately. Give me a call, okay?"`,
+  ko: `said (sender An, role con; recipient role me): "An님이 요즘 엄마가 많이 보고 싶은데 너무 바빴대요. 이따 An님께 전화 한번 해 보세요."
+push (sender role me; recipient An): "An아, 요즘 엄마가 많이 보고 싶어. 전화 한번 줘"`,
+};
+
+function relaySystem(langs: Lang[], name = DEFAULT_MASCOT_NAME) {
+  return named(`You help Mây, the mascot of the family app Sweet Home, pass on something a family member found hard to say in person. At the end of a voice call Mây asked them the question in "ask". "message" is what they answered (speech recognition text, may contain errors).
+
+Decide:
+1. nothing: true when they left no message (they said no, nothing, not now, or only small talk). Then recipients is empty.
+2. recipients: who the message is for, by index in family_members. Use only members they named or clearly meant by a family word (mom, dad, my son, the kids, everyone). If there is a message but it is unclear for whom, use the indexes in default_recipients. Never invent anyone.
+3. For each recipient write two lines in that recipient's language (field language of the member), only from what the sender actually said, adding nothing:
+   - said: what Mây will say aloud to the recipient in their next call. Talk about the sender in the third person, warm and short (one or two sentences), then a gentle nudge to get in touch.
+   - push: a phone notification in the sender's own voice (first person as the sender, the way the sender's family role talks), addressed to the recipient by their name, suggesting they get in touch. At most 120 characters.
+Examples:
+${langs.map((l) => RELAY_EXAMPLES[l]).join('\n')}
+
+How Mây talks in said:
+${langs.map((l) => ADDRESS[l]).join('\n')}
+
+HARD RULES. Never add any fact, name, number, place or event that is not in the message. Never use time words like yesterday, today or last week, because the note is delivered later. Write names exactly as in the input. The role codes bo, me and con are not names. No em dash, no emoji, no quotation marks.`, name);
+}
+// i18n-ok-end
+
+type RelayRaw = { nothing: boolean; recipients: Array<{ member: number; said: string; push: string }> };
+export type RelayMember = { id: string; name: string; role: string; lang: string | null };
+export type RelayPlan = { to: string; said: string; push: string | null };
+
+/** Người nhận mặc định khi không rõ: con thì bố mẹ, bố mẹ thì các con; không có thì mọi người khác trong nhà. */
+export function defaultRecipients(senderRole: string, family: RelayMember[]) {
+  const want = isParent(senderRole) ? family.filter((m) => m.role === 'con') : family.filter((m) => isParent(m.role));
+  return want.length ? want : family;
+}
+
+// i18n-ok-begin: từ gọi vai trong nhà (vi, en, ko) để đoán người nhận khi không có AI.
+const ROLE_WORDS: Record<string, RegExp> = {
+  bo: /(?<!\p{L})(bố|cha|tía|dad|daddy|father|아빠|아버지|아버님)(?!\p{L})/iu,
+  me: /(?<!\p{L})(mẹ|má|mom|mommy|mum|mother|엄마|어머니|어머님)(?!\p{L})/iu,
+  con: /(?<!\p{L})(con|các con|kids?|children|son|daughter|아들|딸|애들|자녀)(?!\p{L})/iu,
+};
+// i18n-ok-end
+/** Không có AI: lấy những người được gọi đúng tên hoặc đúng vai trong lời nhắn (vai của chính người gửi không tính, vì đó thường là cách tự xưng). */
+function mentioned(text: string, senderRole: string, family: RelayMember[]) {
+  const t = text.toLowerCase().normalize('NFC');
+  const word = (w: string) => new RegExp(`(?<!\\p{L})${w.toLowerCase().normalize('NFC').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?!\\p{L})`, 'u').test(t);
+  return family.filter((m) => (m.name.trim() && word(m.name.trim())) || (m.role !== senderRole && ROLE_WORDS[m.role]?.test(t)));
+}
+
+/** Câu Mây nói lại khi không có câu AI dùng được: nhắc nguyên lời người gửi. */
+function fallbackSaid(lang: Lang, role: string, from: string, text: string) {
+  const t = cleanLine(text).replace(/[.!?…\s]+$/, '');
+  const short = t.length > 170 ? `${t.slice(0, 169).trimEnd()}…` : t;
+  return tServer(lang, `callScript.relay.said.${isParent(role) ? 'parent' : 'child'}`, { from, text: short, ...selfOf(lang, role) });
+}
+
+/** AI đọc câu trả lời ở bước lời nhắn: gửi cho ai, câu Mây sẽ nói lại, câu thông báo. Không AI thì gửi theo gợi ý mặc định (trừ khi chỉ là "không có gì"). */
+export async function planRelays(p: { sender: RelayMember; family: RelayMember[]; ask: string; text: string; bot: string }, timeoutMs = 15_000): Promise<RelayPlan[]> {
+  const text = p.text.trim();
+  if (!text || !p.family.length) return [];
+  const speak = langOf(p.sender.lang);
+  const defaults = defaultRecipients(p.sender.role, p.family);
+  const langs = [...new Set(p.family.map((m) => langOf(m.lang)))];
+  const r = await askJSON<RelayRaw>(relaySystem(langs, p.bot), JSON.stringify({
+    sender: { name: p.sender.name, role: p.sender.role },
+    ask: p.ask, message: text.slice(0, 2000),
+    family_members: p.family.map((m, index) => ({ index, name: m.name, role: m.role, language: LANG_NAME[langOf(m.lang)] })),
+    default_recipients: defaults.map((m) => p.family.indexOf(m)),
+  }, null, 1), RELAY_SCHEMA, 1500, timeoutMs);
+  if (r?.nothing) return [];
+  if (!r && relayNone(text, speak)) return [];
+  const picks: Array<{ m: RelayMember; said?: string; push?: string }> = [];
+  for (const x of r?.recipients ?? []) {
+    const m = p.family[Math.round(Number(x?.member))];
+    if (m && !picks.some((y) => y.m.id === m.id)) picks.push({ m, said: x.said, push: x.push });
+  }
+  // AI không chạy: ai được gọi tên hay gọi vai thì gửi người đó (lời nhắn khó nói không nên tới tay người khác); không rõ thì theo gợi ý.
+  // AI chạy mà không chọn được ai: theo gợi ý.
+  if (!picks.length) {
+    const called = r ? [] : mentioned(text, p.sender.role, p.family);
+    picks.push(...(called.length ? called : defaults).map((m) => ({ m })));
+  }
+  const names = p.family.map((m) => m.name).join(' ');
+  return picks.map(({ m, said, push }) => {
+    const lang = langOf(m.lang);
+    const hay = `${text} ${p.sender.name} ${m.name} ${names} ${p.bot}`;
+    const allow: Allow = { prevCall: false, ownStory: true, photos: false, message: true };
+    const ok = (raw: unknown, max: number, what: string) => {
+      const c = cleanLine(raw);
+      if (!c || c.length > max) return null;
+      const why = suspect(c, hay, allow, lang);
+      if (why) { console.warn(`[call] bỏ ${what} "${c}": ${why}`); return null; }
+      return c;
+    };
+    return { to: m.id, said: ok(said, 280, 'câu chuyển lời') ?? fallbackSaid(lang, m.role, p.sender.name, text), push: ok(push, 160, 'câu thông báo') }; // i18n-ok
+  });
+}
+
+// Mỗi cuộc gọi chỉ một lượt rút lời nhắn chạy cùng lúc (máy khách gửi lại khi mạng chập).
+const relaying = new Set<string>();
+
+/** Câu trả lời ở bước lời nhắn vừa tới: rút người nhận, lưu mỗi người một hàng relays. Cuộc gọi đã chốt thì báo luôn cho người nhận. */
+export async function saveRelays(call: { id: string; family_id: string; member_id: string }, ans: { question: string; transcript: string | null; media: string | null }) {
+  if (!ans.transcript?.trim() || relaying.has(call.id)) return;
+  relaying.add(call.id);
+  try {
+    const { rows: had } = await pool.query('select 1 from relays where call_id = $1 limit 1', [call.id]);
+    if (!had.length) {
+      const { rows: members } = await pool.query('select id, name, role, lang from members where family_id = $1 order by created_at', [call.family_id]);
+      const sender = members.find((m) => m.id === call.member_id);
+      if (!sender) return;
+      const plans = await planRelays({ sender, family: members.filter((m) => m.id !== sender.id), ask: ans.question, text: ans.transcript, bot: await mascotName(call.family_id) });
+      for (const x of plans) {
+        await pool.query(
+          `insert into relays (id, family_id, call_id, from_id, to_id, transcript, media, said, push) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           on conflict (call_id, to_id) do nothing`,
+          [randomUUID(), call.family_id, call.id, sender.id, x.to, ans.transcript, ans.media, x.said, x.push]);
+      }
+      if (plans.length) console.log(`[call] lời nhắn cuộc gọi ${call.id.slice(0, 8)}: ${plans.length} người nhận`);
+    }
+    // Cuộc gọi đã chốt (câu trả lời tới sau /finish, hoặc AI rút xong sau đó) thì báo ngay; chưa chốt thì afterCall báo.
+    const { rows: [c] } = await pool.query('select status from calls where id = $1', [call.id]);
+    if (c?.status === 'done') await pushRelays(call.id);
+  } finally {
+    relaying.delete(call.id);
+  }
+}
 
 // i18n-ok-begin: prompt rút ngày tháng (tiếng Anh) và nhãn nội bộ.
 // ---------- Rút ngày tháng sau cuộc gọi ----------
@@ -504,7 +816,9 @@ async function saveDates(callId: string) {
   const { rows: [call] } = await pool.query('select * from calls where id = $1', [callId]);
   if (!call) return;
   const script: CallScript = JSON.parse(call.script);
-  const { rows: answers } = await pool.query('select idx, question, transcript from call_answers where call_id = $1 order by idx', [callId]);
+  // Đọc cả các lượt hỏi thêm (ngày thường nằm ở câu trả lời cho "hôm đó là ngày nào"). Lời nhắn khó nói không bao giờ vào lịch chung.
+  const { rows: answers } = await pool.query(
+    `select idx, turn, question, transcript from call_answers where call_id = $1 and topic <> 'loi-nhan' order by idx, turn`, [callId]);
   const said = answers.filter((a) => (a.transcript ?? '').trim());
   if (!said.length) return;
   const { rows: existing } = await pool.query('select kind, title, day, month, year from events where family_id = $1', [call.family_id]);
@@ -539,6 +853,8 @@ async function saveDates(callId: string) {
 }
 
 async function afterCall(callId: string) {
+  // Lời nhắn khó nói: báo cho người nhận trước (nhanh), rồi mới tới lịch và podcast.
+  try { await pushRelays(callId); } catch (e) { console.error('[call] lỗi báo lời nhắn:', (e as Error).message); }
   try { await saveDates(callId); } catch (e) { console.error('[call] lỗi rút ngày:', (e as Error).message); }
   try { await buildPodcastsForCall(callId); } catch (e) { console.error('[call] lỗi podcast:', (e as Error).message); }
 }
@@ -564,8 +880,70 @@ const limitReply = limitBy({ name: 'call-reply', per: new Limit(20, 10 * 60e3), 
 const limitTts = limitBy({ name: 'call-tts', per: new Limit(150, 10 * 60e3), key: byMember });
 // Nhiều thành viên giả cùng một nơi: thêm trần theo IP (cả nhà dùng chung wifi vẫn dư).
 const limitTtsIp = limitBy({ name: 'call-tts-ip', per: new Limit(400, 10 * 60e3) });
+const limitPhoto = limitBy({ name: 'call-photo', per: new Limit(60, 10 * 60e3), key: byMember });
 // AI soạn bộ câu mới: mỗi người 4 lần mỗi giờ (đổi ngôn ngữ, đổi tên linh vật), quá thì dùng bộ câu mẫu chứ không báo lỗi.
 const aiScripts = new Limit(4, 3600e3);
+
+/** Lượt kể máy khách gửi: 0 là câu chính, 1..MAX_STORY_FOLLOW là câu hỏi thêm. */
+const turnOf = (v: unknown) => Math.min(MAX_STORY_FOLLOW, Math.max(0, Math.round(Number(v)) || 0));
+/** Câu hỏi thêm máy khách gửi kèm (đúng câu Mây đã hỏi ở lượt đó). */
+const askedOf = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
+const yes = (v: unknown) => v === true || v === 'true' || v === '1';
+/** Mã hàng cố định theo khoá máy khách gửi (gửi lại thì trùng mã, không thêm hàng). */
+const uuidOf = (s: string) => { const x = createHash('sha256').update(s).digest('hex'); return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20, 32)}`; };
+
+/** Các lượt trước của câu chuyện: máy khách gửi kèm (có lời chép ngay), thiếu thì lấy trong DB (hàng chờ có thể chưa gửi tới). */
+async function turnInput(call: { id: string; member_id: string; family_id: string }, script: CallScript, idx: number, turn: number, asked: string, transcript: string, body: Record<string, unknown>): Promise<TurnInput> {
+  const q = script.questions[idx];
+  let prior: Array<{ q?: unknown; a?: unknown }> = [];
+  try { const v = typeof body.prior === 'string' ? JSON.parse(body.prior) : body.prior; if (Array.isArray(v)) prior = v.slice(0, MAX_STORY_FOLLOW); } catch {}
+  const [{ rows: prev }, { rows: [cnt] }, { rows: [m] }] = await Promise.all([
+    pool.query('select turn, question, transcript from call_answers where call_id = $1 and idx = $2 and turn < $3', [call.id, idx, turn]),
+    pool.query('select count(*)::int n from call_answers where call_id = $1 and turn > 0', [call.id]),
+    pool.query('select m.name, m.role, f.mascot_name from members m join families f on f.id = m.family_id where m.id = $1', [call.member_id]),
+  ]);
+  const story: TurnInput['story'] = [];
+  for (let k = 0; k < turn; k++) {
+    const d = prev.find((x) => x.turn === k), c = prior[k];
+    const a = String((typeof c?.a === 'string' && c.a.trim()) || d?.transcript || '').slice(0, 1500);
+    story.push({ asked: d?.question || askedOf(c?.q) || (k === 0 ? q.text : ''), answer: a });
+  }
+  story.push({ asked, answer: transcript.slice(0, 1500) });
+  return {
+    lang: langOf(script.lang ?? reqLang()), who: { name: m?.name ?? '', role: m?.role ?? 'con' }, bot: m?.mascot_name || DEFAULT_MASCOT_NAME,
+    q, story, turn, follows: Math.max(Number(body.follows) || 0, cnt?.n ?? 0), dated: yes(body.dated),
+  };
+}
+
+/** AI sau một lượt kể, rồi đọc sẵn đúng câu Mây sẽ nói bằng nhà cung cấp máy khách đã chốt (câu có hỏi thêm thì không coi là câu phụ). */
+async function turnReply(input: TurnInput, memberId: string, provider: Provider | null): Promise<TurnAI | null> {
+  const ai = await turnAI(input);
+  if (ai?.say && provider) void speech(ai.say, memberId, { optional: !ai.follow, provider });
+  return ai;
+}
+
+/** Ba byte, tám byte hay mười hai byte đầu tệp: JPEG, PNG, WebP. Loại khác (HEIC, GIF, tệp giả đuôi ảnh) thì null. */
+export function imageKind(b: Uint8Array): 'jpg' | 'png' | 'webp' | null {
+  const at = (i: number, ...xs: number[]) => xs.every((x, k) => b[i + k] === x);
+  if (b.length >= 3 && at(0, 0xff, 0xd8, 0xff)) return 'jpg';
+  if (b.length >= 8 && at(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return 'png';
+  if (b.length >= 12 && at(0, 0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x45, 0x42, 0x50)) return 'webp';
+  return null;
+}
+
+async function sniff(file: string) {
+  const fh = await open(file, 'r');
+  try { const { buffer, bytesRead } = await fh.read(Buffer.alloc(16), 0, 16, 0); return imageKind(buffer.subarray(0, bytesRead)); } finally { await fh.close(); }
+}
+
+/** Lời nhắn người khác gửi cho người này, chưa chuyển (Mây nói ở cuối cuộc gọi). Chỉ lời nhắn của cuộc gọi đã xong. */
+async function pendingRelays(memberId: string): Promise<CallRelay[]> {
+  const { rows } = await pool.query(
+    `select r.id, r.said from relays r left join calls c on c.id = r.call_id
+     where r.to_id = $1 and r.delivered_at is null and coalesce(r.said, '') <> '' and (r.call_id is null or c.status = 'done')
+     order by r.created_at limit 3`, [memberId]);
+  return rows.map((x) => ({ id: x.id, said: x.said }));
+}
 
 export function callRouter(upload: multer.Multer) {
   const r = express.Router();
@@ -589,15 +967,18 @@ export function callRouter(upload: multer.Multer) {
     const old: CallScript | null = rows[0] ? JSON.parse(rows[0].script) : null;
     // Chưa từng có cuộc gọi nào thì chỉ dùng bộ câu chào hỏi đơn giản, kể cả khi đã lỡ soạn một bộ khác.
     // Bộ câu soạn bằng thứ tiếng khác với ngôn ngữ hiện tại (đổi ngôn ngữ giữa tuần), hoặc nhà vừa đổi tên linh vật, thì soạn lại.
-    if (old && (old.lang ?? 'vi') === c.lang && (old.mascot ?? DEFAULT_MASCOT_NAME) === (c.mascot ?? DEFAULT_MASCOT_NAME) && (!first || old.source === 'first')) return res.json({ id: rows[0].id, script: old });
+    const relays = await pendingRelays(mid);
+    if (old && (old.lang ?? 'vi') === c.lang && (old.mascot ?? DEFAULT_MASCOT_NAME) === (c.mascot ?? DEFAULT_MASCOT_NAME) && (!first || old.source === 'first')) return res.json({ id: rows[0].id, script: old, relays });
     // Người dùng đã bấm Nghe máy và đang chờ: AI soạn quá 7 giây thì dùng bộ câu mẫu, không để màn hình im lặng.
     const script = first ? firstScript(c) : (aiScripts.take(mid) ? await aiScript(c, week, START_AI_MS) : null) ?? templateScript(c, week);
     const id = randomUUID();
     await pool.query('insert into calls (id, family_id, member_id, week, script) values ($1,$2,$3,$4,$5)', [id, fid, mid, week, JSON.stringify(script)]);
-    res.json({ id, script });
+    res.json({ id, script, relays });
     // Giọng đọc do máy khách xin khi cần (lời chào + câu đầu một lần, mỗi câu sau xin trước một câu), máy chủ không tự đọc trước.
   }));
 
+  // Một lượt kể: idx là câu chuyện, turn 0 câu chính, 1 và 2 là câu hỏi thêm (question là đúng câu Mây đã hỏi).
+  // Gửi lại (hàng chờ thử lại) thì thay hàng cũ cùng (idx, turn), không bao giờ thành hai hàng.
   r.post('/call/:id/answer', limitAnswer, upload.single('file'), h(async (req, res) => {
     const { rows: [call] } = await pool.query('select * from calls where id = $1 and member_id = $2', [req.params.id, req.member.id]);
     // multer đã ghi tệp trước khi kiểm: từ chối thì xoá luôn, không để tệp mồ côi.
@@ -607,36 +988,60 @@ export function callRouter(upload: multer.Multer) {
     const idx = Number(req.body.idx);
     const q = script.questions[idx];
     if (!q) { await drop(); return res.status(400).json(errorBody('question_not_found')); }
+    // Bản app cũ không gửi turn: giữ đúng cách cũ (một câu đáp, không hỏi thêm).
+    const fresh = req.body.turn !== undefined;
+    const relay = q.topic === 'loi-nhan';
+    const turn = relay ? 0 : turnOf(req.body.turn);
+    const asked = turn === 0 ? q.text : askedOf(req.body.question) || q.text;
     const aid = randomUUID();
     let transcript = String(req.body.transcript || '').trim().slice(0, 4000) || null;
-    await pool.query('delete from call_answers where call_id = $1 and idx = $2', [call.id, idx]);
+    // Lời nhắn khó nói chỉ người nhận được nghe: bản ghi nằm ở bảng relays, hàng call_answers không có media (podcast chỉ lấy hàng có media).
+    const file = media(req.file);
+    await pool.query('delete from call_answers where call_id = $1 and idx = $2 and turn = $3', [call.id, idx, turn]);
     await pool.query(
-      'insert into call_answers (id, call_id, family_id, member_id, idx, question, topic, media, transcript, seconds) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-      [aid, call.id, call.family_id, call.member_id, idx, q.text, q.topic, media(req.file), transcript, Number(req.body.seconds) || null],
+      'insert into call_answers (id, call_id, family_id, member_id, idx, turn, question, topic, media, transcript, seconds) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
+      [aid, call.id, call.family_id, call.member_id, idx, turn, asked, q.topic, relay ? null : file, transcript, Number(req.body.seconds) || null],
     );
-    // Máy không chép được lời (iPhone hay bị): nhờ Gemini (dự phòng OpenAI) chép theo thứ tiếng của cuộc gọi, quá 8 giây thì thôi. Chép được thì đáp luôn một câu.
+    // Máy không chép được lời (iPhone hay bị): nhờ Gemini (dự phòng OpenAI) chép theo thứ tiếng của cuộc gọi, quá 8 giây thì thôi. Chép được thì đáp luôn.
     let reply: string | null = null;
+    let ai: TurnAI | null = null;
     if (!transcript && req.file) {
       transcript = (await transcribe(path.join(MEDIA_DIR, req.file.filename), req.member.id, 8000, langOf(script.lang ?? reqLang())))?.slice(0, 4000) ?? null;
       if (transcript) {
         await pool.query('update call_answers set transcript = $2 where id = $1', [aid, transcript]);
-        const { rows: [m] } = await pool.query('select name, role from members where id = $1', [call.member_id]);
-        reply = await quickReply(m, q.text, transcript, req.member.id, providerOf(req.body.provider));
+        if (!relay && fresh && useGemini()) {
+          ai = await turnReply(await turnInput(call, script, idx, turn, asked, transcript, req.body), req.member.id, providerOf(req.body.provider));
+          reply = ai?.reply ?? null;
+        } else if (!relay) {
+          const { rows: [m] } = await pool.query('select name, role from members where id = $1', [call.member_id]);
+          reply = await quickReply(m, asked, transcript, req.member.id, providerOf(req.body.provider));
+        }
       }
     }
-    res.json({ ok: true, transcript, reply });
+    res.json({ ok: true, transcript, reply, ai });
+    if (relay) void saveRelays(call, { question: asked, transcript, media: file }).catch((e) => console.error('[call] lỗi lưu lời nhắn:', (e as Error).message));
     // Câu trả lời tới sau khi cuộc gọi đã chốt (máy khách gửi lại): dựng lại tập của cuộc gọi cho đủ câu.
-    if (call.status === 'done') rebuildCallSoon(call.id);
+    else if (call.status === 'done') rebuildCallSoon(call.id);
   }));
 
-  // Nghe xong một câu: AI đáp một câu ngắn theo điều vừa kể. Không có khoá hay quá 2 giây thì máy khách dùng câu mẫu.
+  // Nghe xong một lượt: một lần gọi AI trả câu đáp, câu hỏi thêm (nếu cần), ngày nghe được, có chuyện để xin ảnh không (TurnAI).
+  // Không có khoá hay quá hạn thì ai null, máy khách dùng câu mẫu và đi tiếp như cũ. Bản app cũ (không gửi turn) chỉ nhận câu đáp như trước.
   r.post('/call/:id/reply', limitReply, h(async (req, res) => {
     const said = String(req.body.transcript || '').trim().slice(0, 1500);
-    if (!said) return res.json({ text: null });
-    const { rows: [call] } = await pool.query('select c.script, m.name, m.role from calls c join members m on m.id = c.member_id where c.id = $1 and c.member_id = $2', [req.params.id, req.member.id]);
+    if (!said) return res.json({ text: null, ai: null });
+    const { rows: [call] } = await pool.query('select c.*, m.name, m.role from calls c join members m on m.id = c.member_id where c.id = $1 and c.member_id = $2', [req.params.id, req.member.id]);
     if (!call) return res.status(404).json(errorBody('call_not_found'));
-    const q = (JSON.parse(call.script) as CallScript).questions[Number(req.body.idx)];
-    res.json({ text: await quickReply(call, q?.text ?? '', said, req.member.id, providerOf(req.body.provider)) });
+    const script = JSON.parse(call.script) as CallScript;
+    const idx = Number(req.body.idx);
+    const q = script.questions[idx];
+    const provider = providerOf(req.body.provider);
+    if (req.body.turn === undefined || !q || q.topic === 'loi-nhan' || !useGemini()) {
+      return res.json({ text: await quickReply(call, q?.text ?? '', said, req.member.id, provider), ai: null });
+    }
+    const turn = turnOf(req.body.turn);
+    const asked = turn === 0 ? q.text : askedOf(req.body.question) || q.text;
+    const ai = await turnReply(await turnInput(call, script, idx, turn, asked, said, req.body), req.member.id, provider);
+    res.json({ text: ai?.reply ?? null, ai });
   }));
 
   // Nhấc máy là hỏi trước một lần: cả cuộc gọi dùng giọng OpenAI, Gemini hay giọng máy ('device'). Con số dùng/hạn mức chỉ trả cho thành viên (đã qua auth).
@@ -667,13 +1072,48 @@ export function callRouter(upload: multer.Multer) {
     res.json(url ? { url } : { url: null, reason: gate.blocked() ?? 'fail' });
   }));
 
-  r.post('/call/:id/photo', upload.single('file'), h(async (req, res) => {
+  // Ảnh cho một câu chuyện (idx): mỗi ảnh một hàng vault có story = idx. Máy khách gửi từng ảnh một (hàng chờ thử lại riêng từng ảnh),
+  // kèm key để gửi lại không thành hai hàng. Chỉ nhận JPEG, PNG, WebP thật (đọc byte đầu tệp, không tin đuôi hay kiểu máy khách báo).
+  r.post('/call/:id/photo', limitPhoto, upload.fields([{ name: 'file', maxCount: 1 }, { name: 'files', maxCount: 12 }]), h(async (req, res) => {
+    const got = (req.files ?? {}) as Record<string, Express.Multer.File[]>;
+    const files = [...(got.file ?? []), ...(got.files ?? [])];
     const { rows: [call] } = await pool.query('select * from calls where id = $1 and member_id = $2', [req.params.id, req.member.id]);
-    if (!call || !req.file) return res.status(400).json(errorBody('photo_missing'));
+    if (!call || !files.length) {
+      await Promise.all(files.map((f) => unlink(f.path).catch(() => {})));
+      return res.status(400).json(errorBody('photo_missing'));
+    }
     const script: CallScript = JSON.parse(call.script);
-    const q = script.questions[Number(req.body.idx)];
-    await pool.query('insert into vault (id, family_id, member_id, media, caption, call_id) values ($1,$2,$3,$4,$5,$6)',
-      [randomUUID(), call.family_id, call.member_id, media(req.file), q ? tReq(`topic.${q.topic}`) : null, call.id]);
+    const idx = Number(req.body.idx);
+    const q = Number.isInteger(idx) ? script.questions[idx] : undefined;
+    const story = q && q.topic !== 'loi-nhan' ? idx : null;
+    const key = /^[\w-]{6,64}$/.test(String(req.body.key ?? '')) ? String(req.body.key) : null;
+    let saved = 0, bad = 0;
+    for (const [i, f] of files.entries()) {
+      const kind = await sniff(f.path).catch(() => null);
+      if (!kind) { bad++; await unlink(f.path).catch(() => {}); continue; }
+      // Đuôi tệp theo đúng loại ảnh thật (ảnh thu nhỏ và podcast nhận ảnh theo đuôi).
+      let name = f.filename;
+      if (!(kind === 'jpg' ? /\.jpe?g$/i : new RegExp(`\\.${kind}$`, 'i')).test(name)) {
+        name = `${name.replace(/\.[^.]*$/, '')}.${kind}`;
+        await rename(f.path, path.join(path.dirname(f.path), name));
+      }
+      const id = key ? uuidOf(`${call.id}|${key}|${i}`) : randomUUID();
+      const { rowCount } = await pool.query(
+        'insert into vault (id, family_id, member_id, media, caption, call_id, story) values ($1,$2,$3,$4,$5,$6,$7) on conflict (id) do nothing',
+        [id, call.family_id, call.member_id, `/media/${name}`, q ? tReq(`topic.${q.topic}`) : null, call.id, story]);
+      if (rowCount) saved++;
+      else await unlink(path.join(path.dirname(f.path), name)).catch(() => {});
+    }
+    if (!saved && bad) return res.status(400).json(errorBody('photo_type'));
+    res.json({ ok: true, saved });
+  }));
+
+  // Mây đã chuyển xong một lời nhắn cho người đang nghe.
+  r.post('/call/:id/relay/:rid/heard', h(async (req, res) => {
+    await pool.query(
+      `update relays set delivered_call_id = $1, delivered_at = now()
+       where id = $2 and to_id = $3 and delivered_at is null and exists (select 1 from calls where id = $1 and member_id = $3)`,
+      [req.params.id, req.params.rid, req.member.id]);
     res.json({ ok: true });
   }));
 

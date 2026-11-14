@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { errorText, token } from './api';
 import { type Drive, type MascotMode } from './Mascot';
 import { MascotAny as Mascot } from './Mascot3D';
-import { AUDIO_TYPE, fileName, record, type Recording } from './media';
+import { AUDIO_TYPE, fileName, record, shrinkImage, type Recording } from './media';
 import { send as outbox } from './outbox';
-import { callLines, type CallScript, type Me } from './shared';
+import { callLines, MAX_CALL_FOLLOW, MAX_STORY_FOLLOW, relayNone, type CallRelay, type CallScript, type Me, type TurnAI } from './shared';
 import { buzz, sfx, startRing, stopRing, tap } from './sound';
 import { playVoice, prefetchVoice, resetVoice, setVoiceContext, speak, stopSpeaking, ttsReady, unlockSpeech, voiceCut, voiceProvider, voiceReady, warmVoice, type Kind } from './speech';
 import { Icon, toast } from './ui';
@@ -48,8 +48,13 @@ const FILLER: Record<Lang, RegExp> = {
 };
 
 type Heard = { recording: Recording | null; transcript: string; speechMs: number };
-type Saved = { transcript?: string | null; reply?: string | null } | null;
-type Session = { id: string; script: CallScript };
+type Saved = { transcript?: string | null; reply?: string | null; ai?: TurnAI | null } | null;
+type Session = { id: string; script: CallScript; relays?: CallRelay[] };
+/** Một câu chuyện đang kể: các lượt đã xong (gửi kèm cho AI), đã có ngày chưa, có xin ảnh không. */
+type Story = { prior: Array<{ q: string; a: string }>; dated: boolean; photo: boolean };
+const NO_AI: TurnAI = { reply: null, follow: null, date: null, confirm: null, story: false, say: null };
+/** Ảnh tối đa mỗi lần chọn. */
+const MAX_PHOTOS = 12;
 type Phase = 'ring' | 'talk' | 'photo' | 'bye';
 
 // Sweet Home gọi: đổ chuông, nhấc máy, linh vật hỏi từng câu, tự nghe đến khi người kể ngừng, đáp lại rồi hỏi tiếp.
@@ -70,6 +75,11 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
   const rec = useRef<any>(null);
   const live = useRef(true);
   const idx = useRef(0);
+  // Lượt đang nghe trong câu chuyện (0 là câu chính) và đúng câu Mây vừa hỏi: cúp máy giữa chừng vẫn gửi đúng hàng.
+  const turnRef = useRef(0);
+  const askedRef = useRef('');
+  // Số câu hỏi thêm đã hỏi trong cuộc gọi này.
+  const follows = useRef(0);
   // Số câu trả lời đã vào hàng chờ gửi (outbox.ts giữ tới khi máy chủ nhận).
   const count = useRef(0);
   const hearing = useRef<Promise<Heard | null> | null>(null);
@@ -288,31 +298,66 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     return p.finally(() => { if (hearing.current === p) hearing.current = null; });
   }
 
-  /** Gửi câu trả lời qua hàng chờ: mạng chập thì tự thử lại, bản ghi không mất. Máy không chép được lời thì máy chủ nhờ Gemini chép và trả về luôn câu đáp. */
-  function upload(s: Session, n: number, h: Heard): Promise<Saved> {
+  /** Gửi một lượt kể qua hàng chờ: mạng chập thì tự thử lại, bản ghi không mất. Máy không chép được lời thì máy chủ nhờ Gemini chép và trả về luôn câu đáp.
+   * idx là câu chuyện, turn là lượt (0 câu chính, 1 và 2 câu hỏi thêm, kèm đúng câu Mây đã hỏi). Gửi lại thì máy chủ thay hàng cũ cùng (idx, turn). */
+  function upload(s: Session, n: number, turn: number, asked: string, h: Heard, st?: Story): Promise<Saved> {
     if (!h.recording || h.recording.seconds < 1) return Promise.resolve(null);
     count.current += 1;
     return outbox({
       group: s.id, url: `/api/call/${s.id}/answer`, blob: h.recording.blob, file: fileName(h.recording.blob, 'answer'),
-      fields: { idx: String(n), transcript: h.transcript, seconds: String(h.recording.seconds), provider: (!machine.current && voiceProvider()) || '' },
+      fields: {
+        idx: String(n), turn: String(turn), ...(turn ? { question: asked } : {}), transcript: h.transcript, seconds: String(h.recording.seconds),
+        provider: (!machine.current && voiceProvider()) || '', follows: String(follows.current), dated: st?.dated ? '1' : '', prior: st ? JSON.stringify(st.prior) : '',
+      },
     }).then((r: Saved) => { if (r === null) toast(t('call.answerFailed')); return r; });
   }
 
   /** Báo máy chủ cuộc gọi đã xong (rút ngày vào lịch, ghép podcast). Hàng chờ chỉ gửi lệnh này sau mọi câu trả lời và ảnh của cuộc gọi. */
   const finishCall = (s: Session): Promise<boolean> => outbox({ group: s.id, url: `/api/call/${s.id}/finish`, last: true }).then((r) => r !== null);
 
-  /** Câu đáp ngắn theo điều vừa kể. Có lời chép thì hỏi AI (quá 2 giây thôi); không có thì chờ Gemini chép (quá 4 giây thôi). */
-  async function replyFor(s: Session, n: number, h: Heard, saved: Promise<Saved>): Promise<string | null> {
+  /** Sau mỗi lượt kể: câu đáp, câu hỏi thêm, ngày nghe được (TurnAI). Có lời chép thì hỏi AI (quá 3 giây thôi); không có thì chờ máy chủ chép (quá 5 giây thôi).
+   * Không có gì thì null: đi tiếp như cũ, không hỏi thêm. */
+  async function turnFor(s: Session, n: number, turn: number, asked: string, h: Heard, saved: Promise<Saved>, st: Story): Promise<TurnAI | null> {
     if (!h.transcript) {
-      const r = await Promise.race([saved, wait(4000).then(() => null)]);
-      return r?.reply || null;
+      const r = await Promise.race([saved, wait(5000).then(() => null)]);
+      return r?.ai ?? (r?.reply ? { ...NO_AI, reply: r.reply } : null);
     }
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 2000);
+    const timer = setTimeout(() => ctrl.abort(), 3000);
     try {
-      const r = await call<{ text: string | null }>(`/api/call/${s.id}/reply`, { method: 'POST', body: JSON.stringify({ idx: n, transcript: h.transcript, provider: machine.current ? null : voiceProvider() }), signal: ctrl.signal });
-      return r.text || null;
-    } catch { return null; } finally { clearTimeout(t); }
+      const r = await call<{ text: string | null; ai?: TurnAI | null }>(`/api/call/${s.id}/reply`, {
+        method: 'POST', signal: ctrl.signal,
+        body: JSON.stringify({ idx: n, turn, question: turn ? asked : undefined, transcript: h.transcript, prior: st.prior, follows: follows.current, dated: st.dated, provider: machine.current ? null : voiceProvider() }),
+      });
+      return r.ai ?? (r.text ? { ...NO_AI, reply: r.text } : null);
+    } catch { return null; } finally { clearTimeout(timer); }
+  }
+
+  /** Lời nhắn người khác gửi cho mình: Mây nói lại từng lời, nói xong thì báo máy chủ đã chuyển. */
+  async function deliver(s: Session) {
+    for (const [k, r] of (s.relays ?? []).entries()) {
+      if (!live.current) return;
+      if (k === 0) await say(lines.relayIntro);
+      await say(r.said);
+      if (!live.current) return;
+      void outbox({ group: s.id, url: `/api/call/${s.id}/relay/${encodeURIComponent(r.id)}/heard` });
+    }
+  }
+
+  /** Bước lời nhắn khó nói (cuối cuộc gọi): hỏi, nghe, gửi. Không nói gì hay chỉ "không có đâu" thì thôi, không ép. */
+  async function relayStep(s: Session, n: number) {
+    await say(s.script.questions[n].text);
+    await wait(250);
+    const h = await hear();
+    if (!live.current || !h || !h.recording || h.recording.seconds < 1) return;
+    const saved = upload(s, n, 0, s.script.questions[n].text, h);
+    setMode('idle');
+    let text = h.transcript;
+    if (!text) text = (await Promise.race([saved, wait(5000).then(() => null)]))?.transcript ?? '';
+    if (!live.current) return;
+    if (text && relayNone(text, s.script.lang ?? shownLang())) return;
+    // Biết có lời nhắn thì nhận lời; chưa biết (máy chủ chép chưa kịp) thì một câu đáp trung tính.
+    await say(text ? lines.relayOk : lines.short[1], undefined, 'fixed');
   }
 
   async function run(s: Session) {
@@ -324,9 +369,14 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     const first = opening(s.script);
     if (!first) await say(s.script.greeting);
     let silentRow = 0;
+    let delivered = false;
+    // Câu chuyện cuối (bước lời nhắn không tính): im lặng ở đây thì chào như cũ, không hỏi lời nhắn.
+    const lastStory = qs.reduce((k, q, j) => (q.topic === 'loi-nhan' ? k : j), -1);
     for (let n = 0; n < qs.length; n++) {
       if (!live.current) return;
       idx.current = n;
+      turnRef.current = 0;
+      askedRef.current = qs[n].text;
       setI(n);
       setHeard('');
       // Câu đáp mẫu chọn trước; giọng của chúng và của câu hỏi kế tiếp được xin sẵn trong lúc người kể đang nói.
@@ -336,6 +386,18 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       if (!machine.current) {
         [fallback.short, fallback.long, lines.ack, lines.slow, lines.skip, lines.busy].forEach((t) => warmVoice(t, 'fixed'));
         warmVoice(next);
+        // Sắp tới bước lời nhắn: xin sẵn giọng các lời người khác nhắn cho mình.
+        if (s.relays?.length && (qs[n + 1]?.topic === 'loi-nhan' || n === qs.length - 1)) {
+          warmVoice(lines.relayIntro);
+          s.relays.forEach((r) => warmVoice(r.said));
+        }
+      }
+      // Lời nhắn khó nói: chuyển lời người khác nhắn trước, rồi mới hỏi.
+      if (qs[n].topic === 'loi-nhan') {
+        if (!delivered) { delivered = true; await deliver(s); }
+        if (!machine.current) warmVoice(lines.relayOk, 'fixed');
+        await relayStep(s, n);
+        continue;
       }
       if (n === 0 && first) { setCaption(first); await say(first); } else await say(qs[n].text);
       await wait(250);
@@ -350,7 +412,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       }
       if (!h || !h.recording || h.recording.seconds < 1) {
         silentRow += 1;
-        if (silentRow >= 2 || n === qs.length - 1) {
+        if (silentRow >= 2 || n >= lastStory) {
           await say(lines.busy, undefined, 'fixed');
           return void bye(false);
         }
@@ -358,16 +420,47 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
         continue;
       }
       silentRow = 0;
-      if (qs[n].photo && !machine.current) warmVoice(lines.photo, 'fixed');
-      const reply = replyFor(s, n, h, upload(s, n, h));
-      setMode('idle');
-      // Câu đáp chưa kịp về thì "ừm, mình nghe đây" một tiếng (đúng giọng Gemini) cho khỏi im.
-      const early = await Promise.race([reply, wait(900).then(() => undefined)]);
-      if (early === undefined && !machine.current && voiceReady(lines.ack)) await say(lines.ack, undefined, 'fixed');
-      const local = h.speechMs < 3000 ? fallback.short : fallback.long;
-      const text = (await reply) || local;
-      await say(text, text === local ? undefined : local, text === local ? 'fixed' : 'reply');
-      if (qs[n].photo && live.current) {
+      // Một câu chuyện: câu chính rồi tối đa 2 câu hỏi thêm (cả cuộc gọi tối đa 4), AI quyết có hỏi thêm không.
+      const st: Story = { prior: [], dated: false, photo: qs[n].photo };
+      let asked = qs[n].text;
+      for (let turn = 0; ; turn++) {
+        turnRef.current = turn;
+        askedRef.current = asked;
+        const entry = { q: asked, a: h.transcript };
+        const saved = upload(s, n, turn, asked, h, st);
+        if (!entry.a) void saved.then((r) => { if (r?.transcript) entry.a = r.transcript; });
+        const ai = turnFor(s, n, turn, asked, h, saved, st);
+        setMode('idle');
+        // Câu đáp chưa kịp về thì "ừm, mình nghe đây" một tiếng (đúng giọng Gemini) cho khỏi im.
+        const early = await Promise.race([ai, wait(900).then(() => undefined)]);
+        if (early === undefined && !machine.current && voiceReady(lines.ack)) await say(lines.ack, undefined, 'fixed');
+        const res = await ai;
+        if (!live.current) return;
+        st.prior.push(entry);
+        if (res?.story) st.photo = true;
+        if (res?.date) st.dated = true;
+        if (st.photo && !machine.current) warmVoice(lines.photo, 'fixed');
+        const local = h.speechMs < 3000 ? fallback.short : fallback.long;
+        const follow = res?.follow && turn < MAX_STORY_FOLLOW && follows.current < MAX_CALL_FOLLOW ? res.follow : null;
+        // Máy chủ đã gộp sẵn câu đáp + nhắc ngày + câu hỏi thêm thành một câu (một lần xin giọng). Không có thì câu đáp AI hoặc câu mẫu như cũ.
+        if (res?.say && (follow || !res.follow)) {
+          const plain = !follow && !res.confirm;
+          await say(res.say, plain ? local : undefined, plain ? 'reply' : undefined);
+        } else if (res?.reply) await say(res.reply, local, 'reply');
+        else await say(local, undefined, 'fixed');
+        if (!follow || !live.current) break;
+        follows.current += 1;
+        asked = follow;
+        turnRef.current = turn + 1;
+        askedRef.current = asked;
+        await wait(250);
+        const more = await hear();
+        if (!live.current) return;
+        // Không nói gì sau câu hỏi thêm thì thôi, không hỏi lại.
+        if (!more || !more.recording || more.recording.seconds < 1) { await say(lines.skip, undefined, 'fixed'); break; }
+        h = more;
+      }
+      if (st.photo && live.current) {
         setPhase('photo');
         const picked = new Promise<void>((r) => { photoDone.current = r; });
         await say(lines.photo, undefined, 'fixed');
@@ -376,18 +469,34 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
         setPhase('talk');
       }
     }
+    if (!delivered && live.current) await deliver(s);
     if (live.current) await bye(true);
   }
 
-  function sendPhoto(file?: File | null) {
+  /** Ảnh cho câu chuyện vừa kể: chọn nhiều ảnh một lần, thu nhỏ rồi mỗi ảnh một việc trong hàng chờ (gửi lại riêng, có key chống trùng).
+   * Việc gửi ảnh vào hàng chờ trước khi cuộc gọi đi tiếp, để lệnh kết thúc luôn đi sau ảnh. */
+  async function sendPhotos(list?: FileList | null) {
     tap();
-    if (file && session) {
-      void outbox({ group: session.id, url: `/api/call/${session.id}/photo`, fields: { idx: String(idx.current) }, blob: file, file: file.name })
-        .then((r) => toast(t(r === null ? 'call.photoFailed' : 'call.photoSaved')));
-    }
     stopSpeaking();
-    photoDone.current?.();
+    const done = photoDone.current;
     photoDone.current = null;
+    const s = session;
+    const files = [...(list ?? [])].filter((f) => /^image\/(?!gif)/.test(f.type) || !f.type).slice(0, MAX_PHOTOS);
+    if (files.length && s) {
+      setPhase('talk');
+      const story = String(idx.current);
+      const blobs: Blob[] = [];
+      for (const f of files) blobs.push(await shrinkImage(f));
+      const jobs = blobs.map((blob) => outbox({
+        group: s.id, url: `/api/call/${s.id}/photo`, blob, file: fileName(blob, 'photo'),
+        fields: { idx: story, key: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}` },
+      }));
+      void Promise.all(jobs).then((rs) => {
+        const n = rs.filter((r) => r !== null).length;
+        toast(n ? t('call.photosSaved', { n }) : t('call.photoFailed'));
+      });
+    }
+    done?.();
   }
 
   async function bye(spoke: boolean) {
@@ -416,7 +525,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     endHear.current?.();
     const h = pending ? await pending : null;
     const s = session;
-    if (s && h) void upload(s, idx.current, h);
+    if (s && h) void upload(s, idx.current, turnRef.current, askedRef.current, h);
     cleanup();
     // Hàng chờ gửi tiếp ở nền kể cả khi đóng màn. Chỉ mở Podcast khi máy chủ nhận lệnh kết thúc ngay (chờ tối đa 1,5 giây).
     let done = false;
@@ -453,9 +562,9 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
               <div className="call-photo fade">
                 <label className="btn">
                   <Icon name="image" size={20} /> {t('call.pickPhoto')}
-                  <input type="file" accept="image/*" hidden onChange={(e) => sendPhoto(e.target.files?.[0])} />
+                  <input type="file" accept="image/*" multiple hidden onChange={(e) => void sendPhotos(e.target.files)} />
                 </label>
-                <button className="link" onClick={() => sendPhoto(null)}>{t('common.later')}</button>
+                <button className="link" onClick={() => void sendPhotos(null)}>{t('common.later')}</button>
               </div>
             )}
             {phase === 'bye' && (sent === 'ok' || sent === 'later') && <p key={sent} className="call-note fade">{t(sent === 'ok' ? 'call.podcastSoon' : 'call.sendLater')}</p>}

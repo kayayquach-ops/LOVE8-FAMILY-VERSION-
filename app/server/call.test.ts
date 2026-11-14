@@ -1,0 +1,265 @@
+// Kiểm thử phần hỏi thêm, hỏi ngày, lời nhắn khó nói và kiểm ảnh của cuộc gọi. Không gọi Gemini thật, không cần DB:
+// fetch được thay bằng hàm giả trả đúng dạng trả lời của Gemini (generateContent), như server/tts.test.ts.
+// Chạy: npm run test:call
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+process.env.MEDIA_DIR = mkdtempSync(path.join(tmpdir(), 'call-test-'));
+process.env.GEMINI_API_KEY = 'test-key-not-real';
+delete process.env.AI_PROVIDER;
+
+const call = await import('./call.ts');
+const { suspect } = await import('./guard.ts');
+const { callLines, relayNone } = await import('../src/shared.ts');
+const { tServer } = await import('./i18n.ts');
+
+type Handler = (url: string, init: RequestInit) => Promise<Response>;
+let handler: Handler = async () => new Response('{}', { status: 500 });
+const sent: any[] = [];
+globalThis.fetch = (async (u: string | URL | Request, init?: RequestInit) => {
+  try { sent.push(JSON.parse(String(init?.body ?? '{}'))); } catch { sent.push(null); }
+  return handler(String(u), init ?? {});
+}) as typeof fetch;
+/** Trả lời giả của Gemini: obj là JSON đúng schema mà model sẽ trả. */
+const gemini = (obj: unknown): Handler => async () => new Response(JSON.stringify({
+  candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(obj) }] } }],
+}), { status: 200, headers: { 'content-type': 'application/json' } });
+/** Nội dung người dùng (JSON) của lần gọi Gemini gần nhất. */
+const lastInput = () => JSON.parse(sent.at(-1).contents[0].parts[0].text);
+
+// i18n-ok-begin: dữ liệu kiểm thử
+const Q = (text: string, event: any = 'none', topic: any = 'ky-niem') => ({ text, topic, photo: false, event });
+const base = {
+  lang: 'vi' as const, who: { name: 'Lan', role: 'me' }, bot: 'Mây',
+  q: Q('Hồi nhỏ Mẹ hay chơi trò gì nhất?'), turn: 0, follows: 0, dated: false,
+  story: [{ asked: 'Hồi nhỏ Mẹ hay chơi trò gì nhất?', answer: 'Mẹ hay đi chợ với bà ngoại, mua cá' }],
+};
+
+test('hỏi thêm: câu đáp + câu hỏi thêm gộp thành một câu nói, có cờ chuyện thật', async () => {
+  handler = gemini({ reaction: 'Đi chợ với bà ngoại vui quá ạ.', follow_up: 'Ở chợ Mẹ thích nhất món gì ạ?', day: 0, month: 0, year: 0, real_story: true });
+  const r = await call.turnAI(base);
+  assert.ok(r);
+  assert.equal(r.reply, 'Đi chợ với bà ngoại vui quá ạ.');
+  assert.equal(r.follow, 'Ở chợ Mẹ thích nhất món gì ạ?');
+  assert.equal(r.say, 'Đi chợ với bà ngoại vui quá ạ. Ở chợ Mẹ thích nhất món gì ạ?');
+  assert.equal(r.story, true);
+  assert.equal(r.date, null);
+  assert.equal(lastInput().can_follow, true);
+});
+
+test('hỏi thêm: kể đủ thì không hỏi, say chỉ còn câu đáp', async () => {
+  handler = gemini({ reaction: 'Nghe vui quá ạ.', follow_up: '', day: 0, month: 0, year: 0, real_story: false });
+  const r = await call.turnAI(base);
+  assert.equal(r?.follow, null);
+  assert.equal(r?.say, 'Nghe vui quá ạ.');
+});
+
+test('trần hỏi thêm: 2 lượt mỗi câu chuyện, 4 lượt mỗi cuộc gọi', async () => {
+  handler = gemini({ reaction: 'Dạ.', follow_up: 'Rồi sao nữa ạ?', day: 0, month: 0, year: 0, real_story: false });
+  const atStoryCap = await call.turnAI({ ...base, turn: 2, follows: 2 });
+  assert.equal(atStoryCap?.follow, null);
+  assert.equal(lastInput().can_follow, false);
+  const atCallCap = await call.turnAI({ ...base, turn: 1, follows: 4 });
+  assert.equal(atCallCap?.follow, null);
+  const ok = await call.turnAI({ ...base, turn: 1, follows: 3 });
+  assert.equal(ok?.follow, 'Rồi sao nữa ạ?');
+});
+
+test('hỏi ngày: câu có event mà AI không hỏi ngày thì dùng câu hỏi ngày mẫu', async () => {
+  const wedding = { ...base, q: Q('Bố với Mẹ cưới nhau ngày nào?', 'wedding', 'ngay-cuoi'), story: [{ asked: 'Bố với Mẹ cưới nhau ngày nào?', answer: 'Hồi đó cưới ở quê, đông vui lắm' }] };
+  handler = gemini({ reaction: 'Cưới ở quê đông vui quá ạ.', follow_up: 'Hôm đó ai hát ạ?', day: 0, month: 0, year: 0, real_story: true });
+  const r = await call.turnAI(wedding);
+  assert.equal(lastInput().need_date, true);
+  assert.equal(r?.follow, tServer('vi', 'callScript.askDate.parent', { self: 'mẹ', Self: 'Mẹ' }));
+  assert.match(r!.say!, /ngày mấy tháng mấy/);
+  // AI tự hỏi ngày thì giữ câu của AI.
+  handler = gemini({ reaction: 'Dạ.', follow_up: 'Mẹ còn nhớ hôm đó là ngày mấy tháng mấy không ạ?', day: 0, month: 0, year: 0, real_story: false });
+  assert.equal((await call.turnAI(wedding))?.follow, 'Mẹ còn nhớ hôm đó là ngày mấy tháng mấy không ạ?');
+});
+
+test('hỏi ngày: nghe được ngày thì nhắc lại cho chắc một lần, đã nhắc thì thôi', async () => {
+  const wedding = { ...base, q: Q('Bố với Mẹ cưới nhau ngày nào?', 'wedding', 'ngay-cuoi'), turn: 1, follows: 1, story: [
+    { asked: 'Bố với Mẹ cưới nhau ngày nào?', answer: 'Cưới ở quê đông vui lắm' },
+    { asked: 'Mẹ còn nhớ hôm đó là ngày mấy tháng mấy không ạ?', answer: 'Ngày 12 tháng 3 năm 1995 con ạ' },
+  ] };
+  handler = gemini({ reaction: 'Dạ, con nhớ rồi ạ.', follow_up: '', day: 12, month: 3, year: 1995, real_story: true });
+  const r = await call.turnAI(wedding);
+  assert.deepEqual(r?.date, { day: 12, month: 3, year: 1995 });
+  assert.equal(r?.confirm, 'Dạ, vậy là ngày 12 tháng 3 năm 1995. Con ghi vào lịch nhà mình nhé.');
+  assert.equal(r?.say, 'Dạ, con nhớ rồi ạ. Dạ, vậy là ngày 12 tháng 3 năm 1995. Con ghi vào lịch nhà mình nhé.');
+  const again = await call.turnAI({ ...wedding, dated: true });
+  assert.equal(again?.confirm, null);
+  // Năm vô lý thì bỏ năm, ngày tháng sai thì bỏ hẳn.
+  handler = gemini({ reaction: 'Dạ.', follow_up: '', day: 12, month: 3, year: 3000, real_story: false });
+  assert.deepEqual((await call.turnAI(wedding))?.date, { day: 12, month: 3, year: null });
+  handler = gemini({ reaction: 'Dạ.', follow_up: '', day: 40, month: 3, year: 0, real_story: false });
+  assert.equal((await call.turnAI(wedding))?.date, null);
+});
+
+test('ngày đọc theo thứ tiếng', () => {
+  assert.equal(call.dateText('vi', { day: 12, month: 3, year: 1995 }), 'ngày 12 tháng 3 năm 1995');
+  assert.equal(call.dateText('vi', { day: 12, month: 3, year: null }), 'ngày 12 tháng 3');
+  assert.equal(call.dateText('en', { day: 12, month: 3, year: 1995 }), 'March 12, 1995');
+  assert.equal(call.dateText('ko', { day: 12, month: 3, year: 1995 }), '1995년 3월 12일');
+});
+
+test('chống bịa: câu hỏi thêm có tên lạ thì bỏ, câu đáp vẫn dùng', async () => {
+  handler = gemini({ reaction: 'Đi chợ với bà ngoại vui quá ạ.', follow_up: 'Hôm đó Lan với Hùng ở chợ có mua gì không ạ?', day: 0, month: 0, year: 0, real_story: false });
+  const r = await call.turnAI(base);
+  assert.equal(r?.follow, null);
+  assert.equal(r?.say, 'Đi chợ với bà ngoại vui quá ạ.');
+  handler = gemini({ reaction: 'Lần trước Mẹ cũng kể vậy ạ.', follow_up: '', day: 0, month: 0, year: 0, real_story: false });
+  assert.equal((await call.turnAI(base))?.reply, null);
+});
+
+test('AI quá hạn, lỗi hay không có khoá: null (đi tiếp như cũ)', async () => {
+  assert.equal(call.TURN_AI_MS, 2500);
+  handler = (_u, init) => new Promise((_, rej) => init.signal?.addEventListener('abort', () => rej(new Error('aborted'))));
+  const t0 = Date.now();
+  assert.equal(await call.turnAI(base, 200), null);
+  assert.ok(Date.now() - t0 < 1500);
+  handler = async () => new Response('{"error":{}}', { status: 500 });
+  assert.equal(await call.turnAI(base), null);
+  const key = process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  const n = sent.length;
+  assert.equal(await call.turnAI(base), null);
+  assert.equal(sent.length, n);
+  process.env.GEMINI_API_KEY = key;
+  // Bước lời nhắn và câu trống không gọi AI.
+  assert.equal(await call.turnAI({ ...base, q: Q('Có điều gì Mẹ muốn nhắn các con không?', 'none', 'loi-nhan') }), null);
+  assert.equal(await call.turnAI({ ...base, story: [{ asked: 'x', answer: '  ' }] }), null);
+});
+
+const fam = [
+  { id: 'm-bo', name: 'Hùng', role: 'bo', lang: 'vi' },
+  { id: 'm-me', name: 'Lan', role: 'me', lang: 'vi' },
+  { id: 'm-an', name: 'An', role: 'con', lang: 'vi' },
+];
+const fromAn = { sender: fam[2], family: fam.slice(0, 2), ask: 'Có điều gì bạn muốn nhắn bố mẹ mà khó nói không?', bot: 'Mây' };
+
+test('lời nhắn: AI chọn người nhận, câu chuyển lời và câu thông báo qua lớp lọc', async () => {
+  handler = gemini({ nothing: false, recipients: [{ member: 1, said: 'An nhắn là dạo này nhớ mẹ lắm mà bận quá. Lát mẹ gọi hay nhắn cho An nhé.', push: 'Mẹ ơi, dạo này con nhớ mẹ lắm, mẹ gọi cho con nhé' }] });
+  const plans = await call.planRelays({ ...fromAn, text: 'Con nhớ mẹ lắm mà dạo này bận quá' });
+  assert.deepEqual(plans, [{ to: 'm-me', said: 'An nhắn là dạo này nhớ mẹ lắm mà bận quá. Lát mẹ gọi hay nhắn cho An nhé.', push: 'Mẹ ơi, dạo này con nhớ mẹ lắm, mẹ gọi cho con nhé' }]);
+  const input = lastInput();
+  assert.deepEqual(input.default_recipients, [0, 1]);
+  assert.equal(input.family_members.length, 2);
+});
+
+test('lời nhắn: không có gì thì không gửi ai', async () => {
+  handler = gemini({ nothing: true, recipients: [] });
+  assert.deepEqual(await call.planRelays({ ...fromAn, text: 'Thôi không có gì đâu' }), []);
+  // AI lỗi: câu chỉ là "không có gì" thì cũng thôi.
+  handler = async () => new Response('{}', { status: 500 });
+  assert.deepEqual(await call.planRelays({ ...fromAn, text: 'Dạ không có gì đâu ạ' }), []);
+});
+
+test('lời nhắn: AI lỗi mà có lời thật thì gửi theo gợi ý (con gửi bố mẹ), Mây nhắc nguyên lời', async () => {
+  handler = async () => new Response('{}', { status: 500 });
+  const plans = await call.planRelays({ ...fromAn, text: 'Con thương bố mẹ nhiều lắm.' });
+  assert.deepEqual(plans.map((p) => p.to), ['m-bo', 'm-me']);
+  assert.equal(plans[0].said, 'An nhắn bố là: Con thương bố mẹ nhiều lắm. Lát bố gọi cho An nhé.');
+  assert.equal(plans[0].push, null);
+  // Gọi đúng một người thì chỉ người đó nhận (lời khó nói không tới tay người khác).
+  assert.deepEqual((await call.planRelays({ ...fromAn, text: 'Nhắn bố là con xin lỗi bố' })).map((p) => p.to), ['m-bo']);
+  assert.deepEqual((await call.planRelays({ ...fromAn, text: 'Bảo Lan là con thương lắm' })).map((p) => p.to), ['m-me']);
+  // Không gọi ai: theo gợi ý.
+  assert.deepEqual((await call.planRelays({ ...fromAn, text: 'Dạo này con buồn lắm' })).map((p) => p.to), ['m-bo', 'm-me']);
+  // Bố mẹ gửi: "mẹ" là tự xưng nên không tính, "con" là các con.
+  const fromMom = await call.planRelays({ sender: fam[1], family: [fam[0], fam[2]], ask: 'x', text: 'Mẹ nhớ con lắm', bot: 'Mây' });
+  assert.deepEqual(fromMom.map((p) => p.to), ['m-an']);
+  assert.match(fromMom[0].said, /^Lan nhắn bạn là: Mẹ nhớ con lắm\./);
+});
+
+test('lời nhắn: câu AI có tên lạ hay mốc thời gian thì thay bằng câu mẫu, chỉ số người nhận sai thì bỏ', async () => {
+  handler = gemini({ nothing: false, recipients: [
+    { member: 0, said: 'An nhắn là hôm qua An ốm. Bố gọi cho An nhé.', push: 'Bố ơi, Minh nhớ bố' },
+    { member: 7, said: 'x', push: 'y' },
+    { member: 0, said: 'trùng', push: 'trùng' },
+  ] });
+  const plans = await call.planRelays({ ...fromAn, text: 'Con ốm mà không dám nói' });
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].to, 'm-bo');
+  assert.equal(plans[0].said, 'An nhắn bố là: Con ốm mà không dám nói. Lát bố gọi cho An nhé.');
+  assert.equal(plans[0].push, null);
+});
+
+test('lời nhắn: nhận biết câu "không có gì"', () => {
+  for (const s of ['không', 'Dạ không có gì đâu ạ', 'thôi không có gì', 'chưa có đâu', 'Không ạ.', 'thôi']) assert.equal(relayNone(s, 'vi'), true, s);
+  for (const s of ['không biết nói sao nhưng con thương mẹ lắm', 'nhắn bố là con nhớ bố', 'con muốn xin lỗi mẹ']) assert.equal(relayNone(s, 'vi'), false, s);
+  for (const s of ['no', 'Nope, not really.', "No, I'm good", 'nothing really', 'not now thanks']) assert.equal(relayNone(s, 'en'), true, s);
+  for (const s of ['tell mom I love her', 'no one knows how much I miss home']) assert.equal(relayNone(s, 'en'), false, s);
+  for (const s of ['없어요', '아니요', '딱히 없어요', '괜찮아요']) assert.equal(relayNone(s, 'ko'), true, s);
+  assert.equal(relayNone('엄마한테 보고 싶다고 전해 주세요', 'ko'), false);
+  assert.equal(relayNone('', 'vi'), true);
+});
+
+test('lớp lọc: câu chuyển lời được nhắc "nhắn cho", vẫn chặn mốc thời gian', () => {
+  const hay = 'An Lan con nhớ mẹ';
+  assert.ok(suspect('Mẹ nhắn cho An là nhớ An lắm.', hay, { prevCall: false, ownStory: false, photos: false }));
+  assert.equal(suspect('Mẹ nhắn cho An là nhớ An lắm.', hay, { prevCall: false, ownStory: false, photos: false, message: true }), null);
+  assert.ok(suspect('Hôm qua An nhắn cho mẹ.', hay, { prevCall: false, ownStory: false, photos: false, message: true }));
+});
+
+const ctx = (role: string, family: Array<{ name: string; role: string }>) => ({
+  lang: 'vi' as const, member: { id: 'x', name: 'Lan', role, intro: {} }, family, events: [], asked: [], stories: [], doneCalls: ['2026-11-01'],
+  photoCount: 0, captions: [], mascot: 'Mây',
+});
+
+test('bộ câu mẫu: câu cuối là câu hỏi lời nhắn cố định, nhà một người thì không hỏi', () => {
+  const both = [{ name: 'Hùng', role: 'bo' }, { name: 'Lan', role: 'me' }, { name: 'An', role: 'con' }];
+  for (const role of ['me', 'con']) {
+    const sc = call.templateScript(ctx(role, both), '2026-11-09');
+    const last = sc.questions.at(-1)!;
+    assert.equal(last.topic, 'loi-nhan');
+    assert.equal(last.text, callLines(role, (k, v) => tServer('vi', k, v)).relay);
+    assert.equal(sc.questions.filter((q) => q.topic === 'loi-nhan').length, 1);
+    assert.equal(sc.questions.length, 4);
+  }
+  assert.match(call.templateScript(ctx('con', both), '2026-11-09').questions.at(-1)!.text, /bố mẹ/);
+  const alone = call.templateScript(ctx('me', [{ name: 'Lan', role: 'me' }]), '2026-11-09');
+  assert.equal(alone.questions.some((q) => q.topic === 'loi-nhan'), false);
+  // Cuộc gọi đầu giữ nguyên 3 câu đơn giản.
+  assert.equal(call.firstScript(ctx('me', both)).questions.length, 3);
+});
+
+test('AI soạn câu hỏi: bỏ câu loi-nhan của AI, câu lời nhắn cố định luôn ở cuối', async () => {
+  const both = [{ name: 'Hùng', role: 'bo' }, { name: 'Lan', role: 'me' }, { name: 'An', role: 'con' }];
+  handler = gemini({
+    greeting: 'Mẹ ơi, con là Mây đây ạ.', goodbye: 'Con cảm ơn Mẹ ạ.',
+    questions: [
+      { text: 'Hồi nhỏ Mẹ thích ăn món gì nhất ạ?', topic: 'mon-an', photo: false, event: 'none' },
+      { text: 'Có lời nào Mẹ muốn nhắn cả nhà không ạ?', topic: 'loi-nhan', photo: false, event: 'none' },
+      { text: 'Ngôi nhà đầu tiên của Mẹ trông thế nào ạ?', topic: 'ky-niem', photo: true, event: 'none' },
+      { text: 'Tuần này Mẹ có chuyện gì vui không ạ?', topic: 'cuoc-song', photo: false, event: 'none' },
+      { text: 'Mẹ thích bài hát nào nhất ạ?', topic: 'tuoi-tho', photo: false, event: 'none' },
+    ],
+  });
+  const sc = await call.aiScript(ctx('me', both), '2026-11-09');
+  assert.ok(sc);
+  assert.deepEqual(sc.questions.map((q) => q.topic), ['mon-an', 'ky-niem', 'cuoc-song', 'loi-nhan']);
+  assert.equal(sc.questions[3].text, callLines('me', (k, v) => tServer('vi', k, v)).relay);
+});
+
+test('kiểm ảnh theo byte đầu tệp', () => {
+  const b = (...xs: number[]) => Uint8Array.from(xs);
+  assert.equal(call.imageKind(b(0xff, 0xd8, 0xff, 0xe0, 0, 0)), 'jpg');
+  assert.equal(call.imageKind(b(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0)), 'png');
+  assert.equal(call.imageKind(new TextEncoder().encode('RIFF\u0000\u0000\u0000\u0000WEBPVP8 ')), 'webp');
+  assert.equal(call.imageKind(new TextEncoder().encode('GIF89a......')), null);
+  assert.equal(call.imageKind(new TextEncoder().encode('\u0000\u0000\u0000\u0018ftypheic')), null);
+  assert.equal(call.imageKind(new TextEncoder().encode('<html>')), null);
+  assert.equal(call.imageKind(b(0xff, 0xd8)), null);
+});
+
+test('người nhận mặc định', () => {
+  assert.deepEqual(call.defaultRecipients('con', fam.slice(0, 2)).map((m) => m.id), ['m-bo', 'm-me']);
+  assert.deepEqual(call.defaultRecipients('bo', [fam[1], fam[2]]).map((m) => m.id), ['m-an']);
+  // Không có ai đúng vai thì gửi mọi người khác.
+  assert.deepEqual(call.defaultRecipients('con', [{ id: 'c2', name: 'Bình', role: 'con', lang: null }]).map((m) => m.id), ['c2']);
+});
+// i18n-ok-end

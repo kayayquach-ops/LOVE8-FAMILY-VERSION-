@@ -74,9 +74,51 @@ export function callLines(role: string, tr: Tr) {
     photo: L('photo'),
     short: [1, 2].map((n) => L(`short${n}`)),
     long: [1, 2, 3].map((n) => L(`long${n}`)),
+    /** Lời nhắn khó nói: câu hỏi cuối cuộc gọi, câu nhận lời, câu mở đầu khi chuyển lời người khác nhắn. */
+    relay: L('relay'),
+    relayOk: L('relayOk'),
+    relayIntro: L('relayIntro'),
   };
 }
 export const CALL_ROLES = ['bo', 'me', 'con'] as const;
+
+/** Mây hỏi thêm: tối đa 2 lượt mỗi câu chuyện (turn 1, 2), tối đa 4 lượt mỗi cuộc gọi. */
+export const MAX_STORY_FOLLOW = 2;
+export const MAX_CALL_FOLLOW = 4;
+
+/** Kết quả AI sau mỗi lượt kể (POST /call/:id/reply, hoặc /answer khi máy chủ tự chép lời). */
+export type TurnAI = {
+  /** Câu đáp ngắn theo điều vừa kể, null thì máy khách dùng câu mẫu. */
+  reply: string | null;
+  /** Câu hỏi thêm nối đúng câu chuyện; null khi đã đủ hoặc hết lượt. */
+  follow: string | null;
+  /** Ngày nghe được trong câu chuyện (đủ ngày và tháng). */
+  date: { day: number; month: number; year: number | null } | null;
+  /** Câu Mây nhắc lại ngày cho chắc, chỉ lần đầu nghe ngày của câu hỏi có `event`. */
+  confirm: string | null;
+  /** Có chuyện thật, đáng xin ảnh. */
+  story: boolean;
+  /** Cả câu Mây nói: reply + confirm + follow (máy chủ đã xin giọng trước đúng chuỗi này). */
+  say: string | null;
+};
+
+/** Lời nhắn người khác gửi cho người đang nghe, Mây chuyển ở cuối cuộc gọi. */
+export type CallRelay = { id: string; said: string };
+
+// i18n-ok-begin: mẫu nhận biết câu "không có gì đâu", không phải chữ hiện cho người dùng.
+const RELAY_NONE: Record<'vi' | 'en' | 'ko', RegExp> = {
+  vi: /^((dạ|ừ|ừm|à|ờ|ơ|thôi|chắc|hiện|giờ|thì|cũng|vâng|con|mẹ|bố|mình|tôi)\s+)*(không|chưa|hết)(\s+(có|ạ|đâu|gì|rồi|nữa|cần|sao|ai|nhé|cả|hết|con|mẹ|bố|mình))*$|^(thôi|không sao|thôi khỏi|để sau|lần sau)(\s+(ạ|nhé|đi|đâu|nha|nhá))*$/,
+  en: /^((um+|uh+|oh|well|hmm+|no|nope|nah|i think|i guess|actually|sorry)[\s,]+)*(no|nope|nah|nothing|not really|not now|not today|i'?m good|i'?m fine|that'?s all|no thanks|maybe next time|next time|nothing really)([\s,]+(thanks|thank you|really|for now|right now|at the moment|i think))*$/,
+  ko: /^((음|어|아|그냥|저는|지금은|딱히|별로|글쎄요?)\s*)*(없어요|없습니다|없어|없네요|아니요|아뇨|아니에요|괜찮아요|됐어요|다음에요?|다음에\s*할게요)([\s.]*(요|감사합니다|고마워요))*$/,
+};
+// i18n-ok-end
+/** Câu trả lời cho bước lời nhắn chỉ là "không có gì" (ngắn, chỉ lời từ chối) thì thôi, không ép. Câu dài có nội dung thì không tính. */
+export function relayNone(text: string | null | undefined, lang: 'vi' | 'en' | 'ko' = 'vi'): boolean {
+  const s = String(text ?? '').toLowerCase().normalize('NFC').replace(/[.,!?…~"“”]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!s) return true;
+  if (s.split(' ').length > 8) return false;
+  return RELAY_NONE[lang].test(s);
+}
 
 export type Chapter = { at: number; until: number; say: string; who?: string; question?: string; transcript?: string | null };
 export type Podcast = {
