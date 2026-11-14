@@ -4,91 +4,254 @@
    Chỉ animate transform và opacity. */
 
 /* ---------- Camera ---------- */
-.cam-screen.cam-ui { padding-left: 12px; padding-right: 12px; padding-top: calc(var(--safe-top) + 10px); }
-.cam-ui button:focus-visible, .cam-ui label:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* Camera luôn tối, kể cả khi app đang sáng (như YOPE, Locket). Bảng màu riêng gắn trên .cam-ui (màn camera, màn "gửi tới", lớp đèn)
+   và trên thanh dưới khi nó nằm cạnh màn camera. Màu chanh của YOPE đổi thành mực tím, sáng hơn --accent một nấc (bằng --s-tim) để rõ trên nền tối. */
+.cam-ui, .cam-screen.cam-ui ~ .tabbar {
+  --cam-bg: #0E0D12;
+  --cam-surface: #1B1922;
+  --cam-chip: rgba(255, 255, 255, .1);
+  --cam-line: rgba(255, 255, 255, .14);
+  --cam-text: #FFFFFF;
+  --cam-soft: rgba(255, 255, 255, .74);
+  --cam-muted: rgba(255, 255, 255, .52);
+  --cam-accent: #6F4FD8;
+  --cam-hand: #C4B5FF;
+  --cam-track: rgba(111, 79, 216, .3);
+  --cam-rec: #D9473A;
+  --cam-scrim: rgba(0, 0, 0, .36);
+  --cam-shade: rgba(0, 0, 0, .45);
+  --cam-flash: #FFFFFF;
+}
+.screen.cam-screen.cam-ui { background: var(--cam-bg); color: var(--cam-text); padding: calc(var(--safe-top) + 8px) 12px calc(var(--safe-bottom) + 82px); }
+.cam-ui button:focus-visible, .cam-ui label:focus-within { outline: 2px solid var(--cam-hand); outline-offset: 3px; }
 
-/* Hàng cả nhà: mỗi người một viên trắng, có giờ nơi người đó. Đông người thì vuốt ngang. */
-.cam-ui .cam-fam { display: flex; align-items: center; gap: 6px; min-height: 40px; padding-left: 6px; flex: none; }
+/* Hàng cả nhà: mỗi người một viên mờ, có giờ nơi người đó. Đông người thì vuốt ngang. */
+.cam-ui .cam-fam { display: flex; align-items: center; gap: 6px; min-height: 40px; padding-left: 4px; flex: none; }
 .cam-ui .cam-fam-list { flex: 1; min-width: 0; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .cam-ui .cam-fam-list::-webkit-scrollbar { display: none; }
 .cam-ui .cam-who {
   flex: none; display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 11px 0 4px; border-radius: 999px;
-  background: var(--paper); box-shadow: inset 0 0 0 1px rgba(23, 21, 28, .08); font-size: 12.5px; color: var(--soft);
-  white-space: nowrap; font-variant-numeric: tabular-nums;
+  background: var(--cam-chip); font-size: 12.5px; color: var(--cam-muted); white-space: nowrap; font-variant-numeric: tabular-nums;
 }
-.cam-ui .cam-who b { color: var(--ink); font-weight: 600; max-width: 7.5em; overflow: hidden; text-overflow: ellipsis; }
-.cam-ui .cam-set { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--ink); transition: transform .15s; }
+.cam-ui .cam-who b { color: var(--cam-text); font-weight: 600; max-width: 7.5em; overflow: hidden; text-overflow: ellipsis; }
+.cam-ui .cam-set { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--cam-text); transition: transform .15s; }
 .cam-ui .cam-set svg { width: 22px; height: 22px; }
-.cam-ui .cam-set:not(:disabled):active { transform: scale(.92); transition-duration: 0s; }
+.cam-ui .cam-set:active { transform: scale(.92); transition-duration: 0s; }
 
-/* Dòng nhắc (ai đó lâu chưa mở app): giấy trắng, chữ dịu, chữ hành động gạch chân mực tím. */
+/* Dòng nhắc (ai đó lâu chưa mở app): thẻ tối, chữ dịu, chữ hành động gạch chân mực tím. */
 .cam-ui .cam-note {
-  flex: none; display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 6px 4px 6px 8px; border-radius: 20px;
-  background: var(--paper); box-shadow: inset 0 0 0 1px var(--line); font-size: 13.5px; line-height: 1.4; color: var(--soft);
+  flex: none; display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 6px 4px 6px 8px; border-radius: 20px;
+  background: var(--cam-surface); box-shadow: inset 0 0 0 1px var(--cam-line); font-size: 13.5px; line-height: 1.4; color: var(--cam-soft);
 }
 .cam-ui .cam-note > span { flex: 1; min-width: 0; }
 .cam-ui .cam-note a, .cam-ui .cam-note button {
   flex: none; min-height: 40px; padding: 0 12px; display: grid; place-items: center; white-space: nowrap;
-  color: var(--ink); font-weight: 600; text-decoration: underline; text-decoration-color: var(--accent);
+  color: var(--cam-text); font-weight: 600; text-decoration: underline; text-decoration-color: var(--cam-hand);
   text-decoration-thickness: 2px; text-underline-offset: 4px;
 }
 
-/* Khung chụp: bo 32px, máy nhỏ tự thu lại cho vừa nút và thanh dưới. */
-.cam-screen.cam-ui .viewfinder { margin-top: 10px; border-radius: 32px; background: #ECEAF0; width: min(100%, calc(100dvh - 372px - var(--safe-top) - var(--safe-bottom))); }
-.cam-screen.cam-ui.has-note .viewfinder { width: min(100%, calc(100dvh - 430px - var(--safe-top) - var(--safe-bottom))); }
-.cam-screen.cam-ui .zoom-pills { gap: 6px; bottom: 14px; }
-.cam-screen.cam-ui .zoom-pills button { width: 38px; height: 38px; background: rgba(0, 0, 0, .35); color: #fff; font-size: 12.5px; font-weight: 600; transition: transform .15s; }
-.cam-screen.cam-ui .zoom-pills button.on { background: rgba(255, 255, 255, .92); color: var(--ink); }
-.cam-screen.cam-ui .zoom-pills button:active { transform: scale(.92); transition-duration: 0s; }
-.cam-screen.cam-ui .zoom-hint { background: rgba(23, 21, 28, .5); }
-.cam-screen.cam-ui .rec-dot { background: var(--air-red); }
-.cam-screen.cam-ui .cap-input { background: rgba(255, 255, 255, .92); color: var(--ink); box-shadow: 0 6px 18px -8px rgba(0, 0, 0, .35); }
-.cam-screen.cam-ui .cap-input::placeholder { color: var(--muted); }
+/* Khung ngắm 3:4 gần hết bề ngang, bo 34px. Máy thấp thì khung thu lại theo chiều cao còn lại:
+   các hàng khác cộng lại 330px (390px khi có dòng nhắc), máy dưới 700px cao thì 302px / 362px. */
+.cam-screen.cam-ui .viewfinder {
+  flex: none; position: relative; aspect-ratio: 3 / 4; margin-top: 10px; border-radius: 34px; background: var(--cam-surface); isolation: isolate;
+  width: min(100%, calc((100vh - 330px - var(--safe-top) - var(--safe-bottom)) * .75));
+  width: min(100%, calc((100dvh - 330px - var(--safe-top) - var(--safe-bottom)) * .75));
+  min-width: 200px; align-self: center;
+}
+.cam-screen.cam-ui.has-note .viewfinder {
+  width: min(100%, calc((100vh - 390px - var(--safe-top) - var(--safe-bottom)) * .75));
+  width: min(100%, calc((100dvh - 390px - var(--safe-top) - var(--safe-bottom)) * .75));
+}
+.cam-ui .vf-inner { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; background: var(--cam-surface); transition: transform .3s cubic-bezier(.3, .7, .3, 1); }
+.cam-ui .vf-inner video { width: 100%; height: 100%; object-fit: cover; }
 
-/* Lời nói vừa thu, đang chờ gửi */
-.cam-ui .cam-voice { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: #F1EFF5; color: var(--ink); }
-.cam-screen.cam-ui .cam-voice .play { background: var(--ink); color: #fff; }
-.cam-screen.cam-ui .cam-voice .bars i { background: rgba(23, 21, 28, .2); }
-.cam-screen.cam-ui .cam-voice .bars i.on { background: var(--ink); }
+/* Đang quay: khung lùi vào đều mỗi cạnh (scale, số tính lúc bắt đầu quay), đường mực tím chạy quanh viền từ giữa cạnh trên
+   theo chiều kim đồng hồ, đủ vòng là 15 giây. Không vẽ lại viền: mỗi nửa khung có một tấm xoay 0 → 180 độ nằm dưới hình,
+   mốc thời gian chia theo chu vi khung 3:4 để đường chạy đều trên cạnh dài lẫn cạnh ngắn. */
+.cam-screen.cam-ui.is-rec .vf-inner { transform: scale(var(--sx, .962), var(--sy, .971)); }
+.cam-ui .vf-prog { position: absolute; inset: 0; background: var(--cam-track); animation: vf-in .2s ease both; }
+.cam-ui .vf-half { position: absolute; top: 0; bottom: 0; width: 50%; overflow: hidden; }
+.cam-ui .vf-half.r { left: 50%; }
+.cam-ui .vf-half.l { left: 0; }
+.cam-ui .vf-half b { position: absolute; top: -12.5%; width: 167%; height: 125%; background: var(--cam-accent); will-change: transform; animation: vf-sweep var(--rec-half, 7.5s) linear both; }
+.cam-ui .vf-half.r b { right: 100%; transform-origin: 100% 50%; }
+.cam-ui .vf-half.l b { left: 100%; transform-origin: 0 50%; animation-delay: var(--rec-half, 7.5s); }
+@keyframes vf-in { from { opacity: 0; } }
+@keyframes vf-sweep {
+  0% { transform: rotate(0deg); }
+  10.71% { transform: rotate(20.56deg); }
+  21.43% { transform: rotate(36.87deg); }
+  35.71% { transform: rotate(56.31deg); }
+  50% { transform: rotate(90deg); }
+  64.29% { transform: rotate(123.69deg); }
+  78.57% { transform: rotate(143.13deg); }
+  89.29% { transform: rotate(159.44deg); }
+  100% { transform: rotate(180deg); }
+}
+.cam-screen.cam-ui .rec-dot { top: 16px; left: 18px; background: var(--cam-rec); }
+/* Chụp xong: khung chớp tối một nhịp. */
+.cam-ui .vf-blink { position: absolute; inset: 0; background: var(--cam-bg); opacity: 0; pointer-events: none; animation: vf-blink .3s ease-out; }
+@keyframes vf-blink { from { opacity: .8; } to { opacity: 0; } }
 
-/* Hàng nút: ảnh trong máy trái, nút chụp giữa, đổi camera phải. */
-.cam-screen.cam-ui .shutter-row { display: grid; grid-template-columns: 1fr 84px 1fr; align-items: center; justify-items: center; margin-top: 18px; padding: 0; }
-.cam-ui .cam-gallery, .cam-ui .cam-round { width: 46px; height: 46px; display: grid; place-items: center; color: var(--ink); cursor: pointer; transition: transform .15s; }
-.cam-ui .cam-gallery { position: relative; border-radius: 14px; overflow: hidden; background: var(--paper); box-shadow: inset 0 0 0 1px var(--line); }
+/* Chưa bật được camera */
+.cam-ui .vf-off { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 28px; text-align: center; color: var(--cam-soft); font-size: 15px; line-height: 1.5; }
+.cam-ui .vf-off p { margin: 0; max-width: 16em; }
+.cam-ui .vf-off small { max-width: 18em; font-size: 13px; color: var(--cam-muted); }
+.cam-ui .vf-on { min-height: 48px; padding: 0 26px; border-radius: 999px; background: var(--cam-text); color: var(--cam-bg); font-size: 16px; font-weight: 600; transition: transform .15s; }
+.cam-ui .vf-on:active { transform: scale(.97); transition-duration: 0s; }
+
+/* Đáy khung như YOPE: đèn bên trái, dải bộ lọc vuốt ngang ở giữa, nút zoom một chạm bên phải.
+   Đang quay thì đèn và bộ lọc ẩn đi (video không mang màu lọc), nút zoom vẫn còn. */
+.cam-ui .vf-ctl { position: absolute; left: 0; right: 0; bottom: 0; height: 66px; padding: 0 12px; display: flex; align-items: center; gap: 4px; }
+.cam-ui .vf-ctl > * { transition: opacity .2s; }
+.cam-screen.cam-ui.is-rec .vf-ctl > :not(.vf-zoom) { opacity: 0; pointer-events: none; }
+.cam-ui .vf-btn {
+  flex: none; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--cam-scrim); color: var(--cam-text);
+  font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; transition: transform .15s;
+}
+.cam-ui .vf-btn svg { width: 19px; height: 19px; }
+.cam-ui .vf-btn.on { background: var(--cam-text); color: var(--cam-bg); }
+.cam-ui .vf-btn:active { transform: scale(.92); transition-duration: 0s; }
+.cam-ui .vf-btn-gap { flex: none; width: 38px; }
+.cam-ui .vf-filters {
+  position: relative; flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none;
+  overscroll-behavior-x: contain; touch-action: pan-x; -webkit-overflow-scrolling: touch;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 24%, #000 76%, transparent); mask-image: linear-gradient(90deg, transparent, #000 24%, #000 76%, transparent);
+}
+.cam-ui .vf-filters::-webkit-scrollbar { display: none; }
+.cam-ui .vf-pad { flex: 0 0 50%; }
+.cam-ui .vf-filters button {
+  flex: none; scroll-snap-align: center; height: 44px; padding: 0 9px; white-space: nowrap; color: var(--cam-text); opacity: .5;
+  font-family: var(--f-display); font-weight: 700; font-size: 17px; letter-spacing: -.02em; text-transform: lowercase; text-shadow: 0 1px 10px var(--cam-shade);
+  transition: opacity .2s, transform .2s;
+}
+.cam-ui .vf-filters button.on { opacity: 1; transform: scale(1.12); }
+.cam-screen.cam-ui .zoom-hint { background: var(--cam-scrim); }
+
+/* Hàng nút: ảnh gần nhất bên trái, nút chụp giữa, đổi camera bên phải. Đang quay thì ô ảnh ẩn như YOPE. */
+.cam-screen.cam-ui .shutter-row { flex: none; height: 80px; display: grid; grid-template-columns: 1fr 84px 1fr; align-items: center; justify-items: center; margin-top: 16px; padding: 0; }
+.cam-ui .cam-gallery, .cam-ui .cam-round { width: 48px; height: 48px; display: grid; place-items: center; color: var(--cam-text); background: var(--cam-chip); cursor: pointer; transition: transform .15s, opacity .2s; }
+.cam-ui .cam-gallery { position: relative; border-radius: 14px; overflow: hidden; }
+.cam-ui .cam-gallery::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1.5px var(--cam-line); pointer-events: none; }
 .cam-ui .cam-gallery img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.cam-ui .cam-round { border-radius: 50%; box-shadow: inset 0 0 0 1.5px rgba(23, 21, 28, .15); }
+.cam-ui .cam-round { border-radius: 50%; }
+.cam-ui .cam-round span { display: grid; transition: transform .45s cubic-bezier(.3, .7, .3, 1); }
 .cam-ui .cam-gallery svg, .cam-ui .cam-round svg { width: 22px; height: 22px; }
-.cam-ui .cam-gallery:active, .cam-ui .cam-round:not(:disabled):active { transform: scale(.92); transition-duration: 0s; }
-.cam-ui .cam-round:disabled { opacity: .35; }
+.cam-ui .cam-gallery:active, .cam-ui .cam-round:active { transform: scale(.92); transition-duration: 0s; }
+.cam-screen.cam-ui.is-rec .cam-gallery { opacity: 0; pointer-events: none; }
 
-/* Nút chụp: vòng mực đen 78px, lòng mực tím. Đang quay: vòng đỏ chạy hết 15 giây, lòng đỏ thu nhỏ. */
-.cam-screen.cam-ui .shutter { width: 78px; height: 78px; border: 0; box-shadow: inset 0 0 0 4px var(--ink); }
-.cam-screen.cam-ui .shutter i { width: 60px; height: 60px; background: var(--accent); }
-.cam-screen.cam-ui .shutter-ring { left: 0; top: 0; width: 78px; height: 78px; }
-.cam-screen.cam-ui .shutter-ring circle { stroke: var(--air-red); stroke-dasharray: 232.5; stroke-dashoffset: 232.5; }
-.cam-screen.cam-ui .shutter.rec i { background: var(--air-red); }
-.cam-screen.cam-ui .shutter.send { background: var(--ink); color: #fff; box-shadow: none; }
-.cam-screen.cam-ui .shutter.send svg { width: 32px; height: 32px; }
-.cam-screen.cam-ui .shutter.send:active { transform: scale(.95); }
+/* Nút chụp như YOPE: lòng trắng tròn, vòng mực tím, giữa là một khe tối. Giữ để quay: nút nở ra, lòng thu lại và hoá đỏ (lớp đỏ hiện bằng opacity). */
+.cam-screen.cam-ui .shutter { width: 78px; height: 78px; border: 0; border-radius: 50%; box-shadow: inset 0 0 0 4px var(--cam-accent); display: grid; place-items: center; -webkit-touch-callout: none; transition: transform .2s cubic-bezier(.3, .7, .3, 1); }
+.cam-screen.cam-ui .shutter i, .cam-screen.cam-ui .shutter u { grid-area: 1 / 1; width: 62px; height: 62px; border-radius: 50%; transition: transform .2s cubic-bezier(.3, .7, .3, 1), opacity .2s; }
+.cam-screen.cam-ui .shutter i { background: var(--cam-text); }
+.cam-screen.cam-ui .shutter u { background: var(--cam-rec); opacity: 0; }
+.cam-screen.cam-ui .shutter:active i { transform: scale(.9); }
+.cam-screen.cam-ui .shutter.rec { transform: scale(1.08); }
+.cam-screen.cam-ui .shutter.rec i, .cam-screen.cam-ui .shutter.rec u { transform: scale(.6); }
+.cam-screen.cam-ui .shutter.rec u { opacity: 1; }
 
-/* Giữ để nói: viên trắng như bản mẫu, đang nghe thì đỏ thư máy bay. */
+/* Giữ để nói: viên mờ, đang nghe thì đỏ thư máy bay. */
 .cam-screen.cam-ui .talk {
-  margin-top: 12px; height: 44px; padding: 0 18px; gap: 8px; border: 0; background: var(--paper); color: var(--ink);
-  font-size: 15px; font-weight: 600; box-shadow: 0 1px 0 rgba(23, 21, 28, .06), inset 0 0 0 1px rgba(23, 21, 28, .1); -webkit-touch-callout: none;
+  flex: none; margin-top: 10px; height: 44px; padding: 0 18px; gap: 8px; border: 0; background: var(--cam-chip); color: var(--cam-text);
+  font-size: 15px; font-weight: 600; box-shadow: none; -webkit-touch-callout: none;
 }
 .cam-screen.cam-ui .talk svg { width: 18px; height: 18px; }
-.cam-screen.cam-ui .talk.rec { background: var(--air-red); color: #fff; box-shadow: none; }
-.cam-screen.cam-ui .chips { margin-top: 14px; }
-.cam-screen.cam-ui .chip { background: var(--paper); border: 0; box-shadow: inset 0 0 0 1px var(--line); font-weight: 500; }
-.cam-screen.cam-ui .chip.on { background: var(--ink); color: #fff; box-shadow: none; }
+.cam-screen.cam-ui .talk.rec { background: var(--cam-rec); }
 
-/* Gợi ý vuốt lên thay nút "Tin nhà": chữ nhỏ, mũi tên nhỏ; có ảnh mới thì mực tím viết tay. */
-.cam-ui .cam-peek { flex: none; margin-top: auto; align-self: center; min-height: 44px; padding: 4px 16px 6px; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12.5px; color: var(--muted); }
+/* Gợi ý vuốt lên: chữ nhỏ, mũi tên nhỏ; có ảnh mới thì mực tím viết tay. */
+.cam-ui .cam-peek { flex: none; margin-top: auto; align-self: center; min-height: 40px; padding: 2px 16px 4px; display: flex; flex-direction: column; align-items: center; gap: 1px; font-size: 12.5px; color: var(--cam-muted); }
 .cam-ui .cam-peek svg { width: 22px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
-.cam-ui .cam-peek .hand { font-size: 16px; }
-.cam-ui .cam-peek.new svg { color: var(--accent); animation: cam-peek 1.8s ease-in-out infinite; }
+.cam-ui .cam-peek .hand { font-size: 16px; color: var(--cam-hand); }
+.cam-ui .cam-peek.new svg { color: var(--cam-hand); animation: cam-peek 1.8s ease-in-out infinite; }
 @keyframes cam-peek { 50% { transform: translateY(-3px); } }
-@media (prefers-reduced-motion: reduce) { .cam-ui .cam-peek.new svg { animation: none; } }
+
+/* Máy thấp (iPhone SE, 8): nút và khoảng cách gọn lại để khung ngắm còn to. */
+@media (max-height: 700px) {
+  .cam-screen.cam-ui .viewfinder { margin-top: 8px; width: min(100%, calc((100vh - 302px - var(--safe-top) - var(--safe-bottom)) * .75)); width: min(100%, calc((100dvh - 302px - var(--safe-top) - var(--safe-bottom)) * .75)); }
+  .cam-screen.cam-ui.has-note .viewfinder { width: min(100%, calc((100vh - 362px - var(--safe-top) - var(--safe-bottom)) * .75)); width: min(100%, calc((100dvh - 362px - var(--safe-top) - var(--safe-bottom)) * .75)); }
+  .cam-screen.cam-ui .shutter-row { height: 70px; margin-top: 10px; }
+  .cam-screen.cam-ui .shutter { transform: scale(.9); }
+  .cam-screen.cam-ui .shutter.rec { transform: scale(.98); }
+  .cam-screen.cam-ui .talk { margin-top: 8px; height: 40px; }
+  .cam-ui .cam-peek { min-height: 36px; }
+}
+
+/* Đèn camera trước: màn hình trắng một nhịp. */
+.cam-ui.cam-flash { position: fixed; inset: 0; z-index: 26; background: var(--cam-flash); pointer-events: none; animation: vf-in .08s ease-out both; }
+
+/* Thanh dưới khi đang ở camera: viên tối cùng nền, nút camera giữa trắng có chấm mực tím như nút chụp. */
+.cam-screen.cam-ui ~ .tabbar { background: var(--cam-surface); box-shadow: 0 12px 30px -12px var(--cam-shade), inset 0 0 0 1px var(--cam-line); }
+.cam-screen.cam-ui ~ .tabbar .tab { color: var(--cam-muted); }
+.cam-screen.cam-ui ~ .tabbar .tab.on { color: var(--cam-text); }
+.cam-screen.cam-ui ~ .tabbar .tab-line { color: var(--cam-hand); }
+.cam-screen.cam-ui ~ .tabbar .tab-cam { background: var(--cam-text); box-shadow: 0 0 0 4px var(--cam-surface), 0 0 0 5.5px var(--cam-text); }
+.cam-screen.cam-ui ~ .tabbar .tab-cam i { background: var(--cam-accent); }
+
+/* ---------- Gửi tới… (sau khi chụp, quay, nói) ---------- */
+.cam-ui.cam-send {
+  position: fixed; inset: 0; z-index: 25; display: flex; flex-direction: column; background: var(--cam-bg); color: var(--cam-text);
+  padding: calc(var(--safe-top) + 4px) 16px calc(var(--safe-bottom) + 14px); animation: send-in .24s cubic-bezier(.2, .9, .3, 1) both;
+}
+@keyframes send-in { from { opacity: 0; transform: translate3d(0, 18px, 0); } to { opacity: 1; transform: none; } }
+.cam-send .send-top { flex: none; display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; height: 50px; }
+.cam-send .send-x { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: var(--cam-text); transition: transform .15s; }
+.cam-send .send-x svg { width: 24px; height: 24px; }
+.cam-send .send-x:active { transform: scale(.92); transition-duration: 0s; }
+.cam-send .send-title { margin: 0; text-align: center; font-family: var(--f-display); font-weight: 800; font-size: 19px; letter-spacing: -.03em; text-transform: lowercase; }
+
+/* Ảnh xem trước 3:4 ở giữa, cao vừa chỗ còn lại; ô viết một dòng nằm đè đáy ảnh. */
+.cam-send .send-stage { flex: 1; min-height: 0; display: grid; place-items: center; padding: 8px 0 18px; }
+.cam-send .send-card {
+  position: relative; aspect-ratio: 3 / 4; height: min(100%, calc(min(80vw, 340px) * 4 / 3)); border-radius: 30px; overflow: hidden;
+  background: var(--cam-surface); -webkit-touch-callout: none;
+}
+.cam-send .send-card img, .cam-send .send-card video { width: 100%; height: 100%; object-fit: cover; }
+.cam-send .send-cap {
+  position: absolute; left: 50%; bottom: 14px; width: calc(100% - 28px); max-width: 250px; height: 42px; transform: translateX(-50%);
+  border: 0; outline: none; border-radius: 999px; padding: 0 16px; background: var(--cam-scrim); color: var(--cam-text);
+  font-size: 16px; font-weight: 500; text-align: center;
+}
+.cam-send .send-cap::placeholder { color: var(--cam-soft); }
+.cam-send .send-cap:focus { box-shadow: inset 0 0 0 1.5px var(--cam-soft); }
+.cam-send .send-sound { position: absolute; top: 12px; right: 12px; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--cam-scrim); color: var(--cam-text); }
+.cam-send .send-sound svg { width: 20px; height: 20px; }
+.cam-send .send-card.is-voice { width: min(80vw, 320px); height: auto; aspect-ratio: 1; }
+.cam-send .cam-voice { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; color: var(--cam-text); }
+.cam-send .cam-voice .play { background: var(--cam-text); color: var(--cam-bg); }
+.cam-send .cam-voice .bars i { background: var(--cam-line); }
+.cam-send .cam-voice .bars i.on { background: var(--cam-text); }
+
+/* Nơi gửi: hàng "cả nhà" có mặt mọi người và dấu tích mực tím; hàng bữa cơm bật tắt được. */
+.cam-send .send-list { flex: none; display: flex; flex-direction: column; }
+.cam-send .send-row { width: 100%; min-height: 62px; display: flex; align-items: center; gap: 12px; padding: 8px 2px; text-align: left; color: var(--cam-text); }
+.cam-send .send-row + .send-row { box-shadow: inset 0 1px 0 var(--cam-line); }
+.cam-send .send-faces { flex: none; display: flex; min-width: 42px; }
+.cam-send .send-faces .avatar { box-shadow: 0 0 0 2px var(--cam-bg); }
+.cam-send .send-faces .avatar + .avatar { margin-left: -12px; }
+.cam-send .send-ico { flex: none; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--cam-chip); color: var(--cam-text); }
+.cam-send .send-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cam-send .send-txt b { font-family: var(--f-display); font-weight: 700; font-size: 17px; letter-spacing: -.02em; text-transform: lowercase; }
+.cam-send .send-txt small { font-size: 13px; color: var(--cam-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cam-send .send-check { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; box-shadow: inset 0 0 0 1.5px var(--cam-line); color: var(--cam-text); }
+.cam-send .send-check.on { background: var(--cam-accent); box-shadow: none; }
+.cam-send .send-check svg { width: 16px; height: 16px; stroke-width: 2.4; }
+
+/* Nút gửi lớn mực tím. Đang tải lên: một lớp sáng chạy ngang theo phần trăm (chỉ scaleX). */
+.cam-send .send-go {
+  flex: none; position: relative; overflow: hidden; isolation: isolate; margin-top: 12px; height: 56px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--cam-accent); color: var(--cam-text);
+  font-size: 17px; font-weight: 600; transition: transform .15s;
+}
+.cam-send .send-go i { position: absolute; inset: 0; z-index: -1; background: var(--cam-chip); transform-origin: 0 50%; transition: transform .25s linear; }
+.cam-send .send-go svg { width: 20px; height: 20px; }
+.cam-send .send-go:not(:disabled):active { transform: scale(.98); transition-duration: 0s; }
+.cam-send .send-go span { font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cam-ui .cam-peek.new svg { animation: none; }
+  .cam-ui .vf-inner, .cam-ui .cam-round span, .cam-ui .vf-filters button, .cam-screen.cam-ui .shutter, .cam-screen.cam-ui .shutter i, .cam-screen.cam-ui .shutter u { transition-property: opacity; }
+  .cam-ui.cam-send { animation-name: vf-in; }
+}
 
 /* ---------- Ảnh nhà mình ---------- */
 .sheet.feed-sheet { background: #0f0e12; color: #fff; }
