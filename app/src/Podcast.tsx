@@ -127,13 +127,7 @@ function AudioPlayer({ ep, me }: { ep: Ep; me: Me }) {
           if (t >= c.at && !spoken.current.has(k)) {
             spoken.current.add(k);
             setCur(k);
-            // Mốc không có lời dẫn (tập lời thương đầu tiên): không đọc, không giữ giọng thật lại.
-            if (!c.say) return;
-            speaking.current = true;
-            void speak(c.say).then(() => {
-              speaking.current = false;
-              if (holding.current && wantRef.current) { holding.current = false; void a.play(); }
-            });
+            // Không bao giờ đọc lời dẫn bằng giọng máy (tập cũ còn lời dẫn): chỉ hiện câu hỏi, giọng thật phát liền.
           }
         });
         const c = ep.chapters[cur];
