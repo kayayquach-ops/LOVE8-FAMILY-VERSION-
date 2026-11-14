@@ -92,3 +92,11 @@ Dọn nhà thử trên live (CHỈ khi người dùng bảo, vì nay đã có ng
 - `npm audit` báo 1 lỗ hổng mức high chưa kiểm là có sẵn hay mới.
 - Gemini Live (nói chuyện thời gian thực) nếu muốn cuộc gọi tự nhiên hơn nữa.
 - Dịch tự động tin nhắn giữa các thành viên (tính năng riêng, tốn token theo số tin).
+
+## Đợt 14/11/2026: bộ giao diện mới "vở ô ly, mực tím" (CHỜ USER DUYỆT, chưa sửa code app)
+- User gửi 2 video quay màn hình YOPE (Drive 1iORefJD5VMTkxfofhI5dlIjYiVbneD8e) và bảo tham khảo YOPE + Setlog để làm một bộ UI riêng, không "AI slop"; chê lọ và hạt trong lọ vẫn "AI lắm".
+- Bản mẫu 7 màn: `app/docs/ui-moi/ban-mau.html`, link artifact https://claude.ai/artifact/4EnWrwB8wvrzHSHz44twd7 (riêng tư). Ảnh trong bản mẫu là ảnh vẽ tạm làm mờ (không được phép tải ảnh Unsplash hay sinh ảnh Gemini bằng key của topik-app).
+- Hướng: giấy trắng + lưới ô ly nhạt, mực đen (logo bút lông) cho chữ và nút chính, mực tím học trò `#5B3CC4` chỉ cho nét viết tay (cụm chữ nhấn trong tiêu đề, hình vẽ, dấu tích), đỏ xanh thư máy bay chỉ ở mục thư. Chữ: Bricolage Grotesque (tiêu đề, chữ thường, đậm), Be Vietnam Pro (chữ thường), Patrick Hand (viết tay). Hình vẽ tay nét mực thay biểu tượng tròn; bỏ khung thẻ, nhãn nhỏ trên thẻ, ô có biểu tượng trong vòng tròn.
+- User dặn thêm: (1) màn giới thiệu kiểu màn thứ 3 của YOPE (ảnh thật bay vào, tin nhắn, đếm ngày) đặt ở bước chọn tạo nhà / vào nhà / đăng nhập, sau các câu hỏi khảo sát; (2) bỏ màn "Tin nhà" có thẻ câu hỏi tuần chắn trước, từ camera vuốt lên là thấy ảnh luôn.
+- Lọ mới: lọ vẽ tay nét mực + sao giấy gấp (mỗi người một màu giấy), thay lọ thủy tinh Blender và 10 hạt charm.
+- Tham khảo: Setlog (셋로그, nền giấy, doodle mực, ảnh xếp chồng có giờ to + tên), YOPE (mỗi màn một việc, tiêu đề ngắn nhấn một cụm, một nút lớn, tổng kết là thẻ dọc có nơi + tháng, trạng thái trống nói rõ còn thiếu bao nhiêu), Slowly (thư "đang bay").
