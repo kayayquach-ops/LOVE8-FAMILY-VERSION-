@@ -123,7 +123,7 @@ Người dùng hỏi để phần này trên đầu có ổn không; giữ trên
 - Tên thành phố lưu theo thứ tiếng lúc chọn ("하노이", "Ho Chi Minh City"); nay hiện lại theo thứ tiếng người xem qua `src/placeName.ts` (tra places.json, khớp tên và gần đúng toạ độ, không khớp thì giữ tên đã lưu). Dùng ở Trang chủ, tin nhà, màn cả nhà.
 - Chưa xem được trên máy với nhà nhiều người (hệ thống chặn tạo nhà thử và đọc database local); đã kiểm tsc, i18n, build và logic tên thành phố trên places.json.
 
-### 15/11: rà bằng Impeccable, làm đậm chữ xám nhạt
+
 Người dùng hỏi repo `pbakaus/impeccable` có giúp app đẹp hơn không. Chỉ chạy bộ dò lỗi (`npx impeccable detect`, không cài vào app): code không có lỗi chính, 8 ghi chú nhẹ; màn chào bản thật 3 ghi chú.
 - Đã sửa: `--muted` bản sáng `#8F8A9B` (3,2:1 trên giấy) thành `#736E80` (4,7:1), cả chỗ đặt lại trong hình minh hoạ ở `dark.css`; chữ chọn tiếng và dòng gợi ý ở màn chào đậm hơn (alpha .75 và .8). Bản tối `--muted #8F8A9C` vốn đạt 5,6:1, giữ nguyên.
 - Cố ý giữ (máy chê nhưng là thiết kế đã duyệt): nền kẻ ô "vở ô ly" (`.oly`, `story.css`), chấm sáng nhấp nháy và quầng sáng chữ ở màn chào cánh đồng, hiệu ứng nảy (tim, thư rơi, linh vật, thẻ màn giới thiệu).
