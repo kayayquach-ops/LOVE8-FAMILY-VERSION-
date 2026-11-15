@@ -31,7 +31,7 @@
 
 /* Hình minh hoạ nền sáng: chữ và nét mực bên trong vẫn là mực đen */
 [data-theme="dark"] :is(.lt-card, .ob-card, .ob-who, .rc-player, .lt-env-body, .lt-env-flap, .voice-card, .hug-card) {
-  --ink: #17151C; --soft: #5D5968; --muted: #8F8A9B; --accent: #5B3CC4; --accent-soft: #EEE9FC; --paper: #FFFFFF; --line: rgba(23, 21, 28, .1);
+  --ink: #17151C; --soft: #5D5968; --muted: #736E80; --accent: #5B3CC4; --accent-soft: #EEE9FC; --paper: #FFFFFF; --line: rgba(23, 21, 28, .1);
 }
 [data-theme="dark"] .lt-env small { color: var(--soft); }
 [data-theme="dark"] .rc-player { --on-ink: #fff; }
