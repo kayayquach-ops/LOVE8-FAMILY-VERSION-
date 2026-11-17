@@ -1,0 +1,185 @@
+/* Chụp chung dù ở xa (17/11/2026, docs/chup-chung.md, mockup 6 màn): lớp vẽ trên khung ngắm, bảng chọn dịp, màn chụp chung.
+   Luôn tối, dùng bảng màu --cam-* của camera.css (lớp .cam-ui). Thêm vài màu giấy cho ảnh kiểu lấy liền.
+   Chỉ animate transform và opacity. */
+.cam-ui {
+  --shot-paper: #F4F1EA;
+  --shot-ink: #17151C;
+  --shot-ink-soft: #5D5968;
+  --shot-ink-accent: #5B3CC4;
+  --shot-wait: rgba(196, 181, 255, .55);
+  --shot-wait-soft: rgba(196, 181, 255, .35);
+  --shot-drop: rgba(0, 0, 0, .7);
+  --shot-dev: #2A2430;
+  --shot-sil-1: #5C4A55;
+  --shot-sil-2: #504560;
+  --shot-sil-3: #465566;
+  --shot-sil-4: #4F5A4A;
+  --shot-sil-table: #3A3138;
+}
+
+/* ---------- Lớp vẽ trên khung ngắm ---------- */
+.cam-ui .shot-stencil {
+  position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;
+  fill: none; stroke: var(--cam-hand); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  filter: drop-shadow(0 1px 3px var(--cam-shade)); animation: vf-in .3s ease both;
+}
+.shot-stencil .st-face { stroke-dasharray: 7 7; }
+.shot-stencil .st-dash { stroke-dasharray: 5 6; }
+.shot-stencil .st-fill { fill: var(--cam-bg); fill-opacity: .55; }
+.shot-stencil .st-solid { fill: var(--cam-surface); }
+.shot-stencil .st-dot { fill: var(--cam-hand); stroke: none; }
+.shot-stencil .st-ring { stroke: var(--shot-paper); stroke-width: 3; }
+.shot-stencil .st-on { stroke: var(--shot-paper); stroke-width: 2.5; }
+.shot-stencil .st-name { font-family: var(--f-hand); fill: var(--cam-hand); stroke: none; text-anchor: middle; }
+.shot-stencil .st-name.on { fill: var(--shot-paper); }
+
+/* ---------- Bảng chọn dịp: tấm trượt lên từ đáy, nền camera tối mờ đi ---------- */
+.cam-ui.shot-pick-wrap { position: fixed; inset: 0; z-index: 28; background: var(--cam-shade); animation: vf-in .2s ease both; }
+.shot-pick {
+  position: absolute; left: 0; right: 0; bottom: 0; top: calc(var(--safe-top) + 54px); display: flex; flex-direction: column; gap: 14px;
+  padding: 10px 16px calc(var(--safe-bottom) + 24px); border-radius: 30px 30px 0 0; background: var(--cam-surface); color: var(--cam-text);
+  box-shadow: inset 0 1px 0 var(--cam-line); overflow-y: auto; overscroll-behavior: contain; animation: send-in .26s cubic-bezier(.2, .9, .3, 1) both;
+}
+.shot-pick .shot-grab { flex: none; align-self: center; width: 40px; height: 5px; border-radius: 3px; background: var(--cam-line); }
+.shot-pick-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.shot-pick-head h2 { margin: 0; font-family: var(--f-display); font-weight: 800; font-size: 28px; letter-spacing: -.03em; line-height: 1.1; text-transform: lowercase; }
+.shot-pick .hand, .shot-screen .hand { color: var(--cam-hand); }
+
+.shot-pick .shot-soon {
+  flex: none; display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 10px 14px; border-radius: 18px; text-align: left;
+  background: var(--cam-track); box-shadow: inset 0 0 0 1px var(--shot-wait); color: var(--cam-hand); transition: transform .15s;
+}
+.shot-pick .shot-soon > span { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.shot-pick .shot-soon b { font-size: 15px; font-weight: 600; color: var(--cam-text); }
+.shot-pick .shot-soon .hand { font-size: 19px; line-height: 1.15; }
+
+.shot-pick .shot-grid { flex: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.shot-grid button {
+  height: 108px; padding: 12px 14px; border-radius: 20px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; text-align: left;
+  background: var(--cam-chip); box-shadow: inset 0 0 0 1px var(--cam-line); color: var(--cam-hand); transition: transform .15s;
+}
+.shot-grid button > span { display: flex; flex-direction: column; gap: 1px; min-width: 0; max-width: 100%; }
+.shot-grid b { font-size: 16px; font-weight: 600; color: var(--cam-text); }
+.shot-grid small { font-size: 12.5px; color: var(--cam-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shot-grid button.on { background: var(--cam-accent); box-shadow: none; color: var(--cam-text); }
+.shot-grid button.on small { color: var(--cam-text); opacity: .85; }
+.shot-grid button:active, .shot-pick .shot-soon:active { transform: scale(.97); transition-duration: 0s; }
+
+.shot-custom { flex: none; display: flex; flex-direction: column; gap: 6px; }
+.shot-custom label { font-size: 13px; color: var(--cam-soft); }
+.shot-custom-row { display: flex; gap: 8px; }
+.shot-custom input {
+  flex: 1; min-width: 0; height: 50px; border: 0; outline: none; border-radius: 16px; padding: 0 16px; font-size: 16px;
+  background: var(--cam-chip); box-shadow: inset 0 0 0 1px var(--cam-line); color: var(--cam-text);
+}
+.shot-custom input::placeholder { color: var(--cam-muted); }
+.shot-custom input:focus { box-shadow: inset 0 0 0 2px var(--cam-hand); }
+.shot-custom .shot-ok { flex: none; min-width: 64px; height: 50px; padding: 0 18px; border-radius: 16px; background: var(--cam-text); color: var(--cam-bg); font-size: 15px; font-weight: 600; transition: transform .15s; }
+.shot-custom .shot-ok:active { transform: scale(.96); transition-duration: 0s; }
+.cam-ui.shot-pick-wrap button:focus-visible, .cam-ui.shot-screen button:focus-visible { outline: 2px solid var(--cam-hand); outline-offset: 3px; }
+
+/* ---------- Màn chụp chung ---------- */
+.cam-ui.shot-screen {
+  position: fixed; inset: 0; z-index: 24; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; overscroll-behavior: contain;
+  padding: calc(var(--safe-top) + 8px) 20px calc(var(--safe-bottom) + 24px); background: var(--cam-bg); color: var(--cam-text);
+  animation: send-in .24s cubic-bezier(.2, .9, .3, 1) both;
+}
+.shot-screen > * { flex: none; }
+.gs-top { display: flex; align-items: center; min-height: 44px; }
+.gs-top.end { justify-content: flex-end; }
+.gs-top.between { justify-content: space-between; gap: 10px; }
+.cam-ui .gs-round { flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--cam-chip); color: var(--cam-text); transition: transform .15s; }
+.cam-ui .gs-round svg { width: 22px; height: 22px; }
+.cam-ui .gs-round:active { transform: scale(.92); transition-duration: 0s; }
+.gs-title { margin: 0; font-family: var(--f-display); font-weight: 800; font-size: 34px; line-height: 1.05; letter-spacing: -.03em; text-wrap: balance; overflow-wrap: anywhere; }
+.gs-title.sm { font-size: 28px; }
+.gs-head { display: flex; flex-direction: column; gap: 4px; }
+.gs-head .hand { margin: 0; font-size: 20px; font-variant-numeric: tabular-nums; }
+
+/* Chờ: mỗi người một ảnh kiểu lấy liền xoay nhẹ; chưa chụp thì khung nét mờ "đang đợi". */
+.gs-polas { display: flex; justify-content: center; align-items: flex-start; gap: 10px; padding: 8px 0 6px; }
+.gs-pola {
+  flex: 0 1 108px; min-width: 0; margin: 0; padding: 7px 7px 10px; border-radius: 6px; background: var(--shot-paper); color: var(--shot-ink);
+  transform: rotate(var(--rot, 0deg)); box-shadow: 0 14px 30px -12px var(--shot-drop); animation: gs-drop .4s cubic-bezier(.2, .9, .3, 1.1) both;
+}
+.gs-pola img, .gs-pola-empty { display: block; width: 100%; aspect-ratio: 94 / 118; object-fit: cover; border-radius: 3px; background: var(--cam-surface); }
+.gs-pola figcaption { margin-top: 6px; display: flex; justify-content: space-between; align-items: baseline; gap: 4px; min-width: 0; }
+.gs-pola figcaption .hand { min-width: 0; font-size: 19px; line-height: 1.1; color: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-pola small { flex: none; font-size: 11px; color: var(--shot-ink-soft); font-variant-numeric: tabular-nums; }
+.gs-pola.wait { background: var(--cam-chip); box-shadow: inset 0 0 0 1.5px var(--shot-wait); color: var(--cam-text); }
+.gs-pola.wait .gs-pola-empty { display: grid; place-items: center; background: none; box-shadow: inset 0 0 0 1.5px var(--shot-wait-soft); color: var(--cam-hand); }
+.gs-pola.wait .gs-pola-empty svg { width: 30px; height: 30px; }
+.gs-pola.wait small { color: var(--cam-soft); }
+@keyframes gs-drop { from { opacity: 0; transform: translate3d(0, -10px, 0) rotate(var(--rot, 0deg)); } to { opacity: 1; transform: rotate(var(--rot, 0deg)); } }
+
+.gs-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; border-radius: 20px; background: var(--cam-surface); box-shadow: inset 0 0 0 1px var(--cam-line); }
+.gs-list li { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 10px 14px; font-size: 15px; }
+.gs-list li + li { box-shadow: inset 0 1px 0 var(--cam-line); }
+.gs-list li > span:not(.gs-tick) { flex: 1; min-width: 0; }
+.gs-tick { flex: none; display: grid; color: var(--cam-hand); }
+.gs-tick svg { width: 20px; height: 20px; stroke-width: 2.2; }
+.shot-screen .gs-note { margin: 0; text-align: center; font-size: 20px; }
+
+/* Nút: chính nền trắng chữ tối, phụ viền mảnh, chữ gạch chân mực tím. */
+.gs-actions { margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
+.cam-ui .gs-main {
+  height: 54px; border-radius: 999px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 20px;
+  background: var(--cam-text); color: var(--cam-bg); font-size: 16px; font-weight: 600; transition: transform .15s, opacity .2s;
+}
+.cam-ui .gs-main svg { flex: none; width: 20px; height: 20px; }
+.cam-ui .gs-ghost { flex: 1; min-height: 48px; padding: 0 16px; border-radius: 999px; color: var(--cam-text); font-size: 15px; font-weight: 500; box-shadow: inset 0 0 0 1.5px var(--cam-muted); transition: transform .15s, opacity .2s; }
+.cam-ui .gs-link {
+  min-height: 48px; padding: 0 12px; color: var(--cam-text); font-size: 15px; font-weight: 500; transition: opacity .2s;
+  text-decoration: underline; text-decoration-color: var(--cam-hand); text-decoration-thickness: 2px; text-underline-offset: 5px;
+}
+.gs-pair { display: flex; gap: 10px; }
+.cam-ui .gs-main:not(:disabled):active, .cam-ui .gs-ghost:not(:disabled):active { transform: scale(.98); transition-duration: 0s; }
+.cam-ui .gs-main:disabled, .cam-ui .gs-ghost:disabled, .cam-ui .gs-link:disabled { opacity: .5; }
+
+/* Đang rửa: ảnh tròn từng người, nét đứt chụm vào một tấm ảnh lấy liền đang hiện dần. */
+.gs-dev { flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding-bottom: 16px; }
+.gs-faces { display: flex; gap: 14px; align-items: center; }
+.gs-faces img { width: 54px; height: 54px; border-radius: 50%; object-fit: cover; background: var(--cam-surface); box-shadow: 0 0 0 2.5px var(--shot-paper); }
+.gs-flow { width: 120px; height: 34px; margin: -12px 0 -8px; fill: none; stroke: var(--cam-hand); stroke-width: 2; stroke-dasharray: 3 6; stroke-linecap: round; }
+.gs-print { margin: 0; width: min(292px, 100%); padding: 12px 12px 18px; border-radius: 8px; background: var(--shot-paper); transform: rotate(-1.5deg); box-shadow: 0 30px 60px -20px var(--shot-drop); }
+.gs-print-img { aspect-ratio: 268 / 300; border-radius: 4px; overflow: hidden; background: var(--shot-dev); }
+.gs-print figcaption.hand { margin-top: 12px; text-align: center; font-size: 21px; color: var(--shot-ink-accent); }
+.gs-dev-art { display: block; width: 100%; height: 100%; animation: gs-hien 2.4s ease-in-out infinite; }
+.gs-sil.s0 { fill: var(--shot-sil-1); }
+.gs-sil.s1 { fill: var(--shot-sil-2); }
+.gs-sil.s2 { fill: var(--shot-sil-3); }
+.gs-sil.s3 { fill: var(--shot-sil-4); }
+.gs-sil-table { fill: var(--shot-sil-table); }
+@keyframes gs-hien { 0%, 100% { opacity: .35; } 50% { opacity: .8; } }
+.gs-dev-txt { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+.gs-dev-txt h1 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; }
+.gs-dev-txt h1 svg { flex: none; width: 20px; height: 20px; color: var(--cam-hand); }
+.gs-dev-txt .hand { margin: 0; font-size: 19px; }
+
+/* Xong: ảnh ghép có nhãn "ảnh ghép AI", dòng dịp và ngày, hàng ảnh thật. */
+.gs-result { position: relative; width: min(100%, 440px); align-self: center; aspect-ratio: 4 / 5; border-radius: 26px; overflow: hidden; background: var(--cam-surface); }
+.gs-result img { width: 100%; height: 100%; object-fit: cover; animation: vf-in .5s ease both; }
+.cam-ui .gs-ai {
+  position: absolute; left: 12px; bottom: 12px; height: 28px; padding: 0 10px; border-radius: 999px; display: flex; align-items: center; gap: 5px;
+  background: var(--cam-shade); color: var(--cam-text); font-size: 12px; font-weight: 600;
+}
+.cam-ui .gs-ai svg { width: 14px; height: 14px; stroke-width: 2; }
+.gs-meta { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: -4px; }
+.gs-meta .hand { min-width: 0; font-size: 22px; line-height: 1.15; }
+.gs-meta small { flex: none; max-width: 50%; font-size: 12.5px; color: var(--cam-soft); text-align: right; }
+.gs-real { display: flex; align-items: center; gap: 10px; }
+.gs-real span { font-size: 13px; color: var(--cam-soft); }
+.gs-real img { width: 40px; height: 50px; object-fit: cover; border-radius: 3px; background: var(--cam-surface); box-shadow: 0 0 0 2.5px var(--shot-paper); }
+
+/* Lỗi */
+.gs-fail { flex: 1 0 auto; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 24px 0; }
+.gs-result.is-old { width: min(100%, 300px); }
+.gs-fail.sm { flex-grow: 0; padding: 8px 0 0; }
+.gs-fail .hand { margin: 0; font-size: 20px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cam-ui.shot-screen, .shot-pick { animation-name: vf-in; }
+  .gs-pola { animation-name: vf-in; }
+  .gs-dev-art { animation: none; opacity: .6; }
+  .shot-grid button, .shot-pick .shot-soon, .cam-ui .gs-round, .cam-ui .gs-main, .cam-ui .gs-ghost, .shot-custom .shot-ok { transition-property: opacity; }
+}

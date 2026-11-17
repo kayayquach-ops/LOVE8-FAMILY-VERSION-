@@ -1,5 +1,5 @@
 import { getLang, hasKey, onLangChange, t } from './i18n';
-import type { Me, Post, Week } from './shared';
+import type { Me, Post, Shot, ShotOccasion, Week } from './shared';
 
 // Mã riêng của máy này, có được khi tạo nhà hoặc vào nhà. Không có mật khẩu.
 const KEY = 'homeletter-token';
@@ -114,6 +114,16 @@ export const api = {
   mission: (key: string) => call(`/api/missions/${key}`, { method: 'POST' }),
   lang: (lang: string) => call('/api/me/lang', { method: 'PUT', body: JSON.stringify({ lang }) }),
   mascot: (b: { name?: string; shape?: string }) => call('/api/family/mascot', { method: 'PUT', body: JSON.stringify(b) }),
+  // Chụp chung dù ở xa (docs/chup-chung.md). Gửi ảnh qua upload để có tiến độ như lúc gửi ảnh thường.
+  /** f: file (selfie), occasion, custom (khi tu-viet), with (id những người chụp cùng, cách nhau bằng dấu phẩy). */
+  shotCreate: (f: FormData, onProgress?: (p: number) => void) => upload<{ shot: Shot }>('/api/shots', f, onProgress),
+  shotsOpen: () => call<{ shots: Shot[] }>('/api/shots/open'),
+  shot: (id: string) => call<{ shot: Shot }>(`/api/shots/${encodeURIComponent(id)}`),
+  shotPhoto: (id: string, f: FormData, onProgress?: (p: number) => void) => upload<{ shot: Shot }>(`/api/shots/${encodeURIComponent(id)}/photo`, f, onProgress),
+  shotDevelop: (id: string) => call<{ shot: Shot }>(`/api/shots/${encodeURIComponent(id)}/develop`, { method: 'POST' }),
+  shotNudge: (id: string) => call<{ ok: boolean }>(`/api/shots/${encodeURIComponent(id)}/nudge`, { method: 'POST' }),
+  shotRedo: (id: string, b: { occasion?: ShotOccasion; custom?: string } = {}) => call<{ shot: Shot }>(`/api/shots/${encodeURIComponent(id)}/redo`, json(b)),
+  shotPost: (id: string) => call<{ ok: boolean; postId: string }>(`/api/shots/${encodeURIComponent(id)}/post`, { method: 'POST' }),
 };
 
 // Mọi yêu cầu tới /api/ mang theo ngôn ngữ đang chọn (header x-lang), để lời báo lỗi và chữ máy chủ soạn đúng thứ tiếng

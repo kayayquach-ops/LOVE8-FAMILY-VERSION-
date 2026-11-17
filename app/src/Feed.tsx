@@ -232,6 +232,8 @@ const PostPage = memo(function PostPage({ p, members, meId, active, near, onReac
       <div className={`post-card is-${p.kind}`} onClick={onCardTap}>
         <PostMedia p={p} active={active} near={near} muted={muted} name={a?.name ?? ''} />
         <span className="post-who"><Avatar m={a} size={24} /><b>{a?.id === meId ? t('common.you') : a?.name}</b></span>
+        {/* Ảnh chụp chung do AI ghép: luôn có nhãn, và hàng ảnh thật của từng người ngay dưới thẻ. */}
+        {p.shotId && <span className="post-ai"><Icon name="sparkle" />{t('shot.aiLabel')}</span>}
         <div className="post-stamp">
           <b>{fmtTime(new Date(p.createdAt), city?.tz)}{day && <small>{day}</small>}</b>
           {line && <span>{line}</span>}
@@ -242,6 +244,12 @@ const PostPage = memo(function PostPage({ p, members, meId, active, near, onReac
         </button>
         {pop > 0 && <span key={pop} className="post-pop" aria-hidden="true" onAnimationEnd={() => setPop(0)}><Doodle name="heartFill" size={110} wobble={false} /></span>}
       </div>
+      {p.shotId && !!p.shotParts?.length && (
+        <div className="post-real">
+          <span>{t('shot.real')}</span>
+          {near && p.shotParts.map((u) => <img key={u} src={thumb(u, 160)} alt="" decoding="async" />)}
+        </div>
+      )}
       <div className="post-meta">
         {EMOJIS.map((e) => {
           const n = count(e);

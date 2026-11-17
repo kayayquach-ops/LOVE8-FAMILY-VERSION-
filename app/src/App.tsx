@@ -6,7 +6,9 @@ import { Hug } from './Hug';
 import { MayTab } from './MayTab';
 import { NotifyAsk } from './NotifyAsk';
 import { Greeting, Onboarding } from './Onboarding';
-import type { Me } from './shared';
+import type { Me, Shot } from './shared';
+import { GroupShot } from './GroupShot';
+import { isInviteFor, isPendingFor, shotIdFrom } from './shot';
 import { Calendar } from './Calendar';
 import { Jar } from './Jar';
 import { Family } from './Sheets';
@@ -18,7 +20,7 @@ import { onPushOpen, syncPush } from './push';
 import { resumeOutbox } from './outbox';
 import { TabBar, type Tab } from './TabBar';
 import { applyMascot } from './mascotStore';
-import { Mesh, Toaster } from './ui';
+import { Mesh, Toaster, toast } from './ui';
 import { t, useLang } from './i18n';
 
 // Màn ít dùng tải sau, để lần mở app đầu tiên nhẹ hơn. Rảnh thì tải sẵn, lúc bấm vào là có ngay.
@@ -50,7 +52,7 @@ export function App() {
   useEffect(() => { applyMascot(me?.family); }, [me?.family.mascotName, me?.family.mascotShape]);
   const [ready, setReady] = useState(() => !!me);
   // Liên kết Google từ Cài đặt xong, quay về thì mở lại Cài đặt để thấy kết quả.
-  const [sheet, setSheet] = useState<'feed' | 'jar' | 'family' | 'calendar' | 'chat' | 'recap' | 'podcast' | 'letters' | 'settings' | 'mascot' | null>(() => (fromGoogle && token.get() ? 'settings' : null));
+  const [sheet, setSheet] = useState<'feed' | 'jar' | 'family' | 'calendar' | 'chat' | 'recap' | 'podcast' | 'letters' | 'settings' | 'mascot' | 'shot' | null>(() => (fromGoogle && token.get() ? 'settings' : null));
   // Mở app là vào camera như Locket; Trang chủ là một tab.
   const [tab, setTab] = useState<'home' | 'camera' | 'may'>('camera');
   const [chatUnread, setChatUnread] = useState(0);
@@ -70,7 +72,7 @@ export function App() {
   inCall.current = facetime;
   const [skipRoom, setSkipRoom] = useState<string | null>(null);
   // Mở từ thông báo (?open=...) thì vào thẳng, không chờ màn chào: cuộc gọi chỉ đổ chuông vài chục giây.
-  const [greet, setGreet] = useState(() => !new URLSearchParams(location.search).get('open') && !(fromGoogle && token.get()));
+  const [greet, setGreet] = useState(() => !new URLSearchParams(location.search).get('open') && !new URLSearchParams(location.search).get('shot') && !(fromGoogle && token.get()));
   // Màn "giữ để ôm" mỗi ngày đã bỏ theo yêu cầu: mở app là vào thẳng Trang chủ sau màn chào. Đặt lại thành kiểm HUG_KEY để bật lại.
   const [hug, setHug] = useState(false);
 
@@ -145,12 +147,51 @@ export function App() {
       else if (o === 'letter') setSheet('letters');
       else if (o === 'post') setSheet('feed');
       else if (o === 'recap') setSheet('recap');
+      else if (o.startsWith('shot')) { const id = shotIdFrom(o); if (id) void openShot(id); else void loadShots(); }
     });
   }, [!!me]);
 
   // Mở tin nhà, chat, gia đình thì lấy lại danh sách cả nhà: người mới vào nhà không hiện thành "?" hay "Ai đó".
   // Chỉ hỏi lại danh sách cả nhà, không kéo theo số tin chat và lịch gọi (đỡ hai yêu cầu mỗi lần mở).
   useEffect(() => { if (me && (sheet === 'feed' || sheet === 'chat' || sheet === 'family')) void loadMe().catch(() => {}); }, [sheet]);
+
+  // Chụp chung dù ở xa (docs/chup-chung.md): các lượt có tên mình trong 48 giờ qua (máy chủ trả mọi trạng thái, mới nhất trước).
+  // Lượt đang chờ mà mình chưa chụp là lời rủ: camera tự sang chụp chung. Lời rủ bấm x thì thôi trong phiên này.
+  const [shots, setShots] = useState<Shot[]>([]);
+  const [shot, setShot] = useState<Shot | null>(null);
+  const [skipShots, setSkipShots] = useState<string[]>([]);
+  const meRef = useRef(me);
+  meRef.current = me;
+  const loadShots = () => api.shotsOpen().then((d) => setShots((prev) => (JSON.stringify(prev) === JSON.stringify(d.shots) ? prev : d.shots))).catch(() => {});
+  // Cập nhật một lượt (mới thì đặt lên đầu, để lời rủ vừa mở từ thông báo được chọn trước).
+  const putShot = (s: Shot, front = false) => setShots((l) => {
+    const i = l.findIndex((x) => x.id === s.id);
+    if (i >= 0 && !front) { if (JSON.stringify(l[i]) === JSON.stringify(s)) return l; const n = [...l]; n[i] = s; return n; }
+    return [s, ...l.filter((x) => x.id !== s.id)];
+  });
+  const viewShot = (s: Shot) => { putShot(s); setShot(s); setSheet('shot'); };
+  // Mở một lượt theo id (thông báo, /?shot=<id>): mình chưa chụp thì về camera chụp phần mình, không thì mở màn chụp chung.
+  const openShot = (id: string) => api.shot(id).then(({ shot: s }) => {
+    const meId = meRef.current?.me.id ?? '';
+    if (isInviteFor(s, meId)) { putShot(s, true); setSkipShots((k) => k.filter((x) => x !== s.id)); setShot(null); setSheet(null); setTab('camera'); }
+    else viewShot(s);
+  }).catch((e: Error) => toast(e.message));
+  useEffect(() => {
+    if (!me) return;
+    const q = new URLSearchParams(location.search).get('shot');
+    if (q) {
+      const u = new URL(location.href);
+      u.searchParams.delete('shot');
+      history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+      void openShot(q);
+    }
+    void loadShots();
+    const onShow = () => { if (document.visibilityState === 'visible') void loadShots(); };
+    document.addEventListener('visibilitychange', onShow);
+    return () => document.removeEventListener('visibilitychange', onShow);
+  }, [!!me]);
+  const invite = me ? shots.find((s) => isInviteFor(s, me.me.id) && !skipShots.includes(s.id)) ?? null : null;
+  const pending = me ? shots.find((s) => isPendingFor(s, me.me.id)) ?? null : null;
 
   const doneHug = () => { try { localStorage.setItem(HUG_KEY, today()); } catch {} setHug(false); };
 
@@ -172,13 +213,21 @@ export function App() {
         ? <Home me={me} callDue={callDue && !calling} onCall={() => setCalling(true)} onOpen={(s, arg) => { if (s === 'camera') return setTab('camera'); if (s === 'podcast') setPodcastId(arg ?? null); if (s === 'feed') setFeedPost(arg ?? null); setSheet(s); }} />
         : tab === 'may'
         ? <MayTab me={me} callDue={callDue && !calling} onCall={() => setCalling(true)} onPodcast={() => { setPodcastId(null); setSheet('podcast'); }} onCustomize={() => setSheet('mascot')} />
-        : <Camera me={me} active={!sheet && !facetime && !calling} onOpen={(s) => { if (s === 'feed') setFeedPost(null); setSheet(s); }} onSent={load} />}
+        : <Camera me={me} active={!sheet && !facetime && !calling} onOpen={(s) => { if (s === 'feed') setFeedPost(null); setSheet(s); }} onSent={load}
+            invite={invite} pending={pending} onShot={viewShot} onOpenShot={viewShot} onShotsStale={() => void loadShots()}
+            onSkipInvite={(id) => setSkipShots((k) => [...k, id])} />}
       {!sheet && <TabBar active={tab} unread={chatUnread} ring={callDue && !calling} onSelect={(t: Tab) => {
         if (t === 'home' || t === 'camera' || t === 'may') { setSheet(null); setTab(t); } else setSheet(t);
       }} />}
       {sheet === 'feed' && <Feed me={me} start={feedPost} onClose={() => { setSheet(null); void load(); }} />}
       {sheet === 'jar' && <Jar me={me} onClose={() => setSheet(null)} />}
       {sheet === 'calendar' && <Calendar me={me} onClose={() => setSheet(null)} onWish={() => setSheet('chat')} />}
+      {sheet === 'shot' && shot && (
+        <GroupShot key={shot.id} me={me} shot={shot} onChange={(s) => putShot(s)}
+          onClose={() => { setSheet(null); setShot(null); void loadShots(); }}
+          onJoin={(s) => { putShot(s, true); setSkipShots((k) => k.filter((x) => x !== s.id)); setSheet(null); setShot(null); setTab('camera'); }}
+          onFeed={(postId) => { setShot(null); setFeedPost(postId); setSheet('feed'); }} />
+      )}
       {sheet === 'chat' && <Chat me={me} live={!!room} onClose={() => { setSheet(null); void loadUnread(); }} onCall={() => startFaceTime()} />}
       <Suspense fallback={null}>
       {sheet === 'settings' && <Settings me={me} onClose={() => setSheet(null)} onProfile={() => setSheet('family')} onMascot={() => setSheet('mascot')} />}

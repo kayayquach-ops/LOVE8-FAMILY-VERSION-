@@ -18,6 +18,8 @@ export type PushPayload = {
   tag?: string;
   /** Màn cần mở khi chạm: call, chat, post, calendar, weekly. */
   open?: string;
+  /** Đường dẫn mở khi chạm (chụp chung: /?shot=<id>). Service worker cần đọc trường này mới dùng được; chưa đọc thì đi theo open. */
+  url?: string;
   ttl?: number;
   urgency?: 'very-low' | 'low' | 'normal' | 'high';
 };

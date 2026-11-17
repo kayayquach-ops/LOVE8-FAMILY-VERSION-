@@ -22,16 +22,70 @@
   --cam-shade: rgba(0, 0, 0, .45);
   --cam-flash: #FFFFFF;
 }
-.screen.cam-screen.cam-ui { background: var(--cam-bg); color: var(--cam-text); padding: calc(var(--safe-top) + 8px) 12px calc(var(--safe-bottom) + 82px); }
+.screen.cam-screen.cam-ui { background: var(--cam-bg); color: var(--cam-text); padding: calc(var(--safe-top) + 8px) 12px calc(var(--safe-bottom) + 82px); --cam-rows: 334px; }
 .cam-ui button:focus-visible, .cam-ui label:focus-within { outline: 2px solid var(--cam-hand); outline-offset: 3px; }
 
-/* Khung ngắm 3:4 gần hết bề ngang, bo 34px. Máy thấp thì khung thu lại theo chiều cao còn lại:
-   các hàng khác cộng lại 290px, máy dưới 700px cao thì 262px. */
+/* Khung ngắm 3:4 gần hết bề ngang, bo 34px. Máy thấp thì khung thu lại theo chiều cao còn lại, trừ đi --cam-rows là các hàng khác cộng lại:
+   - ảnh thường 334px: đệm trên 8 + công tắc 44 + khoảng trên khung 10 + hàng nút 16+80 + giữ để nói 10+44 + vuốt lên 40 + đệm dưới 82;
+   - chụp chung 382px: đệm 8 + công tắc 44 + chip dịp 8+44 + khoảng 10 + chip người 10+44 + hàng nút 96 + dòng viết tay 36 + đệm 82;
+   - lời rủ 302px: đệm 8 + thẻ rủ 70 + khoảng 10 + hàng nút 96 + dòng viết tay 36 + đệm 82.
+   Máy dưới 700px cao xem khối @media bên dưới. */
+.screen.cam-screen.cam-ui.is-group { --cam-rows: 382px; }
+.screen.cam-screen.cam-ui.is-invite { --cam-rows: 302px; }
 .cam-screen.cam-ui .viewfinder {
   flex: none; position: relative; aspect-ratio: 3 / 4; margin-top: 10px; border-radius: 34px; background: var(--cam-surface); isolation: isolate;
-  width: min(100%, calc((100vh - 290px - var(--safe-top) - var(--safe-bottom)) * .75));
-  width: min(100%, calc((100dvh - 290px - var(--safe-top) - var(--safe-bottom)) * .75));
+  width: min(100%, calc((100vh - var(--cam-rows) - var(--safe-top) - var(--safe-bottom)) * .75));
+  width: min(100%, calc((100dvh - var(--cam-rows) - var(--safe-top) - var(--safe-bottom)) * .75));
   min-width: 200px; align-self: center;
+}
+
+/* Công tắc "ảnh | chụp chung" ở trên khung ngắm (chỗ hàng cả nhà cũ). Viên 44px, vùng chạm mỗi nút cũng đủ 44px. */
+.cam-ui .cam-mode { flex: none; align-self: center; height: 44px; display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--cam-chip); transition: opacity .2s; }
+.cam-ui .cam-mode button { position: relative; height: 36px; padding: 0 18px; border-radius: 999px; color: var(--cam-soft); font-size: 14px; font-weight: 500; text-transform: lowercase; }
+.cam-ui .cam-mode button::before { content: ""; position: absolute; inset: -4px -2px; }
+.cam-ui .cam-mode button.on { background: var(--cam-text); color: var(--cam-bg); font-weight: 600; }
+.cam-screen.cam-ui.is-rec .cam-mode { opacity: 0; pointer-events: none; }
+
+/* Chụp chung: hàng chip dịp (vuốt ngang, chip "dịp khác" đứng yên bên phải) và hàng chip người chụp cùng. Mỗi hàng cao 44px. */
+.cam-ui .cam-occ, .cam-ui .cam-with { flex: none; height: 44px; margin: 8px -12px 0; padding: 0 12px; display: flex; align-items: center; gap: 8px; }
+.cam-ui .cam-with { margin-top: 10px; justify-content: center; }
+.cam-ui .cam-occ-list, .cam-ui .cam-with-list {
+  position: relative; min-width: 0; height: 100%; display: flex; align-items: center; gap: 8px;
+  overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; touch-action: pan-x; -webkit-overflow-scrolling: touch;
+}
+.cam-ui .cam-occ-list { flex: 1; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+.cam-ui .cam-with-list { flex: 0 1 auto; }
+.cam-ui .cam-occ-list::-webkit-scrollbar, .cam-ui .cam-with-list::-webkit-scrollbar { display: none; }
+.cam-ui .cam-with-label { flex: none; font-size: 13px; color: var(--cam-soft); }
+.cam-ui .cam-chip {
+  position: relative; flex: none; height: 38px; padding: 0 14px; border-radius: 999px; display: flex; align-items: center; gap: 6px;
+  background: var(--cam-chip); color: var(--cam-text); font-size: 14px; font-weight: 500; white-space: nowrap; transition: transform .15s;
+}
+.cam-ui .cam-chip::before { content: ""; position: absolute; inset: -3px 0; }
+.cam-ui .cam-chip svg { flex: none; width: 18px; height: 18px; }
+.cam-ui .cam-chip.on { background: var(--cam-accent); font-weight: 600; }
+.cam-ui .cam-chip.custom { max-width: 12em; }
+.cam-ui .cam-chip.custom span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cam-ui .cam-chip.more { background: none; color: var(--cam-soft); box-shadow: inset 0 0 0 1.5px var(--cam-line); }
+.cam-ui .cam-chip.who { height: 36px; padding: 0 12px 0 4px; font-size: 13.5px; color: var(--cam-soft); }
+.cam-ui .cam-chip.who::before { inset: -4px 0; }
+.cam-ui .cam-chip.who.on { background: var(--cam-track); color: var(--cam-text); font-weight: 600; box-shadow: inset 0 0 0 1.5px var(--cam-hand); }
+.cam-ui .cam-chip:active { transform: scale(.95); transition-duration: 0s; }
+
+/* Lời rủ: thẻ tối có mặt người rủ, câu rủ, dịp viết tay, ảnh người rủ vừa chụp xoay nhẹ. Cao 70px. */
+.cam-ui .cam-invite { flex: none; height: 70px; display: flex; align-items: center; gap: 12px; padding: 0 4px 0 12px; border-radius: 22px; background: var(--cam-surface); box-shadow: inset 0 0 0 1px var(--cam-line); animation: vf-in .3s ease both; }
+.cam-ui .cam-invite-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cam-ui .cam-invite-txt b { font-size: 15.5px; font-weight: 600; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cam-ui .cam-invite-txt .hand { font-size: 18px; line-height: 1.15; color: var(--cam-hand); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cam-ui .cam-invite-pola { flex: none; width: 38px; height: 48px; object-fit: cover; border-radius: 3px; background: var(--cam-chip); box-shadow: 0 0 0 3px var(--shot-paper); transform: rotate(4deg); }
+.cam-ui .cam-invite-x { flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: var(--cam-muted); transition: transform .15s; }
+.cam-ui .cam-invite-x svg { width: 20px; height: 20px; }
+.cam-ui .cam-invite-x:active { transform: scale(.92); transition-duration: 0s; }
+
+/* Dòng viết tay dưới nút chụp (chụp chung): "tối nay cả nhà ăn cơm cùng nhé", "mẹ cười lên nào". Cao 36px kể cả khoảng trên. */
+.cam-ui .cam-line {
+  flex: none; margin: 0; padding-top: 8px; height: 36px; line-height: 28px; text-align: center; font-size: 19px; color: var(--cam-hand);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums;
 }
 .cam-ui .vf-inner { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; background: var(--cam-surface); transition: transform .3s cubic-bezier(.3, .7, .3, 1); }
 .cam-ui .vf-inner video { width: 100%; height: 100%; object-fit: cover; }
@@ -90,6 +144,14 @@
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 24%, #000 76%, transparent); mask-image: linear-gradient(90deg, transparent, #000 24%, #000 76%, transparent);
 }
 .cam-ui .vf-filters::-webkit-scrollbar { display: none; }
+/* Chụp chung: đáy khung là mâm của dịp, nên đèn và zoom lên đỉnh khung; giữa là viên mở lại lượt đang chờ. */
+.cam-screen.cam-ui:is(.is-group, .is-invite) .vf-ctl { top: 0; bottom: auto; }
+.cam-ui .vf-fill { flex: 1; }
+.cam-ui .cam-pending {
+  flex: 0 1 auto; min-width: 0; height: 44px; margin: 0 auto; padding: 0 14px; border-radius: 999px; background: var(--cam-scrim); color: var(--cam-text);
+  font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: transform .15s;
+}
+.cam-ui .cam-pending:active { transform: scale(.96); transition-duration: 0s; }
 .cam-ui .vf-pad { flex: 0 0 50%; }
 .cam-ui .vf-filters button {
   flex: none; scroll-snap-align: center; height: 44px; padding: 0 9px; white-space: nowrap; color: var(--cam-text); opacity: .5;
@@ -120,6 +182,8 @@
 .cam-screen.cam-ui .shutter.rec { transform: scale(1.08); }
 .cam-screen.cam-ui .shutter.rec i, .cam-screen.cam-ui .shutter.rec u { transform: scale(.6); }
 .cam-screen.cam-ui .shutter.rec u { opacity: 1; }
+/* Chụp chung đang gửi ảnh: nút mờ đi, chưa chụp tiếp được. */
+.cam-screen.cam-ui .shutter:disabled { opacity: .5; }
 
 /* Giữ để nói: viên mờ, đang nghe thì đỏ thư máy bay. */
 .cam-screen.cam-ui .talk {
@@ -136,9 +200,17 @@
 .cam-ui .cam-peek.new svg { color: var(--cam-hand); animation: cam-peek 1.8s ease-in-out infinite; }
 @keyframes cam-peek { 50% { transform: translateY(-3px); } }
 
-/* Máy thấp (iPhone SE, 8): nút và khoảng cách gọn lại để khung ngắm còn to. */
+/* Máy thấp (iPhone SE, 8): nút và khoảng cách gọn lại để khung ngắm còn to. --cam-rows:
+   ảnh thường 306px (8 + 44 + 8 + 10+70 + 8+40 + 36 + 82), chụp chung 324px (8 + 44 + 6+44 + 8 + 8+44 + 80 + 82, bỏ dòng viết tay),
+   lời rủ 248px (8 + 70 + 8 + 80 + 82, bỏ dòng viết tay). */
 @media (max-height: 700px) {
-  .cam-screen.cam-ui .viewfinder { margin-top: 8px; width: min(100%, calc((100vh - 262px - var(--safe-top) - var(--safe-bottom)) * .75)); width: min(100%, calc((100dvh - 262px - var(--safe-top) - var(--safe-bottom)) * .75)); }
+  .screen.cam-screen.cam-ui { --cam-rows: 306px; }
+  .screen.cam-screen.cam-ui.is-group { --cam-rows: 324px; }
+  .screen.cam-screen.cam-ui.is-invite { --cam-rows: 248px; }
+  .cam-screen.cam-ui .viewfinder { margin-top: 8px; }
+  .cam-ui .cam-occ { margin-top: 6px; }
+  .cam-ui .cam-with { margin-top: 8px; }
+  .cam-ui .cam-line { display: none; }
   .cam-screen.cam-ui .shutter-row { height: 70px; margin-top: 10px; }
   .cam-screen.cam-ui .shutter { transform: scale(.9); }
   .cam-screen.cam-ui .shutter.rec { transform: scale(.98); }
@@ -220,6 +292,7 @@
 @media (prefers-reduced-motion: reduce) {
   .cam-ui .cam-peek.new svg { animation: none; }
   .cam-ui .vf-inner, .cam-ui .cam-round span, .cam-ui .vf-filters button, .cam-screen.cam-ui .shutter, .cam-screen.cam-ui .shutter i, .cam-screen.cam-ui .shutter u { transition-property: opacity; }
+  .cam-ui .cam-chip, .cam-ui .cam-invite-x, .cam-ui .cam-pending { transition-property: opacity; }
   .cam-ui.cam-send { animation-name: vf-in; }
 }
 
@@ -246,6 +319,12 @@
   padding: 0 12px 0 4px; border-radius: 999px; background: rgba(255, 255, 255, .92); color: var(--ink); font-size: 13px;
 }
 .feed-sheet .post-who b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Ảnh chụp chung do AI ghép: nhãn "ảnh ghép AI" góc phải trên, hàng ảnh thật nhỏ viền giấy dưới thẻ. */
+.feed-sheet .post-ai { position: absolute; top: 12px; right: 12px; z-index: 2; height: 32px; display: flex; align-items: center; gap: 5px; padding: 0 12px; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 12.5px; font-weight: 600; pointer-events: none; }
+.feed-sheet .post-ai svg { width: 14px; height: 14px; stroke-width: 2; }
+.feed-sheet .post-real { flex: none; width: 100%; max-width: 560px; align-self: center; min-height: 50px; margin-top: 10px; padding: 0 4px; display: flex; align-items: center; gap: 10px; }
+.feed-sheet .post-real span { font-size: 13px; color: rgba(255, 255, 255, .7); }
+.feed-sheet .post-real img { width: 40px; height: 50px; object-fit: cover; border-radius: 3px; background: #1d1b22; box-shadow: 0 0 0 2.5px #F4F1EA; }
 .feed-sheet .post-sound { position: absolute; top: 12px; right: 12px; z-index: 2; height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; background: rgba(0, 0, 0, .42); color: #fff; font-size: 12.5px; pointer-events: none; }
 
 /* Dấu giờ kiểu nhật ký: giờ to nơi người chụp, dưới là nơi và lời. */

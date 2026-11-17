@@ -35,6 +35,8 @@ export type Reply = { id: string; authorId: string; kind: 'voice' | 'text'; medi
 export type Post = {
   id: string; authorId: string; kind: Kind; media?: string | null; caption?: string | null; meal: boolean; seconds?: number | null;
   questionWeek?: string | null; createdAt: string; reactions: Record<string, string>; replies: Reply[];
+  /** Ảnh chụp chung do AI ghép: id lượt chụp và ảnh thật của từng người (để hiện nhãn "ảnh ghép AI" và hàng ảnh thật). */
+  shotId?: string | null; shotParts?: string[];
 };
 export type Me = { family: Family; me: Member; members: Member[]; unseen: number };
 
@@ -163,3 +165,22 @@ export const SILENT_HOURS = 48;
 /** Ảnh thu nhỏ máy chủ dựng sẵn (cạnh ngắn bằng size px); video thì là khung đầu dạng ảnh. Đường dẫn khác (ảnh tạm, link ngoài) giữ nguyên. */
 export const thumb = (url: string | null | undefined, size: 160 | 360 | 1080) =>
   url && /^\/media\/[\w-]+\.(jpe?g|png|webp|mp4|webm|mov)$/i.test(url) ? `/media/w/${size}/${url.slice(7)}` : url ?? '';
+
+// Chụp chung dù ở xa (17/11/2026): mỗi người tự chụp selfie ở nơi mình, AI ghép thành một ảnh cả nhà theo dịp.
+// Hợp đồng giữa máy chủ (server/shot.ts) và app (src/GroupShot.tsx, Camera.tsx). Thiết kế: app/docs/chup-chung.md.
+export const SHOT_OCCASIONS = ['mam-com', 'tet', 'trung-thu', 'sinh-nhat', 'chuseok', 'di-choi'] as const;
+export type ShotOccasion = (typeof SHOT_OCCASIONS)[number] | 'tu-viet';
+export const isShotOccasion = (v: unknown): v is ShotOccasion => v === 'tu-viet' || (SHOT_OCCASIONS as readonly unknown[]).includes(v);
+/** waiting: chờ mọi người chụp; developing: AI đang ghép; done: có ảnh; failed: lỗi hoặc hết lượt (xem error). */
+export type ShotStatus = 'waiting' | 'developing' | 'done' | 'failed';
+/** Lỗi trả về trong Shot.error: limit = hết lượt hôm nay, blocked = AI từ chối, error = lỗi khác. */
+export type ShotError = 'limit' | 'blocked' | 'error';
+/** media null: người đó chưa chụp. */
+export type ShotPart = { memberId: string; media: string | null; at: string | null };
+export type Shot = {
+  id: string; byId: string; occasion: ShotOccasion; custom: string | null;
+  status: ShotStatus; result: string | null; error: ShotError | null;
+  parts: ShotPart[]; createdAt: string; doneAt: string | null; postId: string | null;
+};
+/** Ghi tối đa cho ô tự viết dịp. */
+export const SHOT_CUSTOM_MAX = 80;

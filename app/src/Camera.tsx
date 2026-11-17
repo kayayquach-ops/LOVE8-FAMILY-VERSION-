@@ -1,13 +1,16 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { api } from './api';
 import { cached } from './cache';
-import { record, recordZoomed, shrinkImage, useHoldMic, VIDEO_TYPE, type Recording } from './media';
-import { thumb, type Me, type Post } from './shared';
+import { fileName, record, recordZoomed, shrinkImage, useHoldMic, VIDEO_TYPE, type Recording } from './media';
+import { SHOT_OCCASIONS, thumb, type Me, type Post, type Shot, type ShotOccasion } from './shared';
 import { buzz, tap } from './sound';
 import { Letter } from './Letter';
-import { Icon, toast } from './ui';
+import { Avatar, Icon, toast } from './ui';
 import { t } from './i18n';
 import { cssFilter, FILTERS, shoot } from './camShot';
 import { SendTo, type Draft } from './SendTo';
+import { memberName, OccasionIcon, OccasionPicker, occasionTitle, ShotStencil, type StencilSeat } from './GroupShot';
+import { partOf, SHOT_MAX_OTHERS, shortName } from './shot';
 import './camera.css';
 
 export { VoiceDot } from './SendTo';
@@ -23,7 +26,13 @@ const zoomLabel = (z: number) => `${z < 0.95 ? `.${Math.round(z * 10)}` : Math.a
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Màn chính kiểu YOPE/Locket: mở ra là camera, nền tối dù app đang sáng. Chạm để chụp, giữ để quay. Giữ nút dưới để nói.
-export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?: boolean; onOpen: (s: 'feed' | 'jar' | 'family' | 'calendar' | 'settings') => void; onSent: () => void }) {
+// Công tắc trên khung ngắm sang "chụp chung" (docs/chup-chung.md): chọn dịp, chọn người chụp cùng, khung ngắm có ghế trống của từng người.
+// invite: lời rủ mình chưa chụp, camera tự sang chụp chung và khoá dịp. pending: lượt mình đã chụp còn dở, có viên mở lại màn chờ.
+export function Camera({ me, active = true, invite = null, pending = null, onOpen, onSent, onShot, onOpenShot, onSkipInvite, onShotsStale }: {
+  me: Me; active?: boolean; invite?: Shot | null; pending?: Shot | null;
+  onOpen: (s: 'feed' | 'jar' | 'family' | 'calendar' | 'settings') => void; onSent: () => void;
+  onShot: (s: Shot) => void; onOpenShot: (s: Shot) => void; onSkipInvite: (id: string) => void; onShotsStale: () => void;
+}) {
   const root = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -57,6 +66,65 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
   const gen = useRef(0);
   const pressed = useRef(false);
   const talk = useHoldMic((r) => setDraft({ kind: 'voice', blob: r.blob, url: r.url, seconds: r.seconds }), () => stream.current);
+
+  // Chụp chung: dịp đang chọn, người chụp cùng (mặc định mọi người khác, tối đa 3), đang gửi ảnh tới đâu (0..1).
+  const [mode, setMode] = useState<'photo' | 'group'>('photo');
+  const [occasion, setOccasion] = useState<ShotOccasion>('mam-com');
+  const [custom, setCustom] = useState('');
+  const [picked, setPicked] = useState<string[] | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [sending, setSending] = useState<number | null>(null);
+  const occList = useRef<HTMLDivElement>(null);
+  const group = !!invite || mode === 'group';
+  const others = me.members.filter((m) => m.id !== me.me.id);
+  const withIds = picked ? others.filter((m) => picked.includes(m.id)).map((m) => m.id) : others.slice(0, SHOT_MAX_OTHERS).map((m) => m.id);
+  // Chip dịp đang chọn luôn nằm trong tầm nhìn của hàng chip.
+  useLayoutEffect(() => {
+    const el = occList.current, b = el?.querySelector<HTMLElement>('.on');
+    if (el && b) el.scrollTo({ left: b.offsetLeft + b.offsetWidth / 2 - el.clientWidth / 2, behavior: 'smooth' });
+  }, [occasion, mode]);
+
+  function setGroup(on: boolean) {
+    if (on === (mode === 'group')) return;
+    tap();
+    if (on && !others.length) return toast(t('camera.send.alone'));
+    setMode(on ? 'group' : 'photo');
+  }
+  function toggleWith(id: string) {
+    const on = withIds.includes(id);
+    // Phải còn ít nhất một người chụp cùng; một ảnh tối đa 4 người.
+    if (on && withIds.length === 1) return buzz(8);
+    if (!on && withIds.length >= SHOT_MAX_OTHERS) return toast(t('shot.max'));
+    tap();
+    setPicked(on ? withIds.filter((x) => x !== id) : [...withIds, id]);
+  }
+  // Ảnh chụp chung gửi thẳng, không qua màn "gửi tới": có lời rủ thì thêm ảnh của mình, không thì tạo lượt mới.
+  async function sendGroup(blob: Blob) {
+    if (sending !== null) return;
+    if (!invite && !withIds.length) return toast(t('camera.send.alone'));
+    setSending(0);
+    try {
+      const f = new FormData();
+      f.set('file', blob, fileName(blob, 'photo'));
+      let r: { shot: Shot };
+      if (invite) r = await api.shotPhoto(invite.id, f, setSending);
+      else {
+        f.set('occasion', occasion);
+        if (occasion === 'tu-viet') f.set('custom', custom.trim());
+        f.set('with', withIds.join(','));
+        r = await api.shotCreate(f, setSending);
+      }
+      tap();
+      onShot(r.shot);
+    } catch (e) {
+      // Lời báo của máy chủ đã đúng thứ tiếng. Lượt đã bắt đầu rửa (409) hoặc không còn (404): hỏi lại danh sách để bỏ lời rủ cũ.
+      const status = (e as { status?: number }).status;
+      if (invite && (status === 409 || status === 404)) onShotsStale();
+      toast((e as Error).message);
+    } finally {
+      setSending(null);
+    }
+  }
 
   function setZ(z: number) {
     const lo = hw.current?.min ?? 1, hi = hw.current ? Math.min(hw.current.max, MAX_HW) : MAX_DIGITAL;
@@ -186,10 +254,11 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
     return () => void setTorch(false);
   }
 
-  // Nút chụp: chạm nhanh là ảnh, giữ quá 0,35 giây là quay video.
+  // Nút chụp: chạm nhanh là ảnh, giữ quá 0,35 giây là quay video. Chụp chung thì chỉ chụp ảnh, không quay.
   function shutterDown() {
-    if (!stream.current || busy.current) return;
+    if (!stream.current || busy.current || sending !== null) return;
     pressed.current = true;
+    if (group) return;
     holdTimer.current = setTimeout(() => {
       if (!stream.current) return;
       const v = video.current, el = finder.current;
@@ -218,8 +287,10 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
     try {
       const off = await lightUp();
       setBlink((n) => n + 1);
-      const blob = await shoot(video.current, { mirror: facing === 'user', zoom: hw.current ? 1 : zoomNow.current, ops: FILTERS[filter].ops }).finally(off);
-      setDraft({ kind: 'photo', blob, url: URL.createObjectURL(blob) });
+      // Chụp chung không dùng bộ lọc: AI cần màu thật của ảnh.
+      const blob = await shoot(video.current, { mirror: facing === 'user', zoom: hw.current ? 1 : zoomNow.current, ops: group ? FILTERS[0].ops : FILTERS[filter].ops }).finally(off);
+      if (group) void sendGroup(blob);
+      else setDraft({ kind: 'photo', blob, url: URL.createObjectURL(blob) });
     } catch {
       toast(t('common.error'));
     } finally {
@@ -249,6 +320,10 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
   async function pickFile(f?: File) {
     if (!f) return;
     const isVideo = f.type.startsWith('video');
+    if (group) {
+      if (isVideo) return toast(t('shot.photoOnly'));
+      return sendGroup(await shrinkImage(f));
+    }
     const blob = isVideo ? f : await shrinkImage(f);
     setDraft({ kind: isVideo ? 'video' : 'photo', blob, url: URL.createObjectURL(blob) });
   }
@@ -269,16 +344,58 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
   const nextZoom = cycle[(cycle.findIndex((z) => Math.abs(zoom - z) < 0.05) + 1) % cycle.length] ?? 1;
   // Đèn chỉ hiện khi dùng được: camera trước luôn được (màn hình sáng), camera sau cần trình duyệt cho bật đèn.
   const canFlash = facing === 'user' || torch.current;
-  // Đang quay thì tạm bỏ màu: video quay ra không có bộ lọc, nên khung ngắm hiện đúng như video sẽ gửi.
-  const look = rec ? 'none' : cssFilter(FILTERS[filter].ops);
+  // Đang quay thì tạm bỏ màu: video quay ra không có bộ lọc, nên khung ngắm hiện đúng như video sẽ gửi. Chụp chung cũng không có màu lọc.
+  const look = rec || group ? 'none' : cssFilter(FILTERS[filter].ops);
   const vStyle: React.CSSProperties = { filter: look };
   if (!hw.current && zoom > 1) vStyle.transform = facing === 'user' ? `scale(${-zoom}, ${zoom})` : `scale(${zoom})`;
 
+  // Ghế trên khung ngắm: có lời rủ thì là những người trong lượt (ai chụp rồi thì hiện ảnh), không thì là người đang chọn chụp cùng.
+  const seats: StencilSeat[] = invite
+    ? invite.parts.filter((p) => p.memberId !== me.me.id).slice(0, SHOT_MAX_OTHERS).map((p) => ({ name: memberName(me, p.memberId), photo: p.media }))
+    : withIds.map((id) => ({ name: memberName(me, id) }));
+  const by = invite ? me.members.find((m) => m.id === invite.byId) : undefined;
+  const byPhoto = invite ? partOf(invite, invite.byId)?.media : null;
+  const byName = invite ? memberName(me, invite.byId) : '';
+
   return (
     <>
-      <div ref={root} className={`screen with-tabs cam-screen cam-ui ${rec ? 'is-rec' : ''}`}
+      <div ref={root} className={`screen with-tabs cam-screen cam-ui ${rec ? 'is-rec' : ''} ${invite ? 'is-invite' : mode === 'group' ? 'is-group' : ''}`}
         onTouchStart={(e) => { touchY.current = e.touches[0].clientY; swipeOk.current = e.touches.length === 1; }}
         onTouchEnd={(e) => { if (swipeOk.current && !draft && !recording && touchY.current - e.changedTouches[0].clientY > 80) onOpen('feed'); }}>
+        {invite ? (
+          // Lời rủ: "An rủ mẹ chụp chung", dịp đã khoá, ảnh người rủ vừa chụp. Nút x để chụp ảnh thường.
+          <div className="cam-invite">
+            <Avatar m={by} size={40} />
+            <div className="cam-invite-txt">
+              <b>{t(`shot.invite.${me.me.role}`, { name: byName })}</b>
+              <span className="hand">{occasionTitle(invite.occasion, invite.custom)}</span>
+            </div>
+            {byPhoto && <img className="cam-invite-pola" src={thumb(byPhoto, 160)} alt={t('shot.photoOf', { name: byName })} decoding="async" />}
+            <button className="cam-invite-x" onClick={() => { tap(); onSkipInvite(invite.id); }} aria-label={t('shot.invite.later')}><Icon name="close" /></button>
+          </div>
+        ) : (
+          <div className="cam-mode" role="group" aria-label={t('camera.mode')}>
+            <button className={mode === 'photo' ? 'on' : ''} aria-pressed={mode === 'photo'} onClick={() => setGroup(false)}>{t('camera.mode.photo')}</button>
+            <button className={mode === 'group' ? 'on' : ''} aria-pressed={mode === 'group'} onClick={() => setGroup(true)}>{t('camera.mode.group')}</button>
+          </div>
+        )}
+        {mode === 'group' && !invite && (
+          <div className="cam-occ">
+            <div className="cam-occ-list" ref={occList} role="group" aria-label={t('shot.picker.title')}>
+              {occasion === 'tu-viet' && (
+                <button className="cam-chip on custom" aria-pressed="true" onClick={() => { tap(); setPicking(true); }}>
+                  <OccasionIcon o="tu-viet" size={18} /><span>{custom}</span>
+                </button>
+              )}
+              {SHOT_OCCASIONS.map((o) => (
+                <button key={o} className={`cam-chip ${o === occasion ? 'on' : ''}`} aria-pressed={o === occasion} onClick={() => { tap(); setOccasion(o); }}>
+                  {o === occasion && <OccasionIcon o={o} size={18} />}{t(`shot.occ.${o}`)}
+                </button>
+              ))}
+            </div>
+            <button className="cam-chip more" onClick={() => { tap(); setPicking(true); }}>{t('shot.more')}</button>
+          </div>
+        )}
         <div className="viewfinder" ref={finder} style={{ '--rec-half': `${MAX_VIDEO / 2}s` } as React.CSSProperties}
           onPointerDown={onFinderDown} onPointerMove={onFinderMove} onPointerUp={onFinderUp} onPointerCancel={onFinderUp}>
           {rec === 'video' && <div className="vf-prog" aria-hidden="true"><i className="vf-half r"><b /></i><i className="vf-half l"><b /></i></div>}
@@ -294,6 +411,7 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
               </div>
             )}
             {rec === 'video' && <span className="rec-dot" aria-hidden="true" />}
+            {!error && group && <ShotStencil occasion={invite ? invite.occasion : occasion} seats={seats} />}
             {!error && (
               <>
                 <span className={`zoom-hint ${zoomHint ? 'on' : ''}`} aria-hidden="true">{fmtZoom(zoom)}</span>
@@ -301,7 +419,12 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
                   {canFlash
                     ? <button className={`vf-btn ${flash ? 'on' : ''}`} onClick={() => { tap(); setFlash(!flash); }} aria-pressed={flash} aria-label={t('camera.flash')}><FlashIcon on={flash} /></button>
                     : <span className="vf-btn-gap" />}
-                  <FilterStrip value={filter} onChange={setFilter} />
+                  {/* Chụp chung: đáy khung là mâm của dịp, nên đèn và zoom lên trên; giữa là viên mở lại lượt mình đang chờ. */}
+                  {!group
+                    ? <FilterStrip value={filter} onChange={setFilter} />
+                    : pending && !invite
+                    ? <button className="cam-pending" onClick={() => { tap(); onOpenShot(pending); }}>{t(`shot.pending.${pending.status}`)}</button>
+                    : <span className="vf-fill" />}
                   <button className="vf-btn vf-zoom" onClick={() => zoomStep(cycle)} aria-label={t('camera.zoomTo', { n: nextZoom })}>{zoomLabel(zoom)}</button>
                 </div>
               </>
@@ -309,12 +432,28 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
           </div>
         </div>
 
+        {mode === 'group' && !invite && (
+          <div className="cam-with">
+            <span className="cam-with-label">{t('shot.with')}</span>
+            <div className="cam-with-list">
+              {others.map((m) => {
+                const on = withIds.includes(m.id);
+                return (
+                  <button key={m.id} className={`cam-chip who ${on ? 'on' : ''}`} aria-pressed={on} onClick={() => toggleWith(m.id)}>
+                    <Avatar m={m} size={28} />{shortName(m.name)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="shutter-row">
           <label className="cam-gallery" aria-label={t('camera.pickAria')}>
             {lastShot && badShot !== lastShot ? <img src={thumb(lastShot, 160)} alt="" decoding="async" onError={() => setBadShot(lastShot)} /> : <Icon name="image" />}
-            <input type="file" accept="image/*,video/*" hidden onChange={(e) => { void pickFile(e.target.files?.[0]); e.target.value = ''; }} />
+            <input type="file" accept={group ? 'image/*' : 'image/*,video/*'} hidden onChange={(e) => { void pickFile(e.target.files?.[0]); e.target.value = ''; }} />
           </label>
-          <button className={`shutter ${rec === 'video' ? 'rec' : ''}`} aria-label={t('camera.shutterAria')}
+          <button className={`shutter ${rec === 'video' ? 'rec' : ''}`} aria-label={group ? t('shot.shutterAria') : t('camera.shutterAria')} disabled={sending !== null}
             onPointerDown={shutterDown} onPointerUp={shutterUp} onPointerLeave={shutterCancel} onPointerCancel={shutterCancel} onContextMenu={(e) => e.preventDefault()}>
             <i /><u />
           </button>
@@ -322,18 +461,31 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
             <span style={{ transform: `rotate(${spin * 180}deg)` }}><Icon name="flip" /></span>
           </button>
         </div>
-        <button className={`talk ${talk.rec ? 'rec' : ''}`} onPointerDown={() => void talk.down()} onPointerUp={() => void talk.up()}
-          onPointerLeave={() => void talk.up()} onPointerCancel={() => void talk.up()} onContextMenu={(e) => e.preventDefault()}>
-          <Icon name="mic" /> {talk.rec ? t('camera.talk.listening') : t('camera.talk.hold')}
-        </button>
+        {group ? (
+          // Chụp chung: thay nút giữ để nói và gợi ý vuốt lên bằng một dòng viết tay (đang gửi thì là tiến độ).
+          <p className="cam-line hand">
+            {sending !== null ? t('camera.send.progress', { n: Math.round(sending * 100) }) : invite ? t(`shot.smile.${me.me.role}`) : t(`shot.line.${occasion}`)}
+          </p>
+        ) : (
+          <>
+            <button className={`talk ${talk.rec ? 'rec' : ''}`} onPointerDown={() => void talk.down()} onPointerUp={() => void talk.up()}
+              onPointerLeave={() => void talk.up()} onPointerCancel={() => void talk.up()} onContextMenu={(e) => e.preventDefault()}>
+              <Icon name="mic" /> {talk.rec ? t('camera.talk.listening') : t('camera.talk.hold')}
+            </button>
 
-        <button className={`cam-peek ${me.unseen > 0 ? 'new' : ''}`} onClick={() => onOpen('feed')}>
-          <svg viewBox="0 0 22 12" aria-hidden="true"><path d="M3 9 11 3l8 6" /></svg>
-          <span>{t('camera.peek')}{me.unseen > 0 && <> · <b className="hand">{t('camera.peek.new', { n: me.unseen })}</b></>}</span>
-        </button>
+            <button className={`cam-peek ${me.unseen > 0 ? 'new' : ''}`} onClick={() => onOpen('feed')}>
+              <svg viewBox="0 0 22 12" aria-hidden="true"><path d="M3 9 11 3l8 6" /></svg>
+              <span>{t('camera.peek')}{me.unseen > 0 && <> · <b className="hand">{t('camera.peek.new', { n: me.unseen })}</b></>}</span>
+            </button>
+          </>
+        )}
       </div>
       {flashing && <div className="cam-ui cam-flash" aria-hidden="true" />}
       {draft && <SendTo me={me} draft={draft} onBack={discard} onSent={sent} />}
+      {picking && (
+        <OccasionPicker me={me} value={occasion} custom={custom} onClose={() => setPicking(false)}
+          onPick={(o, c) => { setPicking(false); setOccasion(o); if (o === 'tu-viet') setCustom(c ?? ''); }} />
+      )}
     </>
   );
 }

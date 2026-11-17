@@ -22,6 +22,7 @@ import { migratePush, notifyPost, notifyReply, pushRouter, startPushScheduler } 
 import { thumbRoute, warmThumbs } from './thumb.ts';
 import { googlePublicRouter, googleRouter, linkPendingGoogle } from './google.ts';
 import { Limit, limitBy } from './limit.ts';
+import { migrateShot, shotPartsFor, shotRouter } from './shot.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -182,6 +183,7 @@ app.use('/api', chatRouter);
 app.use('/api', lettersRouter);
 app.use('/api', recapRouter);
 app.use('/api', callRouter(upload));
+app.use('/api', shotRouter(upload));
 app.use('/api', podcastRouter);
 app.use('/api', liveRouter);
 app.use('/api', pushRouter);
@@ -236,13 +238,16 @@ app.get('/api/feed', h(async (req, res) => {
   const fid = req.member!.family_id;
   const { rows } = await pool.query('select * from posts where family_id = $1 order by created_at desc limit 80', [fid]);
   const ids = rows.map((r) => r.id);
-  const [rx, rp] = await Promise.all([
+  const [rx, rp, shots] = await Promise.all([
     pool.query('select * from reactions where post_id = any($1)', [ids]),
     pool.query('select * from replies where post_id = any($1) order by created_at', [ids]),
+    shotPartsFor(rows.filter((r) => r.shot_id).map((r) => r.shot_id)),
   ]);
   const posts: Post[] = rows.map((r) => ({
     id: r.id, authorId: r.author_id, kind: r.kind, media: r.media, caption: r.caption, meal: r.meal, seconds: r.seconds,
     questionWeek: r.question_week, createdAt: r.created_at,
+    // Ảnh chụp chung do AI ghép: kèm ảnh thật của từng người.
+    ...(r.shot_id ? { shotId: r.shot_id, shotParts: shots.get(r.shot_id) ?? [] } : {}),
     reactions: Object.fromEntries(rx.rows.filter((x) => x.post_id === r.id).map((x) => [x.member_id, x.emoji])),
     replies: rp.rows.filter((x) => x.post_id === r.id).map((x): Reply => ({
       id: x.id, authorId: x.author_id, kind: x.kind, media: x.media, text: x.text, seconds: x.seconds, createdAt: x.created_at,
@@ -418,6 +423,7 @@ await migrateCall(pool);
 await migratePodcast(pool);
 void refreshFirstVoicePodcasts().catch((e) => console.error('[podcast]', e));
 await migratePush(pool);
+await migrateShot(pool);
 startRecapScheduler(pool);
 startPushScheduler();
 app.listen(port, () => console.log(`Homeletter chạy ở cổng ${port}`));
