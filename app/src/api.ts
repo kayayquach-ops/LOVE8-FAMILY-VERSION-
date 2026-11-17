@@ -114,6 +114,8 @@ export const api = {
   mission: (key: string) => call(`/api/missions/${key}`, { method: 'POST' }),
   lang: (lang: string) => call('/api/me/lang', { method: 'PUT', body: JSON.stringify({ lang }) }),
   mascot: (b: { name?: string; shape?: string }) => call('/api/family/mascot', { method: 'PUT', body: JSON.stringify(b) }),
+  /** Xoá một người khác khỏi nhà cùng mọi dữ liệu của họ (không xoá được chính mình). */
+  removeMember: (id: string) => call<{ ok: boolean }>(`/api/members/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   // Chụp chung dù ở xa (docs/chup-chung.md). Gửi ảnh qua upload để có tiến độ như lúc gửi ảnh thường.
   /** f: file (selfie), occasion, custom (khi tu-viet), with (id những người chụp cùng, cách nhau bằng dấu phẩy). */
   shotCreate: (f: FormData, onProgress?: (p: number) => void) => upload<{ shot: Shot }>('/api/shots', f, onProgress),

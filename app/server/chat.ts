@@ -66,6 +66,7 @@ chatStreamRouter.get('/chat/stream', h(async (req, res) => {
   const { rows } = await pool.query('select id, family_id from members where token = $1', [token]);
   if (!rows[0]) return res.status(401).json(errorBody('not_signed_in'));
   const fid: string = rows[0].family_id;
+  res.locals.memberId = rows[0].id;
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();
   res.write('retry: 3000\n\n');
@@ -79,6 +80,12 @@ chatStreamRouter.get('/chat/stream', h(async (req, res) => {
     if (!set!.size) clients.delete(fid);
   });
 }));
+
+/** Người vừa bị xoá khỏi nhà (members.ts): cắt luồng tin đang mở của người đó như khi máy tự rớt mạng (dọn ở req 'close').
+ *  Máy nối lại sẽ nhận 401, không nghe được tin nhà nữa. */
+export function closeChatStreams(familyId: string, memberId: string) {
+  for (const res of [...(clients.get(familyId) ?? [])]) if (res.locals.memberId === memberId) res.destroy();
+}
 
 export const chatRouter = express.Router();
 

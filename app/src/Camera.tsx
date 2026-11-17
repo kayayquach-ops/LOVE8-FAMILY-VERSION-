@@ -9,7 +9,8 @@ import { Avatar, Icon, toast } from './ui';
 import { t } from './i18n';
 import { cssFilter, FILTERS, shoot } from './camShot';
 import { SendTo, type Draft } from './SendTo';
-import { memberName, OccasionIcon, OccasionPicker, occasionTitle, ShotStencil, type StencilSeat } from './GroupShot';
+import { memberName, OccasionIcon, OccasionPicker, occasionTitle } from './GroupShot';
+import { ShotFrame, type FrameSeat } from './ShotTemplate';
 import { partOf, SHOT_MAX_OTHERS, shortName } from './shot';
 import './camera.css';
 
@@ -350,7 +351,7 @@ export function Camera({ me, active = true, invite = null, pending = null, onOpe
   if (!hw.current && zoom > 1) vStyle.transform = facing === 'user' ? `scale(${-zoom}, ${zoom})` : `scale(${zoom})`;
 
   // Ghế trên khung ngắm: có lời rủ thì là những người trong lượt (ai chụp rồi thì hiện ảnh), không thì là người đang chọn chụp cùng.
-  const seats: StencilSeat[] = invite
+  const seats: FrameSeat[] = invite
     ? invite.parts.filter((p) => p.memberId !== me.me.id).slice(0, SHOT_MAX_OTHERS).map((p) => ({ name: memberName(me, p.memberId), photo: p.media }))
     : withIds.map((id) => ({ name: memberName(me, id) }));
   const by = invite ? me.members.find((m) => m.id === invite.byId) : undefined;
@@ -411,7 +412,7 @@ export function Camera({ me, active = true, invite = null, pending = null, onOpe
               </div>
             )}
             {rec === 'video' && <span className="rec-dot" aria-hidden="true" />}
-            {!error && group && <ShotStencil occasion={invite ? invite.occasion : occasion} seats={seats} />}
+            {!error && group && <ShotFrame occasion={invite ? invite.occasion : occasion} seats={seats} />}
             {!error && (
               <>
                 <span className={`zoom-hint ${zoomHint ? 'on' : ''}`} aria-hidden="true">{fmtZoom(zoom)}</span>

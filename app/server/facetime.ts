@@ -114,6 +114,12 @@ liveStreamRouter.get('/live/stream', h(async (req, res) => {
   });
 }));
 
+/** Người vừa bị xoá khỏi nhà (members.ts): cắt luồng gọi video của người đó (dọn ở req 'close') và cho rời phòng ngay. */
+export function closeLive(familyId: string, memberId: string) {
+  for (const res of [...(conns.get(memberId)?.set ?? [])]) res.destroy();
+  leave(familyId, memberId);
+}
+
 export const liveRouter = express.Router();
 
 liveRouter.get('/live/config', h(async (_req, res) => { res.json({ iceServers: await iceServers() }); }));

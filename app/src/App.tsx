@@ -15,7 +15,7 @@ import { Family } from './Sheets';
 import { Home } from './Home';
 import { Chat } from './Chat';
 import { Incoming } from './Incoming';
-import { connectLive, livePost, onLive, type LiveRoom } from './live';
+import { connectLive, disconnectLive, livePost, onLive, type LiveRoom } from './live';
 import { onPushOpen, syncPush } from './push';
 import { resumeOutbox } from './outbox';
 import { TabBar, type Tab } from './TabBar';
@@ -93,7 +93,8 @@ export function App() {
     void loadUnread(); void checkCall();
     return loadMe().catch((e) => {
       // Chỉ bỏ mã khi máy chủ nói rõ mã không còn; mất mạng thì giữ nguyên để khỏi phải vào nhà lại.
-      if (isSignedOut(e)) { token.clear(); setMe(null); } else setOffline(true);
+      // Máy của người vừa bị xoá khỏi nhà cũng rơi vào đây: bỏ mã, đóng kênh gọi video của nhà cũ, đóng màn đang mở, về màn chào.
+      if (isSignedOut(e)) { token.clear(); disconnectLive(); setSheet(null); setMe(null); } else setOffline(true);
     }).finally(() => setReady(true));
   };
   useEffect(() => {

@@ -205,5 +205,7 @@
   "error.shot_occasion": "어떤 날인지 골라 주세요",
   "error.shot_need_two": "적어도 두 사람이 먼저 찍어야 해요",
   "error.shot_state": "단체 사진 상태가 바뀌었어요, 다시 열어 주세요",
-  "error.shot_nudged": "방금 알림을 보냈어요, 조금 뒤에 다시 보내 주세요"
+  "error.shot_nudged": "방금 알림을 보냈어요, 조금 뒤에 다시 보내 주세요",
+  "error.member_self": "자기 자신은 집에서 내보낼 수 없어요",
+  "error.member_not_found": "이 사람은 이제 집에 없어요"
 }

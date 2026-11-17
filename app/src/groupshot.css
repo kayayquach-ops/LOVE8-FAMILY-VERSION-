@@ -17,21 +17,36 @@
   --shot-sil-table: #3A3138;
 }
 
-/* ---------- Lớp vẽ trên khung ngắm ---------- */
-.cam-ui .shot-stencil {
-  position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;
-  fill: none; stroke: var(--cam-hand); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
-  filter: drop-shadow(0 1px 3px var(--cam-shade)); animation: vf-in .3s ease both;
-}
-.shot-stencil .st-face { stroke-dasharray: 7 7; }
-.shot-stencil .st-dash { stroke-dasharray: 5 6; }
-.shot-stencil .st-fill { fill: var(--cam-bg); fill-opacity: .55; }
-.shot-stencil .st-solid { fill: var(--cam-surface); }
-.shot-stencil .st-dot { fill: var(--cam-hand); stroke: none; }
-.shot-stencil .st-ring { stroke: var(--shot-paper); stroke-width: 3; }
-.shot-stencil .st-on { stroke: var(--shot-paper); stroke-width: 2.5; }
-.shot-stencil .st-name { font-family: var(--f-hand); fill: var(--cam-hand); stroke: none; text-anchor: middle; }
-.shot-stencil .st-name.on { fill: var(--shot-paper); }
+/* ---------- Khung mẫu theo dịp (ShotTemplate.tsx) ----------
+   Nét mực tím, tô phẳng màu ấm. live: đè lên khung ngắm (bóng mờ cho rõ trên ảnh camera). mini: ô bảng dịp. card: ảnh dự kiến ở màn chờ. */
+.shot-frame { fill: none; stroke: var(--cam-hand); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.cam-ui .shot-frame.is-live { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; filter: drop-shadow(0 1px 3px var(--cam-shade)); animation: vf-in .3s ease both; }
+.shot-frame.is-mini { display: block; width: 100%; height: auto; stroke-width: 4; }
+.shot-frame.is-card { position: absolute; inset: 0; width: 100%; height: 100%; }
+.shot-frame .st-bg { fill: var(--cam-surface); stroke: none; }
+.shot-frame .st-face { stroke-dasharray: 7 7; }
+.shot-frame .st-dash { stroke-dasharray: 5 6; }
+.shot-frame .st-seat { fill: var(--cam-shade); }
+.shot-frame .st-solid { fill: var(--cam-surface); }
+.shot-frame .st-nos { stroke: none; }
+.shot-frame .st-thin { stroke-width: 1.5; }
+.shot-frame.is-mini .st-thin { stroke-width: 3; }
+.shot-frame .st-ink-w { fill: none; stroke-width: 7; }
+.shot-frame .st-wood { fill: none; stroke: #8A5A44; stroke-width: 3.5; }
+.shot-frame .st-tassel { fill: none; stroke-width: 2.4; }
+.shot-frame .st-ray { fill: none; stroke: #F6C453; stroke-width: 4; }
+.shot-frame.is-mini .st-ray { stroke-width: 6; }
+.shot-frame .st-frame { fill: none; stroke-width: 2.5; stroke-dasharray: 2 7; }
+.shot-frame .st-ring { stroke: var(--shot-paper); stroke-width: 3; }
+.shot-frame .st-on { stroke: var(--shot-paper); stroke-width: 2.5; }
+.shot-frame .st-name { font-family: var(--f-hand); fill: var(--cam-hand); stroke: none; text-anchor: middle; }
+.shot-frame .st-name.on { fill: var(--shot-paper); }
+/* Đổi dịp: trang trí trên trượt xuống, trang trí đáy trượt lên, cùng hiện dần. */
+.shot-frame .st-top, .shot-frame .st-bottom { transform-box: fill-box; animation: st-top .32s cubic-bezier(.2, .9, .3, 1.1) both; }
+.shot-frame .st-top { transform-origin: 50% 0; }
+.shot-frame .st-bottom { transform-origin: 50% 100%; animation-name: st-bottom; }
+@keyframes st-top { from { opacity: 0; transform: translateY(-12px) scale(.94); } }
+@keyframes st-bottom { from { opacity: 0; transform: translateY(12px) scale(.94); } }
 
 /* ---------- Bảng chọn dịp: tấm trượt lên từ đáy, nền camera tối mờ đi ---------- */
 .cam-ui.shot-pick-wrap { position: fixed; inset: 0; z-index: 28; background: var(--cam-shade); animation: vf-in .2s ease both; }
@@ -53,14 +68,15 @@
 .shot-pick .shot-soon b { font-size: 15px; font-weight: 600; color: var(--cam-text); }
 .shot-pick .shot-soon .hand { font-size: 19px; line-height: 1.15; }
 
-.shot-pick .shot-grid { flex: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.shot-pick .shot-grid { flex: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+/* Mỗi ô là khung mẫu nhỏ của dịp, tên và gợi ý bên dưới. */
 .shot-grid button {
-  height: 108px; padding: 12px 14px; border-radius: 20px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; text-align: left;
+  min-width: 0; padding: 6px 6px 10px; border-radius: 20px; display: flex; flex-direction: column; align-items: stretch; gap: 7px; text-align: left;
   background: var(--cam-chip); box-shadow: inset 0 0 0 1px var(--cam-line); color: var(--cam-hand); transition: transform .15s;
 }
-.shot-grid button > span { display: flex; flex-direction: column; gap: 1px; min-width: 0; max-width: 100%; }
-.shot-grid b { font-size: 16px; font-weight: 600; color: var(--cam-text); }
-.shot-grid small { font-size: 12.5px; color: var(--cam-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shot-grid button > span { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: 0 4px; }
+.shot-grid b { font-size: 15px; font-weight: 600; color: var(--cam-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shot-grid small { font-size: 11.5px; line-height: 1.3; color: var(--cam-soft); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .shot-grid button.on { background: var(--cam-accent); box-shadow: none; color: var(--cam-text); }
 .shot-grid button.on small { color: var(--cam-text); opacity: .85; }
 .shot-grid button:active, .shot-pick .shot-soon:active { transform: scale(.97); transition-duration: 0s; }
@@ -110,15 +126,19 @@
 .gs-pola.wait .gs-pola-empty { display: grid; place-items: center; background: none; box-shadow: inset 0 0 0 1.5px var(--shot-wait-soft); color: var(--cam-hand); }
 .gs-pola.wait .gs-pola-empty svg { width: 30px; height: 30px; }
 .gs-pola.wait small { color: var(--cam-soft); }
+.gs-polas.crowded { gap: 8px; }
+.gs-polas.crowded .gs-pola { padding: 5px 5px 7px; }
+/* Bốn người: tên một dòng riêng đủ bề ngang, giờ xuống dòng dưới. */
+.gs-polas.crowded figcaption { flex-direction: column; align-items: stretch; gap: 0; }
+.gs-polas.crowded figcaption .hand { font-size: 17px; }
+.gs-polas.crowded small { font-size: 10.5px; }
 @keyframes gs-drop { from { opacity: 0; transform: translate3d(0, -10px, 0) rotate(var(--rot, 0deg)); } to { opacity: 1; transform: rotate(var(--rot, 0deg)); } }
 
-.gs-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; border-radius: 20px; background: var(--cam-surface); box-shadow: inset 0 0 0 1px var(--cam-line); }
-.gs-list li { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 10px 14px; font-size: 15px; }
-.gs-list li + li { box-shadow: inset 0 1px 0 var(--cam-line); }
-.gs-list li > span:not(.gs-tick) { flex: 1; min-width: 0; }
-.gs-tick { flex: none; display: grid; color: var(--cam-hand); }
-.gs-tick svg { width: 20px; height: 20px; stroke-width: 2.2; }
 .shot-screen .gs-note { margin: 0; text-align: center; font-size: 20px; }
+/* Ảnh sẽ ra: khung mẫu của dịp, to hết chỗ còn lại (tối đa gần hết bề ngang). Máy thấp thì không nhỏ hơn 340px mà cuộn,
+   nút ở đáy dính lại nên vẫn luôn thấy. */
+.shot-screen .gs-preview { position: relative; flex: 1 1 0; min-height: 340px; max-height: 470px; }
+.shot-screen.is-waiting .gs-actions { position: sticky; bottom: 0; z-index: 1; padding-top: 16px; background: linear-gradient(transparent, var(--cam-bg) 16px); }
 
 /* Nút: chính nền trắng chữ tối, phụ viền mảnh, chữ gạch chân mực tím. */
 .gs-actions { margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
@@ -181,5 +201,6 @@
   .cam-ui.shot-screen, .shot-pick { animation-name: vf-in; }
   .gs-pola { animation-name: vf-in; }
   .gs-dev-art { animation: none; opacity: .6; }
+  .shot-frame .st-top, .shot-frame .st-bottom { animation-name: vf-in; }
   .shot-grid button, .shot-pick .shot-soon, .cam-ui .gs-round, .cam-ui .gs-main, .cam-ui .gs-ghost, .shot-custom .shot-ok { transition-property: opacity; }
 }

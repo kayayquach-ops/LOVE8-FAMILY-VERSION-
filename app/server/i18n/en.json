@@ -209,5 +209,7 @@
   "error.shot_occasion": "Pick an occasion",
   "error.shot_need_two": "At least two people need to take their photo first",
   "error.shot_state": "This group photo has changed, open it again",
-  "error.shot_nudged": "You just sent a reminder, try again in a bit"
+  "error.shot_nudged": "You just sent a reminder, try again in a bit",
+  "error.member_self": "You can't remove yourself from your home",
+  "error.member_not_found": "This person isn't in your home anymore"
 }

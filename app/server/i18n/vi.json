@@ -205,5 +205,7 @@
   "error.shot_occasion": "Chọn một dịp nhé",
   "error.shot_need_two": "Cần ít nhất hai người chụp đã",
   "error.shot_state": "Lượt chụp này đã đổi, mở lại xem nhé",
-  "error.shot_nudged": "Vừa nhắc rồi, lát nữa nhắc tiếp nhé"
+  "error.shot_nudged": "Vừa nhắc rồi, lát nữa nhắc tiếp nhé",
+  "error.member_self": "Không tự xoá mình khỏi nhà được nhé",
+  "error.member_not_found": "Không thấy người này trong nhà nữa"
 }

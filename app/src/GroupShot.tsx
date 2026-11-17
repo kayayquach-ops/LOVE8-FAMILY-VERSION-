@@ -1,17 +1,18 @@
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { api } from './api';
 import { cityOf, SHOT_CUSTOM_MAX, SHOT_OCCASIONS, thumb, type Me, type Shot, type ShotOccasion, type ShotPart } from './shared';
-import { FACE, partOf, seatFont, seatLayout, shortName, shoulders, todaySolar, upcomingOccasion, type Seat } from './shot';
+import { partOf, shortName, todaySolar, upcomingOccasion } from './shot';
+import { ShotFrame } from './ShotTemplate';
 import { cityName, usePlaceNames } from './placeName';
 import { localTime } from './time';
 import { fmtDayMonth, fmtTime, t } from './i18n';
 import { tap } from './sound';
-import { Avatar, Icon, toast } from './ui';
+import { Icon, toast } from './ui';
 import './camera.css';
 import './groupshot.css';
 
-// Chụp chung dù ở xa (docs/chup-chung.md, mockup 6 màn): màn chụp chung bốn trạng thái, bảng chọn dịp,
-// lớp vẽ đè lên khung ngắm của camera và hình nét tím của từng dịp. Màn luôn tối, dùng bảng màu --cam-* (camera.css).
+// Chụp chung dù ở xa (docs/chup-chung.md, mockup 6 màn): màn chụp chung bốn trạng thái, bảng chọn dịp và hình nét tím
+// của từng dịp. Khung mẫu theo dịp nằm ở ShotTemplate.tsx. Màn luôn tối, dùng bảng màu --cam-* (camera.css).
 
 /** Tên dịp ngắn trên chip: "mâm cơm", "Tết"...; tự viết thì là chữ người dùng viết. */
 export const occasionName = (o: ShotOccasion, custom?: string | null) => (o === 'tu-viet' ? custom?.trim() || t('shot.occ.tu-viet') : t(`shot.occ.${o}`));
@@ -50,115 +51,16 @@ const OCC_ICON: Record<ShotOccasion, ReactNode> = {
   'di-choi': <><path d="M6 30q7-6 14 0t14 0" /><path d="M6 24q7-6 14 0t14 0" /><circle cx="28" cy="11" r="4" /></>,
   'tu-viet': <><path d="M9 31l2.5-7.5L26 9l5 5-14.5 14.5z" /><path d="M23 12l5 5" /></>,
 };
+// Một bông hoa năm cánh cho chip Tết (cỡ chip, áo dài và cành mai đều khó nhìn).
+const BLOSSOM = <>{[0, 1, 2, 3, 4].map((i) => { const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5; return <circle key={i} cx={(20 + Math.cos(a) * 9).toFixed(1)} cy={(20 + Math.sin(a) * 9).toFixed(1)} r="6.5" />; })}<circle cx="20" cy="20" r="3" fill="currentColor" /></>;
 // Cành mai cho thẻ "sắp Tết rồi" (mockup màn 6).
 const BRANCH = <><path d="M6 34C14 26 20 18 34 8" /><path d="M16 24c-4-2-6 1-4 4 3 2 6 0 4-4zM24 16c-4-2-6 1-4 4 3 2 6 0 4-4zM30 10c-3-2-5 1-3 3 2 2 5 0 3-3z" /></>;
 
 export function OccasionIcon({ o, size = 36, branch = false }: { o: ShotOccasion; size?: number; branch?: boolean }) {
-  // Cỡ nhỏ trên chip: áo dài trông như mũi tên, nên Tết dùng cành mai.
+  // Cỡ nhỏ trên chip: áo dài trông như mũi tên, nên Tết dùng một bông hoa.
   return (
     <svg viewBox="0 0 40 40" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={size < 24 ? 3 : 1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      {branch || (o === 'tet' && size < 24) ? BRANCH : OCC_ICON[o]}
-    </svg>
-  );
-}
-
-// ---------- Lớp vẽ đè lên khung ngắm (mockup màn 1 và 3) ----------
-// Toạ độ theo khung 330 x 440 (3:4, đúng tỉ lệ khung ngắm). Khung mặt ở giữa, ghế hai bên, bàn và cảnh của dịp ở đáy.
-function star(cx: number, cy: number, R: number, r: number) {
-  let d = '';
-  for (let i = 0; i < 10; i++) {
-    const a = -Math.PI / 2 + (i * Math.PI) / 5, k = i % 2 ? r : R;
-    d += `${i ? 'L' : 'M'}${(cx + k * Math.cos(a)).toFixed(1)} ${(cy + k * Math.sin(a)).toFixed(1)}`;
-  }
-  return `${d}Z`;
-}
-const TRAY = 'M12 404C60 382 270 382 318 404C330 416 324 440 324 440L6 440C6 440 0 416 12 404Z';
-const cup = (x: number) => <path d={`M${x} 404c0 10 4 14 10 14s10-4 10-14z`} />;
-const blossom = (x: number, y: number) => <g key={`${x}-${y}`}><circle cx={x} cy={y} r="4.5" /><circle className="st-dot" cx={x} cy={y} r="1.2" /></g>;
-const SCENE: Record<Exclude<ShotOccasion, 'di-choi'>, ReactNode> = {
-  // Mâm cơm: ba bát, đôi đũa (đúng như mockup).
-  'mam-com': <><path d="M82 404c2 16 34 16 36 0z" /><path d="M147 398c2 18 34 18 36 0z" /><path d="M212 404c2 16 34 16 36 0z" /><path d="M156 392l16-12M162 394l16-12" /></>,
-  // Tết: bánh chưng giữa mâm, đĩa quả, chén trà, hai cành mai từ hai mép.
-  tet: <>
-    <rect className="st-solid" x="143" y="396" width="44" height="30" rx="2" /><path d="M157 396v30M173 396v30M143 406h44M143 416h44" />
-    <path d="M74 420h48" /><circle cx="86" cy="412" r="7" /><circle cx="110" cy="412" r="7" /><circle className="st-solid" cx="98" cy="404" r="7" />
-    {cup(218)}{cup(246)}
-    <path d="M0 352c24 8 40 20 50 36M330 352c-24 8-40 20-50 36M22 357c2-10 8-16 16-18M308 357c-2-10-8-16-16-18" />
-    {[blossom(16, 355), blossom(36, 366), blossom(48, 382), blossom(38, 339), blossom(314, 355), blossom(294, 366), blossom(282, 382), blossom(292, 339)]}
-  </>,
-  // Trung thu: bánh nướng, chén trà, đèn ông sao cầm tay bên trái.
-  'trung-thu': <>
-    <path className="st-solid" d="M141 404v10a24 8 0 0048 0v-10" /><ellipse className="st-solid" cx="165" cy="404" rx="24" ry="8" /><ellipse cx="165" cy="404" rx="13" ry="4" />
-    <path className="st-solid" d="M90 410v7a16 6 0 0032 0v-7" /><ellipse className="st-solid" cx="106" cy="410" rx="16" ry="6" />
-    {cup(226)}
-    <path d="M14 440l26-78" /><path className="st-solid" d={star(44, 348, 15, 6.5)} /><path d="M44 363v9" />
-  </>,
-  // Sinh nhật: bánh kem ba nến, hộp quà, chén.
-  'sinh-nhat': <>
-    <path className="st-solid" d="M125 402v20a40 8 0 0080 0v-20" /><ellipse className="st-solid" cx="165" cy="402" rx="40" ry="8" />
-    <path d="M125 411q5 5 10 0t10 0 10 0 10 0 10 0 10 0 10 0 10 0" />
-    <path d="M150 398v-14M165 396v-16M180 398v-14" /><path d="M150 377q4 4 0 7-4-3 0-7zM165 373q4 4 0 7-4-3 0-7zM180 377q4 4 0 7-4-3 0-7z" />
-    <rect className="st-solid" x="70" y="402" width="28" height="22" rx="2" /><path d="M84 402v22M70 410h28M84 402c-6-8-12-2 0 0 6-8 12-2 0 0" />
-    {cup(238)}
-  </>,
-  // Chuseok: đĩa bánh songpyeon hình bán nguyệt, hai chén trà.
-  chuseok: <>
-    <ellipse cx="165" cy="416" rx="58" ry="12" />
-    <path className="st-solid" d="M141 408a12 9 0 0124 0zM165 408a12 9 0 0124 0z" />
-    <path className="st-solid" d="M129 416a12 9 0 0124 0zM153 416a12 9 0 0124 0zM177 416a12 9 0 0124 0z" />
-    {cup(70)}{cup(240)}
-  </>,
-  // Tự viết: mâm trống, một ngôi sao nhỏ ở giữa.
-  'tu-viet': <><path d="M165 394l4 9 9 4-9 4-4 9-4-9-9-4 9-4z" />{cup(100)}{cup(210)}</>,
-};
-// Đi chơi: không có mâm, là sóng biển, thuyền buồm, mặt trời, chim.
-const SEA = <>
-  <path className="st-fill" d="M0 410q15-10 30 0t30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0V440H0z" />
-  <path d="M0 410q15-10 30 0t30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0M0 426q15-10 30 0t30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0 30 0" />
-  <path className="st-solid" d="M146 398h38l-7 9h-24z" /><path d="M165 398v-30M167 370l16 24h-16z" />
-  <circle cx="290" cy="372" r="9" /><path d="M60 362q5-5 10 0 5-5 10 0M86 352q4-4 8 0 4-4 8 0" />
-</>;
-
-function Scene({ o }: { o: ShotOccasion }) {
-  return <g className="st-scene">{o === 'di-choi' ? SEA : <><path className="st-fill" d={TRAY} />{SCENE[o]}</>}</g>;
-}
-
-function SeatMark({ seat, name, photo, clip }: { seat: Seat; name: string; photo?: string | null; clip: string }) {
-  const sh = shoulders(seat);
-  const fs = seatFont(name, seat.r);
-  const { cx, cy, r } = seat;
-  if (photo) {
-    // Người đã chụp: ảnh của họ trong đầu tròn viền giấy, vai nét liền, tên trong vai.
-    return (
-      <g>
-        <clipPath id={clip}><circle cx={cx} cy={cy} r={r} /></clipPath>
-        <circle className="st-solid" cx={cx} cy={cy} r={r} />
-        <image href={thumb(photo, 160)} x={cx - r} y={cy - r} width={r * 2} height={r * 2} preserveAspectRatio="xMidYMid slice" clipPath={`url(#${clip})`} />
-        <circle className="st-ring" cx={cx} cy={cy} r={r} />
-        <path className="st-on" d={sh.d} />
-        <text className="st-name on" x={cx} y={+(cy + r * 3.3).toFixed(1)} fontSize={fs}>{name}</text>
-      </g>
-    );
-  }
-  return (
-    <g>
-      <circle className="st-dash" cx={cx} cy={cy} r={r} />
-      <path className="st-dash" d={sh.d} />
-      <text className="st-name" x={cx} y={+(cy + fs * 0.33).toFixed(1)} fontSize={fs}>{name}</text>
-    </g>
-  );
-}
-
-export type StencilSeat = { name: string; photo?: string | null };
-/** Lớp vẽ trên khung ngắm: khung mặt nét đứt ở giữa, ghế của từng người (1 đến 3), mâm hoặc cảnh theo dịp ở đáy. */
-export function ShotStencil({ occasion, seats }: { occasion: ShotOccasion; seats: StencilSeat[] }) {
-  const uid = useId().replace(/[^\w-]/g, '');
-  const layout = seatLayout(seats.length);
-  return (
-    <svg className="shot-stencil" viewBox="0 0 330 440" aria-hidden="true">
-      <ellipse className="st-face" cx={FACE.cx} cy={FACE.cy} rx={FACE.rx} ry={FACE.ry} />
-      {layout.map((s, i) => <SeatMark key={i} seat={s} name={seats[i].name} photo={seats[i].photo} clip={`st${uid}${i}`} />)}
-      <Scene o={occasion} />
+      {branch ? BRANCH : o === 'tet' && size < 24 ? BLOSSOM : OCC_ICON[o]}
     </svg>
   );
 }
@@ -199,7 +101,7 @@ export function OccasionPicker({ me, value, custom, onPick, onClose }: {
         <div className="shot-grid">
           {SHOT_OCCASIONS.map((o) => (
             <button key={o} className={o === value ? 'on' : ''} aria-pressed={o === value} onClick={() => pick(o)}>
-              <OccasionIcon o={o} size={36} />
+              <ShotFrame occasion={o} seats={[{}, {}]} variant="mini" />
               <span><b>{t(`shot.occ.${o}`)}</b><small>{t(`shot.sub.${o}`)}</small></span>
             </button>
           ))}
@@ -329,24 +231,15 @@ export function GroupShot({ me, shot: first, onClose, onChange, onJoin, onFeed }
           <h1 id={titleId} className="gs-title">{occasionTitle(shot.occasion, shot.custom)}</h1>
           {where && <p className="hand">{where}</p>}
         </div>
-        <div className="gs-polas">
+        <div className={`gs-polas ${shot.parts.length >= 4 ? 'crowded' : ''}`}>
           {shot.parts.map((p, i) => <Pola key={p.memberId} part={p} name={memberName(me, p.memberId)} tz={tzOf(p.memberId)} i={i} />)}
         </div>
-        {others.length > 0 && (
-          <ul className="gs-list">
-            {others.map((p) => {
-              const name = memberName(me, p.memberId);
-              return (
-                <li key={p.memberId}>
-                  <Avatar m={me.members.find((m) => m.id === p.memberId)} size={32} />
-                  <span>{p.media ? t('shot.didShoot', { name }) : t('shot.notYet', { name })}</span>
-                  {p.media && <span className="gs-tick"><Icon name="check" /></span>}
-                </li>
-              );
-            })}
-          </ul>
-        )}
         <p className="hand gs-note">{t('shot.auto')}</p>
+        {/* Ảnh sẽ ra: khung mẫu của dịp, mình ở giữa, ghế của từng người có ảnh thật khi họ chụp xong. */}
+        <div className="gs-preview">
+          <ShotFrame occasion={shot.occasion} variant="card" center={{ photo: mine?.media }}
+            seats={others.slice(0, 3).map((p) => ({ name: memberName(me, p.memberId), photo: p.media }))} />
+        </div>
         <div className="gs-actions">
           {!mine?.media
             ? <button className="gs-main" onClick={() => onJoin(shot)}>{t('shot.joinMine')}</button>

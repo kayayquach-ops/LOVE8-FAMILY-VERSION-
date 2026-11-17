@@ -191,6 +191,13 @@ img, video { display: block; }
 .member .name { font-size: 17px; font-weight: 500; }
 .member .info { font-size: 13px; color: var(--muted); margin-top: 2px; }
 .member .warn { color: var(--warn); }
+/* Chạm vào người khác: mở thêm dòng "xoá khỏi nhà" ngay dưới, cùng một khối. */
+.member.open { flex-wrap: wrap; }
+.member .member-toggle { display: block; text-align: left; min-height: 44px; }
+.member-chev { display: inline-grid; margin-left: 6px; color: var(--muted); vertical-align: middle; transition: transform .2s; }
+.member.open .member-chev { transform: rotate(180deg); }
+.member-more { flex: 1 0 100%; padding-left: 60px; }
+.member-rm { min-height: 44px; padding: 0; color: var(--muted); font-size: 14px; text-decoration: underline; text-underline-offset: 4px; }
 .code { font-family: var(--f-display); font-size: 40px; letter-spacing: 8px; font-weight: 800; text-align: center; margin: 8px 0; }
 .thumbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
 .thumbs img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 14px; }
@@ -546,7 +553,7 @@ button.code { display: block; width: 100%; min-height: 56px; }
 .viewer img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .viewer-close { position: absolute; top: calc(var(--safe-top) + 10px); right: 14px; background: rgba(255,255,255,.85); }
 
-@media (prefers-reduced-motion: reduce) { .sheet, .chat, .toast { animation-name: slowFade; } }
+@media (prefers-reduced-motion: reduce) { .sheet, .chat, .toast { animation-name: slowFade; } .member-chev { transition: none; } }
 
 /* Chạm là thấy ngay: mọi nút mờ nhẹ khi đang chạm, không chờ hiệu ứng chuyển (lúc nhả tay mới chuyển mềm về).
    Bỏ qua nút giữ để quay, giữ để nói: chúng có trạng thái riêng khi đang giữ. */

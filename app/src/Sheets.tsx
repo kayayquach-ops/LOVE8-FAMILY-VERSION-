@@ -3,7 +3,7 @@ import { api } from './api';
 import { CityPicker } from './CityPicker';
 import { copyCode, shareInvite } from './Onboarding';
 import { shrinkImage } from './media';
-import { SILENT_HOURS, type Me, type Week } from './shared';
+import { SILENT_HOURS, type Me, type Member, type Week } from './shared';
 import { cityName, usePlaceNames } from './placeName';
 import { t, useLang } from './i18n';
 import { buzz, sfx, tap } from './sound';
@@ -54,6 +54,31 @@ export function Family({ me, onClose, onChanged, onSettings, onCallMember }: { m
     } finally { setBusy(false); }
   }
 
+  // Chạm vào một người khác: mở thêm dòng "xoá khỏi nhà" (người dùng xin để dọn tài khoản thử). Bấm thì hỏi lại bằng thẻ dưới đáy.
+  const [open, setOpen] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<Member | null>(null);
+  const [busyRm, setBusyRm] = useState(false);
+  useEffect(() => {
+    if (!removing) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busyRm) setRemoving(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [removing, busyRm]);
+  async function removeMember() {
+    const m = removing;
+    if (!m || busyRm) return;
+    setBusyRm(true);
+    try {
+      await api.removeMember(m.id);
+      tap(); toast(t('family.remove.done', { name: m.name }));
+      setRemoving(null); setOpen(null); onChanged();
+    } catch (e) {
+      // Lời báo của máy chủ đã đúng thứ tiếng. Người đó đã bị xoá từ máy khác (404) thì cũng đóng lại và lấy danh sách mới.
+      toast((e as Error).message);
+      if ((e as { status?: number }).status === 404) { setRemoving(null); setOpen(null); onChanged(); }
+    } finally { setBusyRm(false); }
+  }
+
   const [hugged, setHugged] = useState(false);
   async function hug() {
     if (hugged) return;
@@ -69,16 +94,27 @@ export function Family({ me, onClose, onChanged, onSettings, onCallMember }: { m
         {me.members.map((m) => {
           const quiet = m.id !== me.me.id && hoursSince(m.lastSeen) > SILENT_HOURS;
           const lt = localTime(m.city);
+          const mine = m.id === me.me.id;
+          const info = (
+            <>
+              <div className="name">{m.name}{mine ? t('family.youSuffix') : <span className="member-chev" aria-hidden="true"><Icon name="down" size={14} /></span>}</div>
+              <div className="info">{m.city ? `${cityName(m.city) ?? ''} ${lt ?? ''}` : t(`role.${m.role}`)}{wx[m.id] ? ` · ${wx[m.id]}` : ''}</div>
+              <div className={`info ${quiet ? 'warn' : ''}`}>{mine ? t('family.online') : quiet ? t('home.quietDays', { n: Math.floor(hoursSince(m.lastSeen) / 24) }) : t('family.active', { ago: ago(m.lastSeen) })}</div>
+            </>
+          );
           return (
-            <div key={m.id} className="member">
+            <div key={m.id} className={`member ${open === m.id ? 'open' : ''}`}>
               <Avatar m={m} size={48} />
-              <div className="meta">
-                <div className="name">{m.name}{m.id === me.me.id ? t('family.youSuffix') : ''}</div>
-                <div className="info">{m.city ? `${cityName(m.city) ?? ''} ${lt ?? ''}` : t(`role.${m.role}`)}{wx[m.id] ? ` · ${wx[m.id]}` : ''}</div>
-                <div className={`info ${quiet ? 'warn' : ''}`}>{m.id === me.me.id ? t('family.online') : quiet ? t('home.quietDays', { n: Math.floor(hoursSince(m.lastSeen) / 24) }) : t('family.active', { ago: ago(m.lastSeen) })}</div>
-              </div>
-              {m.id !== me.me.id && <button className="round" onClick={() => { tap(); onCallMember(m.id); }} aria-label={t('family.callVideo', { name: m.name })}><Icon name="video" /></button>}
-              {m.id !== me.me.id && m.phone && <a className="round" href={`tel:${m.phone}`} aria-label={t('family.callAria', { name: m.name })}><Icon name="phone" /></a>}
+              {mine
+                ? <div className="meta">{info}</div>
+                : <button className="meta member-toggle" aria-expanded={open === m.id} onClick={() => setOpen(open === m.id ? null : m.id)}>{info}</button>}
+              {!mine && <button className="round" onClick={() => { tap(); onCallMember(m.id); }} aria-label={t('family.callVideo', { name: m.name })}><Icon name="video" /></button>}
+              {!mine && m.phone && <a className="round" href={`tel:${m.phone}`} aria-label={t('family.callAria', { name: m.name })}><Icon name="phone" /></a>}
+              {!mine && open === m.id && (
+                <div className="member-more">
+                  <button className="member-rm" onClick={() => setRemoving(m)}>{t('family.remove')}</button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -119,6 +155,17 @@ export function Family({ me, onClose, onChanged, onSettings, onCallMember }: { m
       <div className="muted" style={{ marginTop: 12 }}>{t('family.note', { n: SILENT_HOURS / 24 })}</div>
 
       <button className="link" style={{ marginTop: 24 }} onClick={onSettings}>{t('settings.title')}</button>
+
+      {removing && (
+        <div className="nask" onClick={() => { if (!busyRm) setRemoving(null); }}>
+          <div className="nask-card" role="alertdialog" aria-modal="true" aria-labelledby="rm-title" aria-describedby="rm-body" onClick={(e) => e.stopPropagation()}>
+            <h2 id="rm-title" className="display">{t('family.remove.title', { name: removing.name })}</h2>
+            <p id="rm-body">{t('family.remove.body', { name: removing.name })}</p>
+            <button className="btn" disabled={busyRm} onClick={() => void removeMember()}>{t('family.remove.yes')}</button>
+            <button className="link" disabled={busyRm} onClick={() => setRemoving(null)}>{t('family.remove.no')}</button>
+          </div>
+        </div>
+      )}
     </Sheet>
   );
 }

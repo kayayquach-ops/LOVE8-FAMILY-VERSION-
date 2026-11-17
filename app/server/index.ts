@@ -23,6 +23,7 @@ import { thumbRoute, warmThumbs } from './thumb.ts';
 import { googlePublicRouter, googleRouter, linkPendingGoogle } from './google.ts';
 import { Limit, limitBy } from './limit.ts';
 import { migrateShot, shotPartsFor, shotRouter } from './shot.ts';
+import { membersRouter } from './members.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -188,6 +189,7 @@ app.use('/api', podcastRouter);
 app.use('/api', liveRouter);
 app.use('/api', pushRouter);
 app.use('/api', googleRouter);
+app.use('/api', membersRouter());
 
 app.get('/api/me', h(async (req, res) => {
   const m = req.member!;
