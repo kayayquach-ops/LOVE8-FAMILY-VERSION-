@@ -146,3 +146,10 @@ Người dùng xem mockup (link ở mục trên) rồi bảo "làm thật đi". 
 - App: chế độ "ảnh | chụp chung" trên camera, khung ngắm có ghế trống nét đứt cho từng người, lời rủ (thẻ trên camera, vào bằng thông báo `open=shot:<id>` hoặc `/?shot=<id>`), màn `src/GroupShot.tsx` (chờ, đang rửa, xong, lỗi), bảng dịp gợi ý theo lịch âm (Tết, Trung thu hoặc Chuseok theo múi giờ), nhãn "ảnh ghép AI" và hàng ảnh thật trong tin nhà. Chế độ chụp chung không có bộ lọc màu, không quay video.
 - Đã kiểm: tsc, build, i18n sạch, 80/80 test (`node --import tsx --test server/*.test.ts src/*.test.ts`), giao diện xem bằng ảnh chụp với dữ liệu giả (không đụng DB).
 - CHƯA kiểm: gọi Gemini thật (máy local không có khoá, chưa được phép dùng khoá production), SQL trên Postgres thật, thông báo đẩy thật, iPhone Safari (bàn phím ở ô tự viết dịp).
+
+### 18/11: mẫu có màu theo dịp, nút "xoá khỏi nhà" (commit ea23f27, CHƯA DEPLOY)
+Người dùng thử chụp chung trên iPhone, chưa hiểu cách dùng và muốn bấm Tết là thấy mẫu; muốn xoá các nick thử trong nhà, chỉ giữ nick đang dùng.
+- Hệ thống chặn Claude vào database live (cả `railway ssh ... cleanup-families.mjs` chỉ để liệt kê), nên người dùng chọn làm nút xoá trong app thay vì chạy lệnh.
+- Mẫu: `src/ShotTemplate.tsx` (khung ngắm, ô trong bảng dịp, màn chờ có ghế điền ảnh thật). Màn chờ bỏ danh sách "ai đã chụp", tên trên ảnh lấy liền không bị cắt khi 4 người.
+- Xoá khỏi nhà: `DELETE /api/members/:id` trong `server/members.ts`. Ai trong nhà cũng xoá được người khác (người tạo nhà có thể là nick thử), không tự xoá mình. Một giao dịch theo kế hoạch xoá từng bảng (`PLAN`), có test bắt lỗi nếu sau này thêm bảng có cột trỏ tới thành viên mà quên đưa vào kế hoạch. Tệp media chỉ xoá khi không còn hàng nào nhắc tới. Đóng luồng chat và gọi video của người bị xoá. App: bấm tên một người trong mục cả nhà, hiện "xoá khỏi nhà", thẻ xác nhận. Máy người bị xoá nhận 401, về màn chào.
+- Đã kiểm: tsc, build, i18n sạch, 91/91 test. SQL xoá mới chạy trên database giả trong test, chưa chạy Postgres thật; lỗi thì giao dịch huỷ, không mất gì.
