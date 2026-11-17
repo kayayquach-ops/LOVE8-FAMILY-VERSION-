@@ -10,12 +10,12 @@ import { VoiceNote } from './VoiceNote';
 import './onboarding.css';
 
 // home: bước dựng nhà (tạo nhà mới, vào nhà bằng mã, Google). family: đặt tên nhà sau khi chọn tạo nhà mới.
-type Step = 'hello' | 'role' | 'kid' | 'name' | 'dob' | 'city' | 'seen' | 'hug' | 'food' | 'love' | 'voice' | 'unsaid' | 'story' | 'home' | 'family' | 'code' | 'invite';
-const FLOW: Step[] = ['hello', 'role', 'kid', 'name', 'dob', 'city', 'seen', 'hug', 'food', 'love', 'voice', 'unsaid', 'story', 'home'];
+type Step = 'hello' | 'role' | 'kid' | 'name' | 'dob' | 'city' | 'seen' | 'food' | 'love' | 'voice' | 'unsaid' | 'story' | 'home' | 'family' | 'code' | 'invite';
+const FLOW: Step[] = ['hello', 'role', 'kid', 'name', 'dob', 'city', 'seen', 'food', 'love', 'voice', 'unsaid', 'story', 'home'];
 
 // Bấm Google ở bước dựng nhà thì cả trang sang Google rồi tải lại: giữ tạm câu trả lời trong máy (cả câu thu âm) để quay về đúng bước dựng nhà.
 // Chỉ đọc lại khi máy này đang dở một lượt Google; tạo nhà, vào nhà xong hay huỷ Google thì xoá.
-type Draft = { at: number; role: Role | null; kid: Kid | ''; name: string; city: string; dob: { d: string; m: string; y: string }; a: Record<string, string>; wantHug: boolean | null; voice?: { data: string; seconds: number } };
+type Draft = { at: number; role: Role | null; kid: Kid | ''; name: string; city: string; dob: { d: string; m: string; y: string }; a: Record<string, string>; voice?: { data: string; seconds: number } };
 const DRAFT = 'sh-ob-draft';
 function readDraft(): Draft | null {
   try {
@@ -72,7 +72,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [city, setCity] = useState(draft?.city ?? '');
   const [dob, setDob] = useState(draft?.dob ?? { d: '', m: '', y: '' });
   const [a, setA] = useState<Record<string, string>>(draft?.a ?? {});
-  const [wantHug, setWantHug] = useState<boolean | null>(draft?.wantHug ?? null);
   // Câu "thương" đầu tiên bằng giọng mình: chỉ giữ trong máy, tạo nhà xong mới gửi lên.
   const [voice, setVoice] = useState<Recording | null>(() => draftVoice(draft));
   const [micDenied, setMicDenied] = useState(false);
@@ -158,12 +157,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     setGBusy(true);
     try {
       if (step === 'hello') clearDraft();
-      else await saveDraft({ role, kid, name, city, dob, a, wantHug }, voice);
+      else await saveDraft({ role, kid, name, city, dob, a }, voice);
       await startGoogle('signin', invite || undefined);
     } catch (e) { toast((e as Error).message); setGBusy(false); }
   };
-  // Quay lại câu ôm thì hỏi lại từ đầu.
-  useEffect(() => { if (step === 'hug') { setWantHug(null); setA((x) => { const { hug: _, ...r } = x; return r; }); } }, [step]);
 
   const parent = role === 'bo' || role === 'me';
   const self = t(role === 'bo' ? 'onboarding.self.bo' : role === 'me' ? 'onboarding.self.me' : 'onboarding.self.con');
@@ -198,7 +195,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     try {
       // Vào bằng Google mà chưa có nhà: gửi kèm phiên Google, máy chủ nối tài khoản theo danh tính đã xác minh.
       const gp = gName !== null ? googlePending.get() : null;
-      const body = { name: name.trim(), role: role!, city, lang: getLang(), intro: { ...a, kid, ...(wantHug === null ? {} : { wantHug }), loveVoice: !!voice },
+      const body = { name: name.trim(), role: role!, city, lang: getLang(), intro: { ...a, kid, loveVoice: !!voice },
         ...(gp?.intent === 'signin' ? { google: { state: gp.state, bind: gp.bind } } : {}) };
       const r = join ? await api.join({ ...body, code: code.trim() }) : await api.create({ ...body, family: familyName.trim() || t('onboarding.home.default') });
       token.set(r.token);
@@ -326,14 +323,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       {step === 'seen' && (
         <Ask key="seen" q={R('seen.q')} echo={a.seen && seenEcho(a.seen)} {...T}>
           {SEEN.map((k) => <Opt key={k} on={a.seen === k} onClick={() => choose('seen', k)}>{t(`onboarding.seen.opt.${k}`)}</Opt>)}
-        </Ask>
-      )}
-
-      {step === 'hug' && (
-        <Ask key="hug" q={R('hug.q')}
-          echo={wantHug === true ? R('hug.echo.yes') : wantHug === false ? R('hug.echo.no') : undefined} {...T}>
-          <Opt key="yes" on={wantHug === true} onClick={() => { if (wantHug !== null) return; tapSoft(); setWantHug(true); later(next, 4200); }}>{t('onboarding.hug.yes')}</Opt>
-          <Opt key="no" on={wantHug === false} onClick={() => { if (wantHug !== null) return; tapSoft(); setWantHug(false); later(next, 4200); }}>{t('onboarding.hug.no')}</Opt>
         </Ask>
       )}
 

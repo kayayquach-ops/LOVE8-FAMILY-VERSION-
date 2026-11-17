@@ -113,14 +113,6 @@
   "onboarding.seen.echo.year.child": "1년이 넘었네요. 집에서도 명절을 몇 번이나 세었을 거예요.",
   "onboarding.seen.echo.together": "가까운데 멀게 느껴지죠. 작은 질문 하나로 다시 시작해 봐요.",
 
-  "onboarding.hug.q.parent": "지금 바로 *아이를 안아* 주고 싶으세요?",
-  "onboarding.hug.q.child": "지금 바로 *엄마 아빠를 안아* 드리고 싶어요?",
-  "onboarding.hug.echo.yes.parent": "그럼 이따가 꼭 안아 주세요.",
-  "onboarding.hug.echo.yes.child": "그럼 이따가 꼭 안아 드리세요.",
-  "onboarding.hug.echo.no.parent": "괜찮아요. 보고 싶을 때 안아 주면 돼요.",
-  "onboarding.hug.echo.no.child": "괜찮아요. 집이 그리울 때 안아 드리면 돼요.",
-  "onboarding.hug.yes": "네, 많이요",
-  "onboarding.hug.no": "다음에요",
 
   "onboarding.food.q.parent": "아이가 *좋아하던 음식*이 기억나세요?",
   "onboarding.food.q.child": "집에서 먹던 음식 중 *제일 그리운* 건 뭐예요?",
@@ -241,9 +233,6 @@
 
   "camera.noAccess": "카메라를 허용해야 찍어서 가족에게 보낼 수 있어요.",
   "camera.holdLonger": "길게 눌러야 녹화돼요",
-  "camera.quiet": "{name}님이 {days}일째 앱을 열지 않았어요. 안부를 물어봐요.",
-  "camera.quiet.call": "전화",
-  "camera.quiet.view": "보기",
   "camera.turnOn": "카메라 켜기",
   "camera.orPick": "아니면 아래 버튼으로 사진을 골라요.",
   "camera.captionPlaceholder": "한 줄 적어 보세요...",

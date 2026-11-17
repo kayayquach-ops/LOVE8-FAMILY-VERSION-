@@ -1,11 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { cached } from './cache';
 import { record, recordZoomed, shrinkImage, useHoldMic, VIDEO_TYPE, type Recording } from './media';
-import { SILENT_HOURS, thumb, type Me, type Member, type Post } from './shared';
+import { thumb, type Me, type Post } from './shared';
 import { buzz, tap } from './sound';
 import { Letter } from './Letter';
-import { hoursSince, localTime } from './time';
-import { Avatar, Icon, toast } from './ui';
+import { Icon, toast } from './ui';
 import { t } from './i18n';
 import { cssFilter, FILTERS, shoot } from './camShot';
 import { SendTo, type Draft } from './SendTo';
@@ -21,7 +20,6 @@ const fmtZoom = (z: number) => `${z.toFixed(1)}×`;
 // Nút zoom một chạm kiểu YOPE: "1×", "2×", ".5×"; zoom bằng hai ngón thì hiện số lẻ "1.4×".
 const zoomLabel = (z: number) => `${z < 0.95 ? `.${Math.round(z * 10)}` : Math.abs(z - Math.round(z)) < 0.05 ? Math.round(z) : z.toFixed(1)}×`;
 // Tên ngắn trong viên trên cùng: tên đầy đủ ba chữ trở lên (Nguyễn Văn An) thì lấy chữ cuối; "Mẹ Lan", "Bố An" giữ nguyên.
-const shortName = (n: string) => { const w = n.trim().split(/\s+/); return w.length > 2 ? w[w.length - 1] : n.trim(); };
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Màn chính kiểu YOPE/Locket: mở ra là camera, nền tối dù app đang sáng. Chạm để chụp, giữ để quay. Giữ nút dưới để nói.
@@ -267,8 +265,6 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
 
   if (flying) return <Letter onDone={() => setFlying(false)} />;
 
-  const quiet = me.members.filter((m) => m.id !== me.me.id && hoursSince(m.lastSeen) > SILENT_HOURS);
-  const note = quiet.length > 0 && !draft;
   const cycle = hw.current && hw.current.min < 0.95 ? [1, 2, hw.current.min] : [1, 2];
   const nextZoom = cycle[(cycle.findIndex((z) => Math.abs(zoom - z) < 0.05) + 1) % cycle.length] ?? 1;
   // Đèn chỉ hiện khi dùng được: camera trước luôn được (màn hình sáng), camera sau cần trình duyệt cho bật đèn.
@@ -280,22 +276,9 @@ export function Camera({ me, active = true, onOpen, onSent }: { me: Me; active?:
 
   return (
     <>
-      <div ref={root} className={`screen with-tabs cam-screen cam-ui ${note ? 'has-note' : ''} ${rec ? 'is-rec' : ''}`}
+      <div ref={root} className={`screen with-tabs cam-screen cam-ui ${rec ? 'is-rec' : ''}`}
         onTouchStart={(e) => { touchY.current = e.touches[0].clientY; swipeOk.current = e.touches.length === 1; }}
         onTouchEnd={(e) => { if (swipeOk.current && !draft && !recording && touchY.current - e.changedTouches[0].clientY > 80) onOpen('feed'); }}>
-        <div className="cam-fam">
-          <FamilyRow members={me.members} />
-          <button className="cam-set" onClick={() => onOpen('settings')} aria-label={t('settings.title')}><Icon name="sliders" /></button>
-        </div>
-
-        {note && (
-          <div className="cam-note fade">
-            <Avatar m={quiet[0]} size={26} />
-            <span>{t('camera.quiet', { name: quiet[0].name, days: Math.floor(hoursSince(quiet[0].lastSeen) / 24) })}</span>
-            {quiet[0].phone ? <a href={`tel:${quiet[0].phone}`}>{t('camera.quiet.call')}</a> : <button onClick={() => onOpen('family')}>{t('camera.quiet.view')}</button>}
-          </div>
-        )}
-
         <div className="viewfinder" ref={finder} style={{ '--rec-half': `${MAX_VIDEO / 2}s` } as React.CSSProperties}
           onPointerDown={onFinderDown} onPointerMove={onFinderMove} onPointerUp={onFinderUp} onPointerCancel={onFinderUp}>
           {rec === 'video' && <div className="vf-prog" aria-hidden="true"><i className="vf-half r"><b /></i><i className="vf-half l"><b /></i></div>}
@@ -399,18 +382,3 @@ function FlashIcon({ on }: { on: boolean }) {
   );
 }
 
-/** Hàng trên cùng: mỗi người một viên, kèm giờ nơi người đó đang ở. Tự vẽ lại nửa phút một lần cho giờ chạy đúng (chỉ hàng này, không vẽ lại cả camera). */
-function FamilyRow({ members }: { members: Member[] }) {
-  const [, tick] = useState(0);
-  useEffect(() => {
-    const iv = setInterval(() => { if (!document.hidden) tick((n) => n + 1); }, 30000);
-    return () => clearInterval(iv);
-  }, []);
-  return (
-    <div className="cam-fam-list">
-      {members.map((m) => (
-        <span key={m.id} className="cam-who"><Avatar m={m} size={26} /><b>{shortName(m.name)}</b>{localTime(m.city)}</span>
-      ))}
-    </div>
-  );
-}

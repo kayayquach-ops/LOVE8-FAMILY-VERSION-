@@ -113,14 +113,6 @@
   "onboarding.seen.echo.year.child": "Hơn một năm. Chắc ở nhà đã đếm qua mấy cái Tết.",
   "onboarding.seen.echo.together": "Gần mà xa. Mình bắt đầu lại từ một câu hỏi nhỏ nhé.",
 
-  "onboarding.hug.q.parent": "{self} có muốn *ôm {kids}* ngay bây giờ không?",
-  "onboarding.hug.q.child": "bạn có muốn *ôm bố mẹ* ngay bây giờ không?",
-  "onboarding.hug.echo.yes.parent": "Vậy lát nữa {self} ôm {kids} thật chặt nhé.",
-  "onboarding.hug.echo.yes.child": "Vậy lát nữa bạn ôm bố mẹ thật chặt nhé.",
-  "onboarding.hug.echo.no.parent": "Không sao. Lúc nào nhớ {kids}, mình ôm sau nhé.",
-  "onboarding.hug.echo.no.child": "Không sao. Lúc nào nhớ nhà, mình ôm sau nhé.",
-  "onboarding.hug.yes": "có, rất muốn",
-  "onboarding.hug.no": "để lúc khác",
 
   "onboarding.food.q.parent": "{self} còn nhớ con thích *món gì* không?",
   "onboarding.food.q.child": "món gì ở nhà bạn *nhớ nhất*?",
@@ -241,9 +233,6 @@
 
   "camera.noAccess": "Cho phép camera để chụp gửi cả nhà nhé.",
   "camera.holdLonger": "Giữ lâu hơn để quay",
-  "camera.quiet": "{name} chưa mở app {days} ngày rồi. Gọi hỏi thăm nhé.",
-  "camera.quiet.call": "gọi",
-  "camera.quiet.view": "xem",
   "camera.turnOn": "bật camera",
   "camera.orPick": "Hoặc chọn ảnh có sẵn ở nút bên dưới.",
   "camera.captionPlaceholder": "viết một dòng...",

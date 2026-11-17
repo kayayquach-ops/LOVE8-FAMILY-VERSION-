@@ -25,42 +25,13 @@
 .screen.cam-screen.cam-ui { background: var(--cam-bg); color: var(--cam-text); padding: calc(var(--safe-top) + 8px) 12px calc(var(--safe-bottom) + 82px); }
 .cam-ui button:focus-visible, .cam-ui label:focus-within { outline: 2px solid var(--cam-hand); outline-offset: 3px; }
 
-/* Hàng cả nhà: mỗi người một viên mờ, có giờ nơi người đó. Đông người thì vuốt ngang. */
-.cam-ui .cam-fam { display: flex; align-items: center; gap: 6px; min-height: 40px; padding-left: 4px; flex: none; }
-.cam-ui .cam-fam-list { flex: 1; min-width: 0; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
-.cam-ui .cam-fam-list::-webkit-scrollbar { display: none; }
-.cam-ui .cam-who {
-  flex: none; display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 11px 0 4px; border-radius: 999px;
-  background: var(--cam-chip); font-size: 12.5px; color: var(--cam-muted); white-space: nowrap; font-variant-numeric: tabular-nums;
-}
-.cam-ui .cam-who b { color: var(--cam-text); font-weight: 600; max-width: 7.5em; overflow: hidden; text-overflow: ellipsis; }
-.cam-ui .cam-set { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--cam-text); transition: transform .15s; }
-.cam-ui .cam-set svg { width: 22px; height: 22px; }
-.cam-ui .cam-set:active { transform: scale(.92); transition-duration: 0s; }
-
-/* Dòng nhắc (ai đó lâu chưa mở app): thẻ tối, chữ dịu, chữ hành động gạch chân mực tím. */
-.cam-ui .cam-note {
-  flex: none; display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 6px 4px 6px 8px; border-radius: 20px;
-  background: var(--cam-surface); box-shadow: inset 0 0 0 1px var(--cam-line); font-size: 13.5px; line-height: 1.4; color: var(--cam-soft);
-}
-.cam-ui .cam-note > span { flex: 1; min-width: 0; }
-.cam-ui .cam-note a, .cam-ui .cam-note button {
-  flex: none; min-height: 40px; padding: 0 12px; display: grid; place-items: center; white-space: nowrap;
-  color: var(--cam-text); font-weight: 600; text-decoration: underline; text-decoration-color: var(--cam-hand);
-  text-decoration-thickness: 2px; text-underline-offset: 4px;
-}
-
 /* Khung ngắm 3:4 gần hết bề ngang, bo 34px. Máy thấp thì khung thu lại theo chiều cao còn lại:
-   các hàng khác cộng lại 330px (390px khi có dòng nhắc), máy dưới 700px cao thì 302px / 362px. */
+   các hàng khác cộng lại 290px, máy dưới 700px cao thì 262px. */
 .cam-screen.cam-ui .viewfinder {
   flex: none; position: relative; aspect-ratio: 3 / 4; margin-top: 10px; border-radius: 34px; background: var(--cam-surface); isolation: isolate;
-  width: min(100%, calc((100vh - 330px - var(--safe-top) - var(--safe-bottom)) * .75));
-  width: min(100%, calc((100dvh - 330px - var(--safe-top) - var(--safe-bottom)) * .75));
+  width: min(100%, calc((100vh - 290px - var(--safe-top) - var(--safe-bottom)) * .75));
+  width: min(100%, calc((100dvh - 290px - var(--safe-top) - var(--safe-bottom)) * .75));
   min-width: 200px; align-self: center;
-}
-.cam-screen.cam-ui.has-note .viewfinder {
-  width: min(100%, calc((100vh - 390px - var(--safe-top) - var(--safe-bottom)) * .75));
-  width: min(100%, calc((100dvh - 390px - var(--safe-top) - var(--safe-bottom)) * .75));
 }
 .cam-ui .vf-inner { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; background: var(--cam-surface); transition: transform .3s cubic-bezier(.3, .7, .3, 1); }
 .cam-ui .vf-inner video { width: 100%; height: 100%; object-fit: cover; }
@@ -167,8 +138,7 @@
 
 /* Máy thấp (iPhone SE, 8): nút và khoảng cách gọn lại để khung ngắm còn to. */
 @media (max-height: 700px) {
-  .cam-screen.cam-ui .viewfinder { margin-top: 8px; width: min(100%, calc((100vh - 302px - var(--safe-top) - var(--safe-bottom)) * .75)); width: min(100%, calc((100dvh - 302px - var(--safe-top) - var(--safe-bottom)) * .75)); }
-  .cam-screen.cam-ui.has-note .viewfinder { width: min(100%, calc((100vh - 362px - var(--safe-top) - var(--safe-bottom)) * .75)); width: min(100%, calc((100dvh - 362px - var(--safe-top) - var(--safe-bottom)) * .75)); }
+  .cam-screen.cam-ui .viewfinder { margin-top: 8px; width: min(100%, calc((100vh - 262px - var(--safe-top) - var(--safe-bottom)) * .75)); width: min(100%, calc((100dvh - 262px - var(--safe-top) - var(--safe-bottom)) * .75)); }
   .cam-screen.cam-ui .shutter-row { height: 70px; margin-top: 10px; }
   .cam-screen.cam-ui .shutter { transform: scale(.9); }
   .cam-screen.cam-ui .shutter.rec { transform: scale(.98); }
