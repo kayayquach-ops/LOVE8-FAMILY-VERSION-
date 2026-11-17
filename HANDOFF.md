@@ -134,3 +134,7 @@ Người dùng gửi ảnh chụp iPhone, bảo bỏ:
 - Câu khảo sát "bạn có muốn ôm bố mẹ ngay bây giờ không?" (bước `hug` trong `src/Onboarding.tsx`) và 11 khoá `onboarding.hug.*` ở vi/en/ko. Máy chủ vẫn giữ `/api/survey/hug` và cách đọc `intro.wantHug` cho dữ liệu cũ.
 - Trên màn camera: hàng cả nhà (tên + giờ nơi mỗi người, nút cài đặt) và dòng nhắc "… chưa mở app N ngày rồi". Khoá `camera.quiet*` đã xoá. Cài đặt vẫn vào được từ nút ở trang chủ, dòng nhắc người vắng lâu vẫn có ở trang chủ. Khung ngắm tính lại chiều cao (bớt 40px hàng trên: 330→290, máy thấp 302→262).
 - Chưa xem trên máy thật (màn camera cần đăng nhập vào một nhà).
+
+### 17/11: dàn ý PPT vòng 2 OASIS-6, tính năng mới của Locket
+- Dàn ý PPT vòng 2 (thuyết trình ở Seoul đầu tháng 12, 20 đội tranh 10 giải): `oasis6/reports/Bố cục PPT vòng 2 OASIS 6.md`, ghi chú nghiên cứu ở `oasis6/research_notes/Bố cục PPT vòng 2 OASIS 6/`. 13 slide tiếng Hàn khoảng 6 phút 20, demo là video quay sẵn 50 giây. Có danh sách 8 chỗ vênh giữa các tài liệu (danh sách đội, mã 6 hay 7 số, mục bán hạt, chi phí AI...) và câu cần hỏi KMAC. Thư mục `oasis6/` không nằm trong git.
+- Locket ra "Locket Looks" (7/2026, chạy Nano Banana 2 Lite của Google): chụp selfie, chọn kiểu hoặc gõ chữ, AI vẽ lại thành hóa trang (ở Việt Nam có áo Grab, ShopeeFood, Xanh SM, Be, meme móm, đầu trọc). Có màn "đang rửa ảnh" trong lúc chờ. Chưa rõ miễn phí hay chỉ Locket Gold; Android chưa có. Hướng của Locket là ảnh vui giữa bạn bè, khác Sweet Home (giữ chuyện gia đình), dùng cho slide đối thủ.
