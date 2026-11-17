@@ -147,7 +147,7 @@ Người dùng xem mockup (link ở mục trên) rồi bảo "làm thật đi". 
 - Đã kiểm: tsc, build, i18n sạch, 80/80 test (`node --import tsx --test server/*.test.ts src/*.test.ts`), giao diện xem bằng ảnh chụp với dữ liệu giả (không đụng DB).
 - CHƯA kiểm: gọi Gemini thật (máy local không có khoá, chưa được phép dùng khoá production), SQL trên Postgres thật, thông báo đẩy thật, iPhone Safari (bàn phím ở ô tự viết dịp).
 
-### 18/11: mẫu có màu theo dịp, nút "xoá khỏi nhà" (commit ea23f27, CHƯA DEPLOY)
+### 18/11: mẫu có màu theo dịp, nút "xoá khỏi nhà" (commit ea23f27, ĐÃ DEPLOY 18/11 bản 6a47273, bundle index-DtKyd0BS.js, đã push branch + main)
 Người dùng thử chụp chung trên iPhone, chưa hiểu cách dùng và muốn bấm Tết là thấy mẫu; muốn xoá các nick thử trong nhà, chỉ giữ nick đang dùng.
 - Hệ thống chặn Claude vào database live (cả `railway ssh ... cleanup-families.mjs` chỉ để liệt kê), nên người dùng chọn làm nút xoá trong app thay vì chạy lệnh.
 - Mẫu: `src/ShotTemplate.tsx` (khung ngắm, ô trong bảng dịp, màn chờ có ghế điền ảnh thật). Màn chờ bỏ danh sách "ai đã chụp", tên trên ảnh lấy liền không bị cắt khi 4 người.
