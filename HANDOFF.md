@@ -128,3 +128,9 @@ Người dùng hỏi repo `pbakaus/impeccable` có giúp app đẹp hơn không.
 - Đã sửa: `--muted` bản sáng `#8F8A9B` (3,2:1 trên giấy) thành `#736E80` (4,7:1), cả chỗ đặt lại trong hình minh hoạ ở `dark.css`; chữ chọn tiếng và dòng gợi ý ở màn chào đậm hơn (alpha .75 và .8). Bản tối `--muted #8F8A9C` vốn đạt 5,6:1, giữ nguyên.
 - Cố ý giữ (máy chê nhưng là thiết kế đã duyệt): nền kẻ ô "vở ô ly" (`.oly`, `story.css`), chấm sáng nhấp nháy và quầng sáng chữ ở màn chào cánh đồng, hiệu ứng nảy (tim, thư rơi, linh vật, thẻ màn giới thiệu).
 - Không cài cả bộ Impeccable: có hook chạy mỗi lần sửa file giao diện, gửi dữ liệu ẩn danh mặc định, chế độ `live` chạy Claude không hỏi duyệt.
+
+### 17/11: bỏ câu "muốn ôm" ở khảo sát, bỏ hàng trên cùng của camera (commit 54aadc4, CHƯA DEPLOY)
+Người dùng gửi ảnh chụp iPhone, bảo bỏ:
+- Câu khảo sát "bạn có muốn ôm bố mẹ ngay bây giờ không?" (bước `hug` trong `src/Onboarding.tsx`) và 11 khoá `onboarding.hug.*` ở vi/en/ko. Máy chủ vẫn giữ `/api/survey/hug` và cách đọc `intro.wantHug` cho dữ liệu cũ.
+- Trên màn camera: hàng cả nhà (tên + giờ nơi mỗi người, nút cài đặt) và dòng nhắc "… chưa mở app N ngày rồi". Khoá `camera.quiet*` đã xoá. Cài đặt vẫn vào được từ nút ở trang chủ, dòng nhắc người vắng lâu vẫn có ở trang chủ. Khung ngắm tính lại chiều cao (bớt 40px hàng trên: 330→290, máy thấp 302→262).
+- Chưa xem trên máy thật (màn camera cần đăng nhập vào một nhà).
