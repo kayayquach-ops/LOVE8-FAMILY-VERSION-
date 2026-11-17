@@ -129,7 +129,7 @@ Người dùng hỏi repo `pbakaus/impeccable` có giúp app đẹp hơn không.
 - Cố ý giữ (máy chê nhưng là thiết kế đã duyệt): nền kẻ ô "vở ô ly" (`.oly`, `story.css`), chấm sáng nhấp nháy và quầng sáng chữ ở màn chào cánh đồng, hiệu ứng nảy (tim, thư rơi, linh vật, thẻ màn giới thiệu).
 - Không cài cả bộ Impeccable: có hook chạy mỗi lần sửa file giao diện, gửi dữ liệu ẩn danh mặc định, chế độ `live` chạy Claude không hỏi duyệt.
 
-### 17/11: bỏ câu "muốn ôm" ở khảo sát, bỏ hàng trên cùng của camera (commit 54aadc4, CHƯA DEPLOY)
+### 17/11: bỏ câu "muốn ôm" ở khảo sát, bỏ hàng trên cùng của camera (commit 54aadc4, ĐÃ DEPLOY 17/11 cùng bản chụp chung)
 Người dùng gửi ảnh chụp iPhone, bảo bỏ:
 - Câu khảo sát "bạn có muốn ôm bố mẹ ngay bây giờ không?" (bước `hug` trong `src/Onboarding.tsx`) và 11 khoá `onboarding.hug.*` ở vi/en/ko. Máy chủ vẫn giữ `/api/survey/hug` và cách đọc `intro.wantHug` cho dữ liệu cũ.
 - Trên màn camera: hàng cả nhà (tên + giờ nơi mỗi người, nút cài đặt) và dòng nhắc "… chưa mở app N ngày rồi". Khoá `camera.quiet*` đã xoá. Cài đặt vẫn vào được từ nút ở trang chủ, dòng nhắc người vắng lâu vẫn có ở trang chủ. Khung ngắm tính lại chiều cao (bớt 40px hàng trên: 330→290, máy thấp 302→262).
@@ -140,7 +140,7 @@ Người dùng gửi ảnh chụp iPhone, bảo bỏ:
 - Locket ra "Locket Looks" (7/2026, chạy Nano Banana 2 Lite của Google): chụp selfie, chọn kiểu hoặc gõ chữ, AI vẽ lại thành hóa trang (ở Việt Nam có áo Grab, ShopeeFood, Xanh SM, Be, meme móm, đầu trọc). Có màn "đang rửa ảnh" trong lúc chờ. Chưa rõ miễn phí hay chỉ Locket Gold; Android chưa có. Hướng của Locket là ảnh vui giữa bạn bè, khác Sweet Home (giữ chuyện gia đình), dùng cho slide đối thủ.
 - Mockup "chụp chung dù ở xa" (người dùng duyệt ý, chưa làm thật): https://claude.ai/artifact/ArybBvNGrRCc3SWZu3Ydgk (canvas Design, 6 màn: rủ chụp chung trên camera với khung có ghế trống của từng người, chờ cả nhà, máy người được rủ, đang rửa ảnh, ảnh chung có nhãn "ảnh ghép AI" kèm ảnh thật, bảng chọn dịp có gợi ý theo lịch âm). Ảnh trong mockup là hình giữ chỗ. Nếu làm thật: mô hình Nano Banana 2 Lite (`gemini-3.1-flash-lite-image`), khoảng 0,034 đô một ảnh theo nguồn ngoài, không có bản miễn phí; nên dùng khóa Gemini riêng thay vì khóa lấy từ topik-app.
 
-### 17/11 tối: tính năng "chụp chung dù ở xa" (commit da05e8b, CHƯA DEPLOY)
+### 17/11 tối: tính năng "chụp chung dù ở xa" (commit da05e8b, ĐÃ DEPLOY 17/11 bản 4fa487e, bundle index-DcCgdMkp.js, đã push branch + main; dùng khoá Gemini cũ theo lời người dùng)
 Người dùng xem mockup (link ở mục trên) rồi bảo "làm thật đi". Thiết kế và hợp đồng API: `app/docs/chup-chung.md`.
 - Máy chủ `server/shot.ts`: bảng `shots`, `shot_parts`, `shot_runs` (đếm hạn mức), cột `posts.shot_id`. 8 route `/api/shots...`. Ghép ảnh bằng `gemini-3.1-flash-image` (Nano Banana 2, không dùng bản Lite vì Google ghi bản Lite không hợp nhiều ảnh tham chiếu) qua Interactions API, `store: false`. Khoá `GEMINI_IMAGE_KEY`, không có thì dùng `GEMINI_API_KEY` (khoá đang lấy từ topik-app). Hạn mức `SHOT_DAILY_CAP` mặc định 40 lượt/ngày cả app, 6 lượt/nhà, giờ Hàn. Tối đa 4 người một ảnh. Giá theo nguồn ngoài khoảng 0,067 đô một ảnh 1K.
 - App: chế độ "ảnh | chụp chung" trên camera, khung ngắm có ghế trống nét đứt cho từng người, lời rủ (thẻ trên camera, vào bằng thông báo `open=shot:<id>` hoặc `/?shot=<id>`), màn `src/GroupShot.tsx` (chờ, đang rửa, xong, lỗi), bảng dịp gợi ý theo lịch âm (Tết, Trung thu hoặc Chuseok theo múi giờ), nhãn "ảnh ghép AI" và hàng ảnh thật trong tin nhà. Chế độ chụp chung không có bộ lọc màu, không quay video.
