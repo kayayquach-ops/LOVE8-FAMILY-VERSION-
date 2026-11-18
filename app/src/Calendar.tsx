@@ -45,7 +45,7 @@ export function Calendar({ me, onClose, onWish }: { me: Me; onClose: () => void;
   const [events, setEvents] = useState<CalEvent[] | null>(() => cached<CalEvent[]>('calendar'));
   const [ym, setYm] = useState({ y: now.getFullYear(), m: now.getMonth() });
   const [adding, setAdding] = useState(false);
-  const [kind, setKind] = useState('birthday');
+  const [kind, setKind] = useState('other');
   const [title, setTitle] = useState('');
   const [day, setDay] = useState('');
   const [month, setMonth] = useState('');

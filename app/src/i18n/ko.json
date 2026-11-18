@@ -643,9 +643,7 @@
   "letters.yesterday": "어제",
   "letters.empty.in": "아직 받은 편지가 없어요",
   "letters.empty.out": "아직 보낸 편지가 없어요",
-  "letters.alone": "가족을 초대하면 편지를 보낼 수 있어요",
   "letters.unread": "안 읽은 편지",
-  "letters.home": "가족에게 편지 쓰기",
   "letters.homeNew": "새 편지 {n}통",
   "letters.tab.paper": "종이",
   "letters.tab.frame": "테두리",
@@ -703,8 +701,6 @@
   "letters.scrap.delete": "떼기",
 
   "letters.tab.layout": "양식",
-  "letters.layout.plain": "기본",
-  "letters.layout.postage": "우편",
   "letters.tpl.title": "손편지",
   "letters.tpl.titleLabel": "편지 제목",
   "letters.tpl.to": "받는 사람:",

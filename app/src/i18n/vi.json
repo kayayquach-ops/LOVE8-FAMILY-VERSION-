@@ -643,9 +643,7 @@
   "letters.yesterday": "hôm qua",
   "letters.empty.in": "Chưa có thư nào gửi cho bạn",
   "letters.empty.out": "Bạn chưa gửi thư nào",
-  "letters.alone": "Mời thêm người thân vào nhà để gửi thư nhé",
   "letters.unread": "Thư chưa đọc",
-  "letters.home": "Viết thư cho người thân",
   "letters.homeNew": "{n} thư mới",
   "letters.tab.paper": "Giấy",
   "letters.tab.frame": "Khung",
@@ -703,8 +701,6 @@
   "letters.scrap.delete": "Bỏ hình này",
 
   "letters.tab.layout": "Mẫu",
-  "letters.layout.plain": "Trơn",
-  "letters.layout.postage": "Bưu điện",
   "letters.tpl.title": "THƯ TAY",
   "letters.tpl.titleLabel": "Tên lá thư",
   "letters.tpl.to": "Gửi:",
