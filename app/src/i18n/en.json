@@ -647,9 +647,7 @@
   "letters.yesterday": "yesterday",
   "letters.empty.in": "No letters for you yet",
   "letters.empty.out": "You haven't sent any letters",
-  "letters.alone": "Invite someone home to send letters",
   "letters.unread": "Unread letter",
-  "letters.home": "Write a letter to someone you love",
   "letters.homeNew": "{n} new",
   "letters.tab.paper": "Paper",
   "letters.tab.frame": "Frame",
@@ -707,8 +705,6 @@
   "letters.scrap.delete": "Remove",
 
   "letters.tab.layout": "Style",
-  "letters.layout.plain": "Plain",
-  "letters.layout.postage": "Postage",
   "letters.tpl.title": "A LOVE LETTER",
   "letters.tpl.titleLabel": "Letter title",
   "letters.tpl.to": "TO:",

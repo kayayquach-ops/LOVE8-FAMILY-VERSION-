@@ -83,12 +83,12 @@ Trạng thái: **đã sửa** · **cần thử trên iPhone thật** · **để 
 ## Để sau (cần quyết định hoặc việc lớn)
 
 - **Vào nhà bằng link mời vẫn đi đủ khoảng 17 màn hỏi đầu** (vai trò, ngày sinh, nơi ở, 5 trang kể chuyện...). Bố mẹ bấm link mời nên có đường ngắn hơn (ví dụ chỉ hỏi bạn là ai, tên, rồi vào nhà; phần còn lại hỏi sau). Cần người dùng quyết vì đụng nhịp chậm đã chốt.
-- **Lịch mặc định loại "Sinh nhật"**: thêm ngày giỗ mà quên đổi loại thì hiện nút "Gửi lời chúc". Nên để mặc định "Khác" hoặc bắt chọn loại trước; cần quyết.
-- **`user-scalable=no` trong viewport**: iPhone bỏ qua, Android thì chặn cả chụm phóng to ảnh. Đã thêm `touch-action` nên có thể bỏ thuộc tính này; để người dùng quyết sau khi thử.
-- **Nhạc nền hỏi đầu 2,9 MB** tải ngay khi chạm màn chào. Nén về 96 kbps còn khoảng 1,2 MB nhưng cần người dùng nghe lại.
-- **Ảnh nền thẻ "Gửi cả nhà một tấm ảnh" dùng `filter: blur(18px)`**: ảnh đứng yên nên chưa thấy giật, nếu iPhone vẫn giật khi cuộn Trang chủ thì đổi sang ảnh làm mờ sẵn từ máy chủ.
+- **Lịch mặc định loại "Sinh nhật"**: đã đổi mặc định sang "Khác" (18/11).
+- **`user-scalable=no` trong viewport**: đã bỏ (18/11), giữ `touch-action`; ô nhập đều từ 16px nên iPhone không tự phóng.
+- **Nhạc nền hỏi đầu**: đã nén 131 kbps xuống 96 kbps, 2,9 MB còn 2,2 MB (18/11). Cần người dùng nghe lại.
+- **Ảnh nền thẻ "Gửi cả nhà một tấm ảnh"**: lớp `.home-cta` với `filter: blur(18px)` không còn trong mã, không cần làm.
 - **AI hỏi sai** trong cuộc gọi tuần: không đụng logic cuộc gọi theo dặn, có kế hoạch riêng.
-- **Màu thanh trạng thái** (`theme-color #F6EEE2`) hơi khác nền sương mờ; không đổi vì đụng phần nền đã chốt.
+- **Màu thanh trạng thái**: đã khớp nền (`#FBFBF8` sáng, `#121116` tối) ở index.html, theme.ts và manifest.
 
 ## Danh sách thử trên iPhone thật
 
