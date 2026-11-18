@@ -854,5 +854,9 @@
   "shot.soon.title": "곧 {name}이에요",
   "shot.soon.today": "오늘은 {name}이에요",
   "shot.soon.days": "{n}일 남았어요, 가족 {name} 사진 찍어요",
-  "shot.soon.now": "가족 {name} 사진 찍어요"
+  "shot.soon.now": "가족 {name} 사진 찍어요",
+  "chat.translate": "번역",
+  "chat.translated": "번역",
+  "chat.translating": "번역 중...",
+  "settings.autoTranslate": "메시지 자동 번역"
 }

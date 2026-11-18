@@ -7,6 +7,7 @@ import { pool } from './db.ts';
 import { notifyChat } from './push.ts';
 import { errorBody, tReq } from './i18n.ts';
 import { warmThumbs } from './thumb.ts';
+import { migrateTranslate, purgeOrphanTranslations, translateRouter } from './translate.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -41,6 +42,8 @@ export async function migrateChat(db: { query: (q: string, v?: any[]) => Promise
     create index if not exists messages_family on messages (family_id, created_at desc);
     create table if not exists message_reads (member_id text primary key references members(id), at timestamptz not null default now());
   `);
+  await migrateTranslate(db);
+  await purgeOrphanTranslations(db);
 }
 
 const clients = new Map<string, Set<express.Response>>();
@@ -57,6 +60,8 @@ const h = (fn: (req: any, res: express.Response) => Promise<unknown>) => (req: a
   });
 
 const COLS = 'id, author_id, kind, text, media, sticker, seconds, reply_to, created_at';
+// Thêm thứ tiếng của người viết để máy khách biết tin nào cần nút dịch.
+const COLS_LANG = `${COLS}, (select lang from members where id = author_id) as author_lang`;
 
 /** Luồng tin mới (SSE). Gắn TRƯỚC auth, tự kiểm tra ?token= vì EventSource không gửi được header. */
 export const chatStreamRouter = express.Router();
@@ -88,15 +93,16 @@ export function closeChatStreams(familyId: string, memberId: string) {
 }
 
 export const chatRouter = express.Router();
+chatRouter.use(translateRouter);
 
 chatRouter.get('/chat', h(async (req, res) => {
   const fid = req.member.family_id;
   const after = req.query.after ? new Date(String(req.query.after)) : null;
   if (after && !isNaN(after.getTime())) {
-    const { rows } = await pool.query(`select ${COLS} from messages where family_id = $1 and created_at > $2 order by created_at limit 200`, [fid, after]);
+    const { rows } = await pool.query(`select ${COLS_LANG} from messages where family_id = $1 and created_at > $2 order by created_at limit 200`, [fid, after]);
     return res.json(rows);
   }
-  const { rows } = await pool.query(`select * from (select ${COLS} from messages where family_id = $1 order by created_at desc limit 100) t order by created_at`, [fid]);
+  const { rows } = await pool.query(`select * from (select ${COLS_LANG} from messages where family_id = $1 order by created_at desc limit 100) t order by created_at`, [fid]);
   res.json(rows);
 }));
 
@@ -109,7 +115,7 @@ chatRouter.post('/chat', upload.single('file'), h(async (req, res) => {
   if (kind === 'sticker' && !sticker) return res.status(400).json(errorBody('chat_no_sticker'));
   if ((kind === 'photo' || kind === 'voice') && !req.file) return res.status(400).json(errorBody('missing_media'));
   const { rows } = await pool.query(
-    `insert into messages (id, family_id, author_id, kind, text, media, sticker, seconds, reply_to) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning ${COLS}`,
+    `insert into messages (id, family_id, author_id, kind, text, media, sticker, seconds, reply_to) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning ${COLS_LANG}`,
     [randomUUID(), req.member.family_id, req.member.id, kind, text, req.file ? `/media/${req.file.filename}` : null, sticker,
       Number(b.seconds) || null, b.reply_to ? String(b.reply_to) : null],
   );

@@ -870,5 +870,9 @@
   "shot.soon.today": "it's {name}",
   "shot.soon.days": "{n} days to go, take a {name} family photo",
   "shot.soon.days.one": "{n} day to go, take a {name} family photo",
-  "shot.soon.now": "take a {name} family photo"
+  "shot.soon.now": "take a {name} family photo",
+  "chat.translate": "translate",
+  "chat.translated": "translation",
+  "chat.translating": "translating...",
+  "settings.autoTranslate": "Translate messages automatically"
 }

@@ -854,5 +854,9 @@
   "shot.soon.title": "sắp {name} rồi",
   "shot.soon.today": "{name} đến rồi",
   "shot.soon.days": "còn {n} ngày, chụp ảnh {name} cả nhà nhé",
-  "shot.soon.now": "chụp ảnh {name} cả nhà nhé"
+  "shot.soon.now": "chụp ảnh {name} cả nhà nhé",
+  "chat.translate": "dịch",
+  "chat.translated": "bản dịch",
+  "chat.translating": "đang dịch...",
+  "settings.autoTranslate": "Tự dịch tin nhắn"
 }

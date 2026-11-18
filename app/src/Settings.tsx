@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, googlePending, startGoogle, token } from './api';
+import { api, autoTranslateOn, googlePending, setAutoTranslate, startGoogle, token } from './api';
 import { LANG_NAMES, LANGS, setLang, t, useLang, type Key } from './i18n';
 import { setThemeMode, THEME_MODES, useThemeMode } from './theme';
 import { Notify } from './Notify';
@@ -13,6 +13,7 @@ export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose
   const lang = useLang();
   const theme = useThemeMode();
   const [sound, setSound] = useState(uiSoundsOn());
+  const [autoTr, setAutoTr] = useState(autoTranslateOn());
   const google = useGoogleLink();
 
   return (
@@ -56,6 +57,10 @@ export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose
           <button className="set-switch" role="switch" aria-checked={sound} onClick={() => { const v = !sound; setUiSounds(v); setSound(v); if (v) tap(); }}>
             <span>{t('settings.soundTap')}</span>
             <i className={sound ? 'on' : ''} aria-hidden><u /></i>
+          </button>
+          <button className="set-switch" role="switch" aria-checked={autoTr} onClick={() => { const v = !autoTr; setAutoTranslate(v); setAutoTr(v); tap(); }}>
+            <span>{t('settings.autoTranslate')}</span>
+            <i className={autoTr ? 'on' : ''} aria-hidden><u /></i>
           </button>
         </div>
 

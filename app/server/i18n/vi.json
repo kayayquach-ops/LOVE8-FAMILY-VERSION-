@@ -207,5 +207,10 @@
   "error.shot_state": "Lượt chụp này đã đổi, mở lại xem nhé",
   "error.shot_nudged": "Vừa nhắc rồi, lát nữa nhắc tiếp nhé",
   "error.member_self": "Không tự xoá mình khỏi nhà được nhé",
-  "error.member_not_found": "Không thấy người này trong nhà nữa"
+  "error.member_not_found": "Không thấy người này trong nhà nữa",
+  "error.translate_lang": "Chưa rõ dịch sang tiếng nào",
+  "error.translate_not_found": "Không thấy tin nhắn này",
+  "error.translate_unavailable": "Chưa dịch được lúc này",
+  "error.translate_limit": "Hôm nay nhà mình dịch nhiều rồi, mai dịch tiếp nhé",
+  "error.translate_failed": "Chưa dịch được, thử lại sau nhé"
 }
