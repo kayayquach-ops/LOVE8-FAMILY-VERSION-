@@ -73,7 +73,7 @@ Dọn nhà thử trên live (CHỈ khi người dùng bảo, vì nay đã có ng
 
 ## Việc người dùng tự làm
 
-- **TURN** cho gọi video qua 4G: đăng ký dịch vụ (Metered hoặc Cloudflare), đưa ba giá trị `TURN_URL`, `TURN_USERNAME`, `TURN_CREDENTIAL`, mình đặt lên Railway bằng `railway variables --service homeletter --set ...` (không in giá trị ra).
+- **TURN** cho gọi video qua 4G: ĐÃ CÓ, dùng Cloudflare Realtime TURN (`CF_TURN_KEY_ID`, `CF_TURN_API_TOKEN` trên Railway, `server/facetime.ts`). Người dùng xác nhận 18/11; dòng cũ ghi "chờ đăng ký" là sai.
 - Kiểm hạn mức và bật thanh toán Gemini (đã gặp lỗi 429 khi thử).
 - Thử trên iPhone thật theo danh sách ở cuối `app/docs/ux-audit.md`.
 
@@ -153,3 +153,13 @@ Người dùng thử chụp chung trên iPhone, chưa hiểu cách dùng và mu�
 - Mẫu: `src/ShotTemplate.tsx` (khung ngắm, ô trong bảng dịp, màn chờ có ghế điền ảnh thật). Màn chờ bỏ danh sách "ai đã chụp", tên trên ảnh lấy liền không bị cắt khi 4 người.
 - Xoá khỏi nhà: `DELETE /api/members/:id` trong `server/members.ts`. Ai trong nhà cũng xoá được người khác (người tạo nhà có thể là nick thử), không tự xoá mình. Một giao dịch theo kế hoạch xoá từng bảng (`PLAN`), có test bắt lỗi nếu sau này thêm bảng có cột trỏ tới thành viên mà quên đưa vào kế hoạch. Tệp media chỉ xoá khi không còn hàng nào nhắc tới. Đóng luồng chat và gọi video của người bị xoá. App: bấm tên một người trong mục cả nhà, hiện "xoá khỏi nhà", thẻ xác nhận. Máy người bị xoá nhận 401, về màn chào.
 - Đã kiểm: tsc, build, i18n sạch, 91/91 test. SQL xoá mới chạy trên database giả trong test, chưa chạy Postgres thật; lỗi thì giao dịch huỷ, không mất gì.
+
+### 18/11 tối: người lập duyệt người mới, dịch tin nhắn, dọn việc để sau, đăng nhập Google (CHƯA DEPLOY)
+Người dùng trả lời từng mục trong danh sách việc còn lại:
+- **Người lập duyệt** (commit ef2b7a3): `server/join.ts`, bảng `join_requests` (người chờ không nằm trong `members`). Người duyệt là người vào nhà sớm nhất còn lại. Vào bằng mã hay link mời chỉ hỏi vai, tên, nơi ở rồi gửi lời xin; màn chờ; người duyệt có thẻ "cho vào / không" ở trang chủ và mục cả nhà, có thông báo. Hết hạn 7 ngày, mỗi IP sai mã 10 lần mỗi 10 phút, mỗi nhà tối đa 10 lời xin mở. Tạo nhà mới vẫn đi đủ phần làm quen.
+- **Dịch tin nhắn** (nhánh feat-chat-translate, gộp ở 47fcac3): `server/translate.ts`, nút "dịch" dưới tin của người khác thứ tiếng, công tắc "Tự dịch tin nhắn" trong Cài đặt, lưu bản dịch ở `message_translations`, tối đa 300 lần mỗi nhà mỗi ngày (`TRANSLATE_DAILY_CAP`).
+- **Dọn việc để sau** (7f37c24, gộp ở ef7b371): lịch mặc định "Khác", bỏ `user-scalable=no`, nhạc màn chào 2,9 MB còn 2,2 MB (nguồn chỉ 131 kbps), `compression` lên 1.8.2 (npm audit sạch), xoá CSS `.pod-*`/`.recap-empty`, 7 khoá i18n thừa, thư mục `branding/jar/`. Thẻ blur ở trang chủ không còn trong code.
+- **Đăng nhập Google**: project Google Cloud riêng "Sweet Home" (`sweet-home-515107`, tài khoản Google của người dùng), client "Sweet Home web", đã "In production". `GOOGLE_CLIENT_ID` đã đặt trên Railway (`--skip-deploys`, có hiệu lực ở lần deploy tới) và trong `app/.env`. Trang chính sách `app/public/privacy.html` (vi/en/ko) là link privacy trên màn đồng ý của Google. Người dùng đồng ý điều khoản Google API User Data Policy trong chat.
+- **Giá gói gia đình**: người dùng chốt 99.000/tháng, chưa rõ đồng hay won (đang hỏi lại). Nếu là đồng: 6 tháng 499.000đ, 1 năm 899.000đ. Chưa có thanh toán thật.
+- **Không làm lúc này**: nói chuyện với Mây thời gian thực (Gemini Live), đề nghị để sau buổi pitch vì phải thay bộ máy cuộc gọi.
+- Chưa kiểm: SQL mới trên Postgres thật (join, dịch), đăng nhập Google thật, giao diện dịch trên iPhone.
