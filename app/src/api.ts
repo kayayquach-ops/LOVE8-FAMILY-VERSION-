@@ -1,4 +1,4 @@
-import { getLang, hasKey, onLangChange, t } from './i18n';
+import { getLang, hasKey, onLangChange, t, type Lang } from './i18n';
 import type { Me, Post, Shot, ShotOccasion, Week } from './shared';
 
 // Mã riêng của máy này, có được khi tạo nhà hoặc vào nhà. Không có mật khẩu.
@@ -68,6 +68,15 @@ export function upload<T>(path: string, form: FormData, onProgress?: (p: number)
 }
 
 const json = (body: unknown) => ({ method: 'POST', body: JSON.stringify(body) });
+
+/** Dịch một tin chữ trong chat sang thứ tiếng `to`. Lỗi mang `code`: translate_unavailable (máy chủ chưa có AI), translate_limit (hết lượt hôm nay). */
+export const translateMessage = (id: string, to: Lang) =>
+  call<{ text: string; lang: Lang; cached: boolean }>(`/api/chat/${encodeURIComponent(id)}/translate`, json({ to }));
+
+// Tự dịch tin nhắn: bật ở Cài đặt, nhớ theo từng máy.
+const AUTO_KEY = 'hl-auto-translate';
+export const autoTranslateOn = () => { try { return localStorage.getItem(AUTO_KEY) === '1'; } catch { return false; } };
+export const setAutoTranslate = (on: boolean) => { try { localStorage.setItem(AUTO_KEY, on ? '1' : '0'); } catch {} };
 
 // Đăng nhập Google đang dở: state và bind (bí mật của máy, không lên URL) giữ trong máy suốt lúc sang trang Google rồi quay về,
 // và suốt phần làm quen nếu tài khoản chưa có nhà. join: mã nhà trong link mời, để quay về vẫn vào đúng nhà.

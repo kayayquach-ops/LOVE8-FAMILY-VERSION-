@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { thumb, type Me, type Member } from './shared';
 import { cached, remember } from './cache';
-import { errorText, token } from './api';
-import { locale, t, type Key } from './i18n';
+import { autoTranslateOn, errorText, token, translateMessage } from './api';
+import { locale, shownLang, t, useLang, type Key } from './i18n';
 import { fileName, shrinkImage, useHoldMic } from './media';
 import { Avatar, Icon, toast } from './ui';
 import { STICKER_LIST, Sticker } from './stickers';
@@ -10,6 +10,8 @@ import { STICKER_LIST, Sticker } from './stickers';
 type Msg = {
   id: string; author_id: string; kind: 'text' | 'sticker' | 'photo' | 'voice'; text?: string | null; media?: string | null;
   sticker?: string | null; seconds?: number | null; reply_to?: string | null; created_at: string;
+  // Thứ tiếng của người viết (máy chủ gửi kèm), để biết tin nào cần nút dịch.
+  author_lang?: string | null;
 };
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -42,6 +44,8 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
   const list = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const meId = me.me.id;
+  const lang = useLang();
+  const auto = autoTranslateOn();
   // me được tải lại mỗi lần mở chat (đối tượng mới): chỉ dựng lại danh sách khi thông tin thành viên thật sự đổi.
   const membersKey = JSON.stringify(me.members);
   const member = (id: string): Member | undefined => me.members.find((m) => m.id === id);
@@ -168,6 +172,8 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
   const listBody = useMemo(() => {
     const rows: Array<{ type: 'day'; label: string; key: string } | { type: 'msg'; m: Msg; first: boolean; last: boolean }> = [];
     const days = msgs.map((m) => dayLabel(m.created_at));
+    // Tự dịch chỉ với 30 tin mới nhất, để mở chat dài không bắn cả trăm lượt dịch một lúc.
+    const recent = new Set(msgs.slice(-30).map((m) => m.id));
     const near = (i: number, j: number) => msgs[i].author_id === msgs[j].author_id && days[i] === days[j] && Math.abs(+new Date(msgs[j].created_at) - +new Date(msgs[i].created_at)) < 5 * 60e3;
     msgs.forEach((m, i) => {
       const p = i > 0, n = i < msgs.length - 1;
@@ -187,13 +193,15 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
             {m.kind === 'sticker' ? <div className="chat-sticker"><Sticker id={m.sticker ?? ''} size={120} /></div>
               : m.kind === 'photo' ? <button className="chat-photo-btn" onClick={() => setViewer(m.media!)} aria-label={t('chat.viewPhoto')}><img className="chat-photo" src={thumb(m.media, 1080)} alt="" loading="lazy" decoding="async" onLoad={() => { if (stick.current && list.current) list.current.scrollTop = list.current.scrollHeight; }} /></button>
               : <div className={`bubble ${mine ? 'mine' : ''}`}>{m.kind === 'voice' ? <Voice url={m.media!} seconds={m.seconds} /> : m.text}</div>}
+            {m.kind === 'text' && m.text && !mine && !m.id.startsWith('tmp-') && m.author_lang && m.author_lang !== lang
+              && <Translated id={m.id} to={shownLang()} auto={auto && recent.has(m.id)} />}
             {last && <small className="chat-time">{hm(m.created_at)}</small>}
           </div>
         </div>
       );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [msgs, membersKey]);
+  }, [msgs, membersKey, lang, auto]);
 
   return (
     <div className="chat" style={vh ? { height: vh } : undefined}>
@@ -255,5 +263,49 @@ function Voice({ url, seconds }: { url: string; seconds?: number | null }) {
       <i className="chat-wave" />
       <span>{seconds ? `${Math.round(seconds)}s` : t('common.listen')}</span>
     </button>
+  );
+}
+
+// Hết hạn mức hoặc máy chủ chưa có AI thì cả phiên này thôi hỏi dịch, khỏi bắn thêm lượt vô ích.
+let noTranslate = false;
+
+/** Nút "dịch" nhỏ dưới tin của người dùng thứ tiếng khác; bấm hiện bản dịch dưới tin gốc, bấm lại thì ẩn. auto: tự dịch khi hiện. */
+function Translated({ id, to, auto }: { id: string; to: 'vi' | 'en' | 'ko'; auto: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [gone, setGone] = useState(noTranslate);
+
+  const load = useCallback(() => {
+    if (busy) return;
+    setBusy(true); setErr(null); setOpen(true);
+    translateMessage(id, to)
+      .then((r) => setText(r.text))
+      .catch((e: Error & { code?: string }) => {
+        setOpen(false);
+        if (e.code === 'translate_unavailable') { noTranslate = true; setGone(true); } else setErr(e.message);
+      })
+      .finally(() => setBusy(false));
+  }, [id, to, busy]);
+
+  // Đổi thứ tiếng của mình thì bản dịch cũ không còn đúng.
+  useEffect(() => { setText(null); setErr(null); setOpen(false); }, [to]);
+  useEffect(() => { if (auto && !noTranslate && text == null && !open && !err) load(); }, [auto, to]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (gone && text == null) return null;
+  const quiet = { fontSize: 12, color: 'var(--muted)' } as const;
+  return (
+    <div style={{ marginTop: 2, minWidth: 0 }}>
+      {open && (
+        <div style={{ margin: '2px 6px 0', padding: '2px 0 2px 10px', borderLeft: '2px solid var(--line)', fontSize: 14, lineHeight: 1.4, color: 'var(--muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', userSelect: 'text', WebkitUserSelect: 'text' }}>
+          <small style={{ display: 'block', fontSize: 11 }}>{t('chat.translated')}</small>
+          {text ?? t('chat.translating')}
+        </div>
+      )}
+      {err && <div style={{ ...quiet, margin: '2px 6px 0' }}>{err}</div>}
+      <button type="button" style={{ ...quiet, background: 'none', border: 0, padding: '4px 6px', minHeight: 28 }}
+        onClick={() => { if (open) setOpen(false); else if (text != null) setOpen(true); else load(); }}>{t('chat.translate')}</button>
+    </div>
   );
 }

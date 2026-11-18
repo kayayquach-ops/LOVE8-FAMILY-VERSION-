@@ -216,5 +216,10 @@
   "error.shot_state": "This group photo has changed, open it again",
   "error.shot_nudged": "You just sent a reminder, try again in a bit",
   "error.member_self": "You can't remove yourself from your home",
-  "error.member_not_found": "This person isn't in your home anymore"
+  "error.member_not_found": "This person isn't in your home anymore",
+  "error.translate_lang": "Not sure which language to translate to",
+  "error.translate_not_found": "Couldn't find this message",
+  "error.translate_unavailable": "Translation isn't available right now",
+  "error.translate_limit": "Your family has translated a lot today, try again tomorrow",
+  "error.translate_failed": "Couldn't translate, please try again later"
 }
