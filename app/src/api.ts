@@ -25,12 +25,27 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const tk = token.get();
   const res = await fetch(path, { ...init, headers: { ...(init.body instanceof FormData ? {} : { 'content-type': 'application/json' }), ...(tk ? { authorization: `Bearer ${tk}` } : {}), 'x-lang': getLang(), ...init.headers } });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(errorText(data)), { status: res.status });
+  if (!res.ok) throw Object.assign(new Error(errorText(data)), { status: res.status, code: data.code, data });
   return data as T;
 }
 
 /** Máy chủ nói thẳng là mã của máy này không còn dùng được (khác với mất mạng hay máy chủ đang khởi động lại). */
 export const isSignedOut = (e: unknown) => (e as { status?: number })?.status === 401;
+
+/** Tên nhà đang xin vào và tên gọi người duyệt: chỉ biết chừng này khi chưa được cho vào. */
+export type JoinWaitInfo = { familyName: string; approverName: string };
+/** Mã của máy là một lời xin vào nhà còn chờ duyệt (máy chủ trả 403 join_pending): giữ mã, hiện màn chờ, không coi là mã hỏng. */
+export function joinPending(e: unknown): JoinWaitInfo | null {
+  const x = e as { status?: number; code?: string; data?: Partial<JoinWaitInfo> };
+  return x?.status === 403 && x.code === 'join_pending' ? { familyName: x.data?.familyName ?? '', approverName: x.data?.approverName ?? '' } : null;
+}
+// Máy đang chờ vào nhà nào: còn nhớ thì lúc lời xin mất (không được cho vào, hết hạn) vẫn báo được một câu trước khi về màn đầu.
+const WKEY = 'sh-join-wait';
+export const joinWait = {
+  get: (): JoinWaitInfo | null => { try { return JSON.parse(localStorage.getItem(WKEY) ?? 'null'); } catch { return null; } },
+  set: (w: JoinWaitInfo) => { try { localStorage.setItem(WKEY, JSON.stringify(w)); } catch {} },
+  clear: () => { try { localStorage.removeItem(WKEY); } catch {} },
+};
 
 /** Gửi ảnh, video kèm tiến độ (fetch chưa báo được tiến độ tải lên). */
 export function upload<T>(path: string, form: FormData, onProgress?: (p: number) => void): Promise<T> {
@@ -95,7 +110,12 @@ type Joining = { name: string; role: string; city: string; lang?: string; intro?
 
 export const api = {
   create: (b: Joining & { family: string }) => call<{ token: string; google?: boolean }>('/api/families', json(b)),
-  join: (b: Joining & { code: string }) => call<{ token: string; google?: boolean }>('/api/join', json(b)),
+  /** Vào nhà có sẵn: chỉ gửi lời xin, máy giữ mã của lời xin và chờ người lập nhà cho vào. */
+  join: (b: Joining & { code: string }) => call<{ token: string; google?: boolean; pending: true } & JoinWaitInfo>('/api/join', json(b)),
+  joinStatus: () => call<{ status: 'in' } | ({ status: 'pending' } & JoinWaitInfo)>('/api/join/status'),
+  joinCancel: () => call<{ ok: boolean }>('/api/join', { method: 'DELETE' }),
+  /** Người duyệt cho vào (yes) hoặc không. */
+  joinDecide: (id: string, yes: boolean) => call<{ ok: boolean }>(`/api/join/requests/${encodeURIComponent(id)}/${yes ? 'approve' : 'deny'}`, { method: 'POST' }),
   google: () => call<{ enabled: boolean }>('/api/google'),
   googleFinish: (p: GooglePending) => call<GoogleResult>('/api/google/finish', json({ state: p.state, bind: p.bind })),
   googleMe: () => call<{ enabled: boolean; linked: boolean; email: string | null }>('/api/google/me'),

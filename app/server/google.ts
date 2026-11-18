@@ -7,12 +7,14 @@
 //    của state đó, rồi chuyển về /?google=1. Trên URL không có gì bí mật.
 // 3. POST /api/google/finish {state, bind}: đúng bind mới nhận kết quả: vào nhà (đã liên kết), liên kết (từ Cài đặt), hoặc người mới.
 //    iPhone lỡ mở Google ở cửa sổ khác thì app trên Màn hình chính vẫn tự hỏi được bằng state và bind của mình khi quay lại.
-// Người mới: tạo nhà hoặc vào nhà kèm {google: {state, bind}} thì linkPendingGoogle() nối luôn. Chưa đặt GOOGLE_CLIENT_ID thì tắt hẳn.
+// Người mới: tạo nhà kèm {google: {state, bind}} thì linkPendingGoogle() nối luôn; xin vào nhà thì takePendingGoogle() giữ danh tính
+// trong lời xin, người duyệt cho vào mới nối (server/join.ts). Chưa đặt GOOGLE_CLIENT_ID thì tắt hẳn.
 import express from 'express';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { pool } from './db.ts';
 import { errorBody, reqLang } from './i18n.ts';
 import { jwksSource, verifyIdToken, type KeySource } from './googleVerify.ts';
+import { SQL as JOIN_SQL } from './join.ts';
 
 // Bộ giả chỉ để chạy thử trên máy (GOOGLE_FAKE=1); trên Railway luôn tắt.
 const FAKE = process.env.GOOGLE_FAKE === '1' && process.env.NODE_ENV !== 'production' && !Object.keys(process.env).some((k) => k.startsWith('RAILWAY_'));
@@ -157,11 +159,26 @@ googlePublicRouter.post('/google/finish', wrap(async (req, res) => {
 
   const { rows: [m] } = await pool.query('update members set last_seen = now() where google_sub = $1 returning token', [row.sub]);
   if (m) { await drop(row.state); return res.json({ status: 'signin', token: m.token }); }
+  // Đã xin vào nhà bằng tài khoản này, chưa được duyệt: trả mã của lời xin, máy hiện màn chờ (server/join.ts).
+  const { rows: [jr] } = await pool.query(JOIN_SQL.byGoogle, [row.sub]);
+  if (jr) { await drop(row.state); return res.json({ status: 'signin', token: jr.token }); }
   // Chưa có nhà: giữ hàng này để tạo nhà hoặc vào nhà xong thì nối.
   res.json({ status: 'new', name: row.name, email: row.email });
 }));
 
-/** Gọi ngay sau khi tạo thành viên mới. Trả undefined nếu không xin nối, true/false là nối được hay không. */
+/** Xin vào nhà bằng Google: lấy danh tính đã xác minh của phiên đang dở rồi bỏ phiên. Lời xin giữ danh tính này, được duyệt mới nối.
+ *  undefined: không xin nối; null: phiên hỏng, hết hạn, hay tài khoản đã thuộc một thành viên khác. */
+export async function takePendingGoogle(g: unknown): Promise<{ sub: string; email: string | null } | null | undefined> {
+  if (!g || typeof g !== 'object') return undefined;
+  const { state, bind } = g as { state?: unknown; bind?: unknown };
+  const row = await claim(state, bind);
+  if (!row || row.intent !== 'signin' || !row.sub || row.error) return null;
+  await drop(row.state);
+  const { rowCount } = await pool.query('select 1 from members where google_sub = $1', [row.sub]);
+  return rowCount ? null : { sub: row.sub, email: row.email };
+}
+
+/** Gọi ngay sau khi tạo thành viên mới (tạo nhà). Trả undefined nếu không xin nối, true/false là nối được hay không. */
 export async function linkPendingGoogle(memberId: string, g: unknown): Promise<boolean | undefined> {
   if (!g || typeof g !== 'object') return undefined;
   const { state, bind } = g as { state?: unknown; bind?: unknown };

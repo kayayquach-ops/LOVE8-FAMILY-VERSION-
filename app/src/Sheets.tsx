@@ -3,7 +3,7 @@ import { api } from './api';
 import { CityPicker } from './CityPicker';
 import { copyCode, shareInvite } from './Onboarding';
 import { shrinkImage } from './media';
-import { SILENT_HOURS, type Me, type Member, type Week } from './shared';
+import { SILENT_HOURS, type JoinRequest, type Me, type Member, type Week } from './shared';
 import { cityName, usePlaceNames } from './placeName';
 import { t, useLang } from './i18n';
 import { buzz, sfx, tap } from './sound';
@@ -19,6 +19,53 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
         <span style={{ width: 44 }} />
       </div>
       <div className="scroll" style={{ flex: 1, padding: '6px 20px calc(var(--safe-bottom) + 30px)' }}>{children}</div>
+    </div>
+  );
+}
+
+/** Lời xin vào nhà, chỉ người lập nhà (người duyệt) nhận được: tên, vai, nơi ở, nút cho vào và không.
+ *  Dùng ở Trang chủ và mục Gia đình. Bấm xong ẩn ngay, danh sách mới về sau (onChanged). */
+export function JoinAsks({ me, onChanged }: { me: Me; onChanged: () => void }) {
+  usePlaceNames();
+  const [done, setDone] = useState<string[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const list = (me.requests ?? []).filter((r) => !done.includes(r.id));
+  if (!list.length) return null;
+  async function decide(r: JoinRequest, yes: boolean) {
+    if (busy) return;
+    setBusy(r.id);
+    try {
+      await api.joinDecide(r.id, yes);
+      tap();
+      if (yes) toast(t('join.ask.done', { name: r.name }));
+      setDone((d) => [...d, r.id]);
+      onChanged();
+    } catch (e) {
+      toast((e as Error).message);
+      // Lời xin đã hết (hết hạn, đã bấm ở máy khác) hay mình không còn là người duyệt: bỏ thẻ, lấy danh sách mới.
+      const st = (e as { status?: number }).status;
+      if (st === 403 || st === 404) { setDone((d) => [...d, r.id]); onChanged(); }
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {list.map((r) => (
+        <div key={r.id} className="fade" style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '16px 16px 14px', borderRadius: 22, boxShadow: 'inset 0 0 0 1.5px var(--ink)', background: 'var(--paper)' }}>
+          <div className="row">
+            <Avatar m={{ id: r.id, name: r.name, role: r.role, city: r.city, lastSeen: r.createdAt }} size={44} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 16, fontWeight: 600, lineHeight: 1.3 }}>{t('join.ask.title', { name: r.name })}</div>
+              <div className="muted">{[t(`role.${r.role}`), cityName(r.city)].filter(Boolean).join(' · ')}</div>
+            </div>
+          </div>
+          <div className="row" style={{ gap: 10 }}>
+            <button className="btn" style={{ flex: 1, height: 48, fontSize: 16 }} disabled={busy === r.id} onClick={() => void decide(r, true)}>{t('join.ask.yes')}</button>
+            <button className="btn ghost" style={{ flex: 1, height: 48, fontSize: 16 }} disabled={busy === r.id} onClick={() => void decide(r, false)}>{t('join.ask.no')}</button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -79,6 +126,7 @@ export function Family({ me, onClose, onChanged, onSettings, onCallMember }: { m
     } finally { setBusyRm(false); }
   }
 
+  const approver = me.members.find((m) => m.id === me.approverId);
   const [hugged, setHugged] = useState(false);
   async function hug() {
     if (hugged) return;
@@ -90,6 +138,7 @@ export function Family({ me, onClose, onChanged, onSettings, onCallMember }: { m
   return (
     <Sheet title={t('family.title')} onClose={onClose}>
       <div className="h1">{me.family.name}</div>
+      {!!me.requests?.length && <div style={{ marginTop: 14 }}><JoinAsks me={me} onChanged={onChanged} /></div>}
       <div className="panel" style={{ padding: '4px 18px', marginTop: 14 }}>
         {me.members.map((m) => {
           const quiet = m.id !== me.me.id && hoursSince(m.lastSeen) > SILENT_HOURS;
@@ -119,6 +168,9 @@ export function Family({ me, onClose, onChanged, onSettings, onCallMember }: { m
           );
         })}
       </div>
+
+      {/* Người khác trong nhà chỉ thấy một dòng nhỏ, không thấy ai đang xin vào. */}
+      {!!me.waiting && approver && <div className="muted" style={{ marginTop: 10 }}>{t('join.waiting', { name: approver.name })}</div>}
 
       <button className="btn ghost" style={{ marginTop: 14 }} onClick={hug}><Icon name="heart" size={20} /> {t('family.hug')}</button>
 

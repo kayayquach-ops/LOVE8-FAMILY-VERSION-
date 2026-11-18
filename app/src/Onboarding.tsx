@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, fromGoogle, googlePending, startGoogle, token } from './api';
+import { api, fromGoogle, googlePending, isSignedOut, joinWait, startGoogle, token, type JoinWaitInfo } from './api';
 import { CityPicker } from './CityPicker';
 import { getLang, LANGS, rememberLang, setLang, t, useLang } from './i18n';
 import { fileName, type Recording } from './media';
@@ -12,6 +12,9 @@ import './onboarding.css';
 // home: bước dựng nhà (tạo nhà mới, vào nhà bằng mã, Google). family: đặt tên nhà sau khi chọn tạo nhà mới.
 type Step = 'hello' | 'role' | 'kid' | 'name' | 'dob' | 'city' | 'seen' | 'food' | 'love' | 'voice' | 'unsaid' | 'story' | 'home' | 'family' | 'code' | 'invite';
 const FLOW: Step[] = ['hello', 'role', 'kid', 'name', 'dob', 'city', 'seen', 'food', 'love', 'voice', 'unsaid', 'story', 'home'];
+// Vào nhà có sẵn (link mời, hoặc gõ mã ngay ở câu đầu): chỉ hỏi bạn là ai, tên, nơi ở rồi gửi lời xin. Phần kể chuyện, khảo sát chỉ dành cho người tạo nhà;
+// cuộc gọi tuần vẫn chạy khi không có các câu trả lời này (người vào nhà từ trước cũng chưa từng trả lời).
+const JOIN_FLOW: Step[] = ['hello', 'role', 'name', 'city', 'home'];
 
 // Bấm Google ở bước dựng nhà thì cả trang sang Google rồi tải lại: giữ tạm câu trả lời trong máy (cả câu thu âm) để quay về đúng bước dựng nhà.
 // Chỉ đọc lại khi máy này đang dở một lượt Google; tạo nhà, vào nhà xong hay huỷ Google thì xoá.
@@ -24,18 +27,19 @@ function readDraft(): Draft | null {
   } catch { return null; }
 }
 const clearDraft = () => { try { localStorage.removeItem(DRAFT); } catch { /* bỏ qua */ } };
+const dataUrl = (blob: Blob) => new Promise<string | null>((res) => {
+  const r = new FileReader();
+  r.onload = () => res(String(r.result));
+  r.onerror = () => res(null);
+  r.readAsDataURL(blob);
+});
 async function saveDraft(d: Omit<Draft, 'at' | 'voice'>, voice: Recording | null) {
-  const data = voice ? await new Promise<string | null>((res) => {
-    const r = new FileReader();
-    r.onload = () => res(String(r.result));
-    r.onerror = () => res(null);
-    r.readAsDataURL(voice.blob);
-  }) : null;
+  const data = voice ? await dataUrl(voice.blob) : null;
   const put = (x: Draft) => localStorage.setItem(DRAFT, JSON.stringify(x));
   // Máy hết chỗ thì bỏ câu thu âm, vẫn giữ câu trả lời.
   try { put({ ...d, at: Date.now(), ...(data && voice ? { voice: { data, seconds: voice.seconds } } : {}) }); } catch { try { put({ ...d, at: Date.now() }); } catch { /* bỏ qua */ } }
 }
-function draftVoice(d: Draft | null): Recording | null {
+function draftVoice(d: { voice?: { data: string; seconds: number } } | null): Recording | null {
   if (!d?.voice) return null;
   try {
     const [head, b64] = d.voice.data.split(',');
@@ -45,6 +49,33 @@ function draftVoice(d: Draft | null): Recording | null {
     const blob = new Blob([buf], { type: head.match(/^data:([^;,]+)/)?.[1] ?? '' });
     return { blob, seconds: d.voice.seconds, url: URL.createObjectURL(blob) };
   } catch { return null; }
+}
+
+// Đi đường dài rồi mới gõ mã ở bước dựng nhà: câu thu âm và ngày sinh chưa gửi được bằng mã của lời xin (chưa là thành viên),
+// giữ trong máy tới lúc được cho vào. App gửi khi thấy máy đã vào nhà (sendKept).
+const KEPT = 'sh-join-after';
+type Kept = { dob?: string | null; voice?: { data: string; seconds: number } };
+async function keepForLater(voice: Recording | null, dob: string | null) {
+  if (!voice && !dob) return;
+  const data = voice ? await dataUrl(voice.blob) : null;
+  const put = (x: Kept) => localStorage.setItem(KEPT, JSON.stringify(x));
+  try { put({ dob, ...(data && voice ? { voice: { data, seconds: voice.seconds } } : {}) }); } catch { try { put({ dob }); } catch { /* bỏ qua */ } }
+}
+export const dropKept = () => { try { localStorage.removeItem(KEPT); } catch { /* bỏ qua */ } };
+/** Vừa được cho vào: gửi câu thu âm, ngày sinh đã giữ. Lỗi thì thôi, không chặn việc vào nhà. */
+export async function sendKept() {
+  let k: Kept | null = null;
+  try { k = JSON.parse(localStorage.getItem(KEPT) ?? 'null'); } catch { /* bỏ qua */ }
+  dropKept();
+  if (!k) return;
+  const v = draftVoice(k);
+  if (v) {
+    const f = new FormData();
+    f.set('file', v.blob, fileName(v.blob, 'first-voice'));
+    f.set('seconds', String(v.seconds));
+    await api.firstVoice(f).catch(() => {});
+  }
+  if (k.dob) await fetch('/api/me/dob', { method: 'PUT', headers: { 'content-type': 'application/json', authorization: `Bearer ${token.get()}` }, body: JSON.stringify({ dob: k.dob }) }).catch(() => {});
 }
 
 // Chuyện vì sao có Sweet Home, kể chậm từng trang (chữ ở khoá onboarding.story.<trang>.a / .b).
@@ -57,7 +88,7 @@ const LOVE = ['often', 'sometimes', 'never'] as const;
 type Kid = 'son' | 'daughter' | 'both';
 
 // Vào app như một cuộc trò chuyện: bạn là ai, nhớ nhà thế nào, rồi nghe kể vì sao có Sweet Home và vào nhà.
-export function Onboarding({ onDone }: { onDone: () => void }) {
+export function Onboarding({ onDone }: { onDone: (pending?: JoinWaitInfo) => void }) {
   const lang = useLang();
   // Đi Google rồi quay về thì link mời đã rời thanh địa chỉ: lấy lại mã nhà đã giữ cùng phiên Google.
   const [invite] = useState(() => new URLSearchParams(location.search).get('join') ?? googlePending.get()?.join ?? '');
@@ -80,6 +111,11 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [family, setFamily] = useState<string | null>(null);
   const familyName = family ?? t('onboarding.home.default');
   const [code, setCode] = useState(invite);
+  // Nhà sắp xin vào: mã trong link mời, hoặc mã gõ ngay ở câu đầu (early). Có mã thì đi đường ngắn JOIN_FLOW.
+  const [joinCode, setJoinCode] = useState(invite);
+  const [early, setEarly] = useState(false);
+  const joining = !!joinCode;
+  const flow = joining ? JOIN_FLOW : FLOW;
   const [inviteName, setInviteName] = useState('');
   const [made, setMade] = useState<{ code: string; family: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -158,7 +194,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     try {
       if (step === 'hello') clearDraft();
       else await saveDraft({ role, kid, name, city, dob, a }, voice);
-      await startGoogle('signin', invite || undefined);
+      await startGoogle('signin', joinCode || undefined);
     } catch (e) { toast((e as Error).message); setGBusy(false); }
   };
 
@@ -170,7 +206,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   // Câu theo vai: bố mẹ một câu, con một câu.
   const R = (k: string) => t(`onboarding.${k}.${parent ? 'parent' : 'child'}` as Parameters<typeof t>[0], V);
   const go = (s: Step) => { sfx('button', true); setStep(s); };
-  const next = () => go(FLOW[FLOW.indexOf(step) + 1]);
+  const next = () => go(flow[flow.indexOf(step) + 1]);
   const auto = useRef<ReturnType<typeof setTimeout>>(undefined);
   const later = (f: () => void, ms: number) => { clearTimeout(auto.current); auto.current = setTimeout(f, ms); };
   useEffect(() => () => clearTimeout(auto.current), []);
@@ -178,8 +214,25 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     // Đang chờ tự sang câu sau mà bấm quay lại thì huỷ, không bị đẩy tới câu khác.
     clearTimeout(auto.current); choosing.current = false;
     if (step === 'story' && page > 0) return setPage(page - 1);
-    setStep(step === 'code' || step === 'family' ? 'home' : FLOW[Math.max(0, FLOW.indexOf(step) - 1)]);
+    // Mã gõ ở câu đầu: từ câu "bạn là ai" quay lại thì sửa mã; từ ô mã quay lại thì thôi xin vào, đi đường tạo nhà như thường.
+    if (early && step === 'role' && joining) return setStep('code');
+    if (early && step === 'code') { setEarly(false); setJoinCode(''); setInviteName(''); return setStep('role'); }
+    setStep(step === 'code' || step === 'family' ? 'home' : flow[Math.max(0, flow.indexOf(step) - 1)]);
   };
+  // Gõ mã ở câu đầu: hỏi tên nhà (mã sai thì báo ngay), rồi đi đường ngắn như link mời.
+  async function checkCode() {
+    setBusy(true);
+    try {
+      const r = await api.familyName(code.trim());
+      setInviteName(r.name);
+      setJoinCode(code.trim());
+      go('role');
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   // Chọn xong thì để lời đáp hiện một lúc rồi tự sang câu sau.
   // Quay lại câu đã trả lời thì vẫn chọn lại được; chỉ chặn bấm thêm trong lúc đang chờ sang câu sau.
   const choose = (k: string, v: string) => {
@@ -195,9 +248,23 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     try {
       // Vào bằng Google mà chưa có nhà: gửi kèm phiên Google, máy chủ nối tài khoản theo danh tính đã xác minh.
       const gp = gName !== null ? googlePending.get() : null;
-      const body = { name: name.trim(), role: role!, city, lang: getLang(), intro: { ...a, kid, loveVoice: !!voice },
+      // Đường ngắn không hỏi khảo sát: không gửi intro (gửi loveVoice: false sẽ bị đếm là "để sau" dù chưa từng được hỏi).
+      const body = { name: name.trim(), role: role!, city, lang: getLang(), ...(joining ? {} : { intro: { ...a, kid, loveVoice: !!voice } }),
         ...(gp?.intent === 'signin' ? { google: { state: gp.state, bind: gp.bind } } : {}) };
-      const r = join ? await api.join({ ...body, code: code.trim() }) : await api.create({ ...body, family: familyName.trim() || t('onboarding.home.default') });
+      if (join) {
+        // Vào nhà có sẵn chỉ là gửi lời xin: máy giữ mã của lời xin rồi chờ người lập nhà cho vào.
+        const r = await api.join({ ...body, code: (joinCode || code).trim() });
+        token.set(r.token);
+        clearDraft();
+        if (gName !== null) { googlePending.clear(); if (r.google !== true) toast(t('onboarding.google.linkLater')); }
+        rememberLang();
+        await keepForLater(voice, dobValid ? dobIso : null);
+        const w = { familyName: r.familyName, approverName: r.approverName };
+        joinWait.set(w);
+        stopMusic(4);
+        return onDone(w);
+      }
+      const r = await api.create({ ...body, family: familyName.trim() || t('onboarding.home.default') });
       token.set(r.token);
       clearDraft();
       // Phiên Google hết hạn giữa chừng (làm quen quá lâu) hay tài khoản vừa bị nối ở máy khác: vẫn vào nhà, nhắc nối lại sau.
@@ -214,7 +281,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       if (dobValid) await fetch('/api/me/dob', { method: 'PUT', headers: { 'content-type': 'application/json', authorization: `Bearer ${r.token}` }, body: JSON.stringify({ dob: dobIso }) }).catch(() => {});
       sfx('arrive');
       stopMusic(4);
-      if (join) return onDone();
       // Nhà đã tạo xong; chưa lấy được mã thì cứ vào nhà (mã có trong mục Gia đình), không để bấm Tạo nhà lần nữa thành hai nhà.
       const me = await api.me().catch(() => null);
       if (!me) return onDone();
@@ -267,21 +333,23 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   const dobValid = +dob.d >= 1 && +dob.d <= 31 && +dob.m >= 1 && +dob.m <= 12 && +dob.y >= 1920 && +dob.y <= new Date().getFullYear();
   const dobIso = `${dob.y}-${dob.m.padStart(2, '0')}-${dob.d.padStart(2, '0')}`;
-  const done = FLOW.indexOf(step === 'code' || step === 'family' || step === 'invite' ? 'home' : step);
+  const done = early && step === 'code' ? 0 : flow.indexOf(step === 'code' || step === 'family' || step === 'invite' ? 'home' : step);
   const T = { typed, onTyped: setTyped, fast };
 
   // Từ câu hỏi đầu tiên trở đi: nền giấy trắng của bộ giao diện mới (màn chào vẫn là cánh đồng).
   return (
     <div className="screen ob" onPointerDownCapture={skip}>
-      {step === 'role' && hint && <div className="skip-hint" aria-hidden onAnimationStart={() => { try { localStorage.setItem('hl-skip-hint', '1'); } catch { /* bỏ qua */ } }}>{t('onboarding.skipHint')}</div>}
+      {/* Câu đầu có thêm dòng "Đã có mã nhà" ở đáy: đẩy gợi ý lên trên cho khỏi đè chữ. */}
+      {step === 'role' && hint && <div className="skip-hint" aria-hidden style={joining ? undefined : { bottom: 'calc(var(--safe-bottom) + 84px)' }} onAnimationStart={() => { try { localStorage.setItem('hl-skip-hint', '1'); } catch { /* bỏ qua */ } }}>{t('onboarding.skipHint')}</div>}
       <div className="top">
         {step !== 'invite' ? <button className="icon-btn" onClick={back} aria-label={t('common.back')}><Icon name="back" /></button> : <span style={{ width: 44 }} />}
-        <div className="progress"><i style={{ transform: `scaleX(${done / (FLOW.length - 1)})` }} /></div>
+        <div className="progress"><i style={{ transform: `scaleX(${done / (flow.length - 1)})` }} /></div>
         <span style={{ width: 44 }} />
       </div>
 
       {step === 'role' && (
-        <Ask key="role" q={t('onboarding.role.q')} {...T}>
+        <Ask key="role" q={t('onboarding.role.q')} {...T}
+          footer={!joining && <button className="link" onClick={() => { setEarly(true); go('code'); }}>{t('onboarding.role.code')}</button>}>
           {(['bo', 'me', 'con'] as const).map((k) => (
             <Opt key={k} on={role === k} onClick={() => { tapSoft(); setRole(k); setName(gName || (k === 'bo' ? t('role.bo') : k === 'me' ? t('role.me') : '')); later(next, 250); }}>{t(`onboarding.role.opt.${k}`)}</Opt>
           ))}
@@ -372,7 +440,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       )}
 
       {step === 'home' && (
-        <BuildHome role={role} name={name} city={city} invite={!!invite} inviteName={inviteName} busy={busy}
+        <BuildHome role={role} name={name} city={city} invite={joining} inviteName={inviteName} busy={busy}
           google={gOn && gName === null} gBusy={gBusy} onGoogle={google}
           onCreate={() => go('family')} onCode={() => go('code')} onJoin={() => void finish(true)} />
       )}
@@ -386,7 +454,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
       {step === 'code' && (
         <Ask key="code" q={t('onboarding.code.q')} sub={t('onboarding.code.sub')} {...T}
-          footer={<button className="btn" disabled={busy || !/^\d{6,7}$/.test(code.trim())} onClick={() => finish(true)}>{t('onboarding.join.btn')}</button>}>
+          footer={early
+            ? <button className="btn" disabled={busy || !/^\d{6,7}$/.test(code.trim())} onClick={() => void checkCode()}>{t('common.next')}</button>
+            : <button className="btn" disabled={busy || !/^\d{6,7}$/.test(code.trim())} onClick={() => finish(true)}>{t('onboarding.join.btn')}</button>}>
           {/* Không đặt maxLength: dán cả câu mời ("Mã nhà: 123456") vẫn lấy được đủ 6 số. */}
           <input className="field ob-code fade" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => { const found = e.target.value.match(/\d{6,7}/g); setCode(found ? found[found.length - 1] : e.target.value.replace(/\D/g, '').slice(0, 7)); }} placeholder="1234567" />
         </Ask>
@@ -396,7 +466,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         <Ask key="invite" q={t('onboarding.invite.q')} {...T}
           footer={<>
             <button className="btn" onClick={() => { sfx('button', true); void shareInvite(made.code, made.family); }}><Icon name="share" size={20} /> {t('invite.send')}</button>
-            <button className="link" onClick={onDone}>{t('onboarding.invite.skip')}</button>
+            <button className="link" onClick={() => onDone()}>{t('onboarding.invite.skip')}</button>
           </>}>
           <div className="panel ob-invite fade">
             <img className="invite-logo" src="/logo-mark.png" alt="" />
@@ -643,6 +713,65 @@ function HelloFrame() {
       <div className="ref-box">
         <img className="orn-s l" src="/art/orn-side-l.png" alt="" />
         <img className="orn-s r" src="/art/orn-side-r.png" alt="" />
+      </div>
+    </div>
+  );
+}
+
+/** Màn chờ người lập nhà cho vào, thay cho cả app khi mã của máy là một lời xin. Màn đang mở thì hỏi máy chủ 5 giây một lần:
+ *  được cho vào thì vào nhà như thường (onIn); lời xin mất (không được cho vào, hết hạn) thì báo một câu, bấm là về màn đầu (onOut). */
+export function JoinWait({ info, denied, onIn, onOut }: { info: JoinWaitInfo; denied?: boolean; onIn: () => void; onOut: () => void }) {
+  useLang();
+  const [w, setW] = useState(info);
+  const [no, setNo] = useState(!!denied);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (no) return;
+    let live = true, asking = false;
+    const poll = async () => {
+      if (asking || document.hidden) return;
+      asking = true;
+      try {
+        const r = await api.joinStatus();
+        if (!live) return;
+        if (r.status === 'in') { live = false; sfx('arrive'); return onIn(); }
+        // Người duyệt có thể đổi (người lập nhà bị xoá khỏi nhà): hiện tên mới.
+        const next = { familyName: r.familyName, approverName: r.approverName };
+        setW((p) => (p.familyName === next.familyName && p.approverName === next.approverName ? p : next));
+        joinWait.set(next);
+      } catch (e) {
+        // Mất mạng thì cứ chờ; chỉ khi máy chủ nói lời xin không còn mới báo.
+        if (live && isSignedOut(e)) setNo(true);
+      } finally {
+        asking = false;
+      }
+    };
+    void poll();
+    const iv = setInterval(() => void poll(), 5000);
+    const onShow = () => { if (document.visibilityState === 'visible') void poll(); };
+    document.addEventListener('visibilitychange', onShow);
+    return () => { live = false; clearInterval(iv); document.removeEventListener('visibilitychange', onShow); };
+  }, [no]);
+  const out = () => { joinWait.clear(); dropKept(); onOut(); };
+  const cancel = async () => {
+    if (busy) return;
+    setBusy(true);
+    await api.joinCancel().catch(() => {});
+    out();
+  };
+  return (
+    <div className="screen ob">
+      <div className="center fade" key={String(no)} style={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center', gap: 16, paddingTop: 0 }}>
+        <span style={{ color: 'var(--accent)', animation: no ? undefined : 'breathe 3.5s ease-in-out infinite' }}><Doodle name="house" size={64} /></span>
+        <h1 className="q display" style={{ textAlign: 'center' }}>
+          <Hand text={no ? t('join.no.title', { family: w.familyName }) : t('join.wait.title', { name: w.approverName })} />
+        </h1>
+        <p className="sub" style={{ textAlign: 'center', margin: 0 }}>{no ? t('join.no.sub') : w.familyName}</p>
+      </div>
+      <div className="ob-foot">
+        {no
+          ? <button className="btn" onClick={out}>{t('join.no.back')}</button>
+          : <button className="link" disabled={busy} onClick={() => void cancel()}>{t('join.wait.cancel')}</button>}
       </div>
     </div>
   );

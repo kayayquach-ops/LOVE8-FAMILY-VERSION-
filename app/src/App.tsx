@@ -1,11 +1,11 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { api, fromGoogle, isSignedOut, token } from './api';
+import { api, fromGoogle, isSignedOut, joinPending, joinWait, token, type JoinWaitInfo } from './api';
 import { Camera } from './Camera';
 import { Feed } from './Feed';
 import { Hug } from './Hug';
 import { MayTab } from './MayTab';
 import { NotifyAsk } from './NotifyAsk';
-import { Greeting, Onboarding } from './Onboarding';
+import { Greeting, JoinWait, Onboarding, sendKept } from './Onboarding';
 import type { Me, Shot } from './shared';
 import { GroupShot } from './GroupShot';
 import { isInviteFor, isPendingFor, shotIdFrom } from './shot';
@@ -60,6 +60,8 @@ export function App() {
   const [feedPost, setFeedPost] = useState<string | null>(null);
   // Mở app mà chưa nối được máy chủ: giữ mã của máy, chỉ báo và cho thử lại.
   const [offline, setOffline] = useState(false);
+  // Mã của máy là một lời xin vào nhà còn chờ: hiện màn chờ thay cho app. denied: lời xin đã mất, báo một câu rồi về màn đầu.
+  const [waiting, setWaiting] = useState<(JoinWaitInfo & { denied?: boolean }) | null>(null);
   const [calling, setCalling] = useState(false);
   // Đến lịch gọi thì chỉ hiện thẻ mời trên Trang chủ; màn đổ chuông chỉ mở khi người dùng bấm Nghe máy.
   const [callDue, setCallDue] = useState(false);
@@ -83,6 +85,9 @@ export function App() {
   const meJson = useRef(me ? JSON.stringify(me) : '');
   const loadMe = () => api.me().then((m) => {
     setOffline(false);
+    setWaiting(null);
+    // Vừa được cho vào nhà (kể cả lúc app đang tắt): gửi câu thu âm, ngày sinh đã giữ trong máy lúc xin vào.
+    if (joinWait.get()) { joinWait.clear(); void sendKept(); }
     const s = JSON.stringify(m);
     if (s === meJson.current) return;
     meJson.current = s;
@@ -92,9 +97,17 @@ export function App() {
   const load = () => {
     void loadUnread(); void checkCall();
     return loadMe().catch((e) => {
+      // Lời xin vào nhà còn chờ (403 join_pending): giữ mã, hiện màn chờ.
+      const p = joinPending(e);
+      if (p) { joinWait.set(p); setWaiting(p); return; }
       // Chỉ bỏ mã khi máy chủ nói rõ mã không còn; mất mạng thì giữ nguyên để khỏi phải vào nhà lại.
       // Máy của người vừa bị xoá khỏi nhà cũng rơi vào đây: bỏ mã, đóng kênh gọi video của nhà cũ, đóng màn đang mở, về màn chào.
-      if (isSignedOut(e)) { token.clear(); disconnectLive(); setSheet(null); setMe(null); } else setOffline(true);
+      // Máy đang chờ vào nhà mà lời xin mất (không được cho vào, hết hạn): báo một câu trước khi về màn đầu.
+      if (isSignedOut(e)) {
+        const w = joinWait.get();
+        token.clear(); disconnectLive(); setSheet(null); setMe(null);
+        setWaiting(w ? { ...w, denied: true } : null);
+      } else setOffline(true);
     }).finally(() => setReady(true));
   };
   useEffect(() => {
@@ -143,6 +156,8 @@ export function App() {
     void syncPush();
     return onPushOpen((o) => {
       if (o === 'call') { setSkipRoom(null); setSheet(null); setTab('camera'); connectLive(); void syncRoom(); }
+      // Có người xin vào nhà: thẻ cho vào nằm ở Trang chủ.
+      else if (o === 'join') { setSheet(null); setTab('home'); void loadMe().catch(() => {}); }
       else if (o === 'weekly') setCalling(true);
       else if (o === 'chat' || o === 'calendar') setSheet(o);
       else if (o === 'letter') setSheet('letters');
@@ -198,6 +213,10 @@ export function App() {
 
   let body = null;
   if (!ready) body = null;
+  else if (!me && waiting) body = (
+    <JoinWait key={waiting.denied ? 'no' : 'wait'} info={waiting} denied={waiting.denied}
+      onIn={() => void load()} onOut={() => { token.clear(); setWaiting(null); }} />
+  );
   else if (!me && offline) body = (
     <div className="screen"><div className="center" style={{ alignItems: 'center', textAlign: 'center', gap: 18 }}>
       <div className="h1">{t('app.offline.title')}</div>
@@ -205,13 +224,13 @@ export function App() {
       <button className="btn" style={{ maxWidth: 260 }} onClick={() => void load()}>{t('common.retry')}</button>
     </div></div>
   );
-  else if (!me) body = <Onboarding onDone={() => { history.replaceState(null, '', '/'); doneHug(); void load(); }} />;
+  else if (!me) body = <Onboarding onDone={(p) => { history.replaceState(null, '', '/'); if (p) return setWaiting(p); doneHug(); void load(); }} />;
   else if (greet) body = <Greeting onDone={() => setGreet(false)} />;
   else if (hug) body = <Hug name={me.me.name} onDone={doneHug} />;
   else body = (
     <>
       {tab === 'home'
-        ? <Home me={me} callDue={callDue && !calling} onCall={() => setCalling(true)} onOpen={(s, arg) => { if (s === 'camera') return setTab('camera'); if (s === 'podcast') setPodcastId(arg ?? null); if (s === 'feed') setFeedPost(arg ?? null); setSheet(s); }} />
+        ? <Home me={me} callDue={callDue && !calling} onCall={() => setCalling(true)} onChanged={() => void loadMe().catch(() => {})} onOpen={(s, arg) => { if (s === 'camera') return setTab('camera'); if (s === 'podcast') setPodcastId(arg ?? null); if (s === 'feed') setFeedPost(arg ?? null); setSheet(s); }} />
         : tab === 'may'
         ? <MayTab me={me} callDue={callDue && !calling} onCall={() => setCalling(true)} onPodcast={() => { setPodcastId(null); setSheet('podcast'); }} onCustomize={() => setSheet('mascot')} />
         : <Camera me={me} active={!sheet && !facetime && !calling} onOpen={(s) => { if (s === 'feed') setFeedPost(null); setSheet(s); }} onSent={load}

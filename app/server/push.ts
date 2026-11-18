@@ -9,8 +9,9 @@ import { errorBody, langOf, LANGS, tReq, tServer, type Lang } from './i18n.ts';
 import { upcoming } from './calendar.ts';
 import { weekKey } from './recap.ts';
 
-/** relay: lời nhắn khó nói gửi qua Mây, luôn bật (không có công tắc riêng, mỗi lời nhắn chỉ một thông báo cho đúng người nhận). */
-export type PushKind = 'call' | 'chat' | 'post' | 'calendar' | 'weekly' | 'letter' | 'relay';
+/** relay: lời nhắn khó nói gửi qua Mây, luôn bật (không có công tắc riêng, mỗi lời nhắn chỉ một thông báo cho đúng người nhận).
+ *  join: có người xin vào nhà, chỉ báo người duyệt, cũng luôn bật. */
+export type PushKind = 'call' | 'chat' | 'post' | 'calendar' | 'weekly' | 'letter' | 'relay' | 'join';
 export type PushPayload = {
   kind: PushKind;
   title: string;
@@ -26,7 +27,7 @@ export type PushPayload = {
 /** Chữ của thông báo viết theo ngôn ngữ của từng người nhận (members.lang). */
 type Payload = PushPayload | ((lang: Lang) => PushPayload);
 
-type PrefKind = Exclude<PushKind, 'relay'>;
+type PrefKind = Exclude<PushKind, 'relay' | 'join'>;
 const KINDS: PrefKind[] = ['call', 'chat', 'post', 'calendar', 'weekly', 'letter'];
 type Prefs = Record<PrefKind, boolean>;
 const DEFAULT_PREFS: Prefs = { call: true, chat: true, post: true, calendar: true, weekly: true, letter: true };
@@ -85,7 +86,7 @@ async function deliver(subs: SubRow[], make: Payload) {
     const opts = { TTL: payload.ttl ?? 6 * 3600, urgency: payload.urgency ?? 'normal' } as const;
     let prefs: Partial<Prefs> = {};
     try { if (s.prefs) prefs = JSON.parse(s.prefs); } catch {}
-    if (payload.kind !== 'relay' && withLetter(prefs)[payload.kind] === false) return;
+    if (payload.kind !== 'relay' && payload.kind !== 'join' && withLetter(prefs)[payload.kind] === false) return;
     try {
       await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body, opts);
     } catch (e: any) {
@@ -159,6 +160,13 @@ export function notifyReply(postId: string, memberId: string, what: { text?: str
       body: what.text ? short(what.text) : undefined, tag: `reply-${postId}`, open: 'post',
     }));
   })().catch((e) => console.error('[push]', e));
+}
+
+/** Có người xin vào nhà (server/join.ts): chỉ báo người duyệt. Chạm vào thì mở Trang chủ, thẻ cho vào nằm ở đó. */
+export function notifyJoin(approverId: string, requestId: string, name: string) {
+  void notifyMembers([approverId], (l) => ({
+    kind: 'join', title: tServer(l, 'push.join.title', { name: who(l, name) }), tag: `join-${requestId}`, open: 'join', ttl: 3 * 86400,
+  }));
 }
 
 /** Lời nhắn khó nói từ cuộc gọi với Mây (bảng relays): mỗi lời nhắn một thông báo cho đúng người nhận, chữ AI viết theo giọng người gửi.

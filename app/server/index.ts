@@ -8,7 +8,7 @@ import { unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { cleanMascotName, DEFAULT_MASCOT_NAME, isMascotShape, type Member, type Post, type Reply, type Week } from '../src/shared.ts';
 import { migrate, pool } from './db.ts';
-import { adoptLang, errorBody, isLang, langMiddleware, langOf, LANGS, tReq, tServer } from './i18n.ts';
+import { errorBody, isLang, langMiddleware, langOf, LANGS, tReq, tServer } from './i18n.ts';
 import { calendarRouter, migrateCalendar } from './calendar.ts';
 import { jarRouter, migrateJar } from './jar.ts';
 import { homeRouter } from './home.ts';
@@ -18,12 +18,13 @@ import { migrateRecap, recapRouter, startRecapScheduler } from './recap.ts';
 import { callRouter, migrateCall } from './call.ts';
 import { buildFirstVoicePodcast, migratePodcast, podcastRouter, refreshFirstVoicePodcasts } from './podcast.ts';
 import { liveRouter, liveStreamRouter } from './facetime.ts';
-import { migratePush, notifyPost, notifyReply, pushRouter, startPushScheduler } from './push.ts';
+import { migratePush, notifyJoin, notifyPost, notifyReply, pushRouter, startPushScheduler } from './push.ts';
 import { thumbRoute, warmThumbs } from './thumb.ts';
-import { googlePublicRouter, googleRouter, linkPendingGoogle } from './google.ts';
+import { googlePublicRouter, googleRouter, linkPendingGoogle, takePendingGoogle } from './google.ts';
 import { Limit, limitBy } from './limit.ts';
 import { migrateShot, shotPartsFor, shotRouter } from './shot.ts';
 import { membersRouter } from './members.ts';
+import { joinPublicRouter, joinRouter, joinView, memberAuth, memberFields, migrateJoin } from './join.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -74,16 +75,8 @@ const h = (fn: (req: Req, res: express.Response) => Promise<unknown>) => (req: R
     res.status(500).json(errorBody('server'));
   });
 
-// Không mật khẩu: mỗi máy giữ một mã riêng, gửi kèm mọi lần gọi. Mỗi lần gọi cũng là một lần "còn hoạt động".
-async function auth(req: Req, res: express.Response, next: express.NextFunction) {
-  const token = String(req.headers.authorization ?? '').replace(/^Bearer /, '');
-  if (!token) return res.status(401).json(errorBody('not_signed_in'));
-  const { rows } = await pool.query('update members set last_seen = now() where token = $1 returning id, family_id, lang', [token]);
-  if (!rows[0]) return res.status(401).json(errorBody('not_signed_in'));
-  adoptLang(rows[0].lang);
-  req.member = rows[0];
-  next();
-}
+// Không mật khẩu: mỗi máy giữ một mã riêng (server/join.ts memberAuth). Mã của lời xin vào nhà chưa duyệt nhận 403, không gọi được gì.
+const auth = memberAuth(pool);
 
 function memberRow(r: any): Member {
   return { id: r.id, name: r.name, role: r.role, avatar: r.avatar, city: r.city, phone: r.phone, lastSeen: r.last_seen };
@@ -98,28 +91,18 @@ async function newCode() {
   }
 }
 
+/** Người tạo nhà: thành viên đầu tiên, cũng là người duyệt người xin vào sau này (server/join.ts). */
 async function addMember(familyId: string, b: any) {
   const token = randomBytes(24).toString('base64url');
-  // Khảo sát lúc mới vào: wantHug (muốn ôm) và loveVoice (có thu câu thương đầu tiên) chỉ nhận true/false, bản cũ không có các trường này.
-  for (const k of ['wantHug', 'loveVoice']) {
-    if (!b.intro || typeof b.intro !== 'object' || !(k in b.intro)) continue;
-    const w = b.intro[k];
-    if (w === true || w === 'true') b.intro[k] = true;
-    else if (w === false || w === 'false') b.intro[k] = false;
-    else delete b.intro[k];
-  }
+  const f = memberFields(b);
   const mid = id();
   await pool.query('insert into members (id, family_id, name, role, token, city, intro, lang) values ($1,$2,$3,$4,$5,$6,$7,$8)', [
-    mid, familyId, String(b.name || '').slice(0, 30) || tReq('member.defaultName'), ['bo', 'me', 'con'].includes(b.role) ? b.role : 'con', token,
-    b.city ? String(b.city).slice(0, 300) : null, b.intro ? JSON.stringify(b.intro).slice(0, 4000) : null, isLang(b.lang) ? b.lang : null,
+    mid, familyId, f.name, f.role, token, f.city, f.intro, f.lang,
   ]);
   // Vào bằng Google mà tài khoản chưa có nhà: nối luôn (máy chủ chỉ tin danh tính đã xác minh trong phiên Google, không tin tên máy khách gửi).
   return { token, google: await linkPendingGoogle(mid, b.google) };
 }
 
-// Mã nhà chỉ 6 hoặc 7 chữ số và vào nhà không cần đăng nhập: mỗi IP được sai 15 lần mỗi 10 phút, cả máy chủ 100 lần sai mỗi giờ
-// (đổi IP liên tục cũng không quét nổi). Nhập đúng thì không tốn lượt.
-const codeTries = limitBy({ name: 'family-code', per: new Limit(15, 10 * 60e3), total: new Limit(100, 3600e3), onlyFailed: true, code: 'too_many_tries' });
 // Tạo nhà mới không cần mã: mỗi IP 20 nhà mỗi giờ, cả máy chủ 200, để không ai đẻ hàng loạt thành viên giả đốt ngân sách giọng đọc.
 const newFamilies = limitBy({ name: 'new-family', per: new Limit(20, 3600e3), total: new Limit(200, 3600e3) });
 
@@ -129,17 +112,10 @@ app.post('/api/families', newFamilies, h(async (req, res) => {
   res.json(await addMember(fid, req.body));
 }));
 
-app.post('/api/join', codeTries, h(async (req, res) => {
-  const { rows } = await pool.query('select id from families where code = $1', [String(req.body.code || '').trim()]);
-  if (!rows[0]) return res.status(404).json(errorBody('family_code_not_found'));
-  res.json(await addMember(rows[0].id, req.body));
-}));
-
-app.get('/api/family/:code', codeTries, h(async (req, res) => {
-  const { rows } = await pool.query('select name from families where code = $1', [req.params.code]);
-  if (!rows[0]) return res.status(404).json(errorBody('family_not_found'));
-  res.json({ name: rows[0].name });
-}));
+// Gõ mã nhà, bấm link mời, vào bằng Google: không vào thẳng nhà mà gửi lời xin, người lập nhà cho vào mới thành thành viên.
+// Tra mã nhà và xin vào nhà có giới hạn lượt sai theo IP (server/join.ts).
+const joinDeps = { db: pool, connect: () => pool.connect(), notify: notifyJoin, google: takePendingGoogle };
+app.use('/api', joinPublicRouter(joinDeps));
 
 // Số liệu gộp câu hỏi "có muốn ôm ngay không" lúc mới vào. Chỉ đếm, không lộ ai trả lời gì.
 app.get('/api/survey/hug', h(async (_req, res) => {
@@ -190,20 +166,23 @@ app.use('/api', liveRouter);
 app.use('/api', pushRouter);
 app.use('/api', googleRouter);
 app.use('/api', membersRouter());
+app.use('/api', joinRouter(joinDeps));
 
 app.get('/api/me', h(async (req, res) => {
   const m = req.member!;
-  const [f, ms, unseen] = await Promise.all([
+  const [f, ms, unseen, join] = await Promise.all([
     pool.query('select id, name, code, mascot_name, mascot_shape from families where id = $1', [m.family_id]),
     pool.query('select * from members where family_id = $1 order by created_at', [m.family_id]),
     pool.query(
       `select count(*)::int n from posts p where p.family_id = $1 and p.author_id <> $2
        and p.created_at > coalesce((select at from seen where member_id = $2), 'epoch')`, [m.family_id, m.id]),
+    // Lời xin vào nhà: người duyệt thấy từng người, người khác chỉ biết số người đang chờ.
+    joinView(pool, m.family_id, m.id),
   ]);
   const members = ms.rows.map(memberRow);
   const { mascot_name, mascot_shape, ...fam } = f.rows[0];
   const family = { ...fam, mascotName: mascot_name || DEFAULT_MASCOT_NAME, mascotShape: isMascotShape(mascot_shape) ? mascot_shape : 'cloud' };
-  res.json({ family, me: members.find((x) => x.id === m.id), members, unseen: unseen.rows[0].n });
+  res.json({ family, me: members.find((x) => x.id === m.id), members, unseen: unseen.rows[0].n, ...join });
 }));
 
 // Linh vật của nhà: ai trong nhà cũng đổi được tên (1-20 ký tự) và hình. Gửi trường nào thì đổi trường đó.
@@ -416,6 +395,7 @@ app.use((err: Error & { type?: string; status?: number }, _req: express.Request,
 
 const port = Number(process.env.PORT || 3010);
 await migrate();
+await migrateJoin(pool);
 await migrateCalendar(pool);
 await migrateJar(pool);
 await migrateChat(pool);

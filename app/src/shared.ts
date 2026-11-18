@@ -38,7 +38,10 @@ export type Post = {
   /** Ảnh chụp chung do AI ghép: id lượt chụp và ảnh thật của từng người (để hiện nhãn "ảnh ghép AI" và hàng ảnh thật). */
   shotId?: string | null; shotParts?: string[];
 };
-export type Me = { family: Family; me: Member; members: Member[]; unseen: number };
+/** Lời xin vào nhà đang chờ (server/join.ts): chỉ người duyệt nhận được danh sách này. */
+export type JoinRequest = { id: string; name: string; role: Role; city: string | null; createdAt: string };
+/** approverId: người duyệt người mới (người vào nhà sớm nhất còn ở nhà). requests: chỉ người duyệt có; waiting: người khác chỉ biết số người đang chờ. */
+export type Me = { family: Family; me: Member; members: Member[]; unseen: number; approverId?: string | null; requests?: JoinRequest[]; waiting?: number };
 
 export type Week = {
   week: string;

@@ -11,6 +11,7 @@ import { CallCard } from './CallCard';
 import { snooze, snoozed } from './callSnooze';
 import { shareInvite } from './Onboarding';
 import { JarArt } from './JarArt';
+import { JoinAsks } from './Sheets';
 import { cityName, usePlaceNames } from './placeName';
 import { fmtDate, fmtDayMonth, fmtTime, locale, shownLang, t } from './i18n';
 
@@ -49,7 +50,7 @@ function today() {
 const given = (name: string) => name.trim().split(/\s+/).pop() ?? name;
 const lower = (s: string) => (shownLang() === 'ko' ? s : s.toLocaleLowerCase(locale()));
 
-export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean; onCall: () => void; onOpen: (s: Screen, arg?: string) => void }) {
+export function Home({ me, callDue, onCall, onChanged, onOpen }: { me: Me; callDue: boolean; onCall: () => void; onChanged: () => void; onOpen: (s: Screen, arg?: string) => void }) {
   // Đổi qua lại Camera và Nhà là dựng lại màn này: hiện ngay bản lần trước, phần dưới không trống rồi mới hiện.
   const [data, setData] = useState<HomeData | null>(() => cached<HomeData>('home'));
   const [later, setLater] = useState(false);
@@ -137,6 +138,9 @@ export function Home({ me, callDue, onCall, onOpen }: { me: Me; callDue: boolean
         </div>
         <button className="home-set" onClick={go('settings')} aria-label={t('settings.title')}><Icon name="sliders" size={22} /></button>
       </header>
+
+      {/* Có người xin vào nhà: chỉ người lập nhà thấy, nằm trên cùng vì người kia đang chờ. */}
+      <JoinAsks me={me} onChanged={onChanged} />
 
       {invite && <CallCard role={me.me.role} onAnswer={onCall} onLater={() => { snooze(); setLater(true); }} />}
 
