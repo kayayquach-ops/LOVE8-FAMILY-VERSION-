@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { thumb, type Me, type Member } from './shared';
 import { cached, remember } from './cache';
 import { autoTranslateOn, errorText, token, translateMessage } from './api';
@@ -12,7 +12,20 @@ type Msg = {
   sticker?: string | null; seconds?: number | null; reply_to?: string | null; created_at: string;
   // Thứ tiếng của người viết (máy chủ gửi kèm), để biết tin nào cần nút dịch.
   author_lang?: string | null;
+  // Tin riêng: người nhận. null là tin cả nhà.
+  to_id?: string | null;
 };
+type Summary = { last: Msg | null; unread: number };
+type Threads = { family: Summary; people: Record<string, Summary> };
+
+/** Khoá luồng cả nhà trong danh sách (mã thành viên là uuid nên không trùng). */
+const FAMILY = 'family';
+/** Tham số luồng gửi lên máy chủ: luồng cả nhà không có ?with=. */
+const qs = (peer: string | null, extra = '') => {
+  const p = [peer ? `with=${encodeURIComponent(peer)}` : '', extra].filter(Boolean).join('&');
+  return p ? `?${p}` : '';
+};
+const given = (name: string) => name.trim().split(/\s+/).pop() ?? name;
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const tk = token.get();
@@ -32,9 +45,128 @@ function dayLabel(iso: string) {
   return d.toLocaleDateString(locale(), { day: 'numeric', month: 'long', year: d.getFullYear() === n.getFullYear() ? undefined : 'numeric' });
 }
 
-export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => void; onCall?: () => void; live?: boolean }) {
-  // Mở chat là thấy ngay các tin lần trước, tin mới về thì nối vào.
-  const [msgs, setMsgs] = useState<Msg[]>(() => cached<Msg[]>('chat') ?? []);
+/** Giờ ở danh sách luồng: hôm nay thì giờ phút, hôm qua, còn lại ngày/tháng. */
+function when(iso: string) {
+  const d = new Date(iso);
+  if (d.toDateString() === new Date().toDateString()) return hm(iso);
+  const label = dayLabel(iso);
+  return label === t('common.yesterday') ? label : d.toLocaleDateString(locale(), { day: 'numeric', month: 'numeric' });
+}
+
+/** Kênh tin tức thời. Máy chủ chỉ gửi tin mình được thấy: tin cả nhà, và tin riêng mình gửi hoặc nhận. */
+function useStream(onMsg: (m: Msg) => void, onOpen: () => void) {
+  const cb = useRef({ onMsg, onOpen });
+  cb.current = { onMsg, onOpen };
+  const es = useRef<EventSource | null>(null);
+  useEffect(() => {
+    try {
+      const s = new EventSource(`/api/chat/stream?token=${encodeURIComponent(token.get() ?? '')}`);
+      s.onmessage = (e) => { try { cb.current.onMsg(JSON.parse(e.data)); } catch {} };
+      s.onopen = () => cb.current.onOpen();
+      es.current = s;
+    } catch {}
+    return () => { es.current?.close(); es.current = null; };
+  }, []);
+  return es;
+}
+
+/** Chat: mở ra là danh sách luồng (cả nhà, rồi từng người), chạm vào một luồng thì mở luồng đó.
+ *  start: mở thẳng luồng riêng với người này (chạm thông báo tin riêng). */
+export function Chat({ me, onClose, onVideo, onVoice, live, start }: {
+  me: Me; onClose: () => void; onVideo?: (memberId?: string) => void; onVoice?: (memberId: string) => void; live?: boolean; start?: string | null;
+}) {
+  const valid = (id?: string | null): id is string => !!id && id !== me.me.id && me.members.some((m) => m.id === id);
+  const [open, setOpen] = useState<string | null>(() => (valid(start) ? start : null));
+  // Đang mở chat mà chạm thông báo tin riêng khác: chuyển sang luồng đó.
+  useEffect(() => { if (valid(start)) setOpen(start); }, [start]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Về danh sách: luồng vừa xem không còn chấm chưa đọc ngay từ bản lưu, khỏi nháy chấm cũ trong lúc chờ máy chủ.
+  const back = () => {
+    const th = cached<Threads>('chat-threads');
+    if (th && open) {
+      const seen = (s?: Summary): Summary => ({ last: s?.last ?? null, unread: 0 });
+      remember('chat-threads', open === FAMILY ? { ...th, family: seen(th.family) } : { ...th, people: { ...th.people, [open]: seen(th.people[open]) } });
+    }
+    setOpen(null);
+  };
+  if (open) {
+    return <Thread key={open} me={me} peer={open === FAMILY ? null : open} live={live} onBack={back} onVideo={onVideo} onVoice={onVoice} />;
+  }
+  return <ThreadList me={me} onClose={onClose} onOpen={setOpen} />;
+}
+
+/** Tin mới về khi đang xem danh sách: đổi tin cuối của luồng, thêm một tin chưa đọc nếu không phải tin mình. */
+function bump(p: Threads | null, m: Msg, meId: string): Threads | null {
+  if (!p) return p;
+  const next = (s?: Summary): Summary => (s?.last?.id === m.id ? s : { last: m, unread: m.author_id === meId ? 0 : (s?.unread ?? 0) + 1 });
+  if (!m.to_id) return { ...p, family: next(p.family) };
+  const peer = m.author_id === meId ? m.to_id : m.author_id;
+  return { ...p, people: { ...p.people, [peer]: next(p.people[peer]) } };
+}
+
+function ThreadList({ me, onClose, onOpen }: { me: Me; onClose: () => void; onOpen: (id: string) => void }) {
+  const meId = me.me.id;
+  const [th, setTh] = useState<Threads | null>(() => cached<Threads>('chat-threads'));
+  const load = useCallback(() => {
+    call<Threads>('/api/chat/threads').then((r) => { setTh(r); remember('chat-threads', r); }).catch(() => {});
+  }, []);
+  useEffect(() => {
+    load();
+    const onShow = () => { if (!document.hidden) load(); };
+    document.addEventListener('visibilitychange', onShow);
+    return () => document.removeEventListener('visibilitychange', onShow);
+  }, [load]);
+  useStream((m) => setTh((p) => bump(p, m, meId)), load);
+
+  const member = (id: string): Member | undefined => me.members.find((m) => m.id === id);
+  const preview = (m: Msg | null, family: boolean) => {
+    if (!m) return '';
+    const body = m.kind === 'text' ? (m.text ?? '') : m.kind === 'sticker' ? t('chat.kind.sticker') : m.kind === 'photo' ? t('chat.photo') : t('chat.kind.voice');
+    const who = m.author_id === meId ? t('chat.you') : family ? given(member(m.author_id)?.name ?? t('common.someone')) : '';
+    return who ? `${who}: ${body}` : body;
+  };
+  // Cả nhà luôn đầu; sau đó người có tin mới nhất trước, ai chưa nhắn gì giữ thứ tự trong nhà.
+  const people = me.members.filter((m) => m.id !== meId)
+    .map((m, i) => ({ m, s: th?.people[m.id], i }))
+    .sort((a, b) => (+new Date(b.s?.last?.created_at ?? 0) - +new Date(a.s?.last?.created_at ?? 0)) || a.i - b.i);
+  const row = (id: string, name: string, av: ReactNode, s: Summary | undefined, family: boolean) => {
+    const n = s?.unread ?? 0;
+    const last = s?.last ?? null;
+    return (
+      <button key={id} className={`chat-thread ${n ? 'unread' : ''}`} onClick={() => onOpen(id)}>
+        <span className="chat-thread-av">{av}</span>
+        <span className="chat-thread-main">
+          <b>{name}</b>
+          {last && <span className="chat-thread-last">{preview(last, family)}</span>}
+        </span>
+        <span className="chat-thread-side">
+          {last && <small>{when(last.created_at)}</small>}
+          {n > 0 && <i className="chat-dot" role="img" aria-label={t('chat.unread', { n })} />}
+        </span>
+      </button>
+    );
+  };
+
+  return (
+    <div className="chat">
+      <header className="chat-top">
+        <button className="icon-btn" onClick={onClose} aria-label={t('common.back')}><Icon name="back" /></button>
+        <div className="chat-title"><b>{t('tab.chat')}</b></div>
+      </header>
+      <div className="chat-threads">
+        {row(FAMILY, t('chat.family'), <span className="chat-thread-fam"><Icon name="people" size={22} /></span>, th?.family, true)}
+        {people.map(({ m, s }) => row(m.id, m.name, <Avatar m={m} size={44} />, s, false))}
+      </div>
+    </div>
+  );
+}
+
+/** Một luồng: cả nhà (peer null) hoặc tin riêng với peer. Ảnh, giọng nói, hình dán, dịch như nhau. */
+function Thread({ me, peer, onBack, onVideo, onVoice, live }: {
+  me: Me; peer: string | null; onBack: () => void; onVideo?: (memberId?: string) => void; onVoice?: (memberId: string) => void; live?: boolean;
+}) {
+  // Mở luồng là thấy ngay các tin lần trước, tin mới về thì nối vào. Luồng cả nhà giữ khoá cũ.
+  const cacheKey = peer ? `chat:${peer}` : 'chat';
+  const [msgs, setMsgs] = useState<Msg[]>(() => cached<Msg[]>(cacheKey) ?? []);
   const [text, setText] = useState('');
   const [tray, setTray] = useState(false);
   const [vh, setVh] = useState<number | null>(null);
@@ -50,7 +182,9 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
   const membersKey = JSON.stringify(me.members);
   const member = (id: string): Member | undefined => me.members.find((m) => m.id === id);
 
-  const markRead = useCallback(() => { call('/api/chat/read', { method: 'POST' }).catch(() => {}); }, []);
+  const markRead = useCallback(() => { call(`/api/chat/read${qs(peer)}`, { method: 'POST' }).catch(() => {}); }, [peer]);
+  // Kênh tức thời gửi mọi tin mình được thấy: chỉ lấy tin của luồng đang mở.
+  const inThread = (m: Msg) => (peer ? (m.author_id === meId && m.to_id === peer) || (m.author_id === peer && m.to_id === meId) : !m.to_id);
 
   const merge = useCallback((incoming: Msg[]) => {
     if (!incoming.length) return;
@@ -71,30 +205,26 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
   useEffect(() => {
     const real = msgs.filter((m) => !m.id.startsWith('tmp-'));
     latest.current = real.length ? real[real.length - 1].created_at : '';
-    remember('chat', real.slice(-60));
-  }, [msgs]);
+    remember(cacheKey, real.slice(-60));
+  }, [msgs, cacheKey]);
+  const alive = useRef(true);
+  const catchUp = useCallback(() => {
+    const after = latest.current ? `after=${encodeURIComponent(latest.current)}` : '';
+    call<Msg[]>(`/api/chat${qs(peer, after)}`).then((r) => alive.current && merge(r)).catch(() => {});
+  }, [peer, merge]);
+  // Kênh vừa nối (hoặc nối lại): hỏi bù các tin tới đúng khe kênh chưa nối, vì kênh nối rồi thì lần hỏi 8 giây bị bỏ qua. Tin trùng tự lọc.
+  const es = useStream((m) => { if (inThread(m)) merge([m]); }, catchUp);
   useEffect(() => {
-    let alive = true;
+    alive.current = true;
     // Bản mới thay bản lưu, giữ lại các tin mình đang gửi dở.
-    call<Msg[]>('/api/chat').then((r) => { if (alive) { setMsgs((p) => [...r, ...p.filter((m) => m.id.startsWith('tmp-'))]); markRead(); } }).catch((e) => toast(e.message));
-    const catchUp = () => {
-      const q = latest.current ? `?after=${encodeURIComponent(latest.current)}` : '';
-      call<Msg[]>(`/api/chat${q}`).then((r) => alive && merge(r)).catch(() => {});
-    };
+    call<Msg[]>(`/api/chat${qs(peer)}`).then((r) => { if (alive.current) { setMsgs((p) => [...r, ...p.filter((m) => m.id.startsWith('tmp-'))]); markRead(); } }).catch((e) => toast(e.message));
     const poll = setInterval(() => {
       // Kênh tin tức thời đang nối thì không cần hỏi thêm; chỉ hỏi khi kênh rớt.
-      if (document.hidden || es?.readyState === 1) return;
+      if (document.hidden || es.current?.readyState === 1) return;
       catchUp();
     }, 8000);
-    let es: EventSource | undefined;
-    try {
-      es = new EventSource(`/api/chat/stream?token=${encodeURIComponent(token.get() ?? '')}`);
-      es.onmessage = (e) => { try { merge([JSON.parse(e.data)]); } catch {} };
-      // Kênh vừa nối (hoặc nối lại): hỏi bù các tin tới đúng khe kênh chưa nối, vì kênh nối rồi thì lần hỏi 8 giây bị bỏ qua. Tin trùng tự lọc.
-      es.onopen = catchUp;
-    } catch {}
-    return () => { alive = false; clearInterval(poll); es?.close(); };
-  }, [merge, markRead]);
+    return () => { alive.current = false; clearInterval(poll); };
+  }, [peer, markRead, catchUp, es]);
 
   // Bàn phím bật lên thì khung co lại theo vùng nhìn thấy.
   useEffect(() => {
@@ -118,7 +248,7 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
     if (slow) setPending((n) => n + 1);
     if (tmp) setMsgs((p) => [...p, tmp]);
     try {
-      const m = await call<Msg>('/api/chat', { method: 'POST', body: f });
+      const m = await call<Msg>(`/api/chat${qs(peer)}`, { method: 'POST', body: f });
       setMsgs((p) => {
         const rest = tmp ? p.filter((x) => x.id !== tmp.id) : p;
         // Kênh tức thời có thể đã đưa tin thật về trước.
@@ -189,7 +319,7 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
         <div key={m.id} className={`chat-row ${mine ? 'mine' : ''} ${first ? 'first' : ''}`}>
           {!mine && <div className="chat-av">{last ? <Avatar m={who} size={30} /> : null}</div>}
           <div className="chat-col">
-            {!mine && first && <small className="chat-name">{who?.name ?? t('common.someone')}</small>}
+            {!mine && first && !peer && <small className="chat-name">{who?.name ?? t('common.someone')}</small>}
             {m.kind === 'sticker' ? <div className="chat-sticker"><Sticker id={m.sticker ?? ''} size={120} /></div>
               : m.kind === 'photo' ? <button className="chat-photo-btn" onClick={() => setViewer(m.media!)} aria-label={t('chat.viewPhoto')}><img className="chat-photo" src={thumb(m.media, 1080)} alt="" loading="lazy" decoding="async" onLoad={() => { if (stick.current && list.current) list.current.scrollTop = list.current.scrollHeight; }} /></button>
               : <div className={`bubble ${mine ? 'mine' : ''}`}>{m.kind === 'voice' ? <Voice url={m.media!} seconds={m.seconds} /> : m.text}</div>}
@@ -201,21 +331,33 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
       );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [msgs, membersKey, lang, auto]);
+  }, [msgs, membersKey, lang, auto, peer]);
 
+  const other = peer ? member(peer) : undefined;
+  const otherName = other?.name ?? t('common.someone');
   return (
     <div className="chat" style={vh ? { height: vh } : undefined}>
       <header className="chat-top">
-        <button className="icon-btn" onClick={onClose} aria-label={t('common.back')}><Icon name="back" /></button>
-        <div className="chat-title">
-          <b>{me.family.name}</b>
-          <div className="chat-faces">{me.members.map((m) => <Avatar key={m.id} m={m} size={20} />)}</div>
-        </div>
-        {onCall && <button className={`icon-btn ${live ? 'live' : ''}`} onClick={onCall} aria-label={t('chat.videoCall')}><Icon name="video" /></button>}
+        <button className="icon-btn" onClick={onBack} aria-label={t('common.back')}><Icon name="back" /></button>
+        {peer ? (
+          <>
+            <div className="chat-title chat-title-dm"><Avatar m={other} size={32} /><b>{otherName}</b></div>
+            {onVoice && <button className="icon-btn" onClick={() => onVoice(peer)} aria-label={t('chat.voiceCall')}><Icon name="phone" /></button>}
+            {onVideo && <button className="icon-btn" onClick={() => onVideo(peer)} aria-label={t('chat.videoCall')}><Icon name="video" /></button>}
+          </>
+        ) : (
+          <>
+            <div className="chat-title">
+              <b>{me.family.name}</b>
+              <div className="chat-faces">{me.members.map((m) => <Avatar key={m.id} m={m} size={20} />)}</div>
+            </div>
+            {onVideo && <button className={`icon-btn ${live ? 'live' : ''}`} onClick={() => onVideo()} aria-label={t('chat.videoCall')}><Icon name="video" /></button>}
+          </>
+        )}
       </header>
 
       <div className="chat-list" ref={list} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
-        {!msgs.length && <div className="chat-empty">{t('chat.empty')}</div>}
+        {!msgs.length && <div className="chat-empty">{peer ? t('chat.emptyTo') : t('chat.empty')}</div>}
         {listBody}
         {pending > 0 && <div className="chat-day chat-sending">{t('chat.sending')}</div>}
       </div>
@@ -234,7 +376,7 @@ export function Chat({ me, onClose, onCall, live }: { me: Me; onClose: () => voi
           <Icon name="image" />
           <input type="file" accept="image/*" hidden onChange={(e) => { void sendPhoto(e.target.files?.[0]); e.target.value = ''; }} />
         </label>
-        <input className="chat-input" value={text} placeholder={rec ? t('common.listening') : t('chat.placeholder')} disabled={rec}
+        <input className="chat-input" value={text} placeholder={rec ? t('common.listening') : peer ? t('chat.placeholderTo', { name: given(otherName) }) : t('chat.placeholder')} disabled={rec}
           onChange={(e) => setText(e.target.value)} onFocus={() => { setTray(false); stick.current = true; }}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) sendText(); }} enterKeyHint="send" />
         {text.trim()

@@ -52,10 +52,12 @@ export function parseTranslation(out: unknown, source: string): string | null {
 
 export type Result = { status: number; body: Record<string, unknown> };
 
-/** Dịch tin messageId cho người trong nhà `member`. Chỉ tin của nhà mình; đã có bản dịch thì trả luôn, không gọi AI, không tính hạn mức. */
-export async function translateMessage(db: Db, member: { family_id: string }, messageId: string, to: unknown, now = Date.now(), ask: typeof askJSON = askJSON): Promise<Result> {
+/** Dịch tin messageId cho người trong nhà `member`. Chỉ tin mình được đọc: tin cả nhà của nhà mình, hoặc tin riêng mình gửi hay nhận
+ *  (người thứ ba trong nhà nhận 404 như tin không có). Đã có bản dịch thì trả luôn, không gọi AI, không tính hạn mức. */
+export const MESSAGE_FOR = 'select id, kind, text from messages where id = $1 and family_id = $2 and (to_id is null or author_id = $3 or to_id = $3)';
+export async function translateMessage(db: Db, member: { id: string; family_id: string }, messageId: string, to: unknown, now = Date.now(), ask: typeof askJSON = askJSON): Promise<Result> {
   if (!isLang(to)) return { status: 400, body: errorBody('translate_lang') };
-  const { rows: [msg] } = await db.query('select id, kind, text from messages where id = $1 and family_id = $2', [messageId, member.family_id]);
+  const { rows: [msg] } = await db.query(MESSAGE_FOR, [messageId, member.family_id, member.id]);
   if (!msg) return { status: 404, body: errorBody('translate_not_found') };
   if (msg.kind !== 'text' || !msg.text) return { status: 400, body: errorBody('chat_no_text') };
 

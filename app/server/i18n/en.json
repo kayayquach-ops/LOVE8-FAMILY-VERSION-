@@ -165,6 +165,7 @@
   "push.chat.photo": "Sent a photo",
   "push.chat.voice": "Sent a voice message",
   "push.chat.many": "{name} sent {n} messages",
+  "push.dm.title": "{name} sent you a message",
   "push.relay.title": "A note from {name}",
   "push.join.title": "{name} wants to join your home",
   "push.relay.body": "{to}, {name} has something to tell you. Give {name} a call.",
