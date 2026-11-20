@@ -380,6 +380,9 @@ test('dữ liệu Live: đủ các mục theo thứ tự, lời nhắn có mã, 
   assert.deepEqual(Object.keys(d), ['today', 'local_time', 'person', 'family_members', 'depth', 'seeds', 'memory', 'upcoming_occasions',
     'told_themes', 'allowed_themes', 'previous_calls', 'saved_photos', 'recent_contact', 'pending_messages']);
   assert.match(d.today, /^\d{4}-\d{2}-\d{2}$/);
+  // Ngày theo giờ Việt Nam của now truyền vào: 17:30 UTC ngày 31/1 đã là 0:30 ngày 1/2 ở Việt Nam.
+  assert.equal((L.liveData(c, [], new Date('2027-01-31T17:30:00Z')) as any).today, '2027-02-01');
+  assert.equal((L.liveData(c, [], new Date('2027-01-31T16:30:00Z')) as any).today, '2027-01-31');
   assert.deepEqual(d.person, { name: 'Lan', role: 'me', age: 52, lives_in: 'Hải Phòng, Việt Nam', weather: 'cold and rainy' });
   assert.deepEqual(d.family_members, [{ name: 'An', role: 'con', lives_in: 'Busan, Hàn Quốc', hours_apart: 2, distance_km: 2600 }]);
   assert.equal(d.depth, 1);
@@ -424,15 +427,36 @@ test('lời dặn Live: đủ các phần, ví dụ của người dùng, mồi 
   for (const ex of ['Mẹ kể ngày nào cũng được ạ', 'Mẹ cứ từ từ ạ', 'Ơ mẹ ơi, hôm nay chỗ mẹ lạnh lắm đấy, mẹ mặc đủ ấm không ạ?', 'Dạ, con nghe đây ạ', 'kể gì bây giờ?', 'gợi ý đi',
     'Mẹ ơi, mẹ kể con nghe về tuổi thơ của mẹ được không?', 'An kể là ...']) assert.ok(b.includes(ex), ex);
   assert.ok(b.startsWith('You are Mây, the little mascot of Sweet Home'));
-  assert.ok(b.includes('call story_open with its theme and that exact opener as you say it'));
+  assert.ok(b.includes('call story_open with its theme and that exact opener right before you say it'));
+  assert.ok(b.includes('(copy its shape; the topic comes from the seeds)'));
+  // Đào chuyện như đứa cháu tò mò, không như điền phiếu; không phải lượt nào cũng hỏi.
+  for (const w of ['never walk through these like a form', 'pick up the most alive detail they just gave', 'the way a curious grandchild would',
+    'Not every turn needs a question', 'There is no limit on questions.', 'then, if a question helps, ask only one.',
+    'laugh along in a few words, then carry on with the story', 'never the same line twice in a row',
+    'say one warm line about something specific they told', 'ideally one that grows out of what they just said',
+    'treat it as the first story', 'instead of forcing the hook seed']) assert.ok(b.includes(w), w);
+  assert.ok(!b.includes('at most one question'));
+  assert.ok(!b.includes('how it felt then, how they see it now'));
+  // Gọi điện chỉ có giọng: không có luật danh sách, tiêu đề, gạch dài; tên là "nói" cho đúng.
+  assert.ok(!b.includes('No lists, no headings'));
+  assert.ok(b.includes('Say every name exactly as in DATA'));
+  // Chỉ nói tiếng của người nghe dù lời dặn và tin của app bằng tiếng Anh; ví dụ viết cho mẹ, phải đổi xưng hô.
+  assert.ok(b.includes('Speak only Vietnamese for the whole call, even though these notes and the app messages are in English.'));
+  assert.ok(b.indexOf('Speak only Vietnamese') < b.indexOf('HOW YOU TALK.'));
+  assert.ok(b.includes('written for a mother: with this person always swap Mẹ/mẹ, con and ạ for the address above; An stands for whoever told it.'));
+  // Điều thật: DATA và điều người nghe kể trong cuộc gọi này.
+  assert.ok(b.includes('Only DATA and what they tell you in this call are true. Never bring up a call, story, photo, message or detail that is in neither.'));
+  // Công cụ gọi ngay trước câu nói đi kèm, không sau (kết quả công cụ mở lượt mới, Mây dễ nói lặp).
+  for (const w of ['call ask_photo right before you ask', 'call relay_heard with its id right before you pass it on', 'call end_call with that promise as next_hook right before you say it',
+    'Call each tool right before the words it goes with']) assert.ok(b.includes(w), w);
   assert.ok(b.indexOf(c.extras!.seeds[0].hint) < b.indexOf(c.extras!.seeds[1].hint));
   assert.ok(b.indexOf(c.extras!.seeds[1].hint) < b.indexOf(c.extras!.seeds[2].hint));
   assert.ok(b.includes('"id": "r1"'));
   assert.ok(b.trimEnd().endsWith('Reply in Vietnamese.'));
   assert.ok(b.includes('\n\nReply in Vietnamese.'));
   assert.doesNotMatch(b, /[—–]/);
-  // Ảnh: gọi ask_photo trước story_close hay ngay sau (phán quyết R5).
-  assert.ok(b.includes('ask_photo before story_close or right after it'));
+  // Ảnh: gần cuối chuyện, trước story_close hay ngay sau (phán quyết R5).
+  assert.ok(b.includes('near its end (before story_close or right after it)'));
   // Câu hẹn: chỉ là chủ đề chuyện tuần sau, không bao giờ lời nhắn khó nói hay điều riêng, nhạy cảm (phán quyết mang từ task 2).
   assert.ok(b.includes('never the hard-to-say message, and nothing private or sensitive (health, money, conflict, worries)'));
   // Không phải cuộc gọi đầu: không có phần FIRST CALL; DATA không có trial.
@@ -441,10 +465,13 @@ test('lời dặn Live: đủ các phần, ví dụ của người dùng, mồi 
   // Tiếng Anh, tiếng Hàn: ví dụ theo thứ tiếng ấy, kết bằng đúng tên thứ tiếng.
   const en = L.liveBrief({ ...c, lang: 'en' }, []);
   assert.ok(en.trimEnd().endsWith('Reply in English.'));
+  assert.ok(en.includes('Speak only English for the whole call'));
+  assert.ok(en.includes('with this person always swap Mom for the address above'));
   assert.ok(!en.includes('Mẹ cứ từ từ ạ'));
   assert.doesNotMatch(en, /[—–]/);
   const ko = L.liveBrief({ ...c, lang: 'ko' }, []);
   assert.ok(ko.trimEnd().endsWith('Reply in Korean.'));
+  assert.ok(ko.includes('Speak only Korean for the whole call'));
   assert.doesNotMatch(ko, /[—–]/);
 });
 
@@ -452,6 +479,8 @@ test('lời dặn Live: cuộc gọi đầu có phần FIRST CALL; nhà đổi t
   const first = L.liveBrief(lanCtx('lan', { extras: extras() }), []);
   assert.ok(first.includes('FIRST CALL.'));
   assert.ok(first.indexOf('FIRST CALL.') < first.indexOf('DATA:'));
+  assert.ok(first.includes('start with easy everyday stories from the seeds, nothing heavy'));   // không giới hạn số chuyện
+  assert.ok(!first.includes('one or two easy'));
   assert.ok(first.includes('"trial": true'));
   const later = lanCtx('lan', { doneCalls: ['2026-11-14'], extras: extras() });
   assert.ok(!L.liveBrief(later, []).includes('FIRST CALL.'));
@@ -482,9 +511,15 @@ test('công cụ Live: đúng bảy công cụ, story_open bắt buộc theme tr
   // Mỗi mô tả một câu tiếng Anh nói khi nào gọi; không tên linh vật (công cụ không qua named), không gạch dài.
   for (const t of L.LIVE_TOOLS) {
     assert.match(t.description, /^Call this [^.!?]+\.$/, t.name);
+    assert.ok(t.description.includes('right before'), t.name);   // ngay trước câu nói đi kèm, không sau
     assert.doesNotMatch(JSON.stringify(t), /Mây|[—–]/, t.name);
   }
   // Câu hẹn: lời hứa ngắn, ấm về một chủ đề chuyện tuần sau; không bao giờ lời nhắn khó nói, điều riêng hay nhạy cảm.
+  assert.equal(by.story_open.description, 'Call this right before you say the opener of a new story, with its theme and that exact opener.');
+  assert.equal(by.ask_photo.description, 'Call this right before you invite them to share an old photo, near the end of a story with real people or places (before story_close or right after it).');
+  assert.equal(by.relay_heard.description, "Call this right before you pass on a pending message in your own words, with that message's id.");
+  assert.equal(by.end_call.description, 'Call this once, right before your goodbye, with the promise for next week you are about to make.');
+  assert.ok(so.properties.theme.description.includes('que-nha home and hometown, then and now'));
   const hook = ec.properties.next_hook.description;
   for (const w of ['short, warm promise about a story topic for next week', 'never the hard-to-say message', 'nothing private or sensitive (health, money, conflict, worries)']) assert.ok(hook.includes(w), w);
 });
@@ -498,6 +533,9 @@ test('nhấc máy Live: token mang lời dặn thật và bảy công cụ; tr�
   // Người đã gọi, có ảnh, có dữ liệu lớn dần, nhà ba người; lời nhắn theo mặc định của deps (không có).
   const three = [{ name: 'Hùng', role: 'bo' }, { name: 'Lan', role: 'me' }, { name: 'An', role: 'con' }];
   const srv2 = await serve(deps({ db, fetch: f, ctx: async (m) => lanCtx(m.id, { family: three, doneCalls: ['2026-11-14'], photoCount: 3, extras: extras({ themes: ['mon-an', 'que-nha'] }) }) }));
+  // Đọc lời nhắn lỗi: vẫn nhấc máy được, không có lời nhắn. Đồng hồ máy chủ (deps.now) lúc 0:30 ngày 1/2 giờ Việt Nam.
+  const srv3 = await serve(deps({ db: fakeDb({ members: [{ id: 'lan-brief3', may_live: true }] }), fetch: f, now: () => new Date('2027-01-31T17:30:00Z'),
+    relays: async () => { throw new Error('db down'); } }));
   try {
     const r = await srv.post('/api/call/live', 'lan-brief');
     assert.equal(r.status, 200);
@@ -524,7 +562,13 @@ test('nhấc máy Live: token mang lời dặn thật và bảy công cụ; tr�
     assert.equal(r2.body.family, 3);
     const text2 = JSON.parse(String(f.calls[1].init.body)).bidiGenerateContentSetup.systemInstruction.parts[0].text;
     assert.ok(!text2.includes('FIRST CALL.'));
+    const r3 = await srv3.post('/api/call/live', 'lan-brief3');
+    assert.equal(r3.status, 200);
+    assert.deepEqual(r3.body.relays, []);
+    const text3 = JSON.parse(String(f.calls[2].init.body)).bidiGenerateContentSetup.systemInstruction.parts[0].text;
+    assert.ok(text3.includes('"today": "2027-02-01"'));
+    assert.ok(text3.includes('"pending_messages": []'));
   } finally {
-    srv.close(); srv2.close();
+    srv.close(); srv2.close(); srv3.close();
   }
 });

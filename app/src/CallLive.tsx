@@ -25,6 +25,11 @@ const LOUD_RMS = 1000;
 const MIN_REC_SEC = 1;
 /** Mở socket rồi mà chừng này mili giây chưa có setupComplete thì về cuộc gọi cũ. */
 const CONNECT_MS = 15_000;
+/** Mây đã gọi end_call: lượt tạm biệt xong và giọng phát hết thì chờ thêm chừng này rồi cúp như bấm nút. */
+const BYE_MS = 1500;
+/** Bản thử chưa có bước xin phép chia sẻ: ask_share trả câu này để Mây không đứng chờ câu trả lời không bao giờ tới (task 7 thay bằng nút
+ *  và bộ đọc lời). Không bao giờ giả một câu trả lời có hay không. Tiếng Anh, chỉ model đọc. */
+const SHARE_LATER = 'later: the family decides in the app after the call. Do not wait for an answer; thank them and go on to the goodbye.';
 
 const toB64 = (buf: ArrayBuffer) => {
   const u = new Uint8Array(buf);
@@ -44,11 +49,13 @@ type Live = {
   cap: string; heard: string; newCap: boolean; newHeard: boolean; raf: number; timer: number;
   /** Hẹn giờ chờ phiên sẵn sàng (CONNECT_MS). */
   wait: number;
+  /** Mây đã gọi end_call (cúp sau lượt tạm biệt), hẹn giờ cúp. */
+  bye: boolean; byeT: number;
 };
 const fresh = (): Live => ({
   ctx: null, stream: null, node: null, player: null, ws: null, id: null, maxSec: 0, t0: 0, ended: false, usage: emptyUsage(), lats: [],
   quietAt: 0, loudAt: 0, waiting: false, gate: false, spoke: false, talking: false, stopRec: null, recUrl: '',
-  cap: '', heard: '', newCap: true, newHeard: true, raf: 0, timer: 0, wait: 0,
+  cap: '', heard: '', newCap: true, newHeard: true, raf: 0, timer: 0, wait: 0, bye: false, byeT: 0,
 });
 
 type Phase = 'ring' | 'connecting' | 'talk';
@@ -94,6 +101,7 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     const L = S.current;
     clearInterval(L.timer);
     clearTimeout(L.wait);
+    clearTimeout(L.byeT);
     cancelAnimationFrame(L.raf);
     stopRing();
     L.player?.stop();
@@ -216,9 +224,11 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     if (L.ended) return;
     if (m.setupComplete) return connected();
     if (m.usageMetadata) addUsage(L.usage, m.usageMetadata);
-    // Mọi lời gọi công cụ trả "ok" ngay: bản thử chưa có công cụ, lời dặn đổi sau này cũng không làm màn này đứng.
+    // Bản thử chưa làm hiệu ứng công cụ (task 5, 6): mọi lời gọi trả "ok" ngay, riêng ask_share trả "để sau" (SHARE_LATER).
+    // end_call: cúp sau lượt tạm biệt (byeAfterTurn).
     const calls: Array<{ id?: string; name?: string }> = m.toolCall?.functionCalls ?? [];
-    if (calls.length) send({ toolResponse: { functionResponses: calls.map((f) => ({ id: f.id, name: f.name, response: { result: 'ok' } })) } });
+    if (calls.some((f) => f.name === 'end_call')) L.bye = true;
+    if (calls.length) send({ toolResponse: { functionResponses: calls.map((f) => ({ id: f.id, name: f.name, response: { result: f.name === 'ask_share' ? SHARE_LATER : 'ok' } })) } });
     const sc = m.serverContent;
     if (!sc) return;
     if (sc.interrupted) { L.player?.stop(); L.newCap = true; }
@@ -233,7 +243,18 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
       L.heard += sc.inputTranscription.text;
       setHeard(L.heard);
     }
-    if (sc.turnComplete) { L.newCap = true; L.newHeard = true; }
+    if (sc.turnComplete) {
+      L.newCap = true; L.newHeard = true;
+      if (L.bye && !L.byeT) byeAfterTurn();
+    }
+  }
+
+  /** Lượt sau end_call đã xong: chờ giọng tạm biệt phát hết (giọng tới nhanh hơn phát), thêm BYE_MS rồi cúp như bấm nút. */
+  function byeAfterTurn() {
+    const L = S.current;
+    if (L.ended) return;
+    if (L.player?.talking) { L.byeT = window.setTimeout(byeAfterTurn, 200); return; }
+    L.byeT = window.setTimeout(() => end('hangup'), BYE_MS);
   }
 
   /** Mẩu tiếng của Mây: đo độ trễ lượt vừa rồi, dừng lượt đang ghi, rồi phát. */
