@@ -69,7 +69,7 @@ test('khung giờ: 9:00 tới trước 21:30 giờ người nhận; múi giờ h
 // Ở cấp module: Task 8 dùng lại now và p.
 const now = new Date('2026-11-20T13:00:00Z');        // 20:00 VN, 22:00 KST
 const p = (id: string, o: Partial<Pending> = {}): Pending => ({ id, kind: 'miss', toId: 'an', fromId: 'lan', toTz: 'Asia/Ho_Chi_Minh',
-  dueAt: new Date('2026-11-20T00:00:00Z'), expiresAt: new Date('2026-11-21T00:00:00Z'), createdAt: new Date('2026-11-20T01:00:00Z'), toOn: true, fromOn: true, ...o });
+  dueAt: new Date('2026-11-20T00:00:00Z'), expiresAt: new Date('2026-11-21T00:00:00Z'), createdAt: new Date('2026-11-20T01:00:00Z'), toOn: true, fromOn: true, ready: true, ...o });
 test('chọn lời nhắc: ưu tiên, trần ngày và tuần, giờ người nhận, hết hạn, công tắc, chưa tới hạn', () => {
   const run = (ps: Pending[], h = new Map<string, Date[]>()) => M.pickSends(ps, h, now);
   assert.deepEqual(run([p('a'), p('b', { kind: 'want_contact' })]).send.map((x) => x.id), ['b']);
@@ -86,6 +86,28 @@ test('chọn lời nhắc: ưu tiên, trần ngày và tuần, giờ người nh
   assert.deepEqual(run([p('a')], new Map([['an', [new Date('2026-11-19T16:30:00Z')]]])).send.map((x) => x.id), ['a']); // 23:30 hôm qua
   assert.deepEqual(run([p('a', { createdAt: new Date('2026-11-20T05:00:00Z') }), p('b')]).send.map((x) => x.id), ['b']);
 });
+// ---------- Tin chuyện mới (Task 8) ----------
+
+test('báo có chuyện mới: người được nhắc trong chuyện, không thì cả nhà; không bao giờ người kể', () => {
+  assert.deepEqual(M.storyRecipients(lan, family, 'hồi đó An còn bé, bố đi làm xa').sort(), [an.id, hung.id].sort());
+  assert.deepEqual(M.storyRecipients(lan, family, 'chợ quê đông vui lắm').sort(), [hung.id, an.id, binh.id].sort());
+  assert.deepEqual(M.storyRecipients(lan, family, 'Lan với An đi chợ'), [an.id]);
+  assert.deepEqual(M.storyRecipients(lan, family, 'con hay khóc').sort(), [hung.id, an.id, binh.id].sort()); // "con" mơ hồ: cả nhà
+  // Thêm: nhà một người thì không ai để báo.
+  assert.deepEqual(M.storyRecipients(lan, [lan], 'chợ quê đông vui lắm'), []);
+});
+test('lời báo chuyện mới: không tính trần, không theo công tắc lời nhắc, nhưng vẫn theo giờ và chờ tập xong', () => {
+  const story = (o: Partial<Pending> = {}) => p('s', { kind: 'story', ready: true, ...o });
+  const full = new Map([['an', [new Date('2026-11-20T03:00:00Z')]]]);
+  assert.deepEqual(M.pickSends([story()], full, now).send.map((x) => x.id), ['s']);
+  assert.deepEqual(M.pickSends([story({ toOn: false })], new Map(), now).send.map((x) => x.id), ['s']);
+  assert.deepEqual(M.pickSends([story({ ready: false })], new Map(), now), { send: [], drop: [] });
+  assert.deepEqual(M.pickSends([story({ toTz: 'Asia/Seoul' })], new Map(), now), { send: [], drop: [] });
+  // Thêm: hết hạn thì bỏ; chuyện mới và lời nhắc liên lạc cho cùng người không chặn nhau trong một lượt.
+  assert.deepEqual(M.pickSends([story({ expiresAt: new Date('2026-11-20T12:00:00Z') })], new Map(), now).drop, [{ id: 's', why: 'expired' }]);
+  assert.deepEqual(M.pickSends([story(), p('a')], new Map(), now).send.map((x) => x.id).sort(), ['a', 's']);
+});
+
 test('chữ lời nhắc: lời của Mây, không trích chuyện riêng, gọi theo vai', () => {
   const lan = { id: 'lan', name: 'Lan', role: 'me' }, an = { id: 'an', name: 'An', role: 'con' }, binh = { id: 'binh', name: 'Bình', role: 'con' };
   assert.deepEqual(M.nudgeText('miss', 'vi', lan, an, 'Mây'), { title: 'Mây', body: 'An ơi, mẹ vừa kể với Mây là nhớ An lắm. Gọi cho mẹ một chút nhé.' });
@@ -113,11 +135,11 @@ const kin = (id: string, name: string, role: string, o: Row = {}): Row =>
 const nudge = (id: string, from_id: string, to_id: string, sent_at: Date, o: Row = {}): Row =>
   ({ id, family_id: 'F', signal_id: null, from_id, to_id, kind: 'miss', sent_at, opened_at: null, contact_at: null, ...o });
 
-function fakeDb(t: { members?: Row[]; signals?: Row[]; nudges?: Row[]; messages?: Row[] } = {}) {
+function fakeDb(t: { members?: Row[]; signals?: Row[]; nudges?: Row[]; messages?: Row[]; podcasts?: Row[] } = {}) {
   const S = M.MAY_SQL;
   const families = [{ id: 'F', mascot_name: null }];
   const db = {
-    members: t.members ?? [], signals: t.signals ?? [], nudges: t.nudges ?? [], messages: t.messages ?? [],
+    members: t.members ?? [], signals: t.signals ?? [], nudges: t.nudges ?? [], messages: t.messages ?? [], podcasts: t.podcasts ?? [],
     async query(q: string, v: any[] = []): Promise<{ rows: Row[]; rowCount: number }> {
       const out = (rows: Row[], n = rows.length) => ({ rows, rowCount: n });
       const inFam = (id: string, fid: string) => db.members.some((m) => m.id === id && m.family_id === fid);
@@ -142,7 +164,10 @@ function fakeDb(t: { members?: Row[]; signals?: Row[]; nudges?: Row[]; messages?
             const from = db.members.find((m) => m.id === s.from_id && m.family_id === s.family_id);
             const fam = families.find((f) => f.id === s.family_id);
             if (!to || !from || !fam) return [];
+            // left join podcasts theo ref (cùng nhà): không có tập thì ready là null.
+            const ep = db.podcasts.find((e) => e.id === s.ref && e.family_id === s.family_id);
             return [{ id: s.id, family_id: s.family_id, kind: s.kind, from_id: s.from_id, to_id: s.to_id, due_at: s.due_at, expires_at: s.expires_at, created_at: s.created_at,
+              ref: s.ref ?? null, ready: ep ? ep.status === 'ready' : null,
               to_name: to.name, to_role: to.role, city: to.city, loc_share: to.loc_share, loc_lat: to.loc_lat, loc_lon: to.loc_lon, loc_at: to.loc_at, to_on: to.may_nudge,
               from_name: from.name, from_role: from.role, from_on: from.may_nudge, mascot_name: fam.mascot_name }];
           }));
@@ -159,6 +184,19 @@ function fakeDb(t: { members?: Row[]; signals?: Row[]; nudges?: Row[]; messages?
           s.sent_at = v[1];
           db.nudges.push({ id: v[2], family_id: s.family_id, signal_id: s.id, from_id: s.from_id, to_id: s.to_id, kind: s.kind, sent_at: s.sent_at, opened_at: null, contact_at: null });
           return out([{ id: v[2] }]);
+        }
+        case S.insert: {
+          const [id, family_id, from_id, to_id, kind, evidence, call_id, ref, due_at, expires_at] = v;
+          if (db.signals.some((s) => s.call_id === call_id && s.to_id === to_id && s.kind === kind)) return out([], 0);
+          db.signals.push({ id, family_id, from_id, to_id, kind, evidence, call_id, ref, due_at, expires_at, created_at: due_at, sent_at: null, dropped: null });
+          return out([], 1);
+        }
+        case S.claimStory: {
+          // Tin chuyện mới: chỉ giành tín hiệu, không ghi lời nhắc (không tính trần).
+          const s = db.signals.find((x) => x.id === v[0] && x.sent_at == null && x.dropped == null);
+          if (!s) return out([]);
+          s.sent_at = v[1];
+          return out([{ id: s.id }]);
         }
         case S.open: {
           const n = db.nudges.find((x) => x.id === v[0] && x.to_id === v[1] && x.family_id === v[2] && inFam(x.to_id, v[2]) && inFam(x.from_id, v[2]));
@@ -269,6 +307,44 @@ test('một lượt gửi: bỏ tín hiệu hết hạn hay đã tắt công t�
   assert.deepEqual(db.signals.map((s) => [s.id, s.dropped]), [['old', 'expired'], ['off', 'off']]);
   assert.deepEqual(db.nudges[0].contact_at, ago(27));
   assert.equal(sent.length, 0);
+});
+
+test('xếp tin chuyện mới: mỗi người nhận một hàng, hạn 72 giờ, không có câu gốc, xếp lại không thêm', async () => {
+  const db = fakeDb();
+  const q = () => M.queueStory(db, { familyId: 'F', callId: 'c1', podcastId: 'ep1', fromId: 'lan', to: ['an', 'binh'], now });
+  assert.equal(await q(), 2);
+  assert.deepEqual(db.signals.map((s) => [s.from_id, s.to_id, s.kind, s.ref, s.evidence, s.call_id, +s.due_at, s.expires_at.toISOString()]), [
+    ['lan', 'an', 'story', 'ep1', '', 'c1', +now, '2026-11-23T13:00:00.000Z'], ['lan', 'binh', 'story', 'ep1', '', 'c1', +now, '2026-11-23T13:00:00.000Z']]);
+  assert.equal(M.STORY_TTL_H, 72);
+  assert.equal(await q(), 0);
+});
+
+test('một lượt gửi: tin chuyện mới không ghi lời nhắc, không chặn lời nhắc liên lạc, bỏ qua công tắc lời nhắc; tập chưa xong thì chờ', async () => {
+  const story = (id: string, to_id: string, ref: string): Row => ({ id, family_id: 'F', from_id: 'lan', to_id, kind: 'story', evidence: '', call_id: 'c1', ref,
+    due_at: ago(1), expires_at: ago(-71), created_at: ago(1), sent_at: null, dropped: null });
+  const db = fakeDb({
+    members: [kin('lan', 'Lan', 'me'), kin('an', 'An', 'con'), kin('binh', 'Bình', 'con', { may_nudge: false }), kin('hung', 'Hùng', 'bo')],
+    podcasts: [{ id: 'ep1', family_id: 'F', status: 'ready' }, { id: 'ep2', family_id: 'F', status: 'rendering' }],
+    signals: [story('st1', 'an', 'ep1'), story('st2', 'binh', 'ep1'), story('st3', 'hung', 'ep2'),
+      { id: 's1', family_id: 'F', from_id: 'lan', to_id: 'an', kind: 'miss', evidence: 'Mẹ nhớ An, chuyện bí mật', call_id: 'c1', ref: null, due_at: ago(2), expires_at: ago(-22), created_at: ago(2), sent_at: null, dropped: null }],
+  });
+  const sent: Array<{ to: string; p: (l: 'vi' | 'en' | 'ko') => any }> = [];
+  const deps = { db, notify: (ids: string[], p: (l: 'vi' | 'en' | 'ko') => any) => { sent.push({ to: ids[0], p }); }, now: () => now };
+  await Promise.all([M.mayTick(deps), M.mayTick(deps)]);   // hai lượt cùng lúc: mỗi tín hiệu vẫn chỉ gửi một lần
+  assert.deepEqual(sent.map((s) => [s.to, s.p('vi').kind]).sort(), [['an', 'may'], ['an', 'post'], ['binh', 'post']]);
+  assert.deepEqual(db.nudges.map((n) => n.signal_id), ['s1']);                 // tin chuyện mới không thành lời nhắc, không tính trần
+  assert.deepEqual(db.signals.filter((s) => s.id === 'st3').map((s) => [s.sent_at, s.dropped]), [[null, null]]);
+  const toAn = sent.find((s) => s.to === 'an' && s.p('vi').kind === 'post')!.p;
+  assert.deepEqual(toAn('vi'), { kind: 'post', title: 'Mẹ vừa kể một chuyện', body: 'Mẹ vừa kể cho An nghe một chuyện, nghe nhé.', tag: 'story-ep1', open: 'podcast:ep1', ttl: 24 * 3600 });
+  for (const l of ['vi', 'en', 'ko'] as const) assert.doesNotMatch(`${toAn(l).title} ${toAn(l).body}`, /[{}—–]|nudge\.|bí mật/, l);
+  assert.match(toAn('ko').title, /엄마/);
+  // Tập dựng xong thì lượt sau mới báo Hùng; người kể là vợ nên gọi theo tên (tiếng Hàn kèm 님).
+  db.podcasts[1].status = 'ready';
+  sent.length = 0;
+  assert.deepEqual(await M.mayTick(deps), { sent: 1, dropped: 0 });
+  assert.equal(sent[0].p('vi').title, 'Lan vừa kể một chuyện');
+  assert.equal(sent[0].p('vi').body, 'Lan vừa kể cho Hùng nghe một chuyện, nghe nhé.');
+  assert.match(sent[0].p('ko').body, /Lan님/);
 });
 
 test('bấm lời nhắc: chỉ người nhận, ghi lúc mở một lần, trả người cần gọi', async () => {

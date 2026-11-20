@@ -176,6 +176,8 @@ export function App() {
       else if (o.startsWith('shot')) { const id = shotIdFrom(o); if (id) void openShot(id); else void loadShots(); }
       // Lời nhắc của Mây (iPhone không có nút trên thông báo): chạm là gọi thoại ngay cho người kể. Lỗi thì thôi, app vẫn mở.
       else if (o.startsWith('may:')) void api.mayOpen(o.slice(4)).then((r) => startFaceTime(r.peerId, { audio: true })).catch(() => {});
+      // Tin chuyện mới: mở đúng tập vừa được chia sẻ.
+      else if (o.startsWith('podcast:')) { setPodcastId(o.slice(8)); setSheet('podcast'); }
     });
   }, [!!me]);
 

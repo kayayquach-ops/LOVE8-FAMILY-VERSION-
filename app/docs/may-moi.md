@@ -115,7 +115,7 @@ Mã: `src/shared.ts` (chủ đề, kiểu bộ câu), `server/call.ts` (soạn c
 - Lượt hỏi thăm: không hỏi thêm; câu đáp nối luôn câu mở chuyện chính thành một câu nói (`joined: true`) nếu cả câu vừa `TTS_MAX`, đỡ một câu giọng mới. Quá dài thì chỉ câu đáp (`joined: false`). Câu gộp này là câu hỏi chính của cuộc gọi nên máy chủ đọc trước bằng giọng bắt buộc (`optional: false`, như câu có hỏi thêm); chỉ câu đáp đơn mới là câu phụ, bị bỏ khi ngân sách giọng ngày còn dưới 30%.
 - Trần lấy từ `script.follow` (bản cũ không có thì 4). Máy chủ không còn đọc `follows` máy khách gửi.
 
-**Chia sẻ**: cuộc gọi mới ghi `calls.shared = false`. `POST /api/call/:id/share` (không có thân, gửi lại được) bật `shared = true` cho cuộc gọi của chính người gọi; không thấy cuộc gọi thì 404 `call_not_found`. Cuộc gọi cũ vẫn là đã chia sẻ.
+**Chia sẻ**: cuộc gọi mới ghi `calls.shared = false`. `POST /api/call/:id/share` (không có thân, gửi lại được) bật `shared = true` cho cuộc gọi của chính người gọi; không thấy cuộc gọi thì 404 `call_not_found`. Cuộc gọi cũ vẫn là đã chia sẻ. Từ task 8 lệnh này đi qua `shareCall` (mục "Tập riêng và tập chia sẻ").
 
 **Câu cố định mới** (`callLines`, nạp sẵn giọng bằng `warmFixedVoices`): `share`, `shareYes`, `shareNo`, `bye`. Mỗi vai mỗi thứ tiếng nay 15 câu.
 
@@ -193,7 +193,7 @@ Mã: `server/may.ts` (`pickSends`, `nudgeText`, `mayTick`, `startMayScheduler`, 
 **Ưu tiên, trần, khung giờ** (`pickSends`, tính theo giờ người nhận, `tzOfMember`)
 - Chỉ gửi từ 9:00 tới trước 21:30 (`QUIET`). Múi giờ hỏng thì giờ Việt Nam.
 - Mỗi người nhận tối đa 1 lời nhắc của Mây mỗi ngày (theo ngày ở nơi người nhận) và 3 trong 7 ngày gần nhất (`CAP`), mọi loại cộng chung.
-- Mỗi lượt mỗi người nhận tối đa một lời nhắc, kể cả từ nhiều người kể khác nhau. Nhiều tín hiệu tranh nhau thì `want_contact` > `miss` > `low` > `good_news` > `upcoming` (`SIGNAL_PRIORITY`), cùng loại thì tín hiệu cũ hơn trước.
+- Mỗi lượt mỗi người nhận tối đa một lời nhắc, kể cả từ nhiều người kể khác nhau (tin chuyện mới đi riêng, mục "Tập riêng và tập chia sẻ"). Nhiều tín hiệu tranh nhau thì `want_contact` > `miss` > `low` > `good_news` > `upcoming` (`SIGNAL_PRIORITY`), cùng loại thì tín hiệu cũ hơn trước.
 - Gửi một lần: giành tín hiệu và ghi `may_nudges` trong một câu (`MAY_SQL.claimNudge`: `with c as (update may_signals set sent_at = $2 where id = $1 and sent_at is null and dropped is null returning ...) insert into may_nudges ... select ... from c returning id`). Chỉ khi câu trả lại hàng mới gửi thông báo, nên hai lượt chạy cùng lúc vẫn chỉ gửi một lần, và không bao giờ có tín hiệu đã gửi mà thiếu lời nhắc: lượt khác đọc hàng chờ trước rồi mới đọc lời nhắc đã gửi để đếm trần, nên luôn thấy lời nhắc vừa gửi và không gửi thêm cho cùng người trong ngày.
 
 **Chữ lời nhắc** (`nudgeText`, khoá máy chủ `nudge.*`): tiêu đề là tên linh vật của nhà, thân là câu mẫu theo loại, chỉ điền tên, vai và tên linh vật. Không bao giờ trích câu gốc (`evidence`) hay lời trong cuộc gọi, kể cả cuộc gọi người kể đã đồng ý chia sẻ. Bố mẹ nhắc con thì gọi người kể theo vai (`nudge.call.bo`, `nudge.call.me`: "mẹ vừa kể với Mây..."), còn lại gọi tên (`nudge.by_name`, tiếng Hàn kèm 님). Người nhận luôn gọi tên. Viết hoa chữ đầu.
@@ -211,3 +211,34 @@ Mã: `server/may.ts` (`pickSends`, `nudgeText`, `mayTick`, `startMayScheduler`, 
 ```sql
 select count(*) sent, count(opened_at) opened, count(contact_at) contacted from may_nudges where sent_at > now() - interval '30 days';
 ```
+
+## Tập riêng và tập chia sẻ (task 8)
+
+Mã: `server/podcast.ts` (`shareCall`, `listPodcasts`, `POST /api/podcasts/:id/share`, `render`, `buildTopic`), `server/memory.ts` (`shareFacts`), `server/may.ts` (`storyRecipients`, `queueStory`, tin chuyện mới trong `pickSends` và `mayTick`), `server/call.ts` (`/call/:id/share`, `/vault`), `server/home.ts`, `src/Podcast.tsx` (nút chia sẻ), `src/App.tsx` (chạm thông báo). Test: `server/podcast.test.ts`, `server/may.test.ts`, `server/memory.test.ts`.
+
+**Đồng ý trong cuộc gọi**: cuộc gọi mới ghi `shared = false`; đồng ý ở bước xin phép thì `POST /api/call/:id/share` gọi `shareCall`. Lời đồng ý đi trước lệnh kết thúc, nên tập dựng ra đã là tập chia sẻ (`Job.shared` lấy từ `calls.shared`) và dựng mới xong tiếng thì báo người được nhắc (`Job.tell`: tập câu chuyện của cuộc gọi đã chia sẻ, không phải dựng lại để thêm ảnh). Không đồng ý, hết giờ hay nhà một người thì tập câu chuyện là tập riêng.
+
+**Tập riêng** (`podcasts.shared = false`) chỉ người kể thấy:
+- `listPodcasts(fid, viewerId)` chỉ trả tập đã chia sẻ và tập riêng của chính người xem: danh sách podcast (`GET /api/podcasts`) và kệ podcast ở Trang chủ (`server/home.ts`).
+- Thêm ảnh (`POST /api/podcasts/:id/photos`) vào tập riêng của người khác: 404 như tập không có.
+- `GET /api/vault` bỏ ảnh của cuộc gọi chưa chia sẻ của người khác.
+- Tập chủ đề chỉ gom chuyện của cuộc gọi đã chia sẻ. Ảnh bìa tự chọn (`coverFor`) và ảnh thêm của tập cũ theo cả cuộc gọi (`photosFor`) không lấy ảnh của cuộc gọi chưa chia sẻ.
+- Phim tuần (`server/recap.ts`) chỉ đọc `posts` nên không cần lọc; video câu chuyện nằm trên hàng `podcasts` nên lọc cùng tập.
+- Cuộc gọi và tập cũ mặc định đã chia sẻ.
+
+**Nút chia sẻ sau**: trên tập riêng của mình, `Player` hiện dòng nhỏ `podcast.private` ("chỉ mình bạn nghe") và nút `podcast.shareAll` ("chia sẻ cho cả nhà"). Bấm là `POST /api/podcasts/:id/share`: tập phải là `story:<callId>:<idx>` trong nhà mình và do mình kể, không thì 404 `podcast_not_found`. Xong thì báo `podcast.sharedDone` ("Cả nhà nghe được rồi") và tải lại danh sách.
+
+**Chia sẻ đổi gì** (`shareCall(callId, memberId)`, chỉ người kể của cuộc gọi, không phải thì `false`):
+1. `calls.shared = true`.
+2. Các tập `story:<callId>:%` còn riêng thành tập chia sẻ.
+3. Sự thật `self` của cuộc gọi thành `family`, trừ `health`, `worry` và `details.sensitive` (`shareFacts`).
+4. Mỗi tập vừa chia sẻ xếp tin chuyện mới (tập chưa dựng xong thì lượt gửi chờ).
+5. Dựng lại tập chủ đề của các tập đó (chạy nền, lệnh chia sẻ không chờ).
+
+Bấm lại hay gửi lại không đổi gì: chỉ tập còn riêng mới được đổi, báo và dựng lại; tin chuyện mới còn có chỉ mục `may_signals_once`. Dựng lại một tập đã chia sẻ (ví dụ thêm ảnh, việc xếp từ trước lúc chia sẻ) không làm nó riêng lại: `shared = excluded.shared or podcasts.shared`.
+
+**Ai được báo** (`storyRecipients`): người được gọi tên (cả họ tên hay tên gọi) hoặc gọi theo vai (bố, mẹ, các con; "con" chỉ khi nhà có đúng một con) trong lời kể của chuyện chính; không ai thì mọi người khác trong nhà; không bao giờ người kể. Nhà một người thì không ai. Lời kể chỉ dùng để tìm người, không bao giờ vào thông báo.
+
+**Tin chuyện mới** (`queueStory`: `may_signals.kind = 'story'`, `ref` là mã tập, `evidence` rỗng, hạn `STORY_TTL_H` = 72 giờ từ lúc xếp): `mayTick` gửi khi tập đã dựng xong tiếng (câu lấy hàng chờ left join `podcasts` theo `ref`, `status = 'ready'`), trong khung 9:00 tới trước 21:30 giờ người nhận, chưa hết hạn. Không tính trần, không theo công tắc "Mây nhắc mình liên lạc", không tranh lượt với lời nhắc liên lạc (cùng người cùng lượt vẫn gửi cả hai), không ghi `may_nudges` (giành bằng `MAY_SQL.claimStory`), nên cũng không tính vào trần lời nhắc. Tập không bao giờ dựng xong thì tín hiệu hết hạn.
+
+**Thông báo**: `kind: 'post'` (theo công tắc "Tin nhà"), tiêu đề `nudge.story.title` ("Mẹ vừa kể một chuyện"), thân `nudge.story.body` ("Mẹ vừa kể cho An nghe một chuyện, nghe nhé."), người kể gọi như lời nhắc (bố mẹ nói với con theo vai, còn lại theo tên, tiếng Hàn kèm 님), viết hoa chữ đầu; `tag: story-<mã tập>`, `open: podcast:<mã tập>`, `ttl` 24 giờ. Chạm thông báo: `App.tsx` mở tab podcast ở đúng tập đó.

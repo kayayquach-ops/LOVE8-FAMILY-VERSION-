@@ -9,6 +9,8 @@
 // Tập cũ theo cả cuộc gọi (key call:<id>, có thẻ câu hỏi) và tập lời thương đầu tiên (không có ảnh) vẫn giữ.
 // Ghép tiếng và dựng video là hai hàng riêng, mỗi hàng một việc một lúc; tập đang dựng dở khi máy chủ khởi động lại
 // thì được dựng lại (tối đa 3 lần).
+// Từ 21/11 tập câu chuyện của cuộc gọi chưa đồng ý chia sẻ (calls.shared = false) là tập riêng: chỉ người kể thấy, có nút chia sẻ
+// sau (shareCall); tập chủ đề chỉ gom chuyện đã chia sẻ; chia sẻ thì báo người được nhắc trong chuyện (may.ts, tin chuyện mới).
 import express from 'express';
 import multer from 'multer';
 import { createHash, randomUUID } from 'node:crypto';
@@ -22,6 +24,8 @@ import { askJSON } from './ai.ts';
 import { suspect } from './guard.ts';
 import { errorBody, langOf, LANGS, runWithLang, tReq, tServer, type Lang } from './i18n.ts';
 import { mascotName, pool } from './db.ts';
+import { queueStory, storyRecipients, type Kin } from './may.ts';
+import { shareFacts } from './memory.ts';
 import { fontsReady, renderCallVideo, renderStoryVideo, type StoryInput, type StoryText, type VideoText, type VSeg } from './callvideo.ts';
 import { Limit, limitBy } from './limit.ts';
 import { cleanClip, migrateVoiceEdit, mixEpisode, voicedSeconds, type Clip, type Placed } from './voiceedit.ts';
@@ -33,6 +37,8 @@ const MAX_TRIES = 3;
 const PRIVATE_TOPIC = 'loi-nhan';
 /** Chủ đề không bao giờ thành tập (lời nhắn, câu hỏi thăm), dạng mảng cho SQL `<> all($n::text[])`. */
 const NO_EPISODE: string[] = [...NO_EPISODE_TOPICS];
+
+type Db = { query: (sql: string, args?: any[]) => Promise<{ rows: any[]; rowCount?: number | null }> };
 
 export async function migratePodcast(p: pg.Pool) {
   await p.query(`
@@ -76,6 +82,8 @@ type Job = {
   story?: StoryText | null; photos?: string[];
   /** Dựng lại tập đã có (thêm ảnh): tập vẫn nghe được trong lúc dựng, giữ nguyên ngày của tập. */
   keepDate?: boolean;
+  /** Tập cả nhà thấy (tập câu chuyện theo calls.shared, tập khác luôn true). tell: dựng mới tập câu chuyện đã chia sẻ, xong tiếng thì báo người được nhắc. */
+  shared: boolean; tell: boolean;
 };
 type StoryLay = Pick<StoryInput, 'intro' | 'outro' | 'voices' | 'turns' | 'names'>;
 type Laid = { total: number; placed: Placed[]; segs: VSeg[]; chapters: Chapter[]; story?: StoryLay };
@@ -194,11 +202,13 @@ const wantsVideo = (job: Job) => (storyLike(job) ? !!job.story && !!job.photos?.
 async function render(job: Job) {
   const video = wantsVideo(job), keep = !!job.keepDate;
   const { rows: [row] } = await pool.query(
-    `insert into podcasts (id, family_id, key, kind, member_id, topic, title, cover, status, video_status) values ($1,$2,$3,$4,$5,$6,$7,$8,'rendering',$9)
+    // Chia sẻ chỉ một chiều: tập đã chia sẻ thì việc dựng lại xếp từ trước lúc chia sẻ (shared false) không làm nó riêng lại.
+    `insert into podcasts (id, family_id, key, kind, member_id, topic, title, cover, status, video_status, shared) values ($1,$2,$3,$4,$5,$6,$7,$8,'rendering',$9,$12)
      on conflict (family_id, key) do update set title = excluded.title, cover = coalesce(excluded.cover, podcasts.cover),
        status = case when $11 and podcasts.media is not null then 'ready' else 'rendering' end,
-       video_status = case when $10 then 'rendering' else podcasts.video_status end
-     returning id`, [randomUUID(), job.fid, job.key, job.kind, job.memberId, job.topic, job.title, job.cover, video ? 'rendering' : 'none', video, keep]);
+       video_status = case when $10 then 'rendering' else podcasts.video_status end,
+       shared = excluded.shared or podcasts.shared
+     returning id`, [randomUUID(), job.fid, job.key, job.kind, job.memberId, job.topic, job.title, job.cover, video ? 'rendering' : 'none', video, keep, job.shared]);
   const work = mkdtempSync(path.join(os.tmpdir(), 'podcast-'));
   let handed = false;
   try {
@@ -221,6 +231,7 @@ async function render(job: Job) {
       tries = case when $5 then tries else 0 end where id = $1`,
       [row.id, `/media/podcasts/${row.id}.m4a?v=${Date.now()}`, lay.total, JSON.stringify(lay.chapters), video, keep]);
     console.log(`[podcast] xong tiếng ${job.title} (${Math.round(lay.total)} giây)`);
+    if (job.tell) await tellStory(pool, job, row.id).catch((e) => console.error('[podcast] xếp tin chuyện mới:', (e as Error).message));
     if (video) {
       if (!fontsReady()) throw new Error('Thiếu font cho video (server/fonts)');
       // Video chỉ cần tệp tiếng đã ghép: bỏ các tệp wav lớn trong lúc chờ tới lượt dựng.
@@ -464,7 +475,7 @@ async function enqueueStory(call: any, lang: Lang, answers: AnswerRow[], ep: Pla
   const { rows: [fam] } = await pool.query('select name from families where id = $1', [call.family_id]);
   await enqueue({
     fid: call.family_id, key: `story:${call.id}:${ep.idx}`, kind: 'person', memberId: call.member_id, topic, title,
-    cover: photos[0] ?? null, lang, mode: 'story', video: null, keepDate,
+    cover: photos[0] ?? null, lang, mode: 'story', video: null, keepDate, shared: !!call.shared, tell: !!call.shared && !keepDate,
     pieces: [...main.map((a) => piece(a, false)), ...tails],
     photos: photos.map(mediaFile),
     story: photos.length ? { title, stamp: stampOf(new Date(call.done_at ?? call.created_at), lang), family: fam?.name ?? '', brand: 'sweet home' } : null,
@@ -478,6 +489,7 @@ async function coverFor(fid: string, memberId: string | null) {
   const { rows } = await pool.query(
     `select media from (
        select media, created_at, 0 o from vault where family_id = $1 and ($2::text is null or member_id = $2)
+         and not exists (select 1 from calls c where c.id = vault.call_id and not c.shared)
        union all
        select media, created_at, 1 o from posts where family_id = $1 and kind = 'photo' and media is not null and ($2::text is null or author_id = $2)
      ) x order by o, created_at desc limit 1`, [fid, memberId]);
@@ -506,6 +518,7 @@ async function photosFor(call: any, answers: any[]): Promise<Map<string, string>
   const { rows: extra } = await pool.query(
     `select media from (
        select media, created_at, 0 o from vault where member_id = $1 and coalesce(call_id, '') <> $2
+         and not exists (select 1 from calls c where c.id = vault.call_id and not c.shared)
        union all
        select media, created_at, 1 o from posts where author_id = $1 and kind = 'photo' and media is not null
      ) x order by o, created_at desc limit 12`, [call.member_id, call.id]);
@@ -579,7 +592,7 @@ async function buildCallEpisode(callId: string) {
     const { rows: [fam] } = await pool.query('select name from families where id = $1', [call.family_id]);
     const mascot = await mascotName(call.family_id);
     await enqueue({
-      fid: call.family_id, key: `call:${call.id}`, kind: 'person', memberId: call.member_id, topic: first, lang, mode: 'call',
+      fid: call.family_id, key: `call:${call.id}`, kind: 'person', memberId: call.member_id, topic: first, lang, mode: 'call', shared: true, tell: false,
       title: tReq('podcastGen.person.title', { name, what: titleOf(first) }), cover: await coverFor(call.family_id, call.member_id),
       pieces: usable.map((a) => ({ key: `ans:${a.id}`, file: mediaFile(a.media), who: a.who, question: a.question, topic: a.topic, transcript: a.transcript, photo: photos.get(a.id) ?? null })),
       video: {
@@ -592,13 +605,14 @@ async function buildCallEpisode(callId: string) {
 }
 
 /** Tập theo chủ đề: 8 câu chuyện gần nhất của cả nhà về chủ đề đó, mỗi chuyện đủ các lượt, dựng như tập câu chuyện.
+ *  Chỉ chuyện của cuộc gọi đã chia sẻ (cuộc gọi cũ mặc định đã chia sẻ).
  *  Chuyện nào trong tập có ảnh thì tập có video ảnh cổ điển; không chuyện nào có ảnh mới chỉ có tiếng. Không bao giờ có lời nhắn. */
 async function buildTopic(fid: string, topic: string, lang: Lang, keepDate = false) {
   if (NO_EPISODE.includes(topic)) return;
   const { rows } = await pool.query(
     `with s as (
-       select call_id, idx, max(created_at) at from call_answers
-       where family_id = $1 and topic = $2 and media is not null group by call_id, idx order by at desc limit ${MAX_TOPIC_STORIES}
+       select a.call_id, a.idx, max(a.created_at) at from call_answers a join calls c on c.id = a.call_id
+       where a.family_id = $1 and a.topic = $2 and a.media is not null and c.shared group by a.call_id, a.idx order by at desc limit ${MAX_TOPIC_STORIES}
      )
      select a.*, m.name who, s.at from call_answers a join s on s.call_id = a.call_id and s.idx = a.idx join members m on m.id = a.member_id
      where a.media is not null and a.topic <> all($3::text[]) order by s.at, a.turn, a.created_at`, [fid, topic, NO_EPISODE]);
@@ -613,6 +627,7 @@ async function buildTopic(fid: string, topic: string, lang: Lang, keepDate = fal
   const latest = new Date(Math.max(...clips.map((a) => new Date(a.at).getTime())));
   await runWithLang(lang, async () => enqueue({
     fid, key: `topic:${topic}`, kind: 'topic', memberId: null, topic, title: topicLabel(topic), cover: photos[0] ?? await coverFor(fid, null), lang, mode: 'topic', video: null, keepDate,
+    shared: true, tell: false,
     pieces: clips.map((a) => ({ key: `ans:${a.id}`, file: mediaFile(a.media), who: a.who, question: a.question, topic: a.topic, transcript: a.transcript, photo: null, group: gid.get(`${a.call_id}:${a.idx}`) })),
     photos: photos.map(mediaFile),
     story: photos.length ? { title: topicLabel(topic), stamp: stampOf(latest, lang), family: fam?.name ?? '', brand: 'sweet home' } : null,
@@ -645,7 +660,7 @@ export async function buildFirstVoicePodcast(fid: string, memberId: string, name
   if (!existsSync(file)) return;
   await runWithLang(lang, async () => enqueue({
     fid, key: `first:${memberId}`, kind: 'person', memberId, topic: 'loi-nhan', title: tReq('podcastGen.first.title'), cover: await coverFor(fid, memberId),
-    lang, mode: 'first', video: null,
+    lang, mode: 'first', video: null, shared: true, tell: false,
     // Nghe là tới thẳng giọng người nói, nhạc chỉ vào dịu ở đầu và tan ở cuối.
     pieces: [{ key: `post:${path.basename(file)}`, file, who: name, question: tReq('podcastGen.first.title'), topic: 'loi-nhan', transcript: null, photo: null }],
   }));
@@ -714,21 +729,96 @@ function row(r: any): PodcastRow {
     id: r.id, kind: r.kind, title: r.title, topic: topicLabel(r.topic), memberId: r.member_id, duration: Number(r.duration),
     cover: r.cover, media: r.media, chapters, status: r.status, createdAt: r.created_at,
     video: r.video ?? null, poster: r.poster ?? null, videoStatus: r.video_status ?? 'none',
-    story: String(r.key).startsWith('story:'),
+    story: String(r.key).startsWith('story:'), shared: !!r.shared,
   };
 }
 
-export async function listPodcasts(fid: string, limit = 60) {
-  const { rows } = await pool.query(
-    `select * from podcasts where family_id = $1 and status <> 'failed' and key <> $3 order by created_at desc limit $2`, [fid, limit, `topic:${PRIVATE_TOPIC}`]);
+export const POD_SQL = {
+  // Tập riêng (shared = false) chỉ người kể thấy; tập cũ mặc định đã chia sẻ.
+  list: `select * from podcasts where family_id = $1 and status <> 'failed' and key <> $3 and (shared or member_id = $4) order by created_at desc limit $2`,
+  shareCall: 'update calls set shared = true where id = $1 and member_id = $2 returning family_id',
+  // Chỉ tập còn riêng: bấm lại không báo lại, không dựng lại tập chủ đề.
+  shareEps: 'update podcasts set shared = true where family_id = $1 and key like $2 and not shared returning id, key, topic',
+  family: 'select id, name, role, lang from members where family_id = $1 order by created_at',
+  // Lời kể của một câu chuyện, chỉ để tìm người được nhắc (không bao giờ vào thông báo).
+  storyText: 'select transcript from call_answers where call_id = $1 and idx = $2 and topic <> all($3::text[]) order by turn',
+};
+
+/** Danh sách tập cho người xem: tập đã chia sẻ và tập riêng của chính người đó. Không có tập lời nhắn, tập lỗi. */
+export async function listPodcasts(fid: string, viewerId: string, limit = 60, db: Db = pool): Promise<PodcastRow[]> {
+  const { rows } = await db.query(POD_SQL.list, [fid, limit, `topic:${PRIVATE_TOPIC}`, viewerId]);
   return rows.map(row);
+}
+
+const storyOf = (key: string) => {
+  const m = /^story:(.+):(\d+)$/.exec(key);
+  return m ? { callId: m[1], idx: Number(m[2]) } : null;
+};
+
+/** Xếp tin chuyện mới cho người được nhắc trong chuyện (không ai thì cả nhà trừ người kể). Lượt gửi của Mây chờ tập dựng xong. */
+async function queueTell(db: Db, p: { fid: string; callId: string; podcastId: string; teller: Kin; family: Kin[]; text: string; now: Date }) {
+  return queueStory(db, { familyId: p.fid, callId: p.callId, podcastId: p.podcastId, fromId: p.teller.id, to: storyRecipients(p.teller, p.family, p.text), now: p.now });
+}
+
+/** Dựng mới xong tiếng một tập câu chuyện đã chia sẻ: báo theo lời kể của chuyện chính (không tính phần đuôi). */
+async function tellStory(db: Db, job: Job, podcastId: string) {
+  const s = storyOf(job.key);
+  const { rows: family } = await db.query(POD_SQL.family, [job.fid]);
+  const teller = family.find((m) => m.id === job.memberId);
+  if (!s || !teller) return;
+  const text = job.pieces.filter((x) => !x.tail).map((x) => x.transcript ?? '').join(' ');
+  await queueTell(db, { fid: job.fid, callId: s.callId, podcastId, teller, family, text, now: new Date() });
+}
+
+export type ShareDeps = { db: Db; rebuildTopic: (fid: string, topic: string, lang: Lang) => Promise<void>; now: () => Date };
+const SHARE_DEPS: ShareDeps = {
+  db: pool,
+  // Chạy nền: dựng tập chủ đề chờ hàng ghép tiếng có khi vài phút, lệnh chia sẻ không chờ.
+  rebuildTopic: async (fid, topic, lang) => { void buildTopic(fid, topic, lang).catch((e) => console.error('[podcast] dựng lại tập chủ đề sau khi chia sẻ:', e)); },
+  now: () => new Date(),
+};
+
+/** Người kể chia sẻ cuộc gọi cho cả nhà (đồng ý trong cuộc gọi, hoặc nút chia sẻ sau ở tab podcast). Chỉ người kể: không phải thì false.
+ *  Bật calls.shared, tập câu chuyện còn riêng sang chia sẻ, sự thật riêng sang cả nhà (shareFacts), báo người được nhắc trong từng tập
+ *  (tập chưa dựng xong thì lượt gửi chờ), dựng lại tập chủ đề có chuyện vừa chia sẻ. Bấm lại không đổi gì, không báo lại. */
+export async function shareCall(callId: string, memberId: string, deps: ShareDeps = SHARE_DEPS): Promise<boolean> {
+  const { db } = deps;
+  const { rows: [call] } = await db.query(POD_SQL.shareCall, [callId, memberId]);
+  if (!call) return false;
+  const fid: string = call.family_id;
+  const { rows: eps } = await db.query(POD_SQL.shareEps, [fid, `story:${callId}:%`]);
+  await shareFacts(db, callId);
+  if (!eps.length) return true;
+  const { rows: family } = await db.query(POD_SQL.family, [fid]);
+  const teller = family.find((m) => m.id === memberId);
+  for (const ep of eps) {
+    const s = storyOf(ep.key);
+    if (!s || !teller) continue;
+    const { rows } = await db.query(POD_SQL.storyText, [callId, s.idx, NO_EPISODE]);
+    await queueTell(db, { fid, callId, podcastId: ep.id, teller, family, text: rows.map((r) => r.transcript ?? '').join(' '), now: deps.now() });
+  }
+  for (const topic of new Set<string>(eps.map((e) => e.topic))) await deps.rebuildTopic(fid, topic, langOf(teller?.lang));
+  return true;
 }
 
 export const podcastRouter = express.Router();
 
 podcastRouter.get('/podcasts', async (req: any, res) => {
-  try { res.json(await listPodcasts(req.member.family_id)); }
+  try { res.json(await listPodcasts(req.member.family_id, req.member.id)); }
   catch (e) { console.error(e); res.status(500).json(errorBody('server')); }
+});
+
+// Nút "chia sẻ cho cả nhà" trên tập riêng: chỉ tập câu chuyện của chính người bấm, trong nhà của người đó.
+podcastRouter.post('/podcasts/:id/share', async (req: any, res) => {
+  try {
+    const { rows: [ep] } = await pool.query('select key from podcasts where id = $1 and family_id = $2 and member_id = $3', [req.params.id, req.member.family_id, req.member.id]);
+    const s = ep ? storyOf(ep.key) : null;
+    if (!s || !(await shareCall(s.callId, req.member.id))) return res.status(404).json(errorBody('podcast_not_found'));
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json(errorBody('server'));
+  }
 });
 
 // ---------- Thêm ảnh cho tập câu chuyện ----------
@@ -746,7 +836,9 @@ podcastRouter.post('/podcasts/:id/photos', limitPhotos, upload.array('files', MA
   const files: Express.Multer.File[] = req.files ?? [];
   const drop = () => Promise.all(files.map((f) => unlink(f.path).catch(() => {})));
   try {
-    const { rows: [ep] } = await pool.query('select id, key, title from podcasts where id = $1 and family_id = $2', [req.params.id, req.member.family_id]);
+    // Tập riêng của người khác coi như không có.
+    const { rows: [ep] } = await pool.query('select id, key, title from podcasts where id = $1 and family_id = $2 and (shared or member_id = $3)',
+      [req.params.id, req.member.family_id, req.member.id]);
     const m = ep ? /^story:(.+):(\d+)$/.exec(ep.key) : null;
     const { rows: [call] } = m ? await pool.query('select id from calls where id = $1 and family_id = $2', [m[1], req.member.family_id]) : { rows: [] };
     if (!m || !call) { await drop(); return res.status(404).json(errorBody('podcast_not_found')); }

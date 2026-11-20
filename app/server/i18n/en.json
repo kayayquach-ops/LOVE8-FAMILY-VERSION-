@@ -185,6 +185,8 @@
   "nudge.low": "{from} has been a little tired lately. {to}, check in on {from}.",
   "nudge.good_news": "{from} has good news to share with the family. Ask {from} about it.",
   "nudge.upcoming": "{from} has something important tomorrow. {to}, send {from} some good wishes.",
+  "nudge.story.title": "{from} just told a story",
+  "nudge.story.body": "{from} just told {to} a story. Give it a listen.",
   "push.cal.today": "Today",
   "push.cal.tomorrow": "Tomorrow",
   "push.cal.title": "{when} is {what}",

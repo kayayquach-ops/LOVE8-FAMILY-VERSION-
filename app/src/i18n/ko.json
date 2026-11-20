@@ -468,6 +468,9 @@
   "podcast.addPhotos": "이 이야기에 사진 더하기",
   "podcast.adding": "사진 보내는 중...",
   "podcast.photosAdded": "사진 받았어요. 영상이 곧 나와요.",
+  "podcast.private": "나만 들을 수 있어요",
+  "podcast.shareAll": "가족 모두와 나누기",
+  "podcast.sharedDone": "이제 가족 모두 들을 수 있어요",
 
   "family.title": "가족",
   "family.language": "언어 / Language",

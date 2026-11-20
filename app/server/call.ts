@@ -12,7 +12,7 @@ import { pushRelays } from './push.ts';
 import { parseDate, suspect, type Allow } from './guard.ts';
 import { mascotName, pool } from './db.ts';
 import { weekKey } from './recap.ts';
-import { buildPodcastsForCall, rebuildCallSoon } from './podcast.ts';
+import { buildPodcastsForCall, rebuildCallSoon, shareCall } from './podcast.ts';
 import { extractCall, extractSoon } from './memory.ts';
 import { loadScriptExtras, type ScriptExtras } from './callfacts.ts';
 import { cachedSpeech, defaultProvider, gateOf, hasVoice, initTtsBudget, pickProvider, providerOn, speech, transcribe, ttsStatus, TTS_MAX, type Provider } from './voice.ts';
@@ -1224,9 +1224,9 @@ export function callRouter(upload: multer.Multer) {
   }));
 
   // Người kể đồng ý chia sẻ chuyện của cuộc gọi cho cả nhà (bước xin phép cuối chuyện chính). Không có thân, gửi lại được.
+  // Qua shareCall: lời đồng ý tới sau khi tập đã dựng thì tập, sự thật vẫn sang cả nhà và người được nhắc vẫn được báo.
   r.post('/call/:id/share', h(async (req, res) => {
-    const { rowCount } = await pool.query('update calls set shared = true where id = $1 and member_id = $2', [req.params.id, req.member.id]);
-    if (!rowCount) return res.status(404).json(errorBody('call_not_found'));
+    if (!(await shareCall(String(req.params.id), req.member.id))) return res.status(404).json(errorBody('call_not_found'));
     res.json({ ok: true });
   }));
 
@@ -1246,8 +1246,11 @@ export function callRouter(upload: multer.Multer) {
     if (rowCount) void afterCall(req.params.id);
   }));
 
+  // Ảnh của cuộc gọi chưa chia sẻ chỉ người kể thấy.
   r.get('/vault', h(async (req, res) => {
-    const { rows } = await pool.query('select * from vault where family_id = $1 order by created_at desc limit 60', [req.member.family_id]);
+    const { rows } = await pool.query(
+      `select * from vault where family_id = $1 and not exists (select 1 from calls c where c.id = vault.call_id and not c.shared and c.member_id <> $2)
+       order by created_at desc limit 60`, [req.member.family_id, req.member.id]);
     res.json(rows.map((v) => ({ id: v.id, memberId: v.member_id, media: v.media, caption: v.caption, createdAt: v.created_at })));
   }));
 

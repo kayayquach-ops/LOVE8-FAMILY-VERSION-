@@ -167,6 +167,8 @@ export type Podcast = {
   cover: string | null; media: string | null; chapters: Chapter[]; status: 'rendering' | 'ready' | 'failed'; createdAt: string;
   /** Video dọc có ảnh và phụ đề (chỉ tập theo cuộc gọi); poster là ảnh bìa của video. */
   video: string | null; poster: string | null; videoStatus: 'none' | 'rendering' | 'ready' | 'failed';
+  /** false: tập riêng, chỉ người kể thấy (chưa đồng ý chia sẻ); máy chủ không gửi tập riêng của người khác. */
+  shared: boolean;
 };
 
 // i18n-ok-begin: địa danh, đợt sau thêm tên tiếng Anh, tiếng Hàn.

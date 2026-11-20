@@ -2,6 +2,8 @@
 // Xếp hàng: tìm người nhận từ lời kể, hạn đúng loại (planSignals, queueSignals). Gửi (mayTick mỗi phút): đúng người, trong khung giờ của
 // người nhận, có trần ngày và tuần; bấm thông báo là gọi thoại ngay cho người kể; đo lời nhắc dẫn tới liên lạc (markContact, tin nhắn riêng).
 // Chữ lời nhắc chỉ là câu mẫu i18n điền tên, vai, tên linh vật: không bao giờ trích câu gốc (evidence) hay lời trong cuộc gọi.
+// Tin chuyện mới (kind 'story', ref là mã tập): người kể chia sẻ chuyện thì báo người được nhắc trong chuyện; không phải lời nhắc
+// liên lạc nên không tính trần, không theo công tắc lời nhắc, không ghi may_nudges; vẫn theo khung giờ, hạn và chờ tập dựng xong.
 // Chỉ import kiểu từ memory.ts (memory.ts import file này lúc chạy). Chi tiết: docs/may-moi.md. Kiểm bằng server/may.test.ts.
 import express from 'express';
 import { randomUUID } from 'node:crypto';
@@ -44,7 +46,7 @@ export const SIGNAL_TTL_H = { miss: 24, want_contact: 24, low: 48, good_news: 48
 
 export type Kin = { id: string; name: string; role: string };
 export type SignalMember = Kin & PlaceRow & { may_nudge: boolean };
-export type SignalRow = { id: string; family_id: string; from_id: string; to_id: string; kind: SignalKind; evidence: string; call_id: string | null; ref: string | null; due_at: Date; expires_at: Date };
+export type SignalRow = { id: string; family_id: string; from_id: string; to_id: string; kind: SignalKind | 'story'; evidence: string; call_id: string | null; ref: string | null; due_at: Date; expires_at: Date };
 
 export const MAY_SQL = {
   insert: `insert into may_signals (id, family_id, from_id, to_id, kind, evidence, call_id, ref, due_at, expires_at)
@@ -54,13 +56,15 @@ export const MAY_SQL = {
   dms: 'select author_id, to_id, created_at from messages where family_id = any($1) and to_id is not null and created_at >= $2',
   contact: 'update may_nudges set contact_at = $2 where id = $1 and contact_at is null',
   // Tín hiệu chờ gửi, kèm người nhận (nơi ở để biết múi giờ), người kể, tên linh vật. Cả hai phải còn trong nhà (join bỏ hàng mồ côi).
-  pending: `select s.id, s.family_id, s.kind, s.from_id, s.to_id, s.due_at, s.expires_at, s.created_at,
+  // Tin chuyện mới: ready là tập (ref) đã dựng xong tiếng; tập chưa có thì null (chờ tới khi hết hạn).
+  pending: `select s.id, s.family_id, s.kind, s.from_id, s.to_id, s.due_at, s.expires_at, s.created_at, s.ref, p.status = 'ready' ready,
        t.name to_name, t.role to_role, t.city, t.loc_share, t.loc_lat, t.loc_lon, t.loc_at, t.may_nudge to_on,
        f.name from_name, f.role from_role, f.may_nudge from_on, fam.mascot_name
      from may_signals s
      join members t on t.id = s.to_id and t.family_id = s.family_id
      join members f on f.id = s.from_id and f.family_id = s.family_id
      join families fam on fam.id = s.family_id
+     left join podcasts p on p.id = s.ref and p.family_id = s.family_id
      where s.sent_at is null and s.dropped is null`,
   history: 'select to_id, sent_at from may_nudges where to_id = any($1) and sent_at > $2',
   drop: 'update may_signals set dropped = $2 where id = $1 and sent_at is null and dropped is null',
@@ -73,6 +77,8 @@ export const MAY_SQL = {
      insert into may_nudges (id, family_id, signal_id, from_id, to_id, kind, sent_at)
      select $3::text, family_id, id, from_id, to_id, kind, sent_at from c
      returning id`,
+  // Tin chuyện mới chỉ giành tín hiệu, không ghi may_nudges (không tính trần lời nhắc). Trả hàng thì mới gửi.
+  claimStory: 'update may_signals set sent_at = $2 where id = $1 and sent_at is null and dropped is null returning id',
   // $1 nhà, $2 lúc liên lạc, $3 = $2 - 48 giờ, $4 mọi người trong cuộc gọi, $5 người vừa nối.
   markContact: `update may_nudges set contact_at = $2 where family_id = $1 and contact_at is null and sent_at > $3
      and from_id = any($4) and to_id = any($4) and (from_id = any($5) or to_id = any($5))`,
@@ -102,16 +108,24 @@ const KIDS = ['các con', 'tụi nhỏ', 'bọn trẻ', 'kids', 'children', '애
 const KID = ['con', 'con trai', 'con gái', 'son', 'daughter', '아들', '딸'];
 // i18n-ok-end
 
+/** Người trong nhà (trừ người kể) có tên trong chữ đã gấp t: cả họ tên hay tên gọi (chữ cuối). */
+const namedIn = (t: string, speaker: Kin, family: Kin[]) => family.filter((m) => {
+  if (m.id === speaker.id) return false;
+  const full = foldText(m.name);
+  return hasWords(t, full) || hasWords(t, full.split(' ').at(-1) ?? '');
+});
+
 /** Người nhận từ chữ người kể dùng (spec "Chốt thêm" 5): tên khớp đúng một người; không thì theo vai; mơ hồ hay lạ thì không ai. Không bao giờ là người kể. */
 export function resolveTargets(target: string, speaker: Kin, family: Kin[]): string[] {
   const t = foldText(target);
   if (!t) return [];
-  const named = family.filter((m) => {
-    if (m.id === speaker.id) return false;
-    const full = foldText(m.name);
-    return hasWords(t, full) || hasWords(t, full.split(' ').at(-1) ?? '');
-  });
+  const named = namedIn(t, speaker, family);
   if (named.length) return named.length === 1 ? [named[0].id] : [];
+  return byRole(t, speaker, family);
+}
+
+/** Người được gọi theo vai trong chữ đã gấp t ("con" chỉ khi nhà có đúng một con). Không bao giờ là người kể. */
+function byRole(t: string, speaker: Kin, family: Kin[]): string[] {
   const said = (words: string[]) => words.some((w) => hasWords(t, w));
   const withRole = (role: string) => family.filter((m) => m.role === role).map((m) => m.id);
   const out = new Set<string>();
@@ -121,6 +135,13 @@ export function resolveTargets(target: string, speaker: Kin, family: Kin[]): str
   if (said(KID) && withRole('con').length === 1) out.add(withRole('con')[0]);
   out.delete(speaker.id);
   return [...out];
+}
+
+/** Ai được báo có chuyện mới: người được gọi tên hay gọi theo vai trong lời kể; không ai thì mọi người khác trong nhà. Không bao giờ người kể. */
+export function storyRecipients(teller: Kin, family: Kin[], text: string): string[] {
+  const t = foldText(text);
+  const hit = new Set([...namedIn(t, teller, family).map((m) => m.id), ...byRole(t, teller, family)]);
+  return hit.size ? [...hit] : family.filter((m) => m.id !== teller.id).map((m) => m.id);
 }
 
 const HOUR_MS = 3600e3;
@@ -175,6 +196,16 @@ export async function queueSignals(db: Db, rows: SignalRow[]): Promise<number> {
   return n;
 }
 
+/** Hạn của tin chuyện mới, tính từ lúc xếp (tập chưa dựng xong thì chờ trong hạn này). */
+export const STORY_TTL_H = 72;
+
+/** Xếp tin chuyện mới cho từng người nhận: ref là mã tập, không có câu gốc. Cùng (cuộc gọi, người nhận) đã có thì bỏ qua. Trả số hàng mới. */
+export async function queueStory(db: Db, p: { familyId: string; callId: string; podcastId: string; fromId: string; to: string[]; now: Date }): Promise<number> {
+  const expires = new Date(p.now.getTime() + STORY_TTL_H * HOUR_MS);
+  return queueSignals(db, p.to.map((to) => ({ id: randomUUID(), family_id: p.familyId, from_id: p.fromId, to_id: to, kind: 'story' as const, evidence: '',
+    call_id: p.callId, ref: p.podcastId, due_at: p.now, expires_at: expires })));
+}
+
 // ---------- Gửi lời nhắc ----------
 
 /** Khung được gửi, phút trong ngày theo giờ người nhận, [from, to): 9:00 tới trước 21:30. Ngoài khung thì chờ, không bỏ. */
@@ -195,7 +226,8 @@ export function inWindow(tz: string, now: Date): boolean {
   return m >= QUIET.from && m < QUIET.to;
 }
 
-export type Pending = { id: string; kind: SignalKind; toId: string; fromId: string; toTz: string; dueAt: Date; expiresAt: Date; createdAt: Date; toOn: boolean; fromOn: boolean };
+/** ready: tin chuyện mới thì tập đã dựng xong tiếng; loại khác luôn true. */
+export type Pending = { id: string; kind: SignalKind | 'story'; toId: string; fromId: string; toTz: string; dueAt: Date; expiresAt: Date; createdAt: Date; toOn: boolean; fromOn: boolean; ready: boolean };
 
 /** Còn dưới trần không: đếm lời nhắc cùng ngày (theo giờ người nhận) và trong 7 ngày gần nhất. */
 function underCap(tz: string, sent: Date[], now: Date) {
@@ -205,28 +237,45 @@ function underCap(tz: string, sent: Date[], now: Date) {
   return day < CAP.day && week < CAP.week;
 }
 
-/** history: per recipient, sent_at of their nudges in the last 7 days. One send per recipient per tick. */
+/** history: per recipient, sent_at of their nudges in the last 7 days. One contact nudge per recipient per tick.
+ *  Story notices go on their own: no cap, no switch, never compete with contact nudges; only the window, expiry and a ready episode. */
 export function pickSends(pending: Pending[], history: Map<string, Date[]>, now: Date): { send: Pending[]; drop: Array<{ id: string; why: 'expired' | 'off' }> } {
   const drop: Array<{ id: string; why: 'expired' | 'off' }> = [];
   const best = new Map<string, Pending>();
-  const rank = (k: SignalKind) => SIGNAL_PRIORITY.indexOf(k);
+  const stories: Pending[] = [];
+  const rank = (k: Pending['kind']) => SIGNAL_PRIORITY.indexOf(k as SignalKind);
   for (const p of pending) {
     if (p.expiresAt.getTime() <= now.getTime()) { drop.push({ id: p.id, why: 'expired' }); continue; }
+    if (p.kind === 'story') {
+      if (p.ready && p.dueAt.getTime() <= now.getTime() && inWindow(p.toTz, now)) stories.push(p);
+      continue;
+    }
     if (!p.toOn || !p.fromOn) { drop.push({ id: p.id, why: 'off' }); continue; }
     if (p.dueAt.getTime() > now.getTime() || !inWindow(p.toTz, now) || !underCap(p.toTz, history.get(p.toId) ?? [], now)) continue;
     const cur = best.get(p.toId);
     if (!cur || rank(p.kind) < rank(cur.kind) || (rank(p.kind) === rank(cur.kind) && p.createdAt.getTime() < cur.createdAt.getTime())) best.set(p.toId, p);
   }
-  return { send: [...best.values()], drop };
+  return { send: [...best.values(), ...stories], drop };
 }
 
-/** Chữ lời nhắc: tiêu đề là tên linh vật, thân là câu mẫu nudge.<loại> điền tên. Bố mẹ nhắc con thì gọi người kể theo vai (mẹ, bố),
- *  còn lại theo tên (tiếng Hàn kèm 님 qua khoá nudge.by_name). Không bao giờ có câu gốc của tín hiệu. Viết hoa chữ đầu. */
+/** Người kể được gọi thế nào trong lời của Mây: bố mẹ nói với con thì theo vai (mẹ, bố), còn lại theo tên (tiếng Hàn kèm 님 qua khoá nudge.by_name). */
+function callName(lang: Lang, from: Kin, to: Kin): string {
+  const parent = (from.role === 'bo' || from.role === 'me') && to.role === 'con';
+  return parent ? tServer(lang, `nudge.call.${from.role}`) : tServer(lang, 'nudge.by_name', { name: from.name });
+}
+const capFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Chữ lời nhắc: tiêu đề là tên linh vật, thân là câu mẫu nudge.<loại> điền tên (người kể gọi như callName).
+ *  Không bao giờ có câu gốc của tín hiệu. Viết hoa chữ đầu. */
 export function nudgeText(kind: SignalKind, lang: Lang, from: Kin, to: Kin, mascot: string): { title: string; body: string } {
-  const byRole = (from.role === 'bo' || from.role === 'me') && to.role === 'con';
-  const who = byRole ? tServer(lang, `nudge.call.${from.role}`) : tServer(lang, 'nudge.by_name', { name: from.name });
-  const body = tServer(lang, `nudge.${kind}`, { from: who, to: to.name, mascot });
-  return { title: tServer(lang, 'nudge.title', { mascot }), body: body.charAt(0).toUpperCase() + body.slice(1) };
+  const body = tServer(lang, `nudge.${kind}`, { from: callName(lang, from, to), to: to.name, mascot });
+  return { title: tServer(lang, 'nudge.title', { mascot }), body: capFirst(body) };
+}
+
+/** Chữ tin chuyện mới: câu mẫu nudge.story.* điền người kể (gọi như callName) và tên người nhận. Không bao giờ có lời kể. Viết hoa chữ đầu. */
+export function storyNoticeText(lang: Lang, from: Kin, to: Kin): { title: string; body: string } {
+  const who = callName(lang, from, to);
+  return { title: capFirst(tServer(lang, 'nudge.story.title', { from: who })), body: capFirst(tServer(lang, 'nudge.story.body', { from: who, to: to.name })) };
 }
 
 /** Lời nhắc nào có tin nhắn riêng giữa hai người (chiều nào cũng được) trong CONTACT_H giờ sau lúc gửi: lúc của tin sớm nhất. */
@@ -269,8 +318,9 @@ async function closeByMessages(db: Db, now: Date) {
   for (const c of contactFromMessages(open, dms)) await db.query(MAY_SQL.contact, [c.id, c.at]);
 }
 
-/** Một lượt: khép vòng tin nhắn riêng, rồi bỏ tín hiệu hết hạn hay đã tắt công tắc, gửi lời nhắc tới hạn (mỗi người nhận tối đa một).
- *  Mỗi tín hiệu phải giành được (MAY_SQL.claimNudge, cùng câu ghi may_nudges) mới gửi thông báo. */
+/** Một lượt: khép vòng tin nhắn riêng, rồi bỏ tín hiệu hết hạn hay đã tắt công tắc, gửi lời nhắc tới hạn (mỗi người nhận tối đa một)
+ *  và tin chuyện mới có tập đã xong. Mỗi tín hiệu phải giành được (MAY_SQL.claimNudge cùng câu ghi may_nudges; tin chuyện mới
+ *  MAY_SQL.claimStory, không ghi may_nudges) mới gửi thông báo. */
 export async function mayTick(deps: MayDeps = DEPS): Promise<{ sent: number; dropped: number }> {
   const { db } = deps;
   const now = deps.now();
@@ -280,6 +330,7 @@ export async function mayTick(deps: MayDeps = DEPS): Promise<{ sent: number; dro
   const pending: Pending[] = rows.map((r) => ({
     id: r.id, kind: r.kind, toId: r.to_id, fromId: r.from_id, toTz: tzOfMember(r),
     dueAt: new Date(r.due_at), expiresAt: new Date(r.expires_at), createdAt: new Date(r.created_at), toOn: !!r.to_on, fromOn: !!r.from_on,
+    ready: r.kind !== 'story' || r.ready === true,
   }));
   const { rows: past } = await db.query(MAY_SQL.history, [[...new Set(pending.map((p) => p.toId))], new Date(now.getTime() - WEEK_MS)]);
   const history = new Map<string, Date[]>();
@@ -289,13 +340,22 @@ export async function mayTick(deps: MayDeps = DEPS): Promise<{ sent: number; dro
   for (const d of drop) dropped += (await db.query(MAY_SQL.drop, [d.id, d.why])).rowCount ?? 0;
   const byId = new Map(rows.map((r) => [r.id, r]));
   for (const p of send) {
+    const r = byId.get(p.id)!;
+    const from: Kin = { id: p.fromId, name: r.from_name, role: r.from_role }, to: Kin = { id: p.toId, name: r.to_name, role: r.to_role };
+    const kind = p.kind;
+    if (kind === 'story') {
+      // Theo công tắc "Tin nhà" (kind post), mở thẳng tập vừa chia sẻ.
+      const { rows: won } = await db.query(MAY_SQL.claimStory, [p.id, now]);
+      if (!won.length) continue;
+      deps.notify([p.toId], (l) => ({ kind: 'post', ...storyNoticeText(l, from, to), tag: `story-${r.ref}`, open: `podcast:${r.ref}`, ttl: 24 * 3600 }));
+      sent++;
+      continue;
+    }
     const id = randomUUID();
     const { rows: won } = await db.query(MAY_SQL.claimNudge, [p.id, now, id]);
     if (!won.length) continue;
-    const r = byId.get(p.id)!;
-    const from: Kin = { id: p.fromId, name: r.from_name, role: r.from_role }, to: Kin = { id: p.toId, name: r.to_name, role: r.to_role };
     const mascot = r.mascot_name || DEFAULT_MASCOT_NAME;
-    deps.notify([p.toId], (l) => ({ kind: 'may', ...nudgeText(p.kind, l, from, to, mascot), tag: `may-${id}`, open: `may:${id}`, ttl: 12 * 3600 }));
+    deps.notify([p.toId], (l) => ({ kind: 'may', ...nudgeText(kind, l, from, to, mascot), tag: `may-${id}`, open: `may:${id}`, ttl: 12 * 3600 }));
     sent++;
   }
   return { sent, dropped };

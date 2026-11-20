@@ -27,7 +27,7 @@ homeRouter.get('/home', async (req: any, res: any) => {
          )::int n`, [fid])),
       pool.query(
         `select kind, count(*)::int n from posts where family_id = $1 and created_at > now() - interval '7 days' group by kind`, [fid]),
-      listPodcasts(fid, 12),
+      listPodcasts(fid, req.member.id, 12),
       unreadLetters(req.member.id),
     ]);
     const counts: Record<string, number> = { photo: 0, video: 0, voice: 0, hug: 0 };

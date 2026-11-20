@@ -140,6 +140,11 @@ class FakeDb {
         for (const f of hit) f.replacement_id = v[1];
         return res([], hit.length);
       }
+      case S.share: {
+        const hit = this.facts.filter((f) => f.call_id === v[0] && f.visibility === 'self' && f.kind !== 'health' && f.kind !== 'worry' && f.details?.sensitive !== true);
+        for (const f of hit) f.visibility = 'family';
+        return res([], hit.length);
+      }
       case S.done: this.calls[v[0]].memory_at = this.tick(); return res([], 1);
       case S.failed: this.calls[v[0]].memory_tries++; return res([], 1);
       case S.next:
@@ -217,6 +222,15 @@ test('chưa đồng ý chia sẻ: mọi sự thật của cuộc gọi là riên
   handler = gemini(reply); db.calls.c1.shared = false;
   await M.extractCall('c1', { signals: false }, deps);
   assert.ok(mine().length && mine().every((f) => f.visibility === 'self'));
+});
+test('chia sẻ sau: sự thật riêng của cuộc gọi sang cả nhà, trừ sức khoẻ, lo lắng, nhạy cảm; cuộc gọi khác giữ nguyên', async () => {
+  const f = (id: string, call_id: string, kind: string, visibility: string, sensitive = false): Row => ({ id, family_id: 'F', about_id: null, source_id: 'lan', kind,
+    text: id, text_en: id, details: { evidence: 'e', sensitive, occasion: null, lang: 'vi' }, call_id, answer_id: null, visibility, replacement_id: null, created_at: NOW });
+  db.facts = [f('food', 'c1', 'food', 'self'), f('health', 'c1', 'health', 'self'), f('worry', 'c1', 'worry', 'self'), f('secret', 'c1', 'like', 'self', true),
+    f('place', 'c1', 'place', 'family'), f('other', 'c2', 'food', 'self')];
+  assert.equal(await M.shareFacts(db, 'c1'), 1);
+  assert.deepEqual(db.facts.map((x) => [x.id, x.visibility]), [['food', 'family'], ['health', 'self'], ['worry', 'self'], ['secret', 'self'], ['place', 'family'], ['other', 'self']]);
+  assert.equal(await M.shareFacts(db, 'c1'), 0);   // bấm lại không đổi gì
 });
 test('người kể tắt "Mây nhắc mình liên lạc": vẫn có sự thật, không có tín hiệu', async () => {
   handler = gemini(reply); db.members.find((m) => m.id === 'lan')!.may_nudge = false;

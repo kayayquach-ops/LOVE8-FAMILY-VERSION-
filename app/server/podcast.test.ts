@@ -198,3 +198,99 @@ test('xếp cảnh: phủ đúng độ dài phim, phim dài thì lặp ảnh, nh
   assert.ok(Math.abs(end(many) - 10) < 1e-6);
   for (let i = 1; i < a.shots.length; i++) assert.ok(a.shots[i].start > a.shots[i - 1].start);
 });
+
+// ---------- Tập riêng và tập chia sẻ (DB giả theo từng câu trong POD_SQL, MEM_SQL.share, MAY_SQL.insert) ----------
+
+const { MEM_SQL } = await import('./memory.ts');
+const { MAY_SQL } = await import('./may.ts');
+type Row = Record<string, any>;
+const NOW = new Date('2026-11-20T03:00:00Z');
+
+function shareDb() {
+  const ep = (id: string, key: string, member_id: string, shared: boolean, topic = 'que-nha', h = 0): Row =>
+    ({ id, family_id: 'F', key, kind: 'person', member_id, topic, title: id, media: `/media/podcasts/${id}.m4a`, duration: 30, chapters: '[]', cover: null,
+      status: 'ready', shared, created_at: new Date(NOW.getTime() - h * 3600e3), video: null, poster: null, video_status: 'none' });
+  const fact = (kind: string, sensitive = false): Row => ({ id: `f-${kind}`, family_id: 'F', kind, call_id: 'c1', visibility: 'self', details: { evidence: 'e', sensitive } });
+  const db = {
+    calls: { c1: { id: 'c1', family_id: 'F', member_id: 'a1', shared: false } } as Record<string, Row>,
+    members: [{ id: 'a1', family_id: 'F', name: 'Lan', role: 'me', lang: 'vi' }, { id: 'a3', family_id: 'F', name: 'Hùng', role: 'bo', lang: 'vi' },
+      { id: 'an', family_id: 'F', name: 'An', role: 'con', lang: 'vi' }],
+    // Tập của a1 đã chia sẻ, tập riêng của a1 (cuộc gọi c1), tập riêng của a3, tập cũ của a3 (mặc định đã chia sẻ).
+    podcasts: [ep('ep-a1-shared', 'story:c0:1', 'a1', true, 'que-nha', 1), ep('ep-a1-private', 'story:c1:1', 'a1', false, 'mon-an', 2),
+      ep('ep-a3-private', 'story:c3:1', 'a3', false, 'que-nha', 3), ep('ep-old', 'call:c9', 'a3', true, 'que-nha', 4)],
+    answers: [{ call_id: 'c1', idx: 1, turn: 0, topic: 'mon-an', transcript: 'Hồi An còn bé, nhà mình hay ăn canh chua.' },
+      { call_id: 'c1', idx: 1, turn: 1, topic: 'mon-an', transcript: null },
+      { call_id: 'c1', idx: 2, turn: 0, topic: 'loi-nhan', transcript: 'Hùng ơi, lời nhắn riêng.' }],
+    facts: [fact('food'), fact('health'), fact('like', true), fact('worry')],
+    signals: [] as Row[],
+    async query(q: string, v: any[] = []): Promise<{ rows: Row[]; rowCount: number }> {
+      const out = (rows: Row[], n = rows.length) => ({ rows, rowCount: n });
+      const S = P.POD_SQL;
+      switch (q) {
+        case S.list:
+          return out(db.podcasts.filter((e) => e.family_id === v[0] && e.status !== 'failed' && e.key !== v[2] && (e.shared || e.member_id === v[3]))
+            .sort((a, b) => +b.created_at - +a.created_at).slice(0, v[1]));
+        case S.shareCall: {
+          const c = db.calls[v[0]];
+          if (!c || c.member_id !== v[1]) return out([]);
+          c.shared = true;
+          return out([{ family_id: c.family_id }]);
+        }
+        case S.shareEps: {
+          const prefix = String(v[1]).replace(/%$/, '');   // key like 'story:<callId>:%'
+          const hit = db.podcasts.filter((e) => e.family_id === v[0] && e.key.startsWith(prefix) && !e.shared);
+          for (const e of hit) e.shared = true;
+          return out(hit.map(({ id, key, topic }) => ({ id, key, topic })));
+        }
+        case S.family: return out(db.members.filter((m) => m.family_id === v[0]));
+        case S.storyText:
+          return out(db.answers.filter((a) => a.call_id === v[0] && a.idx === v[1] && !v[2].includes(a.topic)).sort((a, b) => a.turn - b.turn).map(({ transcript }) => ({ transcript })));
+        case MEM_SQL.share: {
+          const hit = db.facts.filter((f) => f.call_id === v[0] && f.visibility === 'self' && f.kind !== 'health' && f.kind !== 'worry' && f.details?.sensitive !== true);
+          for (const f of hit) f.visibility = 'family';
+          return out([], hit.length);
+        }
+        case MAY_SQL.insert: {
+          const [id, family_id, from_id, to_id, kind, evidence, call_id, ref, due_at, expires_at] = v;
+          if (db.signals.some((s) => s.call_id === call_id && s.to_id === to_id && s.kind === kind)) return out([], 0);
+          db.signals.push({ id, family_id, from_id, to_id, kind, evidence, call_id, ref, due_at, expires_at });
+          return out([], 1);
+        }
+      }
+      throw new Error(`DB giả chưa biết câu này: ${q}`);
+    },
+  };
+  return db;
+}
+let db: ReturnType<typeof shareDb>;
+let rebuilt: Array<[string, string]>;
+let deps: NonNullable<Parameters<typeof P.shareCall>[2]>;
+test.beforeEach(() => {
+  db = shareDb();
+  rebuilt = [];
+  deps = { db, rebuildTopic: async (fid, topic) => { rebuilt.push([fid, topic]); }, now: () => NOW };
+});
+
+test('danh sách tập: tập riêng chỉ người kể thấy, tập cũ và tập đã chia sẻ ai cũng thấy', async () => {
+  // rows: ep-a1-shared (member a1, shared), ep-a1-private (a1, not shared), ep-a3-private (a3), ep-old (a3, shared default)
+  assert.deepEqual((await P.listPodcasts('F', 'a3', 60, db)).map((e) => e.id).sort(), ['ep-a1-shared', 'ep-a3-private', 'ep-old']);
+  assert.deepEqual((await P.listPodcasts('F', 'a1', 60, db)).map((e) => e.id).sort(), ['ep-a1-private', 'ep-a1-shared', 'ep-old']);
+  // Thêm: máy khách biết tập nào còn riêng (để hiện nút chia sẻ).
+  assert.deepEqual((await P.listPodcasts('F', 'a1', 60, db)).map((e) => [e.id, e.shared]), [['ep-a1-shared', true], ['ep-a1-private', false], ['ep-old', true]]);
+});
+test('chia sẻ sau: chỉ người kể bấm được; tập, sự thật đổi sang cả nhà (trừ sức khoẻ, lo lắng, nhạy cảm); báo người được nhắc; dựng lại tập chủ đề', async () => {
+  assert.equal(await P.shareCall('c1', 'a3', deps), false);
+  assert.equal(db.calls.c1.shared, false);
+  assert.equal(await P.shareCall('c1', 'a1', deps), true);
+  assert.equal(db.calls.c1.shared, true);
+  assert.equal(db.podcasts.find((e) => e.key === 'story:c1:1')!.shared, true);
+  assert.deepEqual(db.facts.map((f) => [f.kind, f.visibility]).sort(), [['food', 'family'], ['health', 'self'], ['like', 'self'] /* sensitive */, ['worry', 'self']]);
+  assert.deepEqual(db.signals.filter((s) => s.kind === 'story').map((s) => s.to_id), ['an']);   // chuyện có nhắc An
+  assert.deepEqual(rebuilt, [['F', 'mon-an']]);
+  await P.shareCall('c1', 'a1', deps);
+  assert.equal(db.signals.filter((s) => s.kind === 'story').length, 1);
+  // Thêm: tin chuyện mới trỏ đúng tập, không mang lời kể; bấm lại không dựng lại tập chủ đề; tập của người khác không đổi.
+  assert.deepEqual(db.signals.map((s) => [s.from_id, s.ref, s.evidence]), [['a1', 'ep-a1-private', '']]);
+  assert.deepEqual(rebuilt, [['F', 'mon-an']]);
+  assert.equal(db.podcasts.find((e) => e.id === 'ep-a3-private')!.shared, false);
+});

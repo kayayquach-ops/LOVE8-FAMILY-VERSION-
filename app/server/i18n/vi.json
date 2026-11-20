@@ -182,6 +182,8 @@
   "nudge.low": "Dạo này {from} hơi mệt, {to} hỏi thăm {from} nhé.",
   "nudge.good_news": "{from} có tin vui muốn khoe với cả nhà đấy, hỏi {from} xem nào.",
   "nudge.upcoming": "Mai {from} có việc quan trọng, {to} gửi {from} một lời chúc nhé.",
+  "nudge.story.title": "{from} vừa kể một chuyện",
+  "nudge.story.body": "{from} vừa kể cho {to} nghe một chuyện, nghe nhé.",
   "push.cal.today": "Hôm nay",
   "push.cal.tomorrow": "Mai",
   "push.cal.title": "{when} là {what}",

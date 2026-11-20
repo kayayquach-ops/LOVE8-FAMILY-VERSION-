@@ -220,6 +220,9 @@ export const MEM_SQL = {
   insert: `insert into memory_facts (id, family_id, about_id, source_id, kind, text, text_en, details, call_id, answer_id, visibility)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
   replace: 'update memory_facts set replacement_id = $2 where id = $1',
+  // Người kể chia sẻ chuyện sau: sự thật riêng của cuộc gọi sang cả nhà, trừ sức khoẻ, lo lắng và điều AI đánh dấu nhạy cảm.
+  share: `update memory_facts set visibility = 'family' where call_id = $1 and visibility = 'self'
+     and kind not in ('health', 'worry') and coalesce(details->>'sensitive', '') <> 'true'`,
   done: 'update calls set memory_at = now() where id = $1',
   failed: 'update calls set memory_tries = memory_tries + 1 where id = $1',
   next: `select id from calls where status = 'done' and memory_at is null and memory_tries < 3 order by done_at limit 1`,
@@ -277,6 +280,11 @@ export async function extractCall(callId: string, opts: { signals: boolean }, de
   } finally {
     extracting.delete(callId);
   }
+}
+
+/** Cuộc gọi vừa được chia sẻ: sự thật riêng của nó sang cả nhà (visibilityOf với shared = true). Bấm lại không đổi gì. Trả số sự thật đổi. */
+export async function shareFacts(db: Db, callId: string): Promise<number> {
+  return (await db.query(MEM_SQL.share, [callId])).rowCount ?? 0;
 }
 
 // Câu trả lời tới muộn (sau khi cuộc gọi đã chốt): gom lại rồi rút lại sổ nhớ của cuộc gọi đó một lần, như rebuildCallSoon ở podcast.ts.

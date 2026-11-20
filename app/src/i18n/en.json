@@ -479,6 +479,9 @@
   "podcast.addPhotos": "add photos to this story",
   "podcast.adding": "sending photos...",
   "podcast.photosAdded": "Got them. The video is on its way.",
+  "podcast.private": "only you can hear this",
+  "podcast.shareAll": "share with the family",
+  "podcast.sharedDone": "The whole family can listen now",
 
   "family.title": "Family",
   "family.language": "Language",

@@ -87,6 +87,37 @@ function AddPhotos({ ep, onDone }: { ep: Ep; onDone: () => void }) {
   );
 }
 
+/** Tập riêng của chính mình (chưa đồng ý chia sẻ trong cuộc gọi): một dòng nhỏ và nút chia sẻ cho cả nhà. Người khác không bao giờ nhận tập riêng. */
+function ShareEp({ ep, onDone }: { ep: Ep; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+
+  async function share() {
+    tap();
+    setBusy(true);
+    try {
+      const tk = token.get();
+      const res = await fetch(`/api/podcasts/${ep.id}/share`, { method: 'POST', headers: tk ? { authorization: `Bearer ${tk}` } : {} });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(errorText(data));
+      toast(t('podcast.sharedDone'));
+      onDone();
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <p className="pd-note">{t('podcast.private')}</p>
+      <div className="pd-mode-wrap">
+        <button className="btn line" onClick={() => void share()} disabled={busy}>{t('podcast.shareAll')}</button>
+      </div>
+    </>
+  );
+}
+
 // Tập có video thì mặc định xem video, chuyển được sang chỉ nghe (tải nhẹ hơn nhiều). Tập cũ chỉ có tiếng vẫn nghe như trước.
 function Player({ ep, me, onChange }: { ep: Ep; me: Me; onChange: () => void }) {
   // Video dựng xong trong lúc đang nghe thì không tự chuyển (khỏi ngắt tiếng), chỉ hiện nút chọn.
@@ -105,6 +136,7 @@ function Player({ ep, me, onChange }: { ep: Ep; me: Me; onChange: () => void }) 
         </div>
       ) : ep.videoStatus === 'rendering' && <p className="pd-note">{t('podcast.videoSoon')}</p>}
       {ep.video && ep.videoStatus === 'rendering' && <p className="pd-note">{t('podcast.videoRedo')}</p>}
+      {!ep.shared && ep.memberId === me.me.id && <ShareEp ep={ep} onDone={onChange} />}
       {ep.story && <AddPhotos ep={ep} onDone={onChange} />}
     </>
   );
