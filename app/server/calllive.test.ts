@@ -52,10 +52,11 @@ function fakeDb(t: Tables = {}, o: { lenient?: boolean } = {}) {
   const db = {
     members: t.members ?? [], calls: t.calls ?? [], families: t.families ?? [], facts: t.facts ?? [], events: t.events ?? [],
     answers: t.answers ?? [], relays: t.relays ?? [], photos: t.photos ?? {},
-    sql: [] as string[], cas: 0, onCas: undefined as undefined | (() => void),
+    sql: [] as string[], cas: 0, onCas: undefined as undefined | (() => void), fail: undefined as undefined | string,
     async query(q: string, v: any[] = []): Promise<{ rows: Row[]; rowCount: number }> {
       const out = (rows: Row[], n = rows.length) => ({ rows, rowCount: n });
       db.sql.push(q);
+      if (q === db.fail) throw new Error('DB giả: lỗi ghi');
       // Câu của call.ts (callRouter, saveRelays) mà test qua HTTP cần.
       if (q.startsWith('insert into relays')) {
         const [id, family_id, call_id, from_id, to_id, transcript, media, said, push] = v;
@@ -105,7 +106,7 @@ function fakeDb(t: Tables = {}, o: { lenient?: boolean } = {}) {
             .map(({ text, text_en, visibility, source_id }) => ({ text, text_en, visibility, source_id })));
         case S.checkEvents: return out(db.events.filter((e) => e.family_id === v[0]).map((e) => ({ title: e.title })));
         case S.checkAnswers:
-          return out(db.answers.filter((a) => a.call_id === v[0] && a.topic !== 'loi-nhan' && (a.transcript ?? '') !== '').map((a) => ({ transcript: a.transcript })));
+          return out(db.answers.filter((a) => a.call_id === v[0] && (a.transcript ?? '') !== '').map((a) => ({ topic: a.topic, transcript: a.transcript })));
         case S.checkCounts: return out([{ done: db.calls.filter((c) => c.member_id === v[0] && c.status === 'done').length, photos: db.photos[v[0]] ?? 0 }]);
         case S.slotLen: return out(db.answers.filter((a) => a.call_id === v[0] && a.idx === v[1] && a.turn === v[2]).map((a) => ({ n: (a.transcript ?? '').length })));
         case S.relaySlot:
@@ -686,7 +687,12 @@ test('chủ đề lượt Live: hỏi thăm, lời nhắn, ô có sẵn, ô chư
   const s = L.placeStory(L.liveScript(lanCtx()), 2, story('mon-an'))!;
   assert.equal(L.liveTopic(s, 0, 'tuoi-tho'), 'hoi-tham');
   assert.equal(L.liveTopic(s, 1, 'tuoi-tho'), 'loi-nhan');
-  assert.equal(L.liveTopic(s, 2, 'tuoi-tho'), 'mon-an');      // ô có sẵn thắng theme gửi kèm
+  assert.equal(L.liveTopic(s, 2, 'abc'), 'mon-an');           // theme gửi kèm sai hay thiếu: theo ô có sẵn
+  assert.equal(L.liveTopic(s, 2, undefined), 'mon-an');
+  // Vòng sửa 1: theme gửi kèm hợp lệ thắng ô có sẵn, vì ô có thể là bản sao lấp chỗ trống của chuyện sau (máy khách biết ô này mở chủ đề gì).
+  const gap = L.placeStory(L.liveScript(lanCtx()), 4, story('mon-an'))!;   // ô 2, 3 là bản sao món ăn
+  assert.equal(L.liveTopic(gap, 3, 'tuoi-tho'), 'tuoi-tho');
+  assert.equal(L.liveTopic(gap, 3, 'abc'), 'mon-an');
   assert.equal(L.liveTopic(s, 5, 'tuoi-tho'), 'tuoi-tho');
   assert.equal(L.liveTopic(s, 5, 'que-nha'), 'ky-niem');      // theo THEME_TOPIC
   assert.equal(L.liveTopic(s, 5, 'abc'), 'ky-niem');
@@ -745,8 +751,11 @@ test('lượt Live: không trần 4 lượt, lời nhắn luôn lượt 0, ô ch
   // Thêm: câu Mây hỏi trong chuyện qua lớp lọc (tên lạ: câu mở; câu mở cũng hỏng: câu mẫu của chủ đề); ô có sẵn thì theo chủ đề của ô.
   assert.equal(L.liveAnswerRow(s, { ...body, question: 'Hồi đó Mẹ ở với cô Thảo ạ?' }, K)!.question, 'Mẹ kể con nghe về tuổi thơ nhé');
   assert.equal(L.liveAnswerRow(s, { ...body, question: 'Mẹ còn đau lưng không ạ?', opener: 'Lần trước mẹ kể...' }, K)!.question, C.templateOpener(K, 'tuoi-tho'));
-  const inSlot = L.liveAnswerRow(L.placeStory(s, 2, story('mon-an'))!, { ...body, question: 'x cô Thảo', opener: '' }, K)!;
+  const inSlot = L.liveAnswerRow(L.placeStory(s, 2, story('mon-an'))!, { ...body, theme: undefined, question: 'x cô Thảo', opener: '' }, K)!;
   assert.deepEqual([inSlot.topic, inSlot.question], ['mon-an', C.templateOpener(K, 'mon-an')]);
+  // Ô 3 là bản sao lấp chỗ trống (món ăn) mà lượt gửi kèm tuổi thơ: chủ đề và câu mẫu theo tuổi thơ.
+  const copy = L.liveAnswerRow(L.placeStory(s, 4, story('mon-an'))!, { ...body, idx: '3', question: 'x cô Thảo', opener: '' }, K)!;
+  assert.deepEqual([copy.topic, copy.question], ['tuoi-tho', C.templateOpener(K, 'tuoi-tho')]);
   assert.equal(L.liveAnswerRow(s, { ...body, theme: 'abc', question: '', opener: '' }, K)!.question, C.templateOpener(K, 'que-nha'));
   // Hỏi thăm và lời nhắn không thành thẻ chuyện: chỉ làm sạch (thiếu câu thì câu của ô); hỏi thăm cũng không trần lượt; chưa có lời chép thì null.
   assert.equal(L.liveAnswerRow(s, { idx: '0', turn: '12', question: 'Dạo này mẹ — khoẻ không ạ?' }, K)!.question, 'Dạo này mẹ, khoẻ không ạ?');
@@ -773,8 +782,12 @@ test('ô lời nhắn giữ lời dài nhất (phán quyết R6): lượt sau ng
   // Lời nhắn khó nói không bao giờ có media ở call_answers (podcast chỉ lấy hàng có media).
   assert.deepEqual([rows[0].transcript, rows[0].topic, rows[0].turn, rows[0].media, rows[0].question], [msg, 'loi-nhan', 0, null, ask]);
   // Lời nhắn để rút người nhận lúc chốt là đúng hàng ấy; cuộc gọi không có lời nhắn thì null.
-  assert.deepEqual(await L.relayAnswer('c1', db), { question: ask, transcript: msg });
-  assert.equal(await L.relayAnswer('khong-co', db), null);
+  // Vòng sửa 1: chỉ cuộc gọi v3 của chính người này.
+  assert.deepEqual(await L.relayAnswer('c1', 'lan', db), { call: { id: 'c1', family_id: 'F', member_id: 'lan' }, question: ask, transcript: msg });
+  assert.equal(await L.relayAnswer('khong-co', 'lan', db), null);
+  assert.equal(await L.relayAnswer('c1', 'an', db), null);
+  const v2 = lanHome({ answers: [{ call_id: 'c1', idx: 1, turn: 0, topic: 'loi-nhan', question: ask, transcript: msg }] }, { script: JSON.stringify(C.templateScript(lanCtx(), '2026-11-16')) });
+  assert.equal(await L.relayAnswer('c1', 'lan', v2), null);
   // Ô chuyện: mỗi (ô, lượt) một hàng có media, lượt sau ngắn hơn vẫn ghi; gửi lại thì thay hàng cũ.
   const turn = (t: string, transcript: string) => L.liveAnswerRow(s, { idx: '2', turn: t, question: 'Hồi đó Mẹ ở với ai ạ?', transcript, theme: 'tuoi-tho', opener: '' }, K)!;
   assert.equal(await L.storeLiveAnswer(call, turn('0', 'dài lắm lắm lắm'), '/media/s0.webm', db), true);
@@ -802,7 +815,8 @@ test('bộ kiểm câu: điều riêng là điều self của chính người ng
   });
   const call = { id: 'c1', family_id: 'F', member_id: 'lan', script: db.calls[0].script };
   const k = await L.loadLiveCheck(call, db);
-  assert.deepEqual(k.privates, ['Mẹ bị đau lưng mấy tháng nay', 'Mom has had back pain for months', 'Con xin lỗi mẹ chuyện năm ngoái']);
+  // Vòng sửa 1: lời nhắn khó nói của chính cuộc gọi này cũng là điều riêng (chỉ ở privates, không bao giờ ở hay).
+  assert.deepEqual(k.privates, ['Mẹ bị đau lưng mấy tháng nay', 'Mom has had back pain for months', 'Con xin lỗi mẹ chuyện năm ngoái', 'nhắn chị Hoa là em xin lỗi']);
   for (const w of ['Lan', 'An', 'Bông', 'Hà Nội', 'An thích canh chua', 'An loves sour soup', 'Sinh nhật An', 'cô Thảo', 'son', 'canh chua']) assert.ok(k.hay.includes(w), w);
   for (const w of ['đau lưng', 'back pain', 'BÍ MẬT', 'AN SECRET', 'Câu cũ', 'Hoa', 'xin lỗi', 'never']) assert.ok(!k.hay.includes(w), w);
   assert.deepEqual(k.allow, { prevCall: false, ownStory: true, photos: false });
@@ -865,8 +879,14 @@ test('chốt cuộc gọi Live: lưu câu hẹn sạch; câu hẹn có tên lạ
   logs.length = 0;
   assert.deepEqual(await L.finishLive('c1', 'lan', { may, hook }, db), { lines: 2, flagged: 1, hook: true });
   assert.equal(scriptOf(db).next_hook, hook);
-  assert.ok(logs.includes('[call-live] câu nghi bịa: "Lần trước Mẹ kể chuyện bà" (nhắc cuộc gọi trước không có)'), logs.join('\n'));
+  assert.ok(logs.includes('[call-live] câu nghi bịa (nhắc cuộc gọi trước không có): "Lần trước Mẹ kể chuyện bà"'), logs.join('\n'));
   assert.ok(logs.some((l) => l.includes('[call-live] cuộc gọi c1: 2 câu của Mây, 1 câu nghi bịa')), logs.join('\n'));
+  // Vòng sửa 1: log chỉ chép lý do và 40 chữ đầu; câu chạm điều riêng thì không chép chữ nào.
+  logs.length = 0;
+  await L.finishLive('c1', 'lan', { may: JSON.stringify(['Lần trước Mẹ kể chuyện bà ngoại hồi còn ở quê với cả nhà', 'Lần trước mẹ kể mẹ bị đau lưng']) }, db);
+  assert.ok(logs.includes('[call-live] câu nghi bịa (nhắc cuộc gọi trước không có): "Lần trước Mẹ kể chuyện bà ngoại hồi còn…"'), logs.join('\n'));
+  assert.ok(logs.includes('[call-live] câu nghi bịa (nhắc cuộc gọi trước không có)'), logs.join('\n'));
+  assert.ok(!logs.some((l) => l.includes('đau lưng')), logs.join('\n'));
   for (const bad of ['Tuần sau kể con nghe chuyện cô Thảo', 'Tuần sau mẹ hết đau lưng chưa']) {
     logs.length = 0;
     assert.equal((await L.finishLive('c1', 'lan', { may: '[]', hook: bad }, db)).hook, false, bad);
@@ -894,6 +914,34 @@ test('chốt cuộc gọi Live: lưu câu hẹn sạch; câu hẹn có tên lạ
   const later = lanHome();
   later.calls.push({ id: 'c0', family_id: 'F', member_id: 'lan', status: 'done', script: '{}' });
   assert.equal((await L.finishLive('c1', 'lan', { may }, later)).flagged, 0);
+});
+
+test('lời nhắn khó nói của cuộc gọi này là điều riêng: thẻ, câu mở, câu hẹn nhắc lại lời nhắn thì bỏ; câu không liên quan vẫn giữ', async () => {
+  // An (con) gọi; lời nhắn khó nói (ô 1) là xin lỗi bố chuyện cãi nhau hôm Tết.
+  const msg = 'con xin lỗi bố chuyện cãi nhau hôm tết';
+  const db = lanHome({ answers: [{ call_id: 'c1', idx: 1, turn: 0, topic: 'loi-nhan', question: 'q', transcript: msg }] }, { member_id: 'an' });
+  const call = { id: 'c1', family_id: 'F', member_id: 'an', script: db.calls[0].script };
+  const k = await L.loadLiveCheck(call, db);
+  assert.ok(k.privates.includes(msg));
+  assert.ok(!k.hay.includes('cãi nhau'));   // không bao giờ thành dữ liệu thật
+  // Câu nói lại lời nhắn bằng chữ khác vẫn bị bắt; câu chuyện không liên quan giữ nguyên.
+  assert.equal(L.cardText('Hôm tết con với bố cãi nhau chuyện gì vậy?', 'X', k, 'tuoi-tho'), 'X');
+  assert.equal(L.cardText('Hồi nhỏ bạn hay chơi gì nhất?', 'X', k, 'tuoi-tho'), 'Hồi nhỏ bạn hay chơi gì nhất?');
+  // Câu mở nhắc lại lời nhắn: câu mẫu; câu mở khác vẫn lưu nguyên.
+  await L.saveStory('c1', 'an', { idx: '2', theme: 'tet-cac-dip', opener: 'Kể mình nghe chuyện hôm tết cãi nhau với bố đi' }, db);
+  assert.equal(scriptOf(db).questions[2].text, C.templateOpener(k, 'tet-cac-dip'));
+  await L.saveStory('c1', 'an', { idx: '3', theme: 'mon-an', opener: 'Kể mình nghe về món ăn ở nhà mà bạn nhớ nhất đi' }, db);
+  assert.equal(scriptOf(db).questions[3].text, 'Kể mình nghe về món ăn ở nhà mà bạn nhớ nhất đi');
+  // Câu Mây hỏi trong chuyện nhắc lại lời nhắn: thẻ là câu mở của ô.
+  const row = L.liveAnswerRow(scriptOf(db), { idx: '2', turn: '1', question: 'Hôm tết con với bố cãi nhau chuyện gì vậy?', theme: 'tet-cac-dip' }, k)!;
+  assert.equal(row.question, C.templateOpener(k, 'tet-cac-dip'));
+  // Câu hẹn nhắc lại lời nhắn: bỏ, log không chép câu; câu hẹn khác vẫn lưu.
+  logs.length = 0;
+  assert.equal((await L.finishLive('c1', 'an', { hook: 'Tuần sau kể tiếp chuyện cãi nhau hôm tết nhé' }, db)).hook, false);
+  assert.equal(scriptOf(db).next_hook, undefined);
+  assert.ok(!logs.some((l) => l.includes('cãi nhau')), logs.join('\n'));
+  assert.equal((await L.finishLive('c1', 'an', { hook: 'Tuần sau kể mình nghe về món ăn ở nhà nhé' }, db)).hook, true);
+  assert.equal(scriptOf(db).next_hook, 'Tuần sau kể mình nghe về món ăn ở nhà nhé');
 });
 
 test('POST /call/:id/story: thân JSON hay multipart (hàng chờ gửi FormData) đều được; sai thì 400 live_story_invalid, cuộc gọi người khác 404', async () => {
@@ -1028,7 +1076,7 @@ test('ô lời nhắn qua /answer?live=1 rồi /finish: giữ lời dài nhất,
     const call = db.calls.find((c) => c.id === 'live-b')!;
     assert.equal(call.status, 'done');
     assert.equal(JSON.parse(call.script).next_hook, 'Tuần sau Mẹ kể tiếp chuyện bà ngoại nhé');
-    assert.ok(logs.includes('[call-live] câu nghi bịa: "Lần trước Mẹ kể chuyện bà" (nhắc cuộc gọi trước không có)'), logs.join('\n'));
+    assert.ok(logs.includes('[call-live] câu nghi bịa (nhắc cuộc gọi trước không có): "Lần trước Mẹ kể chuyện bà"'), logs.join('\n'));
     // Câu hẹn và log ghi trước khi chốt.
     assert.ok(db.sql.lastIndexOf(L.LIVE_SQL.cas) < db.sql.indexOf(update));
     assert.ok(await until(() => db.relays.length > 0), 'lời nhắn được rút lúc chốt');
@@ -1045,9 +1093,55 @@ test('ô lời nhắn qua /answer?live=1 rồi /finish: giữ lời dài nhất,
     assert.equal(db.calls.find((c) => c.id === 'old-b')!.status, 'done');
     await new Promise((r) => setTimeout(r, 50));
     const mine = db.sql.slice(before);
-    assert.ok(mine.includes(update));
-    assert.ok(!mine.includes(L.LIVE_SQL.script) && !mine.includes(L.LIVE_SQL.relaySlot));
+    // Đường đi của yêu cầu như cũ (câu đầu là câu chốt); sau khi chốt chỉ đọc kịch bản một lần ở nền để biết có phải v3 không.
+    assert.equal(mine[0], update);
+    assert.ok(mine.indexOf(L.LIVE_SQL.script) > 0 && !mine.includes(L.LIVE_SQL.relaySlot), mine.join('\n'));
     assert.ok(!logs.some((l) => l.includes('[call-live]')));
+  } finally {
+    srv.close();
+  }
+});
+
+test('/finish rút lời nhắn theo kịch bản v3, không theo trường gửi kèm: Live không có hook, may vẫn rút; v2 giả trường Live không vào; lỗi DB lúc ghi ô lời nhắn không để lại tệp', async () => {
+  const ask = 'Mẹ có điều gì khó nói muốn con nhắn ai không ạ?';
+  const msg = 'Con nhắn An là mẹ thương con lắm, con nhớ giữ sức khoẻ nhé';
+  const db = fakeDb({
+    members: [{ id: 'lan-c', family_id: 'FC', name: 'Lan', role: 'me', intro: '{}', lang: 'vi' }, { id: 'an-c', family_id: 'FC', name: 'An', role: 'con', lang: 'vi' }],
+    families: [{ id: 'FC' }],
+    calls: [
+      { id: 'live-c', family_id: 'FC', member_id: 'lan-c', status: 'ready', script: JSON.stringify(L.liveScript(lanCtx())) },
+      { id: 'v2-c', family_id: 'FC', member_id: 'lan-c', status: 'ready', script: JSON.stringify(C.templateScript(lanCtx(), '2026-11-16')) },
+    ],
+    // Hàng giả ở ô 1 của cuộc gọi v2: nếu /finish chỉ nhìn trường gửi kèm thì sẽ rút nhầm.
+    answers: [{ call_id: 'v2-c', idx: 1, turn: 0, topic: 'loi-nhan', question: ask, transcript: msg }],
+  }, { lenient: true });
+  const srv = await serveCall(db);
+  const relay = (transcript: string) => srv.form('/call/live-c/answer?live=1', 'lan-c', { live: '1', idx: '1', turn: '0', question: ask, transcript }, true);
+  const files = () => readdirSync(process.env.MEDIA_DIR!).length;
+  try {
+    // DB lỗi lúc ghi ô lời nhắn: 500 (hàng chờ thử lại), tệp tiếng đã xoá trước đó.
+    const n = files();
+    db.fail = L.LIVE_SQL.slotLen;
+    const err = console.error;
+    console.error = () => {};   // lỗi giả, không in ra đầu ra test
+    try { assert.equal((await relay(msg)).status, 500); } finally { console.error = err; db.fail = undefined; }
+    assert.equal(files(), n);
+    assert.equal((await relay(msg)).status, 200);
+    // v2 giả trường Live: không ghi câu hẹn, không log Live, không rút lời nhắn.
+    logs.length = 0;
+    assert.deepEqual(await srv.form('/call/v2-c/finish', 'lan-c', { hook: 'Tuần sau kể tiếp nhé', may: '["Lần trước Mẹ kể"]' }), { status: 200, body: { ok: true } });
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(db.calls.find((c) => c.id === 'v2-c')!.status, 'done');
+    assert.equal(JSON.parse(db.calls.find((c) => c.id === 'v2-c')!.script).next_hook, undefined);
+    assert.ok(!logs.some((l) => l.includes('[call-live]')), logs.join('\n'));
+    assert.ok(!db.sql.includes(L.LIVE_SQL.relaySlot));
+    assert.equal(db.relays.length, 0);
+    // Cuộc gọi Live chốt mà không gửi hook, may (không thân): vẫn rút lời nhắn từ ô 1.
+    const r = await fetch(`${srv.base}/call/live-c/finish`, { method: 'POST', headers: { 'x-member': 'lan-c' } });
+    assert.deepEqual([r.status, await r.json()], [200, { ok: true }]);
+    assert.ok(await until(() => db.relays.length > 0), 'lời nhắn được rút');
+    assert.deepEqual(db.relays.map((x) => [x.call_id, x.to_id, x.transcript, x.media]), [['live-c', 'an-c', msg, null]]);
+    await new Promise((r) => setTimeout(r, 50));
   } finally {
     srv.close();
   }

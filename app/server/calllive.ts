@@ -54,8 +54,8 @@ export const LIVE_SQL = {
   checkFamily: 'select name, city from members where family_id = $1',
   checkFacts: `select text, text_en, visibility, source_id from memory_facts where family_id = $1 and replacement_id is null and (visibility = 'family' or source_id = $2)`,
   checkEvents: 'select title from events where family_id = $1',
-  // Lời kể của chính cuộc gọi này, trừ lời nhắn khó nói (không bao giờ thành dữ liệu cho câu nào khác).
-  checkAnswers: `select transcript from call_answers where call_id = $1 and topic <> 'loi-nhan' and coalesce(transcript, '') <> ''`,
+  // Lời kể của chính cuộc gọi này: lời nhắn khó nói vào điều riêng (thẻ, câu hẹn không được nhắc lại), không bao giờ vào dữ liệu thật.
+  checkAnswers: `select topic, transcript from call_answers where call_id = $1 and coalesce(transcript, '') <> ''`,
   checkCounts: `select (select count(*)::int from calls where member_id = $1 and status = 'done') as done, (select count(*)::int from posts where author_id = $1 and kind = 'photo') + (select count(*)::int from vault where member_id = $1) as photos`,
   // Lượt kể Live (storeLiveAnswer): đúng hai câu xoá rồi ghi của /answer đường cũ; slotLen để ô lời nhắn giữ lời dài nhất.
   slotLen: `select length(coalesce(transcript, '')) as n from call_answers where call_id = $1 and idx = $2 and turn = $3`,
@@ -287,13 +287,13 @@ export function placeStory(script: CallScript, idx: number, q: CallQuestion): Ca
   return { ...script, questions: [...qs, ...Array.from({ length: idx - qs.length }, () => ({ ...q })), q] };
 }
 
-/** Chủ đề của một lượt Live: ô 0 hỏi thăm, ô 1 lời nhắn, ô chuyện đã có thì theo ô, chưa có (lượt tới trước /story) thì theo theme gửi kèm. */
+/** Chủ đề của một lượt Live: ô 0 hỏi thăm, ô 1 lời nhắn. Ô chuyện: theme gửi kèm (chủ đề máy khách đã mở cho đúng ô này, kể cả khi ô trên
+ *  máy chủ còn là bản sao lấp chỗ trống của chuyện sau hay chưa có vì lượt tới trước /story), thiếu hay sai thì theo ô, không có ô thì ký ức. */
 export function liveTopic(script: CallScript, idx: number, theme: unknown): Topic {
   if (idx === 0) return 'hoi-tham';
   if (idx === 1) return 'loi-nhan';
-  const q = script.questions[idx];
-  if (q) return q.topic;
-  return isTheme(theme) ? THEME_TOPIC[theme] : 'ky-niem';
+  if (isTheme(theme)) return THEME_TOPIC[theme];
+  return script.questions[idx]?.topic ?? 'ky-niem';
 }
 
 // i18n-ok-begin: chữ thường gặp (vi, en) không làm thành dấu vết của điều riêng, không phải chữ hiện cho người dùng.
@@ -315,7 +315,8 @@ export function privateHit(text: string, privates: string[]): boolean {
 
 /** Bộ kiểm câu của một cuộc gọi Live. hay: dữ liệu thật cho suspect() (tên trong nhà, nơi ở, linh vật, sổ nhớ cả nhà được biết, ngày trong lịch,
  *  ba câu khảo sát có trong DATA, lời kể của chính cuộc gọi này trừ lời nhắn khó nói). privates: điều riêng của chính người nghe (điều 'self'
- *  người ấy kể, cả bản tiếng Anh) và "điều chưa nói" của khảo sát; không bao giờ được nằm trong thẻ câu hỏi hay câu hẹn. */
+ *  người ấy kể, cả bản tiếng Anh), "điều chưa nói" của khảo sát và lời nhắn khó nói của chính cuộc gọi này; không bao giờ được nằm trong
+ *  thẻ câu hỏi hay câu hẹn, kể cả khi nói lại bằng chữ khác mà vẫn trùng một cặp chữ. */
 export type LiveCheck = { hay: string; privates: string[]; allow: Allow; lang: Lang; role: string; name: string; mascot: string };
 type LiveCall = { id: string; family_id: string; member_id: string; script: string };
 
@@ -342,10 +343,12 @@ async function checkBase(call: LiveCall, db: Db): Promise<LiveCheck> {
   return { hay, privates, allow: { ...liveAllow(Number(n?.done) || 0, Number(n?.photos) || 0), ownStory: true }, lang, role: m?.role ?? 'con', name: m?.name ?? '', mascot };
 }
 
-/** Thêm lời kể của chính cuộc gọi này, đọc mỗi lần: người nghe vừa nói tên ai thì thẻ nhắc tên ấy được. */
+/** Thêm lời kể của chính cuộc gọi này, đọc mỗi lần: người nghe vừa nói tên ai thì thẻ nhắc tên ấy được. Lời nhắn khó nói (ô lời nhắn)
+ *  chỉ vào privates, không bao giờ vào hay: tên chỉ có trong lời nhắn không làm thẻ qua được, câu nói lại lời nhắn thì bị bắt. */
 async function withAnswers(k: LiveCheck, callId: string, db: Db): Promise<LiveCheck> {
   const { rows } = await db.query(LIVE_SQL.checkAnswers, [callId]);
-  return rows.length ? { ...k, hay: [k.hay, ...rows.map((r) => String(r.transcript))].join(' ') } : k;
+  const said = (relay: boolean) => rows.filter((r) => (r.topic === 'loi-nhan') === relay).map((r) => String(r.transcript));
+  return rows.length ? { ...k, hay: [k.hay, ...said(false)].join(' '), privates: [...k.privates, ...said(true)] } : k;
 }
 
 export async function loadLiveCheck(call: LiveCall, db: Db = pool): Promise<LiveCheck> {
@@ -394,8 +397,9 @@ export function liveAnswerRow(script: CallScript, body: Record<string, unknown>,
   let question: string;
   if (idx < LIVE_FIRST_STORY) question = cardLine(body.question) || script.questions[idx]?.text || '';
   else {
+    // Như liveTopic: theme gửi kèm trước (ô có thể là bản sao lấp chỗ trống), rồi theo ô.
     const slot = script.questions[idx]?.theme;
-    const theme: StoryTheme = isTheme(slot) ? slot : isTheme(body.theme) ? body.theme : 'que-nha';
+    const theme: StoryTheme = isTheme(body.theme) ? body.theme : isTheme(slot) ? slot : 'que-nha';
     question = cardText(String(body.question ?? ''), cardText(String(body.opener ?? ''), templateOpener(k, theme), k, topic), k, topic);
   }
   const seconds = Number(body.seconds);
@@ -416,13 +420,21 @@ export async function storeLiveAnswer(call: { id: string; family_id: string; mem
   return true;
 }
 
-/** Lời nhắn khó nói của cuộc gọi Live để rút người nhận lúc chốt (liveRelays của call.ts): hàng ô lời nhắn, lời dài nhất. Chưa có lời thì null. */
-export async function relayAnswer(callId: string, db: Db = pool): Promise<{ question: string; transcript: string } | null> {
+type ScriptRow = { id: string; family_id: string; member_id: string; script: string };
+/** Bản kịch bản (v) của một hàng calls; không có hàng hay kịch bản hỏng thì undefined. */
+const scriptV = (row?: ScriptRow): unknown => { try { return row ? JSON.parse(row.script).v : undefined; } catch { return undefined; } };
+
+/** Lời nhắn khó nói của cuộc gọi Live để rút người nhận lúc chốt (liveRelays của call.ts): chỉ khi kịch bản là v3 và là cuộc gọi của người này,
+ *  không theo trường gửi kèm /finish (cuộc gọi v2 giả trường Live không vào; cuộc gọi Live chốt không kèm trường vẫn rút). Hàng ô lời nhắn,
+ *  lời dài nhất; chưa có lời thì null. */
+export async function relayAnswer(callId: string, memberId: string, db: Db = pool): Promise<{ call: { id: string; family_id: string; member_id: string }; question: string; transcript: string } | null> {
+  const { rows: [call] } = await db.query(LIVE_SQL.script, [callId, memberId]);
+  if (scriptV(call) !== 3) return null;
   const { rows: [a] } = await db.query(LIVE_SQL.relaySlot, [callId]);
-  return String(a?.transcript ?? '').trim() ? { question: String(a.question ?? ''), transcript: String(a.transcript) } : null;
+  if (!String(a?.transcript ?? '').trim()) return null;
+  return { call: { id: call.id, family_id: call.family_id, member_id: call.member_id }, question: String(a.question ?? ''), transcript: String(a.transcript) };
 }
 
-type ScriptRow = { id: string; family_id: string; member_id: string; script: string };
 /** Đổi kịch bản kiểu so rồi ghi (LIVE_SQL.cas), vì /story và /finish của cùng cuộc gọi có thể tới song song. Bị ghi chen thì đọc lại, thử lại
  *  tối đa 3 lần; edit trả đúng kịch bản cũ thì không ghi. Vẫn bị chen thì báo lỗi (500, hàng chờ thử lại sau). */
 async function casScript(row: ScriptRow, edit: (s: CallScript) => CallScript | null, db: Db): Promise<'ok' | 'missing' | 'invalid'> {
@@ -454,24 +466,24 @@ export async function saveStory(callId: string, memberId: string, body: Record<s
 }
 
 /** Lúc chốt cuộc gọi Live (POST /call/:id/finish, trước khi chốt): mỗi câu Mây đã nói (may, mảng JSON, tối đa 120 câu, mỗi câu tối đa 300 chữ)
- *  qua suspect() để ghi log câu nghi bịa, thêm một dòng tổng; câu hẹn tuần sau (hook, tối đa 200 chữ) ghi vào script.next_hook khi qua suspect()
+ *  qua suspect() để ghi log câu nghi bịa (lý do và 40 chữ đầu, câu chạm điều riêng thì chỉ lý do), thêm một dòng tổng; câu hẹn tuần sau (hook, tối đa 200 chữ) ghi vào script.next_hook khi qua suspect()
  *  và không chạm điều riêng, không thì bỏ (log không chép câu). Không phải cuộc gọi v3 của người này thì không làm gì. Gửi lại được. */
 export async function finishLive(callId: string, memberId: string, body: Record<string, unknown>, db: Db = pool): Promise<{ lines: number; flagged: number; hook: boolean }> {
   const out = { lines: 0, flagged: 0, hook: false };
   const { rows: [call] } = await db.query(LIVE_SQL.script, [callId, memberId]);
-  let v: unknown;
-  try { v = call ? JSON.parse(call.script).v : undefined; } catch {}
-  if (v !== 3) return out;
+  if (scriptV(call) !== 3) return out;
   const k = await liveCheckFor(call, db);
   const tag = callId.slice(0, 8);
   let said: unknown = body.may;
   if (typeof said === 'string') { try { said = JSON.parse(said); } catch { said = []; } }
   const lines = (Array.isArray(said) ? said : []).slice(0, 120).map(cardLine).filter(Boolean);
+  // Log chỉ chép lý do và 40 chữ đầu; câu chạm điều riêng (kể cả lời nhắn khó nói của cuộc gọi này) thì không chép chữ nào.
+  const shown = (line: string) => (privateHit(line, k.privates) ? '' : `: "${line.length > 40 ? `${line.slice(0, 40).trimEnd()}…` : line}"`);
   for (const line of lines) {
     const why = suspect(line, k.hay, k.allow, k.lang);
     if (!why) continue;
     out.flagged++;
-    console.warn(`[call-live] câu nghi bịa: "${line}" (${why})`);
+    console.warn(`[call-live] câu nghi bịa (${why})${shown(line)}`);
   }
   out.lines = lines.length;
   if (lines.length) console.log(`[call-live] cuộc gọi ${tag}: ${out.lines} câu của Mây, ${out.flagged} câu nghi bịa`);

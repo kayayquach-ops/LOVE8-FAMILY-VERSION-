@@ -841,12 +841,13 @@ export async function saveRelays(call: { id: string; family_id: string; member_i
   }
 }
 
-/** Mây Live, ngay sau khi /finish chốt: rút người nhận từ đúng lời của ô lời nhắn (lời dài nhất, relayAnswer). Lệnh kết thúc đi sau mọi lượt
- *  trong hàng chờ nên lúc này ô lời nhắn đã đủ; rút khi từng lượt tới thì câu "dạ có" trước lời thật có thể thành lời nhắn. Không lưu tệp tiếng. */
-async function liveRelays(call: { id: string; family_id: string; member_id: string }) {
+/** Mây Live, ngay sau khi /finish chốt: cuộc gọi có kịch bản v3 thì rút người nhận từ đúng lời của ô lời nhắn (lời dài nhất, relayAnswer).
+ *  Lệnh kết thúc đi sau mọi lượt trong hàng chờ nên lúc này ô lời nhắn đã đủ; rút khi từng lượt tới thì câu "dạ có" trước lời thật có thể
+ *  thành lời nhắn. Cuộc gọi khác chỉ tốn một lần đọc kịch bản ở nền. Không lưu tệp tiếng. */
+async function liveRelays(callId: string, memberId: string) {
   try {
-    const a = await relayAnswer(call.id);
-    if (a) await saveRelays(call, { ...a, media: null });
+    const a = await relayAnswer(callId, memberId);
+    if (a) await saveRelays(a.call, { question: a.question, transcript: a.transcript, media: null });
   } catch (e) { console.error('[call] lỗi lưu lời nhắn:', (e as Error).message); }
 }
 
@@ -1176,9 +1177,10 @@ export function callRouter(upload: multer.Multer) {
       const row = liveAnswerRow(script, req.body, await liveCheckFor(call));
       if (!row) { await drop(); return res.status(400).json(errorBody('question_not_found')); }
       const relay = row.topic === 'loi-nhan';
-      // Tiếng của lời nhắn khó nói không giữ lại (hàng call_answers không có media như đường cũ; relays.media chưa nơi nào đọc, tệp không hàng nào trỏ tới thì xoá người không dọn được).
-      const stored = await storeLiveAnswer(call, row, relay ? null : media(req.file));
+      // Tiếng của lời nhắn khó nói không giữ lại, xoá trước khi ghi để DB lỗi cũng không còn tệp (hàng call_answers không có media như đường cũ;
+      // relays.media chưa nơi nào đọc, tệp không hàng nào trỏ tới thì xoá người không dọn được).
       if (relay) await drop();
+      const stored = await storeLiveAnswer(call, row, relay ? null : media(req.file));
       res.json({ ok: true, transcript: row.transcript, reply: null, ai: null });
       // Tới sau khi đã chốt (máy khách gửi lại): lời nhắn rút ngay, chuyện thì dựng lại tập và rút lại sổ nhớ như đường cũ.
       if (relay) { if (stored && call.status === 'done') void saveRelays(call, { question: row.question, transcript: row.transcript, media: null }).catch((e) => console.error('[call] lỗi lưu lời nhắn:', (e as Error).message)); }
@@ -1329,14 +1331,16 @@ export function callRouter(upload: multer.Multer) {
 
   // Gọi lặp được (máy khách thử lại khi mạng chập): chỉ lần đầu chốt cuộc gọi và chạy việc sau cuộc gọi, các lần sau chỉ trả ok.
   // Mây Live gửi kèm (multipart của hàng chờ, nên có upload.none()) câu hẹn hook và các câu Mây đã nói may: finishLive kiểm, ghi câu hẹn
-  // và log câu nghi bịa trước khi chốt, lỗi chỉ ghi log; chốt xong thì rút lời nhắn khó nói từ ô lời nhắn. Không có hai trường ấy thì như cũ.
+  // và log câu nghi bịa trước khi chốt, lỗi chỉ ghi log (cuộc gọi không phải v3 thì finishLive không làm gì). Không có hai trường ấy thì
+  // đường đi của yêu cầu như cũ. Chốt xong thì liveRelays (ở nền) rút lời nhắn khó nói nếu kịch bản là v3, có kèm trường hay không.
   r.post('/call/:id/finish', upload.none(), h(async (req, res) => {
-    const live = !!req.body && ('hook' in req.body || 'may' in req.body);
-    if (live) await finishLive(String(req.params.id), req.member.id, req.body).catch((e) => console.error('[call-live] lỗi chốt cuộc gọi:', (e as Error).message));
+    if (req.body && ('hook' in req.body || 'may' in req.body)) {
+      await finishLive(String(req.params.id), req.member.id, req.body).catch((e) => console.error('[call-live] lỗi chốt cuộc gọi:', (e as Error).message));
+    }
     const { rowCount } = await pool.query(`update calls set status = 'done', done_at = now() where id = $1 and member_id = $2 and status = 'ready'`, [req.params.id, req.member.id]);
     res.json({ ok: true });
     if (rowCount) void afterCall(req.params.id);
-    if (rowCount && live) void liveRelays({ id: String(req.params.id), family_id: req.member.family_id, member_id: req.member.id });
+    if (rowCount) void liveRelays(String(req.params.id), req.member.id);
   }));
 
   // Ảnh của cuộc gọi chưa chia sẻ chỉ người kể thấy.
