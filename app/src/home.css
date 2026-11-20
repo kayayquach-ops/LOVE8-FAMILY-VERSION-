@@ -34,6 +34,12 @@
 .home-person-time { display: flex; flex-direction: column; align-items: flex-end; text-align: right; line-height: 1.25; }
 .home-person-time b { font-family: var(--f-display); font-weight: 700; font-size: 16.5px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 .home-person-time small { font-size: 12px; color: var(--soft); white-space: nowrap; }
+/* Người đang chia sẻ vị trí: hàng tách hai phần, tên mở cả nhà, giờ và nơi mở bản đồ. Nơi gạch chân mảnh, giờ cập nhật nhỏ và nhạt. */
+.home-person.loc { grid-template-columns: minmax(0, 1fr) auto; }
+.home-person-who { min-width: 0; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 11px; align-items: center; min-height: 36px; }
+a.home-person-time { color: inherit; text-decoration: none; line-height: 1.15; }
+.home-person-place { text-decoration: underline dotted var(--muted); text-underline-offset: 3px; }
+.home-person-time .home-person-fresh { font-size: 11px; color: var(--muted); line-height: 1.2; }
 /* Một dòng viết tay nhắc hỏi thăm người vắng lâu nhất */
 .home-nudge { display: flex; align-items: center; min-height: 40px; font-size: 17px; line-height: 1.15; text-align: left; text-decoration: none; }
 

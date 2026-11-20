@@ -34,6 +34,8 @@
   "error.slow_down": "Nhanh quá rồi, đợi một lát rồi thử lại nhé",
   "error.post_not_found": "Không thấy tin này nữa",
   "error.podcast_not_found": "Không thấy chuyện này nữa",
+  "error.location_invalid": "Vị trí chưa đúng",
+  "error.location_off": "Bạn đang tắt chia sẻ vị trí",
   "error.file_too_big": "Tệp lớn quá, chọn tệp nhỏ hơn nhé",
   "error.photo_type": "Ảnh này chưa dùng được, chọn ảnh JPG hoặc PNG nhé",
 

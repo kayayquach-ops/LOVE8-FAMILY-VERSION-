@@ -13,6 +13,7 @@ import { shareInvite } from './Onboarding';
 import { JarArt } from './JarArt';
 import { JoinAsks } from './Sheets';
 import { cityName, usePlaceNames } from './placeName';
+import { locCity, mapUrl } from './geo';
 import { fmtDate, fmtDayMonth, fmtTime, locale, shownLang, t } from './i18n';
 
 type Screen = 'camera' | 'feed' | 'chat' | 'calendar' | 'jar' | 'family' | 'podcast' | 'recap' | 'letters' | 'settings';
@@ -48,6 +49,14 @@ function today() {
 }
 
 const given = (name: string) => name.trim().split(/\s+/).pop() ?? name;
+/** Người đang chia sẻ vị trí: giờ và thời tiết theo chỗ đang ở thật, không theo thành phố chọn lúc vào nhà. */
+const cityFor = (m: Member) => (m.loc ? locCity(m.loc) : m.city);
+/** Tên nơi đang ở theo thứ tiếng đang xem; xa mọi nơi có tên thì "gần {nơi}". */
+const placeOf = (m: Member) => {
+  if (!m.loc) return '';
+  const name = m.loc.place[shownLang()];
+  return m.loc.place.near ? t('loc.near', { place: name }) : name;
+};
 const lower = (s: string) => (shownLang() === 'ko' ? s : s.toLocaleLowerCase(locale()));
 
 export function Home({ me, callDue, onCall, onChanged, onOpen }: { me: Me; callDue: boolean; onCall: () => void; onChanged: () => void; onOpen: (s: Screen, arg?: string) => void }) {
@@ -87,9 +96,16 @@ export function Home({ me, callDue, onCall, onChanged, onOpen }: { me: Me; callD
 
   useEffect(() => {
     let live = true;
-    Promise.all(me.members.map(async (m) => [m.id, await weather(m.city)] as const)).then((r) => live && setWx(Object.fromEntries(r)));
+    Promise.all(me.members.map(async (m) => [m.id, await weather(cityFor(m))] as const)).then((r) => live && setWx(Object.fromEntries(r)));
     return () => { live = false; };
-  }, [me.members.map((m) => m.city).join('|')]);
+  }, [me.members.map(cityFor).join('|')]);
+
+  // Mỗi phút vẽ lại một lần lúc đang xem: giờ từng nơi và dòng "vừa xong, 5 phút trước" của vị trí không đứng yên.
+  const [, setMinute] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => { if (!document.hidden) setMinute((n) => n + 1); }, 60e3);
+    return () => clearInterval(iv);
+  }, []);
 
   const go = (s: Screen, arg?: string) => () => { tap(); onOpen(s, arg); };
   const byId = (id: string) => me.members.find((m) => m.id === id);
@@ -163,6 +179,24 @@ export function Home({ me, callDue, onCall, onChanged, onOpen }: { me: Me; callD
           <div className="home-people">
             {others.map((m) => {
               const st = status(m);
+              // Đang chia sẻ vị trí: phần tên mở cả nhà như cũ, phần giờ và nơi mở bản đồ đúng điểm.
+              if (m.loc) {
+                const place = placeOf(m);
+                return (
+                  <div key={m.id} className="home-person loc">
+                    <button className="home-person-who" onClick={go('family')}>
+                      <Avatar m={m} size={32} />
+                      <span className="home-person-main"><b>{given(m.name)}</b><span>{st.text}</span></span>
+                    </button>
+                    <a className="home-person-time" href={mapUrl(m.loc.lat, m.loc.lon, navigator.userAgent, navigator.maxTouchPoints)}
+                      target="_blank" rel="noopener noreferrer" onClick={() => tap()} aria-label={t('loc.map', { place })}>
+                      <b>{localTime(cityFor(m))}</b>
+                      <small className="home-person-place">{[place, wx[m.id]?.split(',')[0]].filter(Boolean).join(' · ')}</small>
+                      <small className="home-person-fresh">{ago(m.loc.at)}</small>
+                    </a>
+                  </div>
+                );
+              }
               const lt = localTime(m.city);
               const where = [cityName(m.city), wx[m.id]?.split(',')[0]].filter(Boolean).join(' · ');
               return (

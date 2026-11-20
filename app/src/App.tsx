@@ -16,6 +16,7 @@ import { Home } from './Home';
 import { Chat } from './Chat';
 import { Incoming } from './Incoming';
 import { connectLive, disconnectLive, livePost, onLive, type LiveRoom } from './live';
+import { useLocationLive } from './location';
 import { onPushOpen, syncPush } from './push';
 import { resumeOutbox } from './outbox';
 import { TabBar, type Tab } from './TabBar';
@@ -151,6 +152,9 @@ export function App() {
       setRoom(m.room);
     });
   }, [!!me]);
+
+  // Vị trí cả nhà (src/location.ts): gửi vị trí của mình khi đang bật chia sẻ và app đang mở; người khác đổi chỗ thì sửa đúng người đó.
+  useLocationLive(me, setMe);
 
   // Chạm vào thông báo: mở đúng màn. Cuộc gọi video thì để chuông hiện lại cho mình bấm vào.
   useEffect(() => {
