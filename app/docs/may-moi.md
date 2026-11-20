@@ -87,3 +87,34 @@ Mã: `server/memory.ts` (rút sổ nhớ), `server/may.ts` (người nhận, hà
 - Lấy cuộc gọi `status = 'done'`, `memory_at` trống, `memory_tries < 3`; thử tối đa 3 lần, quá thì bỏ qua.
 - Hết cuộc gọi cần rút thì dừng; cuộc gọi mới do `afterCall` rút. Cuộc gọi lỗi lúc đó được rút bù ở lần khởi động sau.
 - AI lỗi (429, hết hạn mức, quá giờ) thì dừng đợt rút bù ngay sau cuộc gọi lỗi đầu tiên, chỉ cuộc gọi đó mất một lượt thử; lần khởi động sau chạy tiếp. Như vậy một lần AI hỏng không đốt hết 3 lượt thử của mọi cuộc gọi cũ. Một cuộc gọi tự nó lỗi mãi thì sau 3 lần khởi động sẽ bị bỏ qua, các cuộc gọi sau tiếp tục.
+
+## Bộ câu v2 trên máy chủ (task 3)
+
+Mã: `src/shared.ts` (chủ đề, kiểu bộ câu), `server/call.ts` (soạn câu, hỏi thêm, chia sẻ), `server/podcast.ts` (chỉ chuyện chính thành tập). Test: `server/call.test.ts`, `server/podcast.test.ts`. Màn gọi `src/Call.tsx` đổi theo ở task 4; giữa hai task không deploy.
+
+**Một bộ câu** (`CallScript.v = 2`): `questions = [hỏi thăm, chuyện chính, lời nhắn?]`.
+- Hỏi thăm: `topic 'hoi-tham'`, `part 'checkin'`. Không hỏi thêm, không xin ảnh, không bao giờ thành tập. Câu trả lời vẫn vào sổ nhớ và tín hiệu (chỉ lời nhắn khó nói bị loại).
+- Chuyện chính: `part 'story'`, `theme` thuộc `STORY_THEMES`, `topic = THEME_TOPIC[theme]`. Hỏi thêm tối đa `script.follow` lượt: `MAX_STORY_FOLLOW = 4`, cuộc gọi thử `TRIAL_FOLLOW = 2`. Không còn trần riêng cho cả cuộc gọi.
+- Lời nhắn khó nói: như cũ (`relayQuestion`). Nhà một người hoặc cuộc gọi thử thì không có.
+- Lời tạm biệt luôn là câu cố định `call.line.bye.<vai>`, không còn hứa "cả nhà cùng nghe" vì chuyện có thể được giữ riêng.
+
+**Chủ đề theo vai** (`themesFor`): bố mẹ được mọi chủ đề, ngày cưới chỉ khi nhà có đủ bố lẫn mẹ và lịch chưa có ngày cưới. Con không có ngày cưới, ngày con chào đời, dặn con cháu.
+
+**Ba cách soạn**
+- `firstScript` (cuộc gọi đầu): chào, hỏi thăm `callScript.first.<vai>.q1`, chuyện bữa cơm nhớ nhất (`mon-an`), `trial: true`, 2 lượt hỏi thêm, không hỏi lời nhắn.
+- `templateScript`: hỏi thăm `callScript.template.<vai>.checkin`. Chuyện chính từ câu mẫu `callScript.template.<vai>.story.<chủ đề>`: ngày cưới trước nếu được hỏi, không thì các chủ đề chưa hỏi, xoay vòng theo tuần (hỏi hết rồi thì xoay lại từ đầu).
+- `aiScript`: AI viết lời chào, câu hỏi thăm, câu mở chuyện chính kèm chủ đề, cờ ảnh, loại ngày; không viết lời tạm biệt. Mỗi câu qua `suspect()`. Câu mở còn phải đúng chủ đề cho vai, chỉ hỏi ngày cưới khi được hỏi, chưa từng hỏi. Câu nào hỏng thì thay bằng câu tương ứng của bộ câu mẫu; AI không trả lời thì `null` và nơi gọi dùng bộ câu mẫu.
+- Luật prompt: câu hỏi thăm hỏi người đó lúc này, đáp một từ cũng được; câu mở mời kể dài (kể con nghe về..., hồi đó thế nào...), không hỏi một sự kiện có một đáp án, lấy một chi tiết thật trong dữ liệu làm cớ, không nêu ngày không có trong dữ liệu. Các luật cũ (không bịa, không lặp câu đã hỏi, không đụng "điều chưa nói", luật ngày cưới) giữ nguyên.
+
+**Dùng lại bộ câu trong tuần** (`scriptReusable`): chỉ khi là bản v2, cùng thứ tiếng, cùng tên linh vật, và đúng loại (người chưa gọi lần nào chỉ dùng bộ câu cuộc gọi thử, người đã gọi thì không). Bộ câu kiểu ba câu soạn trước bản này thì soạn lại.
+
+**Hỏi thêm** (`turnAI`)
+- Câu hỏi thêm đi theo các ý của một câu chuyện: bối cảnh (dịp gì, ở đâu, khi nào), ai có mặt, chuyện gì xảy ra, cảm xúc lúc đó, giờ nghĩ lại muốn nói gì. Ý nào đã kể thì bỏ qua. Kể đủ hoặc người kể nói thôi, hết rồi, vậy thôi thì không hỏi nữa. Luật hỏi ngày giữ nguyên.
+- Lượt hỏi thăm: không hỏi thêm; câu đáp nối luôn câu mở chuyện chính thành một câu nói (`joined: true`) nếu cả câu vừa `TTS_MAX`, đỡ một câu giọng mới. Quá dài thì chỉ câu đáp (`joined: false`).
+- Trần lấy từ `script.follow` (bản cũ không có thì 4). Máy chủ không còn đọc `follows` máy khách gửi.
+
+**Chia sẻ**: cuộc gọi mới ghi `calls.shared = false`. `POST /api/call/:id/share` (không có thân, gửi lại được) bật `shared = true` cho cuộc gọi của chính người gọi; không thấy cuộc gọi thì 404 `call_not_found`. Cuộc gọi cũ vẫn là đã chia sẻ.
+
+**Câu cố định mới** (`callLines`, nạp sẵn giọng bằng `warmFixedVoices`): `share`, `shareYes`, `shareNo`, `bye`. Mỗi vai mỗi thứ tiếng nay 15 câu.
+
+**Podcast**: câu hỏi thăm cũng như lời nhắn, không bao giờ vào tập (`NO_EPISODE_TOPICS`, lọc cả trong SQL của `callAnswers`, `buildTopic`, `refreshTopicsOf`). Cuộc gọi v2 chỉ chấm chuyện chính (`episodeIdx`) nên không còn phần đuôi; cuộc gọi cũ chấm như trước.

@@ -3,7 +3,8 @@
 // Từ 14/11 mỗi cuộc gọi thành các tập theo câu chuyện: AI chấm từng câu chuyện (câu chính + các lượt Mây hỏi thêm), chuyện
 // nào có thật, có chi tiết, đủ dài thì thành một tập riêng (key story:<callId>:<idx>), các lượt kể ghép liền không có giọng Mây,
 // câu trả lời khác hợp chuyện thì nối vào đuôi. Câu chuyện có ảnh (vault.story) thì thêm video dọc chỉ dùng đúng các ảnh đó,
-// không có ảnh thì chỉ có tiếng. Câu trả lời lời nhắn (topic 'loi-nhan') không bao giờ vào podcast.
+// không có ảnh thì chỉ có tiếng. Câu trả lời lời nhắn (topic 'loi-nhan') và câu hỏi thăm ('hoi-tham') không bao giờ vào podcast.
+// Cuộc gọi bộ câu v2 (từ 20/11) chỉ có một chuyện chính: chỉ chuyện đó được chấm, không còn phần đuôi.
 // Tập theo chủ đề dựng cùng kiểu đó: chuyện nào trong tập có ảnh thì tập có video, chỉ khi không có ảnh nào mới chỉ có tiếng.
 // Tập cũ theo cả cuộc gọi (key call:<id>, có thẻ câu hỏi) và tập lời thương đầu tiên (không có ảnh) vẫn giữ.
 // Ghép tiếng và dựng video là hai hàng riêng, mỗi hàng một việc một lúc; tập đang dựng dở khi máy chủ khởi động lại
@@ -16,7 +17,7 @@ import { unlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type pg from 'pg';
-import { isTopic, type Chapter, type Podcast, type Topic } from '../src/shared.ts';
+import { isTopic, NO_EPISODE_TOPICS, type CallScript, type Chapter, type Podcast, type Topic } from '../src/shared.ts';
 import { askJSON } from './ai.ts';
 import { suspect } from './guard.ts';
 import { errorBody, langOf, LANGS, runWithLang, tReq, tServer, type Lang } from './i18n.ts';
@@ -30,6 +31,8 @@ const MAX_TOPIC_STORIES = 8;
 const MAX_TRIES = 3;
 /** Lời nhắn khó nói: chỉ người nhận nghe qua Mây, không bao giờ vào podcast. */
 const PRIVATE_TOPIC = 'loi-nhan';
+/** Chủ đề không bao giờ thành tập (lời nhắn, câu hỏi thăm), dạng mảng cho SQL `<> all($n::text[])`. */
+const NO_EPISODE: string[] = [...NO_EPISODE_TOPICS];
 
 export async function migratePodcast(p: pg.Pool) {
   await p.query(`
@@ -275,11 +278,11 @@ export const STORY_MIN_SEC = 25;
 const STORY_FLOOR = 15;
 const TAIL_MAX = 3, TAIL_MAX_SEC = 90;
 
-/** Gom câu trả lời theo câu chuyện (idx), các lượt theo thứ tự; bỏ hẳn câu lời nhắn. */
+/** Gom câu trả lời theo câu chuyện (idx), các lượt theo thứ tự; bỏ hẳn câu lời nhắn và câu hỏi thăm. */
 export function groupStories(answers: StoryAnswer[]): Story[] {
   const by = new Map<number, StoryAnswer[]>();
   for (const a of answers) {
-    if (a.topic === PRIVATE_TOPIC) continue;
+    if (NO_EPISODE.includes(a.topic)) continue;
     const list = by.get(a.idx);
     if (list) list.push(a); else by.set(a.idx, [a]);
   }
@@ -376,16 +379,26 @@ export function planStories(stories: Story[], verdicts: Verdict[] | null, lang: 
 
 type AnswerRow = { id: string; idx: number; turn: number; question: string; topic: string; transcript: string | null; media: string; seconds: number | null; who: string; created_at: Date };
 
-/** Câu trả lời dùng được của một cuộc gọi (đủ tệp, không có lời nhắn), theo câu chuyện rồi theo lượt. */
+/** Câu trả lời dùng được của một cuộc gọi (đủ tệp, không có lời nhắn hay câu hỏi thăm), theo câu chuyện rồi theo lượt. */
 async function callAnswers(callId: string): Promise<AnswerRow[]> {
   const { rows } = await pool.query(
     `select a.*, m.name who from call_answers a join members m on m.id = a.member_id
-     where a.call_id = $1 and a.media is not null and a.topic <> $2 order by a.idx, a.turn, a.created_at`, [callId, PRIVATE_TOPIC]);
+     where a.call_id = $1 and a.media is not null and a.topic <> all($2::text[]) order by a.idx, a.turn, a.created_at`, [callId, NO_EPISODE]);
   return rows.filter((a) => existsSync(mediaFile(a.media)));
 }
 
-/** Kế hoạch tập của một cuộc gọi: chấm một lần rồi giữ lại (dựng lại hay thêm ảnh không gọi AI lại); câu trả lời đổi thì chấm lại. */
-async function storyPlan(call: any, answers: AnswerRow[], lang: Lang): Promise<StoryPlan> {
+/** Cuộc gọi v2: chỉ chuyện chính (part 'story') thành tập, trả về số câu của nó. Cuộc gọi cũ: null (mọi câu chuyện, như trước). */
+export function episodeIdx(script: Pick<CallScript, 'v' | 'questions'>): number[] | null {
+  if (script.v !== 2) return null;
+  return script.questions.flatMap((q, i) => (q.part === 'story' ? [i] : []));
+}
+const episodeIdxOf = (raw: string) => { try { return episodeIdx(JSON.parse(raw)); } catch { return null; } };
+
+/** Kế hoạch tập của một cuộc gọi: chấm một lần rồi giữ lại (dựng lại hay thêm ảnh không gọi AI lại); câu trả lời đổi thì chấm lại.
+ *  Cuộc gọi v2 chỉ chấm chuyện chính; cuộc gọi cũ chấm mọi câu chuyện, chuyện chưa đạt có thể nối vào đuôi tập khác. */
+async function storyPlan(call: any, all: AnswerRow[], lang: Lang): Promise<StoryPlan> {
+  const only = episodeIdxOf(call.script);
+  const answers = only ? all.filter((a) => only.includes(a.idx)) : all;
   const sig = createHash('sha1').update(`v1\n${answers.map((a) => `${a.id}|${a.idx}|${a.turn}|${a.media}|${a.transcript ?? ''}`).join('\n')}`).digest('hex');
   const { rows: [saved] } = await pool.query('select sig, plan from podcast_plans where call_id = $1', [call.id]);
   if (saved?.sig === sig) { try { return JSON.parse(saved.plan) as StoryPlan; } catch {} }
@@ -581,14 +594,14 @@ async function buildCallEpisode(callId: string) {
 /** Tập theo chủ đề: 8 câu chuyện gần nhất của cả nhà về chủ đề đó, mỗi chuyện đủ các lượt, dựng như tập câu chuyện.
  *  Chuyện nào trong tập có ảnh thì tập có video ảnh cổ điển; không chuyện nào có ảnh mới chỉ có tiếng. Không bao giờ có lời nhắn. */
 async function buildTopic(fid: string, topic: string, lang: Lang, keepDate = false) {
-  if (topic === PRIVATE_TOPIC) return;
+  if (NO_EPISODE.includes(topic)) return;
   const { rows } = await pool.query(
     `with s as (
        select call_id, idx, max(created_at) at from call_answers
        where family_id = $1 and topic = $2 and media is not null group by call_id, idx order by at desc limit ${MAX_TOPIC_STORIES}
      )
      select a.*, m.name who, s.at from call_answers a join s on s.call_id = a.call_id and s.idx = a.idx join members m on m.id = a.member_id
-     where a.media is not null and a.topic <> $3 order by s.at, a.turn, a.created_at`, [fid, topic, PRIVATE_TOPIC]);
+     where a.media is not null and a.topic <> all($3::text[]) order by s.at, a.turn, a.created_at`, [fid, topic, NO_EPISODE]);
   const clips = rows.filter((a) => existsSync(mediaFile(a.media)));
   if (!clips.length) return;
   // Mỗi câu chuyện (cuộc gọi, idx) một nhóm, theo thứ tự trong tập.
@@ -612,7 +625,7 @@ async function refreshTopicsOf(callId: string, idx: number) {
   if (!call) return;
   const { rows } = await pool.query(
     `select distinct a.topic from call_answers a join podcasts p on p.family_id = a.family_id and p.key = 'topic:' || a.topic
-     where a.call_id = $1 and a.idx = $2 and a.topic <> $3`, [callId, idx, PRIVATE_TOPIC]);
+     where a.call_id = $1 and a.idx = $2 and a.topic <> all($3::text[])`, [callId, idx, NO_EPISODE]);
   for (const r of rows) await buildTopic(call.family_id, r.topic, langOf(call.lang), true);
 }
 

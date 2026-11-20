@@ -57,13 +57,33 @@ export type Week = {
 };
 
 // Cuộc gọi hằng tuần và podcast. Tên chủ đề nằm trong bảng chữ máy chủ (khoá `topic.<mã>`).
-export const TOPICS = ['ngay-cuoi', 'tuoi-tho', 'mon-an', 'ky-niem', 'cuoc-song', 'loi-nhan'] as const;
+export const TOPICS = ['ngay-cuoi', 'tuoi-tho', 'mon-an', 'ky-niem', 'cuoc-song', 'loi-nhan', 'hoi-tham'] as const;
 export type Topic = (typeof TOPICS)[number];
 export const isTopic = (v: unknown): v is Topic => (TOPICS as readonly unknown[]).includes(v);
+/** Không bao giờ thành tập: lời nhắn khó nói, câu hỏi thăm đầu cuộc gọi. */
+export const NO_EPISODE_TOPICS: readonly Topic[] = ['loi-nhan', 'hoi-tham'];
+/** Chủ đề chuyện chính (bản đồ chủ đề của spec C): mỗi cuộc gọi v2 đào sâu một chủ đề. */
+export const STORY_THEMES = ['tuoi-tho', 'que-nha', 'bo-me-minh', 'ngay-cuoi', 'cong-viec', 'con-chao-doi', 'con-di-xa', 'mon-an', 'tet-cac-dip', 'ban-be', 'uoc-mo', 'dan-con-chau'] as const;
+export type StoryTheme = (typeof STORY_THEMES)[number];
+export const isTheme = (v: unknown): v is StoryTheme => (STORY_THEMES as readonly unknown[]).includes(v);
+/** Chủ đề chuyện chính thuộc chủ đề podcast nào (tập theo chủ đề vẫn dùng TOPICS). */
+export const THEME_TOPIC: Record<StoryTheme, Topic> = {
+  'tuoi-tho': 'tuoi-tho', 'que-nha': 'ky-niem', 'bo-me-minh': 'ky-niem', 'ngay-cuoi': 'ngay-cuoi', 'cong-viec': 'cuoc-song', 'con-chao-doi': 'ky-niem',
+  'con-di-xa': 'ky-niem', 'mon-an': 'mon-an', 'tet-cac-dip': 'ky-niem', 'ban-be': 'tuoi-tho', 'uoc-mo': 'tuoi-tho', 'dan-con-chau': 'cuoc-song' };
+const CHILD_SKIP: readonly StoryTheme[] = ['ngay-cuoi', 'con-chao-doi', 'dan-con-chau'];
+/** Bố mẹ: mọi chủ đề, riêng ngày cưới chỉ khi nhà có đủ bố lẫn mẹ và lịch chưa có ngày cưới. Con: không hỏi ngày cưới, ngày con chào đời, dặn con cháu. */
+export function themesFor(role: string, hasPair: boolean, hasWedding: boolean): StoryTheme[] {
+  if (role !== 'bo' && role !== 'me') return STORY_THEMES.filter((t) => !CHILD_SKIP.includes(t));
+  return STORY_THEMES.filter((t) => t !== 'ngay-cuoi' || (hasPair && !hasWedding));
+}
 export const EVENT_HINTS = ['none', 'wedding', 'anniversary', 'birthday', 'memory'] as const;
-export type CallQuestion = { text: string; topic: Topic; photo: boolean; event: (typeof EVENT_HINTS)[number] };
+/** part (bộ câu v2): checkin là câu hỏi thăm, story là câu mở chuyện chính (kèm theme); câu lời nhắn không có part. */
+export type CallQuestion = { text: string; topic: Topic; photo: boolean; event: (typeof EVENT_HINTS)[number]; part?: 'checkin' | 'story'; theme?: StoryTheme };
 /** `lang`: thứ tiếng của bộ câu (bản cũ không có là tiếng Việt). `mascot`: tên linh vật lúc soạn (bản cũ không có là Mây). */
-export type CallScript = { greeting: string; questions: CallQuestion[]; goodbye: string; source: 'ai' | 'template' | 'first'; lang?: 'vi' | 'en' | 'ko'; mascot?: string };
+export type CallScript = { greeting: string; questions: CallQuestion[]; goodbye: string; source: 'ai' | 'template' | 'first'; lang?: 'vi' | 'en' | 'ko'; mascot?: string;
+  /** 2: hỏi thăm, một chuyện chính, lời nhắn (nếu có). Bản cũ không có là ba câu rời. */ v?: 2;
+  /** Trần câu hỏi thêm của chuyện chính. */ follow?: number;
+  /** Cuộc gọi thử (cuộc gọi đầu của người mới). */ trial?: boolean };
 
 /** Hàm tra chữ: máy khách truyền `t`, máy chủ truyền `tServer` theo ngôn ngữ của người nghe. */
 export type Tr = (key: string, vars?: Record<string, string | number>) => string;
@@ -88,12 +108,20 @@ export function callLines(role: string, tr: Tr) {
     relay: L('relay'),
     relayOk: L('relayOk'),
     relayIntro: L('relayIntro'),
+    /** Cuối chuyện chính: xin phép chia sẻ cho cả nhà, câu đáp khi đồng ý, khi giữ riêng. */
+    share: L('share'),
+    shareYes: L('shareYes'),
+    shareNo: L('shareNo'),
+    /** Câu tạm biệt cố định của mọi bộ câu v2 (giọng nằm sẵn trong kho). */
+    bye: L('bye'),
   };
 }
 export const CALL_ROLES = ['bo', 'me', 'con'] as const;
 
-/** Mây hỏi thêm: tối đa 2 lượt mỗi câu chuyện (turn 1, 2), tối đa 4 lượt mỗi cuộc gọi. */
-export const MAX_STORY_FOLLOW = 2;
+/** Mây hỏi thêm: chuyện chính tối đa 4 lượt (turn 1..4), không còn trần riêng cho cả cuộc gọi. Cuộc gọi thử tối đa 2 lượt. */
+export const MAX_STORY_FOLLOW = 4;
+export const TRIAL_FOLLOW = 2;
+/** Chỉ còn cho màn gọi cũ (Call.tsx); task 4 bỏ. */
 export const MAX_CALL_FOLLOW = 4;
 
 /** Kết quả AI sau mỗi lượt kể (POST /call/:id/reply, hoặc /answer khi máy chủ tự chép lời). */
@@ -110,6 +138,8 @@ export type TurnAI = {
   story: boolean;
   /** Cả câu Mây nói: reply + confirm + follow (máy chủ đã xin giọng trước đúng chuỗi này). */
   say: string | null;
+  /** Chỉ lượt hỏi thăm: say đã gồm luôn câu mở chuyện chính (máy khách không đọc câu mở riêng nữa). */
+  joined?: boolean;
 };
 
 /** Lời nhắn người khác gửi cho người đang nghe, Mây chuyển ở cuối cuộc gọi. */

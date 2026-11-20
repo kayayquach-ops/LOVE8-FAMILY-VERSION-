@@ -13,7 +13,7 @@ delete process.env.AI_PROVIDER;
 
 const call = await import('./call.ts');
 const { suspect } = await import('./guard.ts');
-const { callLines, relayNone } = await import('../src/shared.ts');
+const { callLines, relayNone, themesFor } = await import('../src/shared.ts');
 const { tServer } = await import('./i18n.ts');
 
 type Handler = (url: string, init: RequestInit) => Promise<Response>;
@@ -34,7 +34,7 @@ const lastInput = () => JSON.parse(sent.at(-1).contents[0].parts[0].text);
 const Q = (text: string, event: any = 'none', topic: any = 'ky-niem') => ({ text, topic, photo: false, event });
 const base = {
   lang: 'vi' as const, who: { name: 'Lan', role: 'me' }, bot: 'Mây',
-  q: Q('Hồi nhỏ Mẹ hay chơi trò gì nhất?'), turn: 0, follows: 0, dated: false,
+  q: Q('Hồi nhỏ Mẹ hay chơi trò gì nhất?'), turn: 0, max: 4, dated: false, next: null,
   story: [{ asked: 'Hồi nhỏ Mẹ hay chơi trò gì nhất?', answer: 'Mẹ hay đi chợ với bà ngoại, mua cá' }],
 };
 
@@ -57,15 +57,26 @@ test('hỏi thêm: kể đủ thì không hỏi, say chỉ còn câu đáp', asy
   assert.equal(r?.say, 'Nghe vui quá ạ.');
 });
 
-test('trần hỏi thêm: 2 lượt mỗi câu chuyện, 4 lượt mỗi cuộc gọi', async () => {
+test('trần hỏi thêm: chuyện chính tối đa 4 lượt, không còn trần cả cuộc gọi; cuộc gọi thử 2 lượt', async () => {
   handler = gemini({ reaction: 'Dạ.', follow_up: 'Rồi sao nữa ạ?', day: 0, month: 0, year: 0, real_story: false });
-  const atStoryCap = await call.turnAI({ ...base, turn: 2, follows: 2 });
-  assert.equal(atStoryCap?.follow, null);
+  assert.equal((await call.turnAI({ ...base, turn: 3 }))?.follow, 'Rồi sao nữa ạ?');
+  assert.equal((await call.turnAI({ ...base, turn: 4 }))?.follow, null);
   assert.equal(lastInput().can_follow, false);
-  const atCallCap = await call.turnAI({ ...base, turn: 1, follows: 4 });
-  assert.equal(atCallCap?.follow, null);
-  const ok = await call.turnAI({ ...base, turn: 1, follows: 3 });
-  assert.equal(ok?.follow, 'Rồi sao nữa ạ?');
+  assert.equal((await call.turnAI({ ...base, turn: 2, max: 2 }))?.follow, null);
+});
+
+test('hỏi thăm: không hỏi thêm, câu đáp nối câu mở chuyện chính thành một câu nói', async () => {
+  const checkin = { ...Q('Dạo này Mẹ thế nào ạ?', 'none', 'hoi-tham'), part: 'checkin' as const };
+  const next = 'Mẹ kể con nghe về một bữa cơm nhà mình mà Mẹ nhớ nhất nhé.';
+  handler = gemini({ reaction: 'Mẹ vẫn khoẻ là con vui rồi ạ.', follow_up: 'Mẹ ăn gì chưa ạ?', day: 0, month: 0, year: 0, real_story: false });
+  const r = await call.turnAI({ ...base, q: checkin, story: [{ asked: checkin.text, answer: 'Mẹ vẫn khoẻ' }], next });
+  assert.equal(lastInput().can_follow, false);
+  assert.equal(r?.follow, null);
+  assert.equal(r?.say, `Mẹ vẫn khoẻ là con vui rồi ạ. ${next}`);
+  assert.equal(r?.joined, true);
+  const long = await call.turnAI({ ...base, q: checkin, story: [{ asked: checkin.text, answer: 'Mẹ vẫn khoẻ' }], next: 'a'.repeat(299) });
+  assert.equal(long?.say, 'Mẹ vẫn khoẻ là con vui rồi ạ.');
+  assert.equal(long?.joined, false);
 });
 
 test('hỏi ngày: câu có event mà AI không hỏi ngày thì dùng câu hỏi ngày mẫu', async () => {
@@ -81,7 +92,7 @@ test('hỏi ngày: câu có event mà AI không hỏi ngày thì dùng câu hỏ
 });
 
 test('hỏi ngày: nghe được ngày thì nhắc lại cho chắc một lần, đã nhắc thì thôi', async () => {
-  const wedding = { ...base, q: Q('Bố với Mẹ cưới nhau ngày nào?', 'wedding', 'ngay-cuoi'), turn: 1, follows: 1, story: [
+  const wedding = { ...base, q: Q('Bố với Mẹ cưới nhau ngày nào?', 'wedding', 'ngay-cuoi'), turn: 1, story: [
     { asked: 'Bố với Mẹ cưới nhau ngày nào?', answer: 'Cưới ở quê đông vui lắm' },
     { asked: 'Mẹ còn nhớ hôm đó là ngày mấy tháng mấy không ạ?', answer: 'Ngày 12 tháng 3 năm 1995 con ạ' },
   ] };
@@ -209,40 +220,56 @@ const ctx = (role: string, family: Array<{ name: string; role: string }>) => ({
   lang: 'vi' as const, member: { id: 'x', name: 'Lan', role, intro: {} }, family, events: [], asked: [], stories: [], doneCalls: ['2026-11-01'],
   photoCount: 0, captions: [], mascot: 'Mây',
 });
+const both = [{ name: 'Hùng', role: 'bo' }, { name: 'Lan', role: 'me' }, { name: 'An', role: 'con' }];
 
-test('bộ câu mẫu: câu cuối là câu hỏi lời nhắn cố định, nhà một người thì không hỏi', () => {
+test('bộ câu mẫu v2: hỏi thăm, một chuyện chính mời kể, lời nhắn cuối; nhà một người thì không hỏi lời nhắn', () => {
   const both = [{ name: 'Hùng', role: 'bo' }, { name: 'Lan', role: 'me' }, { name: 'An', role: 'con' }];
-  for (const role of ['me', 'con']) {
-    const sc = call.templateScript(ctx(role, both), '2026-11-09');
-    const last = sc.questions.at(-1)!;
-    assert.equal(last.topic, 'loi-nhan');
-    assert.equal(last.text, callLines(role, (k, v) => tServer('vi', k, v)).relay);
-    assert.equal(sc.questions.filter((q) => q.topic === 'loi-nhan').length, 1);
-    assert.equal(sc.questions.length, 4);
-  }
-  assert.match(call.templateScript(ctx('con', both), '2026-11-09').questions.at(-1)!.text, /bố mẹ/);
-  const alone = call.templateScript(ctx('me', [{ name: 'Lan', role: 'me' }]), '2026-11-09');
-  assert.equal(alone.questions.some((q) => q.topic === 'loi-nhan'), false);
-  // Cuộc gọi đầu giữ nguyên 3 câu đơn giản.
-  assert.equal(call.firstScript(ctx('me', both)).questions.length, 3);
+  const me = call.templateScript(ctx('me', both), '2026-11-09');
+  assert.equal(me.v, 2); assert.equal(me.follow, 4);
+  assert.deepEqual(me.questions.map((q) => q.part ?? q.topic), ['checkin', 'story', 'loi-nhan']);
+  assert.equal(me.questions[0].topic, 'hoi-tham');
+  assert.equal(me.questions[1].theme, 'ngay-cuoi'); assert.equal(me.questions[1].event, 'wedding'); // có đủ bố mẹ, lịch chưa có ngày cưới
+  assert.equal(me.goodbye, callLines('me', (k, v) => tServer('vi', k, v)).bye);
+  const con = call.templateScript(ctx('con', both), '2026-11-09');
+  assert.ok(themesFor('con', true, false).includes(con.questions[1].theme!));
+  assert.notEqual(con.questions[1].theme, 'ngay-cuoi');
+  assert.deepEqual(call.templateScript(ctx('me', [{ name: 'Lan', role: 'me' }]), '2026-11-09').questions.map((q) => q.part), ['checkin', 'story']);
 });
 
-test('AI soạn câu hỏi: bỏ câu loi-nhan của AI, câu lời nhắn cố định luôn ở cuối', async () => {
-  const both = [{ name: 'Hùng', role: 'bo' }, { name: 'Lan', role: 'me' }, { name: 'An', role: 'con' }];
-  handler = gemini({
-    greeting: 'Mẹ ơi, con là Mây đây ạ.', goodbye: 'Con cảm ơn Mẹ ạ.',
-    questions: [
-      { text: 'Hồi nhỏ Mẹ thích ăn món gì nhất ạ?', topic: 'mon-an', photo: false, event: 'none' },
-      { text: 'Có lời nào Mẹ muốn nhắn cả nhà không ạ?', topic: 'loi-nhan', photo: false, event: 'none' },
-      { text: 'Ngôi nhà đầu tiên của Mẹ trông thế nào ạ?', topic: 'ky-niem', photo: true, event: 'none' },
-      { text: 'Tuần này Mẹ có chuyện gì vui không ạ?', topic: 'cuoc-song', photo: false, event: 'none' },
-      { text: 'Mẹ thích bài hát nào nhất ạ?', topic: 'tuoi-tho', photo: false, event: 'none' },
-    ],
-  });
-  const sc = await call.aiScript(ctx('me', both), '2026-11-09');
-  assert.ok(sc);
-  assert.deepEqual(sc.questions.map((q) => q.topic), ['mon-an', 'ky-niem', 'cuoc-song', 'loi-nhan']);
-  assert.equal(sc.questions[3].text, callLines('me', (k, v) => tServer('vi', k, v)).relay);
+test('cuộc gọi đầu v2: hỏi thăm và một chuyện dễ, 2 lượt hỏi thêm, không hỏi lời nhắn', () => {
+  const sc = call.firstScript(ctx('me', both));
+  assert.equal(sc.v, 2); assert.equal(sc.trial, true); assert.equal(sc.follow, 2);
+  assert.deepEqual(sc.questions.map((q) => q.part), ['checkin', 'story']);
+});
+
+test('AI soạn v2: dùng câu hỏi thăm và câu mở của AI; chủ đề sai vai hay câu có tên lạ thì dùng câu mẫu', async () => {
+  handler = gemini({ greeting: 'Mẹ ơi, con là Mây đây ạ.', checkin: 'Dạo này Mẹ ngủ có ngon không ạ?',
+    story: { text: 'Mẹ kể con nghe về một món Mẹ nấu mà cả nhà thích nhất nhé.', theme: 'mon-an', photo: false, event: 'none' } });
+  const sc = (await call.aiScript(ctx('me', both), '2026-11-09'))!;
+  assert.deepEqual(sc.questions.map((q) => q.text).slice(0, 2), ['Dạo này Mẹ ngủ có ngon không ạ?', 'Mẹ kể con nghe về một món Mẹ nấu mà cả nhà thích nhất nhé.']);
+  assert.equal(sc.questions[1].topic, 'mon-an'); assert.equal(sc.questions.at(-1)!.topic, 'loi-nhan');
+  handler = gemini({ greeting: 'Chào An.', checkin: 'Dạo này An thế nào?', story: { text: 'Kể mình nghe về ngày cưới nhé.', theme: 'ngay-cuoi', photo: true, event: 'wedding' } });
+  const kid = (await call.aiScript(ctx('con', both), '2026-11-09'))!;
+  assert.notEqual(kid.questions[1].theme, 'ngay-cuoi');
+  handler = gemini({ greeting: 'Mẹ ơi.', checkin: 'Dạo này Mẹ thế nào ạ?', story: { text: 'Mẹ kể con nghe về bác Minh nhé.', theme: 'que-nha', photo: false, event: 'none' } });
+  assert.doesNotMatch((await call.aiScript(ctx('me', both), '2026-11-09'))!.questions[1].text, /Minh/);
+});
+
+test('kịch bản soạn trước bản mới (không có v: 2) thì soạn lại, không phát lại kiểu ba câu', () => {
+  const v2 = call.templateScript(ctx('me', both), '2026-11-09');
+  const old = { ...v2, v: undefined };
+  const c = { lang: 'vi' as const, mascot: 'Mây' };
+  assert.equal(call.scriptReusable(old, c, false), false);
+  assert.equal(call.scriptReusable(v2, c, false), true);
+  assert.equal(call.scriptReusable(v2, { ...c, lang: 'en' }, false), false);
+  assert.equal(call.scriptReusable(v2, c, true), false);                           // người chưa gọi lần nào cần bộ câu cuộc gọi thử
+  assert.equal(call.scriptReusable(call.firstScript(ctx('me', both)), c, true), true);
+  assert.equal(call.scriptReusable(null, c, false), false);
+});
+
+test('câu cố định nạp sẵn giọng: có câu hỏi chia sẻ, câu nhận lời, câu tạm biệt', () => {
+  const L = callLines('me', (k, v) => tServer('vi', k, v));
+  for (const s of [L.share, L.shareYes, L.shareNo, L.bye]) assert.ok(call.fixedLines(['vi']).includes(s), s);
 });
 
 test('kiểm ảnh theo byte đầu tệp', () => {

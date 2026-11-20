@@ -138,7 +138,8 @@ test('API trả 429 thì đặt cờ, trả null, các câu sau không gọi n�
 test('nạp sẵn rải rác: bỏ câu đã có, dừng khi ngân sách còn dưới 30%', async () => {
   const call = await import('./call.ts');
   const lines = call.fixedLines();
-  assert.ok(lines.length <= 3 * 3 * 8, `quá nhiều câu cố định: ${lines.length}`);
+  // 3 thứ tiếng x 3 vai x tối đa 12 câu khác nhau (từ 20/11 thêm câu xin chia sẻ, hai câu đáp, câu tạm biệt).
+  assert.ok(lines.length <= 3 * 3 * 12, `quá nhiều câu cố định: ${lines.length}`);
   voice.gate.used = 0;
   voice.gate.until = 0;
   const m = fakeFetch();

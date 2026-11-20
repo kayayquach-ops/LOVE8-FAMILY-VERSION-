@@ -5,7 +5,7 @@ import express from 'express';
 import type multer from 'multer';
 import { createHash, randomUUID } from 'node:crypto';
 import type pg from 'pg';
-import { CALL_ROLES, DEFAULT_MASCOT_NAME, EVENT_HINTS, MAX_CALL_FOLLOW, MAX_STORY_FOLLOW, TOPICS, callLines, isTopic, relayNone, type CallQuestion, type CallRelay, type CallScript, type Topic, type TurnAI } from '../src/shared.ts';
+import { CALL_ROLES, DEFAULT_MASCOT_NAME, EVENT_HINTS, MAX_STORY_FOLLOW, STORY_THEMES, THEME_TOPIC, TRIAL_FOLLOW, callLines, isTheme, relayNone, themesFor, type CallQuestion, type CallRelay, type CallScript, type StoryTheme, type TurnAI } from '../src/shared.ts';
 import { errorBody, langOf, LANGS, reqLang, tReq, tServer, type Lang } from './i18n.ts';
 import { askJSON, askQuick, useGemini } from './ai.ts';
 import { pushRelays } from './push.ts';
@@ -70,13 +70,13 @@ export async function migrateCall(p: pg.Pool) {
   setTimeout(() => void warmFixedVoices(), 15_000);
 }
 
-/** Các câu cố định cần có giọng sẵn: mỗi (vai, ngôn ngữ) 11 câu. Câu "ack" không nạp (chỉ dùng nếu tình cờ đã có trong kho); câu "relayIntro" chỉ dùng khi có lời nhắn nên đọc lúc cần rồi nằm trong kho. */
+/** Các câu cố định cần có giọng sẵn: mỗi (vai, ngôn ngữ) 15 câu. Câu "ack" không nạp (chỉ dùng nếu tình cờ đã có trong kho); câu "relayIntro" chỉ dùng khi có lời nhắn nên đọc lúc cần rồi nằm trong kho. */
 export function fixedLines(langs: readonly Lang[] = LANGS) {
   const out = new Set<string>();
   for (const lang of langs) {
     for (const role of CALL_ROLES) {
       const L = callLines(role, (k, v) => tServer(lang, k, v));
-      for (const text of [L.slow, L.busy, L.skip, L.photo, ...L.short, ...L.long, L.relay, L.relayOk]) out.add(text);
+      for (const text of [L.slow, L.busy, L.skip, L.photo, ...L.short, ...L.long, L.relay, L.relayOk, L.share, L.shareYes, L.shareNo, L.bye]) out.add(text);
     }
   }
   return [...out];
@@ -176,7 +176,19 @@ async function context(memberId: string, fid: string): Promise<Ctx> {
 
 const lastWord = (name: string) => name.trim().split(/\s+/).pop() || name;
 
-/** Cuộc gọi đầu tiên: chào ngắn rồi đúng 3 câu rất dễ trả lời. Soạn sẵn, không gọi AI, không cần dữ liệu cũ. */
+/** Bộ câu v2: câu hỏi thăm (đáp ngắn cũng được, không thành tập) và câu mở chuyện chính. */
+const checkinQ = (text: string): CallQuestion => ({ text, topic: 'hoi-tham', photo: false, event: 'none', part: 'checkin' });
+const storyQ = (text: string, theme: StoryTheme, photo = false, event: CallQuestion['event'] = 'none'): CallQuestion =>
+  ({ text, topic: THEME_TOPIC[theme], photo, event, part: 'story', theme });
+/** Câu tạm biệt cố định theo vai (giọng nằm sẵn trong kho), không hứa "cả nhà cùng nghe" vì chuyện có thể được giữ riêng. */
+const byeOf = (c: Ctx) => callLines(c.member.role, (k, v) => tServer(c.lang, k, v)).bye;
+/** Đủ bố lẫn mẹ trong nhà, lịch đã có ngày cưới chưa (luật hỏi ngày cưới). */
+const pairOf = (c: Ctx) => ({
+  hasPair: c.family.some((m) => m.role === 'bo') && c.family.some((m) => m.role === 'me'),
+  hasWedding: c.events.some((e) => e.kind === 'wedding'),
+});
+
+/** Cuộc gọi đầu tiên (cuộc gọi thử): chào, hỏi thăm, một chuyện dễ kể, tối đa 2 câu hỏi thêm, không hỏi lời nhắn. Soạn sẵn, không gọi AI. */
 export function firstScript(c: Ctx): CallScript {
   const { name, role } = c.member;
   const parent = role === 'bo' || role === 'me';
@@ -185,64 +197,52 @@ export function firstScript(c: Ctx): CallScript {
   const Self = self ? self[0].toUpperCase() + self.slice(1) : '';
   const nick = lastWord(name);
   const S = (k: string) => T(`callScript.first.${parent ? 'parent' : 'child'}.${k}`, { self, Self, nick, mascot: c.mascot ?? DEFAULT_MASCOT_NAME });
-  const q = (text: string, topic: Topic): CallQuestion => ({ text, topic, photo: false, event: 'none' });
   return {
     greeting: S('greeting'),
-    questions: [q(S('q1'), 'cuoc-song'), q(S('q2'), 'mon-an'), q(S('q3'), 'cuoc-song')],
-    goodbye: S('goodbye'),
+    questions: [checkinQ(S('q1')), storyQ(S('story'), 'mon-an')],
+    goodbye: byeOf(c),
     source: 'first',
     lang: c.lang,
     mascot: c.mascot ?? DEFAULT_MASCOT_NAME,
+    v: 2, follow: TRIAL_FOLLOW, trial: true,
   };
 }
 
+/** Chủ đề chuyện chính có câu mẫu, theo thứ tự ưu tiên (khoá callScript.template.<vai>.story.<chủ đề>). */
+const TEMPLATE_THEMES: Record<'parent' | 'child', StoryTheme[]> = {
+  parent: ['ngay-cuoi', 'tuoi-tho', 'que-nha', 'mon-an', 'tet-cac-dip', 'uoc-mo', 'con-chao-doi'],
+  child: ['tuoi-tho', 'que-nha', 'mon-an', 'tet-cac-dip', 'ban-be', 'con-di-xa'],
+};
+
 export function templateScript(c: Ctx, week: string): CallScript {
-  const { name, role, intro } = c.member;
+  const { name, role } = c.member;
   const parent = role === 'bo' || role === 'me';
+  const who = parent ? 'parent' : 'child';
   const T = (k: string, v?: Record<string, string | number>) => tServer(c.lang, k, v);
   const self = role === 'bo' ? T('call.self.bo') : role === 'me' ? T('call.self.me') : T('onboarding.self.con');
   const call = parent ? self[0].toUpperCase() + self.slice(1) : name;
   const other = T(role === 'bo' ? 'call.self.me' : 'call.self.bo');
-  const food = (intro.food || '').trim();
-  // Chỉ hỏi ngày cưới khi trong nhà có đủ cả bố lẫn mẹ.
-  const hasPair = c.family.some((m) => m.role === 'bo') && c.family.some((m) => m.role === 'me');
-  const hasWedding = c.events.some((e) => e.kind === 'wedding');
-  const q = (text: string, topic: Topic, photo = false, event: CallQuestion['event'] = 'none'): CallQuestion => ({ text, topic, photo, event });
-
-  const S = (k: string) => T(`callScript.template.${parent ? 'parent' : 'child'}.${k}`, { self, call, other, food, name, mascot: c.mascot ?? DEFAULT_MASCOT_NAME });
-  const pool: CallQuestion[] = parent ? [
-    ...(!hasWedding && hasPair ? [q(S('wedding'), 'ngay-cuoi', true, 'wedding')] : []),
-    q(S('play'), 'tuoi-tho'),
-    ...(food ? [q(S('food'), 'mon-an')] : []),
-    q(S('house'), 'ky-niem', true),
-    q(S('week'), 'cuoc-song'),
-    q(S('taste'), 'mon-an'),
-    q(S('dream'), 'tuoi-tho'),
-  ] : [
-    q(S('week'), 'cuoc-song'),
-    ...(food ? [q(S('food'), 'mon-an')] : []),
-    q(S('memory'), 'tuoi-tho'),
-    q(S('photo'), 'ky-niem', true),
-    q(S('meal'), 'mon-an'),
-    q(S('miss'), 'cuoc-song'),
-    q(S('home'), 'ky-niem'),
-  ];
+  const vars = { self, Self: call, call, other, name, mascot: c.mascot ?? DEFAULT_MASCOT_NAME };
+  const S = (k: string) => T(`callScript.template.${who}.${k}`, vars);
+  // Chỉ hỏi ngày cưới khi trong nhà có đủ cả bố lẫn mẹ và lịch chưa có ngày cưới (themesFor).
+  const { hasPair, hasWedding } = pairOf(c);
+  const allowed = themesFor(role, hasPair, hasWedding);
+  const pool = TEMPLATE_THEMES[who].filter((t) => allowed.includes(t)).map((theme) =>
+    storyQ(tServer(c.lang, `callScript.template.${who}.story.${theme}`, vars), theme, theme === 'ngay-cuoi', theme === 'ngay-cuoi' ? 'wedding' : 'none'));
   const fresh = pool.filter((x) => !c.asked.includes(x.text));
-  const list = fresh.length >= 4 ? fresh : pool;
-  // Câu ngày cưới luôn hỏi trước nếu chưa có trong lịch; còn lại xoay vòng theo tuần.
-  const head = list.filter((x) => x.event === 'wedding');
-  const rest = list.filter((x) => x.event !== 'wedding');
-  const shift = Math.floor(Date.parse(week) / (7 * 86400e3)) % Math.max(1, rest.length);
-  const rotated = [...rest.slice(shift), ...rest.slice(0, shift)];
+  const list = fresh.length ? fresh : pool;
+  // Chuyện ngày cưới luôn hỏi trước nếu được hỏi; còn lại xoay vòng theo tuần.
+  const shift = Math.floor(Date.parse(week) / (7 * 86400e3)) % list.length;
+  const story = list.find((x) => x.theme === 'ngay-cuoi') ?? list[shift];
   const relay = relayQuestion(c);
-  const questions = [...head, ...rotated].slice(0, 3).concat(relay ? [relay] : []);
   return {
     greeting: S('greeting'),
-    questions,
-    goodbye: S('goodbye'),
+    questions: [checkinQ(S('checkin')), story, ...(relay ? [relay] : [])],
+    goodbye: byeOf(c),
     source: 'template',
     lang: c.lang,
     mascot: c.mascot ?? DEFAULT_MASCOT_NAME,
+    v: 2, follow: MAX_STORY_FOLLOW,
   };
 }
 
@@ -252,6 +252,12 @@ export function relayQuestion(c: Ctx): CallQuestion | null {
   if (c.family.length < 2) return null;
   const L = callLines(c.member.role, (k, v) => tServer(c.lang, k, v));
   return { text: L.relay, topic: 'loi-nhan', photo: false, event: 'none' };
+}
+
+/** Bộ câu đã soạn trong tuần dùng tiếp được không: phải là bản v2, cùng thứ tiếng và tên linh vật hiện tại,
+ *  và đúng loại (người chưa gọi lần nào cần bộ câu cuộc gọi thử, người đã gọi thì không). Không thì soạn lại. */
+export function scriptReusable(old: CallScript | null, c: Pick<Ctx, 'lang' | 'mascot'>, first: boolean): boolean {
+  return !!old && old.v === 2 && (old.lang ?? 'vi') === c.lang && (old.mascot ?? DEFAULT_MASCOT_NAME) === (c.mascot ?? DEFAULT_MASCOT_NAME) && !!old.trial === first;
 }
 
 // ---------- Chống bịa: suspect() ở guard.ts (dấu hiệu bịa vi, en, ko + tên riêng, con số phải có trong dữ liệu) ----------
@@ -265,22 +271,19 @@ const LANG_NAME: Record<Lang, string> = { vi: 'Vietnamese', en: 'English', ko: '
 const SCRIPT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['greeting', 'questions', 'goodbye'],
+  required: ['greeting', 'checkin', 'story'],
   properties: {
     greeting: { type: 'string' },
-    goodbye: { type: 'string' },
-    questions: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['text', 'topic', 'photo', 'event'],
-        properties: {
-          text: { type: 'string' },
-          topic: { type: 'string', enum: TOPICS.filter((t) => t !== 'loi-nhan') },
-          photo: { type: 'boolean' },
-          event: { type: 'string', enum: [...EVENT_HINTS] },
-        },
+    checkin: { type: 'string' },
+    story: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['text', 'theme', 'photo', 'event'],
+      properties: {
+        text: { type: 'string' },
+        theme: { type: 'string', enum: [...STORY_THEMES] },
+        photo: { type: 'boolean' },
+        event: { type: 'string', enum: [...EVENT_HINTS] },
       },
     },
   },
@@ -296,10 +299,10 @@ Mây says I and me. When talking to a parent, call role me Mom and role bo Dad. 
 Mây always calls itself 저, and writes its own name only as Mây in Latin letters, never in Hangul. When talking to a parent (role bo or me), use respectful honorific forms (for example 드셨어요, 하셨어요, 계세요); you may address them as 어머님 (role me) or 아버님 (role bo), at most twice in the whole script, never by their first name. When talking to a child (role con), use plain warm 해요체 without honorific verb forms and call them by their name followed by 님, sparingly.`,
 };
 
-const EXAMPLES: Record<Lang, { photo: string; forbidden: string }> = {
-  vi: { photo: 'Bạn có tấm ảnh nào muốn kể cho mình nghe không?', forbidden: '"lần trước", "hôm trước", "hôm qua", "lúc nãy", "như bạn đã gửi", "tấm ảnh bạn gửi", "bạn từng kể"' },
-  en: { photo: 'Is there a photo you would like to tell me about?', forbidden: '"last time", "the other day", "yesterday", "earlier", "as you sent", "the photo you sent", "you told me", "you mentioned", "remember when"' },
-  ko: { photo: '이야기해 주고 싶은 사진이 있으세요?', forbidden: '"지난번", "저번에", "어제", "아까", "보내주신", "말씀하신", "전에 말한"' },
+const EXAMPLES: Record<Lang, { story: string; forbidden: string }> = {
+  vi: { story: 'An đi xa rồi mà mẹ vẫn nhớ An mê canh chua. Mẹ kể con nghe về một bữa cơm hồi An còn ở nhà mà mẹ nhớ nhất đi.', forbidden: '"lần trước", "hôm trước", "hôm qua", "lúc nãy", "như bạn đã gửi", "tấm ảnh bạn gửi", "bạn từng kể"' },
+  en: { story: 'An is far away now, but you still remember how much An loves sour soup. Tell me about a family meal from when An still lived at home, the one you remember most.', forbidden: '"last time", "the other day", "yesterday", "earlier", "as you sent", "the photo you sent", "you told me", "you mentioned", "remember when"' },
+  ko: { story: 'An님이 멀리 있어도 An님이 새콤한 국을 좋아하던 건 아직 기억하시죠. An님이 집에 있던 시절의 식사 중에 가장 기억에 남는 날 이야기를 들려주세요.', forbidden: '"지난번", "저번에", "어제", "아까", "보내주신", "말씀하신", "전에 말한"' },
 };
 
 /** Prompt viết sẵn cho tên Mây: nhà đã đặt tên khác thì thay bằng tên ấy (tiếng Hàn bỏ luật "chỉ viết chữ Latin"). */
@@ -322,18 +325,22 @@ HARD RULES, never break them:
 1. Never mention a photo, message, call, earlier session, memory or detail that is not in the input. Never write ${ex.forbidden} or anything similar unless that exact thing is in the input.
 2. Never guess a name, date, place, country, number, age or relationship. Use only names and facts that appear in the input. Do not assume where anyone lives or studies.
 3. Ask only open, safe questions that assume nothing. Every question must be answerable without any outside data, by a person who just picked up the phone.
-4. Exactly 3 questions. Each question is one short sentence, at most two. Never ask for a message to someone in the family; the app adds its own closing question for that.
+4. Write exactly two questions, each one or two short sentences.
+   checkin: one short question about how they are right now, answerable in a word, assuming nothing outside the input.
+   story: one story opener that invites a long telling (tell me about..., what was it like when...), never a question with one short factual answer. Use one real detail from the input as the reason to ask; if the input has none, simply invite the story. The opener names no date unless that date is in the input.
+   Example opener, only to show the pattern (never copy its names or details; the rules on names still apply): "${ex.story}"
+   Never ask for a message to someone in the family; the app adds its own closing question for that.
 5. Never repeat a question in already_asked, in any language.
 6. Only follow up on an earlier answer if it is listed in own_earlier_answers, and quote nothing that is not there.
-7. A photo question (photo true) is a neutral invitation, for example "${ex.photo}". It must never imply that a photo was already received. Use photo true in at most one question, and only when it fits.
-8. If wedding_question_allowed is true, one question asks when they got married and to tell about that day, with photo true and event wedding. Otherwise never ask about a wedding.
-9. Set event to the kind of date the answer will likely contain (wedding, anniversary, birthday, memory), otherwise none.
+7. story.photo is true only when the story is about a moment people often keep photos of (a wedding, a trip, an old house). The opener must never imply that a photo was already received.
+8. If wedding_question_allowed is true, the story asks when they got married and to tell about that day, with theme ngay-cuoi, photo true and event wedding. Otherwise never ask about a wedding and never use theme ngay-cuoi.
+9. story.theme is the code that fits the opener: tuoi-tho childhood, que-nha the home they grew up in, bo-me-minh their own parents, ngay-cuoi the wedding, cong-viec work, con-chao-doi the day their child was born, con-di-xa the day a child left home, mon-an food, tet-cac-dip Tet and family occasions, ban-be friends, uoc-mo dreams, dan-con-chau what they want to pass on to the children. When role is con, never use con-chao-doi or dan-con-chau. Set story.event to the kind of date the answer will likely contain (wedding, anniversary, birthday, memory), otherwise none.
 10. Earlier answers come from past calls. Refer to them only as being from an earlier call (last time) and never with today, now or any present-tense time. If previous_calls says none yet, never refer to any earlier call at all. Never put a time on an earlier answer (no last week, no 지난주). Never assume whether a child is a son or a daughter unless the intro says so. Never invent relatives (grandchildren, siblings, cousins, anyone's children) unless listed in family_members.
 11. The intro field "unsaid" is private: it may guide your tone, but never quote it or hint at its content.
 
-The greeting is one or two short sentences. The goodbye is one short sentence of thanks. Neither mentions anything outside the input.
+The greeting is one or two short sentences and mentions nothing outside the input.
 
-Reply in ${LANG_NAME[lang]}. Every greeting, question and goodbye must be written in ${LANG_NAME[lang]} only.`, name);
+Reply in ${LANG_NAME[lang]}. The greeting, checkin and story text must be written in ${LANG_NAME[lang]} only.`, name);
 }
 
 /** Dữ liệu thật đưa cho AI: mục trống ghi rõ "none yet" bằng nhãn tiếng Anh trung tính. */
@@ -357,53 +364,44 @@ export function scriptFacts(c: Ctx) {
 
 const MONTH_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
+/** Trả lời của AI theo SCRIPT_SCHEMA (lời tạm biệt là câu cố định nên AI không viết). */
+type ScriptRaw = { greeting: string; checkin: string; story: { text: string; theme: string; photo: boolean; event: CallQuestion['event'] } };
+
 export async function aiScript(c: Ctx, week: string, timeoutMs?: number): Promise<CallScript | null> {
   const facts = scriptFacts(c);
   // Tên tháng tiếng Anh của các ngày có trong lịch cũng tính là dữ liệu thật ("your birthday in March").
   // Mã vai (bo, me, con) không phải tên: bỏ khỏi dữ liệu đối chiếu để câu "Hi Bo" bị chặn.
   const hay = JSON.stringify(facts).replace(/"role":"(bo|me|con)"/g, '') + ' ' + c.events.map((e) => MONTH_EN[e.month - 1] ?? '').join(' ') + ' ' + (c.mascot ?? '');
   const allow: Allow = { prevCall: c.doneCalls.length > 0, ownStory: c.stories.length > 0, photos: c.photoCount > 0 };
-  const r = await askJSON<Omit<CallScript, 'source'>>(scriptSystem(c.lang, c.mascot), JSON.stringify(facts, null, 1), SCRIPT_SCHEMA, undefined, timeoutMs);
-  if (!r || !Array.isArray(r.questions) || !r.questions.length) return null;
-  const clean = (s: string) => String(s || '').replace(/\s*[—–]\s*/g, ', ').replace(/["“”]/g, '').trim();
+  const r = await askJSON<ScriptRaw>(scriptSystem(c.lang, c.mascot), JSON.stringify(facts, null, 1), SCRIPT_SCHEMA, undefined, timeoutMs);
+  if (!r) return null;
   const tpl = templateScript(c, week);
-
-  const questions: CallQuestion[] = [];
-  let photos = 0;
-  for (const raw of r.questions.slice(0, 5)) {
-    if (!raw || !raw.text || !isTopic(raw.topic) || raw.topic === 'loi-nhan') continue;
-    const text = clean(raw.text);
+  // Câu AI viết: làm sạch rồi qua lớp chống bịa; không ổn thì null (dùng câu mẫu).
+  const ok = (raw: unknown) => {
+    const text = String(raw || '').replace(/\s*[—–]\s*/g, ', ').replace(/["“”]/g, '').trim();
+    if (!text) return null;
     const why = suspect(text, hay, allow, c.lang);
-    if (why) { console.warn(`[call] bỏ câu "${text}": ${why}`); continue; }
-    if (c.asked.includes(text) || questions.some((q) => q.text === text)) continue;
-    const event = EVENT_HINTS.includes(raw.event) ? raw.event : 'none';
-    if (event === 'wedding' && !facts.wedding_question_allowed) continue;
-    // Chỉ một câu xin ảnh.
-    const photo = !!raw.photo && ++photos === 1;
-    questions.push({ text, topic: raw.topic, photo, event });
-    if (questions.length >= 3) break;
-  }
-  // Thiếu thì bù bằng câu mẫu an toàn, tối thiểu 3 câu.
-  for (const t of tpl.questions) {
-    if (questions.length >= 3) break;
-    if (t.topic === 'loi-nhan' || t.event === 'wedding' || questions.some((q) => q.text === t.text)) continue;
-    if (t.photo && photos > 0) continue;
-    if (t.photo) photos++;
-    questions.push({ ...t });
-  }
-  if (!questions.length) return null;
+    if (why) { console.warn(`[call] bỏ câu "${text}": ${why}`); return null; }
+    return text;
+  };
+  const checkin = ok(r.checkin);
+  // Câu mở chuyện chính: đúng chủ đề cho vai, chỉ hỏi ngày cưới khi được hỏi, chưa từng hỏi; không thì chuyện của bộ câu mẫu.
+  const s = r.story;
+  const text = ok(s?.text), theme = s?.theme;
+  const event = EVENT_HINTS.includes(s?.event) ? s.event : 'none';
+  const { hasPair, hasWedding } = pairOf(c);
+  const fits = !!text && isTheme(theme) && themesFor(c.member.role, hasPair, hasWedding).includes(theme)
+    && (event !== 'wedding' || facts.wedding_question_allowed) && !c.asked.includes(text);
+  const story = fits ? storyQ(text, theme, !!s.photo, event) : tpl.questions[1];
   const relay = relayQuestion(c);
-  if (relay) questions.push(relay);
-  const g = clean(r.greeting), b = clean(r.goodbye);
-  // Mây là người gọi: lời tạm biệt "thank you for calling" thì dùng câu mẫu.
-  const wrongBye = /\bfor (calling|the call)\b/i.test(b);
   return {
-    greeting: g && !suspect(g, hay, allow, c.lang) ? g : tpl.greeting,
-    questions,
-    goodbye: b && !wrongBye && !suspect(b, hay, allow, c.lang) ? b : tpl.goodbye,
+    greeting: ok(r.greeting) ?? tpl.greeting,
+    questions: [checkin ? checkinQ(checkin) : tpl.questions[0], story, ...(relay ? [relay] : [])],
+    goodbye: byeOf(c),
     source: 'ai',
     lang: c.lang,
     mascot: c.mascot ?? DEFAULT_MASCOT_NAME,
+    v: 2, follow: MAX_STORY_FOLLOW,
   };
 }
 
@@ -481,11 +479,14 @@ const TURN_SCHEMA = {
 
 const FOLLOW_STYLE: Record<Lang, string> = {
   vi: `Example follow_up (role me, she told about a market trip but not who came): "Hôm đó Mẹ đi chợ với ai ạ?". Same for role con: "Hôm đó bạn đi với ai thế?".
-Example date follow_up: "Mẹ còn nhớ hôm cưới là ngày mấy tháng mấy không ạ?" (role me), "Bạn còn nhớ hôm đó là ngày mấy tháng mấy không?" (role con).`,
+Example date follow_up: "Mẹ còn nhớ hôm cưới là ngày mấy tháng mấy không ạ?" (role me), "Bạn còn nhớ hôm đó là ngày mấy tháng mấy không?" (role con).
+They are done when they say things like "thôi", "hết rồi", "vậy thôi".`,
   en: `Example follow_up (she told about a market trip but not who came): "Who went to the market with you that day?".
-Example date follow_up: "Do you remember the day and month of the wedding?".`,
+Example date follow_up: "Do you remember the day and month of the wedding?".
+They are done when they say things like "that's all".`,
   ko: `Example follow_up (she told about a market trip but not who came): "그날 시장에는 누구랑 같이 가셨어요?" (role bo or me), "그날 누구랑 같이 갔어요?" (role con).
-Example date follow_up: "결혼식이 몇 월 며칠이었는지 기억나세요?" (role bo or me).`,
+Example date follow_up: "결혼식이 몇 월 며칠이었는지 기억나세요?" (role bo or me).
+They are done when they say things like "그게 다예요".`,
 };
 
 function turnSystem(lang: Lang, name = DEFAULT_MASCOT_NAME) {
@@ -502,10 +503,11 @@ ${REPLY_STYLE[lang]}
 
 FOLLOW_UP.
 1. If can_follow is false, follow_up is "".
-2. Ask only when the newest answer is hesitant, very short, or leaves out something important for this story (who was there, where, what happened next, how it felt). When the story already feels told, follow_up is "".
-3. The question continues exactly what they are telling: pick up a detail they actually said and stay on this one story. Never change topic.
-4. If need_date is true and the story has no day and month yet, follow_up must ask for the day and month of that event.
-5. One short, easy question, answerable by voice. Same way of addressing the person as in the reaction.
+2. Walk the beats of this one story: the setting (which occasion, where, when), who was there, what happened, how it felt then, what they would say about it now. Skip every beat the story already tells, anywhere in story. Ask about one missing beat.
+3. follow_up is "" when every beat is told, or when the person says they are done or want to stop.
+4. The question continues exactly what they are telling: pick up a detail they actually said and stay on this one story. Never change topic.
+5. If need_date is true and the story has no day and month yet, follow_up must ask for the day and month of that event.
+6. One short, easy question, answerable by voice. Same way of addressing the person as in the reaction.
 ${FOLLOW_STYLE[lang]}
 
 HARD RULES. Never add any fact, name, number, place, photo, memory or event that is not in story. Never refer to earlier calls. Never use phrases like "you said", "you mentioned", "last time" or their equivalents. Never say the English app name. No em dash, no emoji, no quotation marks.
@@ -532,12 +534,14 @@ export type TurnInput = {
   q: CallQuestion;
   /** Các lượt của câu chuyện tới giờ, lượt cuối là câu vừa kể. */
   story: Array<{ asked: string; answer: string }>;
-  /** Lượt vừa kể: 0 là câu chính, 1, 2 là câu trả lời cho câu hỏi thêm. */
+  /** Lượt vừa kể: 0 là câu chính, 1..max là câu trả lời cho câu hỏi thêm. */
   turn: number;
-  /** Số câu hỏi thêm đã hỏi trong cả cuộc gọi (gồm lượt vừa kể nếu là hỏi thêm). */
-  follows: number;
+  /** Trần câu hỏi thêm của chuyện này (script.follow). */
+  max: number;
   /** Câu chuyện đã có ngày (đã nhắc lại cho chắc) chưa. */
   dated: boolean;
+  /** Câu mở chuyện chính, chỉ có ở lượt hỏi thăm (để nối vào câu đáp thành một câu nói). */
+  next: string | null;
 };
 
 const isParent = (role: string) => role === 'bo' || role === 'me';
@@ -560,11 +564,13 @@ export function dateText(lang: Lang, d: { day: number; month: number; year: numb
 }
 
 /** Sau mỗi lượt kể, một lần gọi AI: câu đáp, câu hỏi thêm (nếu cần), ngày nghe được, có chuyện thật để xin ảnh không.
+ *  Lượt hỏi thăm không hỏi thêm: câu đáp nối luôn câu mở chuyện chính thành một câu nói (đỡ một lượt giọng).
  *  Không có AI, AI lỗi hay quá hạn: null, máy khách đi tiếp như cũ. Mọi câu AI viết đều qua suspect(). */
 export async function turnAI(p: TurnInput, timeoutMs = TURN_AI_MS): Promise<TurnAI | null> {
   const last = p.story.at(-1)?.answer?.trim() ?? '';
   if (!last || p.q.topic === 'loi-nhan') return null;
-  const canFollow = p.turn < MAX_STORY_FOLLOW && p.follows < MAX_CALL_FOLLOW;
+  const checkin = p.q.part === 'checkin';
+  const canFollow = !checkin && p.turn < p.max;
   const needDate = p.q.event !== 'none' && !p.dated;
   const r = await askJSON<TurnRaw>(turnSystem(p.lang, p.bot), JSON.stringify({
     person: { name: p.who.name, role: p.who.role },
@@ -592,6 +598,12 @@ export async function turnAI(p: TurnInput, timeoutMs = TURN_AI_MS): Promise<Turn
   let follow = canFollow ? ok(r.follow_up, 200, 'câu hỏi thêm') : null; // i18n-ok
   // Câu hỏi có event mà chưa nghe ngày: câu hỏi thêm phải hỏi ngày, AI quên thì dùng câu mẫu.
   if (canFollow && needDate && !date && !(follow && DATE_ASK[p.lang].test(follow))) follow = tServer(p.lang, `callScript.askDate.${who}`, { self, Self });
+  if (checkin) {
+    // Hỏi thăm không phải chuyện (không xin ảnh); vừa giới hạn đọc thì gộp câu mở chuyện chính vào cùng câu nói.
+    const both = [reply, p.next].filter(Boolean).join(' ');
+    const joined = !!p.next && both.length <= TTS_MAX;
+    return { reply, follow: null, date, confirm, story: false, say: (joined ? both : reply) || null, joined };
+  }
   const parts = [reply && follow && /[?？]$/.test(reply) ? null : reply, confirm, follow];
   let say = parts.filter(Boolean).join(' ');
   if (say.length > TTS_MAX) say = [confirm, follow].filter(Boolean).join(' ');
@@ -908,9 +920,8 @@ async function turnInput(call: { id: string; member_id: string; family_id: strin
   const q = script.questions[idx];
   let prior: Array<{ q?: unknown; a?: unknown }> = [];
   try { const v = typeof body.prior === 'string' ? JSON.parse(body.prior) : body.prior; if (Array.isArray(v)) prior = v.slice(0, MAX_STORY_FOLLOW); } catch {}
-  const [{ rows: prev }, { rows: [cnt] }, { rows: [m] }] = await Promise.all([
+  const [{ rows: prev }, { rows: [m] }] = await Promise.all([
     pool.query('select turn, question, transcript from call_answers where call_id = $1 and idx = $2 and turn < $3', [call.id, idx, turn]),
-    pool.query('select count(*)::int n from call_answers where call_id = $1 and turn > 0', [call.id]),
     pool.query('select m.name, m.role, f.mascot_name from members m join families f on f.id = m.family_id where m.id = $1', [call.member_id]),
   ]);
   const story: TurnInput['story'] = [];
@@ -922,7 +933,8 @@ async function turnInput(call: { id: string; member_id: string; family_id: strin
   story.push({ asked, answer: transcript.slice(0, 1500) });
   return {
     lang: langOf(script.lang ?? reqLang()), who: { name: m?.name ?? '', role: m?.role ?? 'con' }, bot: m?.mascot_name || DEFAULT_MASCOT_NAME,
-    q, story, turn, follows: Math.max(Number(body.follows) || 0, cnt?.n ?? 0), dated: yes(body.dated),
+    q, story, turn, max: script.follow ?? MAX_STORY_FOLLOW, dated: yes(body.dated),
+    next: q.part === 'checkin' ? script.questions.find((x) => x.part === 'story')?.text ?? null : null,
   };
 }
 
@@ -976,19 +988,18 @@ export function callRouter(upload: multer.Multer) {
     const first = c.doneCalls.length === 0;
     const { rows } = await pool.query(`select id, script from calls where member_id = $1 and week = $2 and status = 'ready' order by created_at desc limit 1`, [mid, week]);
     const old: CallScript | null = rows[0] ? JSON.parse(rows[0].script) : null;
-    // Chưa từng có cuộc gọi nào thì chỉ dùng bộ câu chào hỏi đơn giản, kể cả khi đã lỡ soạn một bộ khác.
-    // Bộ câu soạn bằng thứ tiếng khác với ngôn ngữ hiện tại (đổi ngôn ngữ giữa tuần), hoặc nhà vừa đổi tên linh vật, thì soạn lại.
     const relays = await pendingRelays(mid);
-    if (old && (old.lang ?? 'vi') === c.lang && (old.mascot ?? DEFAULT_MASCOT_NAME) === (c.mascot ?? DEFAULT_MASCOT_NAME) && (!first || old.source === 'first')) return res.json({ id: rows[0].id, script: old, relays });
+    if (scriptReusable(old, c, first)) return res.json({ id: rows[0].id, script: old, relays });
     // Người dùng đã bấm Nghe máy và đang chờ: AI soạn quá 7 giây thì dùng bộ câu mẫu, không để màn hình im lặng.
     const script = first ? firstScript(c) : (aiScripts.take(mid) ? await aiScript(c, week, START_AI_MS) : null) ?? templateScript(c, week);
     const id = randomUUID();
-    await pool.query('insert into calls (id, family_id, member_id, week, script) values ($1,$2,$3,$4,$5)', [id, fid, mid, week, JSON.stringify(script)]);
+    // Cuộc gọi mới chưa đồng ý chia sẻ: bước xin phép cuối chuyện chính (POST /call/:id/share) mới bật shared.
+    await pool.query('insert into calls (id, family_id, member_id, week, script, shared) values ($1,$2,$3,$4,$5,false)', [id, fid, mid, week, JSON.stringify(script)]);
     res.json({ id, script, relays });
     // Giọng đọc do máy khách xin khi cần (lời chào + câu đầu một lần, mỗi câu sau xin trước một câu), máy chủ không tự đọc trước.
   }));
 
-  // Một lượt kể: idx là câu chuyện, turn 0 câu chính, 1 và 2 là câu hỏi thêm (question là đúng câu Mây đã hỏi).
+  // Một lượt kể: idx là câu chuyện, turn 0 câu chính, 1..MAX_STORY_FOLLOW là câu hỏi thêm (question là đúng câu Mây đã hỏi).
   // Gửi lại (hàng chờ thử lại) thì thay hàng cũ cùng (idx, turn), không bao giờ thành hai hàng.
   r.post('/call/:id/answer', limitAnswer, upload.single('file'), h(async (req, res) => {
     const { rows: [call] } = await pool.query('select * from calls where id = $1 and member_id = $2', [req.params.id, req.member.id]);
@@ -1131,6 +1142,13 @@ export function callRouter(upload: multer.Multer) {
     } finally {
       if (req.file) await unlink(req.file.path).catch(() => {});
     }
+  }));
+
+  // Người kể đồng ý chia sẻ chuyện của cuộc gọi cho cả nhà (bước xin phép cuối chuyện chính). Không có thân, gửi lại được.
+  r.post('/call/:id/share', h(async (req, res) => {
+    const { rowCount } = await pool.query('update calls set shared = true where id = $1 and member_id = $2', [req.params.id, req.member.id]);
+    if (!rowCount) return res.status(404).json(errorBody('call_not_found'));
+    res.json({ ok: true });
   }));
 
   // Mây đã chuyển xong một lời nhắn cho người đang nghe.
