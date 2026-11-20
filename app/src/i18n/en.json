@@ -231,6 +231,8 @@
   "call.photosSaved": "{n} photos saved",
   "call.photosSaved.one": "1 photo saved",
   "call.pickPhoto": "Choose a photo",
+  "call.share.yes": "Share",
+  "call.share.no": "Keep private",
   "call.podcastSoon": "Your story will be in “Our family stories” in a few minutes.",
   "call.sendLater": "The connection is weak. Your answers will send on their own once you're back online.",
   "call.end": "End call",

@@ -121,8 +121,6 @@ export const CALL_ROLES = ['bo', 'me', 'con'] as const;
 /** Mây hỏi thêm: chuyện chính tối đa 4 lượt (turn 1..4), không còn trần riêng cho cả cuộc gọi. Cuộc gọi thử tối đa 2 lượt. */
 export const MAX_STORY_FOLLOW = 4;
 export const TRIAL_FOLLOW = 2;
-/** Chỉ còn cho màn gọi cũ (Call.tsx); task 4 bỏ. */
-export const MAX_CALL_FOLLOW = 4;
 
 /** Kết quả AI sau mỗi lượt kể (POST /call/:id/reply, hoặc /answer khi máy chủ tự chép lời). */
 export type TurnAI = {

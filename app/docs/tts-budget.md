@@ -24,6 +24,19 @@
 
 Hạn mức thật (Tier 1) của giọng đọc: 10 yêu cầu mỗi phút, **100 yêu cầu mỗi ngày** (reset nửa đêm giờ Thái Bình Dương), tính cả mọi app dùng chung khoá. Mô hình văn bản thì rộng hơn nhiều nên không phải vấn đề.
 
+## Số câu giọng mỗi cuộc gọi kiểu Mây mới (bộ câu v2, từ 21/11/2026)
+
+Câu giọng mới của một cuộc gọi hằng tuần:
+- Lời chào + câu hỏi thăm: 1 câu (một file).
+- Câu đáp hỏi thăm + câu mở chuyện chính: 1 câu. Máy chủ gộp sẵn (`joined`) và đọc trước bằng giọng bắt buộc; máy khách xin đúng câu đó, không coi là câu đáp phụ. Gộp mà quá 300 chữ thì câu đáp thành câu phụ và câu mở đọc riêng.
+- Mỗi câu hỏi thêm: 1 câu, từ 0 tới 4 (cuộc gọi thử tối đa 2). Câu nhắc lại ngày đi chung trong câu này.
+- Câu đáp cuối chuyện: 1 câu, chỉ khi ngân sách ngày còn trên 30%; không thì câu đáp mẫu trong kho.
+- Còn lại là câu cố định lấy từ kho (`kind: 'fixed'`, không tốn hạn mức): xin ảnh, xin phép chia sẻ, câu đáp khi đồng ý hay giữ riêng, câu hỏi lời nhắn, nhắc từ từ, đổi chuyện, bận, tạm biệt.
+
+Tổng 2 tới 7 câu một cuộc gọi, thường khoảng 6 (3 câu hỏi thêm); cuộc gọi thử 2 tới 5. Với 70 câu mỗi ngày là khoảng 10 cuộc gọi đủ giọng mỗi ngày (11 nếu cuộc gọi nào cũng ở mức thường gặp 6 câu); quá số đó thì hiện chữ kèm chuông nhẹ. Kiểu cũ tốn tới 11 câu một cuộc gọi (3 câu hỏi, 4 câu hỏi thêm, 3 câu đáp, lời tạm biệt AI viết). Lời người khác nhắn được Mây chuyển (nếu có) vẫn mỗi lời một câu như trước.
+
+Bốn câu cố định mới (`share`, `shareYes`, `shareNo`, `bye`) tốn 12 câu giọng mỗi thứ tiếng, chỉ một lần (4 câu x 3 vai), do `warmFixedVoices` nạp sẵn.
+
 ## Kiểm đếm trước khi sửa (theo code)
 
 Mỗi câu khác nhau là một yêu cầu; câu đã có trong kho `MEDIA_DIR/tts` thì không tốn.

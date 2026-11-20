@@ -120,3 +120,25 @@ Mã: `src/shared.ts` (chủ đề, kiểu bộ câu), `server/call.ts` (soạn c
 **Câu cố định mới** (`callLines`, nạp sẵn giọng bằng `warmFixedVoices`): `share`, `shareYes`, `shareNo`, `bye`. Mỗi vai mỗi thứ tiếng nay 15 câu.
 
 **Podcast**: câu hỏi thăm cũng như lời nhắn, không bao giờ vào tập (`NO_EPISODE_TOPICS`, lọc cả trong SQL của `callAnswers`, `buildTopic`, `refreshTopicsOf`). Cuộc gọi v2 chỉ chấm chuyện chính (`episodeIdx`) nên không còn phần đuôi; cuộc gọi cũ chấm như trước.
+
+## Màn gọi v2 và bước xin phép chia sẻ (task 4)
+
+Mã: `src/Call.tsx` (luồng cuộc gọi), `src/callShare.ts` (chặng của bước chia sẻ, hàm thuần). Test: `src/callShare.test.ts`. `MAX_CALL_FOLLOW` đã bỏ khỏi `src/shared.ts`; máy khách không gửi `follows` nữa.
+
+**Luồng** (chỉ bộ câu v2, `/call/start` luôn trả v2)
+1. Lời chào + câu hỏi thăm đọc một file (`opening()`), rồi nghe. Im lặng thì "cứ từ từ" và nghe lại; vẫn im thì "chắc đang bận" và kết thúc.
+2. Gửi câu trả lời hỏi thăm (câu của hỏi thăm, lượt 0). AI trả `joined` và `say` thì Mây đọc đúng `say` (đã gồm câu mở chuyện chính), xin như câu bắt buộc, không kind `reply`, không thay bằng câu mẫu. Không có thì câu đáp AI (hoặc câu đáp ngắn cố định) rồi câu mở. Lúc người nghe đang đáp hỏi thăm, máy khách không xin trước giọng câu mở riêng.
+3. Chuyện chính: như trước, trần câu hỏi thêm là `script.follow` (4, cuộc gọi thử 2). Im lặng ngay sau câu mở thì nhắc một lần, vẫn im thì "chắc đang bận" và kết thúc.
+4. Chuyện chính có ít nhất một lượt kể: xin ảnh như trước nếu là chuyện thật; rồi nếu nhà có từ hai người thì xin phép chia sẻ.
+5. Chuyển lời người khác nhắn, hỏi lời nhắn khó nói (nếu có), rồi tạm biệt bằng câu cố định `script.goodbye` (`kind: 'fixed'`).
+6. Chuyện chính bắt đầu thì xin sẵn từ kho bốn câu cố định `share`, `shareYes`, `shareNo`, `bye`.
+
+**Bước xin phép chia sẻ** (`askShare`, cùng khuôn với bước xin ảnh)
+- Hiện hai nút "Chia sẻ" và "Giữ riêng" (khoá `call.share.yes`, `call.share.no`), Mây hỏi `call.line.share` (câu cố định), rồi nghe tối đa 8 giây (`SHARE_HEAR_MS`).
+- Máy không tự chép được lời thì nhờ `POST /api/call/:id/hear` chép (không lưu gì), nút vẫn bấm được trong lúc chờ. Mic tắt lúc chờ nút và lúc chờ máy chủ chép.
+- Hiểu câu trả lời (`shareAnswer`, câu tối đa 10 từ): câu có chữ phủ định mà vẫn là đồng ý xét trước ("không sao", "sao không", "chia sẻ đi"; tiếng Anh "no problem", "why not"), rồi câu từ chối ("không", "thôi", "đừng", "để sau", "chưa", "khỏi", "giữ riêng"...), rồi câu đồng ý ("được", "ừ", "ok", "vâng", "đồng ý", "có chứ"...). Tiếng Hàn "네" phải đứng riêng, nên đuôi câu như "좋네요" không tính là đồng ý. Không rõ thì chờ bấm nút.
+- Hẹn giờ (`SHARE_WAIT`): nghe 12 giây, chờ máy chủ chép 7 giây, chờ nút 12 giây. Hết giờ chờ nút là giữ riêng.
+- Đồng ý: `POST /api/call/:id/share` qua hàng chờ (cùng nhóm cuộc gọi, nên luôn tới trước lệnh kết thúc), Mây nói `shareYes`. Từ chối hay hết giờ: Mây nói `shareNo`, cuộc gọi giữ `shared = false`. Cúp máy: dừng, không gửi lời vừa nghe ở bước này (chỉ là câu trả lời có hay không, gửi sẽ đè lên lượt kể cuối).
+- Nhà một người thì không hỏi, cuộc gọi giữ `shared = false`.
+
+**Số câu giọng dự kiến** (chi tiết ở `docs/tts-budget.md`): chào + hỏi thăm 1, câu đáp hỏi thăm gộp câu mở 1, mỗi câu hỏi thêm 1 (0 tới 4, câu nhắc ngày đi chung), câu đáp cuối 1 (chỉ khi ngân sách ngày còn trên 30%, không thì câu cố định). Còn lại là câu cố định trong kho. Tổng 2 tới 7 câu, thường khoảng 6; cuộc gọi thử 2 tới 5. 70 câu mỗi ngày đủ khoảng 10 cuộc gọi đủ giọng (11 nếu toàn cuộc gọi 6 câu), sau đó hiện chữ kèm chuông nhẹ. Kiểu cũ tới 11 câu một cuộc gọi. Bốn câu cố định mới tốn 12 câu giọng mỗi thứ tiếng một lần (4 câu x 3 vai), `warmFixedVoices` nạp sẵn.

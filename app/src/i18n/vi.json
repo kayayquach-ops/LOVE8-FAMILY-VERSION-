@@ -228,6 +228,8 @@
   "call.photoFailed": "Chưa gửi được ảnh",
   "call.photosSaved": "Đã gửi {n} ảnh vào kho",
   "call.pickPhoto": "Chọn ảnh",
+  "call.share.yes": "Chia sẻ",
+  "call.share.no": "Giữ riêng",
   "call.podcastSoon": "Chuyện vừa kể sẽ có trong \"nhà mình kể\" sau ít phút nhé.",
   "call.sendLater": "Mạng đang chập chờn. Có mạng lại là lời kể tự gửi tiếp, không mất đâu.",
   "call.end": "Kết thúc",
