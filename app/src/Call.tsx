@@ -427,7 +427,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     await ttsReady();
     machine.current = false;
     if (!live.current) return;
-    // Câu đáp mẫu chọn trước. Câu cố định lấy từ kho (kho chưa có thì máy chủ đọc một lần rồi giữ mãi).
+    // Câu đáp mẫu chọn trước. Câu cố định chỉ lấy từ kho (không tốn hạn mức).
     const fallback = { short: pickOne(lines.short), long: pickOne(lines.long) };
     if (!machine.current) [fallback.short, fallback.long, lines.ack, lines.slow, lines.busy].forEach((x) => warmVoice(x, 'fixed'));
 

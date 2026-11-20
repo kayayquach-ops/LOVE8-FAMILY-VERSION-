@@ -37,7 +37,7 @@ Tổng 2 tới 7 câu một cuộc gọi, thường khoảng 6 (3 câu hỏi th�
 
 Bốn câu cố định mới (`share`, `shareYes`, `shareNo`, `bye`) tốn 12 câu giọng mỗi thứ tiếng, chỉ một lần (4 câu x 3 vai), do `warmFixedVoices` nạp sẵn.
 
-Nạp sẵn chỉ chạy một lần sau khởi động và dừng khi ngân sách ngày còn dưới 30% hay gặp một lần đọc lỗi. Từ 21/11, câu cố định (`fixedLines`, mỗi vai mỗi thứ tiếng 14 câu) mà kho chưa có thì `POST /api/call/tts` đọc ngay lúc máy khách xin, như câu bắt buộc (ngân sách còn là đọc), rồi nằm trong kho, không bao giờ đọc lại. Mỗi câu chỉ tốn một lần cho cả app. Chữ khác gửi kèm `fixed` (câu `ack`) vẫn chỉ lấy từ kho.
+Nạp sẵn chỉ chạy một lần sau khởi động và dừng khi ngân sách ngày còn dưới 30% hay gặp một lần đọc lỗi. Từ 21/11, riêng câu xin phép chia sẻ, hai câu đáp và câu tạm biệt (`share`, `shareYes`, `shareNo`, `bye`) mà kho chưa có thì `POST /api/call/tts` đọc ngay lúc máy khách xin, như câu bắt buộc (ngân sách còn là đọc), rồi nằm trong kho, không bao giờ đọc lại. Mỗi câu chỉ tốn một lần cho cả app. Câu cố định khác (`slow`, `busy`, câu đáp mẫu ngắn và dài máy khách xin trước lúc nhấc máy, có khi không bao giờ nói; câu `ack`) vẫn chỉ lấy từ kho, thiếu thì `skip`, không tốn ngân sách.
 
 ## Kiểm đếm trước khi sửa (theo code)
 
@@ -73,9 +73,9 @@ Một cuộc gọi bình thường: **trước 9 đến 11 yêu cầu mới** (l
 ## Máy khách
 
 - Nhấc máy hỏi `GET /api/call/tts-status` (có auth) trả `{ ok, reason, used?, limit? }`; `reason` là `budget`, `cooldown` hoặc `nokey`. `used/limit` chỉ có khi người gọi là thành viên đã đăng nhập. `ok=false`: cả cuộc gọi dùng giọng máy từ đầu, không gọi `/api/call/tts` nữa (cơ chế `machine` đã có).
-- `POST /api/call/tts` nhận `kind`: `fixed` (lấy từ kho; câu cố định kho chưa có thì đọc một lần như câu bắt buộc rồi giữ mãi, chữ khác chỉ lấy từ kho) hoặc `reply` (câu đáp theo nội dung, chỉ đọc khi còn dư ngân sách). Trả `url`, hoặc `url: null` kèm `reason`.
+- `POST /api/call/tts` nhận `kind`: `fixed` (lấy từ kho; riêng `share`, `shareYes`, `shareNo`, `bye` kho chưa có thì đọc một lần như câu bắt buộc rồi giữ mãi, câu khác chỉ lấy từ kho) hoặc `reply` (câu đáp theo nội dung, chỉ đọc khi còn dư ngân sách). Trả `url`, hoặc `url: null` kèm `reason`.
 - **Hết hạn mức giữa cuộc gọi (đã chọn phương án ít khó chịu nhất):** không đổi giọng. Đã bắt đầu bằng Gemini thì từ câu hết trở đi hiện **phụ đề chữ + một tiếng chuông nhẹ** (`sparkle`), giữ chữ đủ lâu để đọc rồi đi tiếp, không chờ thêm; câu nào đã có trong kho hoặc đã tải xong vẫn đọc bằng Gemini. Không chen giọng máy vào, đúng nguyên tắc một giọng.
-- Câu cố định chưa có sẵn trong kho: máy chủ đọc một lần (tốn một yêu cầu cho cả app), máy khách chờ tối đa 1,5 giây, chưa kịp thì chuông nhẹ + chữ, lần sau đã có trong kho. Câu ack chưa có thì chuông nhẹ + chữ, không tốn yêu cầu. Bốn câu cuối (`share`, `shareYes`, `shareNo`, `bye`) được xin trước từ lúc chuyện chính bắt đầu nên thường đã sẵn khi cần.
+- Câu cố định chưa có sẵn trong kho (ack, đáp mẫu, nhắc): chuông nhẹ + chữ, không tốn yêu cầu. Riêng bốn câu cuối (`share`, `shareYes`, `shareNo`, `bye`) thì máy chủ đọc một lần (tốn một yêu cầu cho cả app, lần sau đã có trong kho); máy khách xin trước bốn câu này từ lúc chuyện chính bắt đầu nên thường đã sẵn khi cần.
 
 ## Log
 

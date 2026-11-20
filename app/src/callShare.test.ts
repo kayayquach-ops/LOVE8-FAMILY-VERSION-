@@ -35,6 +35,17 @@ test('đáp kiểu nói thường "có", "dạ", "ừm", "ờ" là đồng ý; c
   for (const s of ['dạ không', 'không ạ', 'có… thôi đừng', 'dạ thôi', 'ờ để sau', 'dạ con giữ riêng', 'có, mà đừng chia sẻ nhé']) assert.equal(shareAnswer(s, 'vi'), 'no', s);
 });
 
+test('"dạ", "có", "ừm", "ờ" chỉ là đồng ý khi là cả câu trả lời; hỏi lại, lưỡng lự thì chưa rõ (chờ nút); có lời từ chối rõ thì vẫn giữ riêng', () => {
+  for (const s of ['dạ', 'dạ ạ', 'có chứ', 'dạ được', 'ừm được', 'dạ vâng', 'dạ có ạ', 'ờ rồi', 'có có']) assert.equal(shareAnswer(s, 'vi'), 'yes', s);
+  const unsure: Array<[string, 'vi' | 'en' | 'ko']> = [
+    ['dạ?', 'vi'], ['dạ để con nghĩ đã', 'vi'], ['ừm để mẹ xem đã', 'vi'], ['ừm… mẹ nghĩ đã', 'vi'], ['dạ, để con suy nghĩ', 'vi'], ['ờ để mẹ tính', 'vi'],
+    ['có lẽ', 'vi'], ['có lẽ vậy', 'vi'], ['có thể', 'vi'], ['có khi để mai', 'vi'], ['có thể được', 'vi'],
+    ['dạ chia sẻ cho ai ạ', 'vi'], ['có ai nghe', 'vi'], ['được không?', 'vi'], ['không sao, để mẹ nghĩ đã', 'vi'], ['yes?', 'en'], ['네?', 'ko'],
+  ];
+  for (const [s, l] of unsure) assert.equal(shareAnswer(s, l), null, s);
+  for (const s of ['đừng chia sẻ nhé?', 'giữ riêng được không?']) assert.equal(shareAnswer(s, 'vi'), 'no', s);
+});
+
 test('chặng: hỏi, nghe, đồng ý hay giữ riêng; chưa rõ thì chờ nút; hết giờ chờ nút là giữ riêng; cúp máy là giữ riêng', () => {
   const run = (es: ShareEvent[], from = SHARE_START) => es.reduce((s, e) => shareNext(s, e, 'vi'), from);
   assert.deepEqual(run([{ type: 'asked' }]), { stage: 'listen', end: null });

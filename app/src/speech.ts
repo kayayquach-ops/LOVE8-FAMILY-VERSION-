@@ -45,7 +45,7 @@ let provider: 'openai' | 'gemini' | null = null; // nhà cung cấp chốt lúc 
 const clips = new Map<string, Promise<ArrayBuffer | null>>();
 const decoded = new Map<string, AudioBuffer>();
 
-/** Loại câu: 'fixed' (câu cố định) lấy từ kho của máy chủ, kho chưa có thì máy chủ đọc một lần rồi giữ mãi; 'reply' (câu đáp theo nội dung) chỉ đọc khi máy chủ còn dư ngân sách. */
+/** Loại câu: 'fixed' (câu cố định) lấy từ kho của máy chủ, không tốn hạn mức; riêng câu xin phép chia sẻ, hai câu đáp, câu tạm biệt mà kho chưa có thì máy chủ đọc một lần rồi giữ mãi. 'reply' (câu đáp theo nội dung) chỉ đọc khi máy chủ còn dư ngân sách. */
 export type Kind = 'fixed' | 'reply';
 
 /** Bắt đầu cuộc gọi mới: quên cờ hết hạn mức của lần trước. */

@@ -72,7 +72,7 @@ export async function migrateCall(p: pg.Pool) {
 }
 
 /** Các câu cố định cần có giọng sẵn: mỗi (vai, ngôn ngữ) 14 câu. Câu "ack" không nạp (chỉ dùng nếu tình cờ đã có trong kho); câu "relayIntro" chỉ dùng khi có lời nhắn nên đọc lúc cần rồi nằm trong kho.
- *  Câu "skip" (đổi chuyện) không còn nói ở đâu nên không nạp. Nạp sẵn hụt thì /call/tts đọc câu cố định lúc xin (ttsFor). */
+ *  Câu "skip" (đổi chuyện) không còn nói ở đâu nên không nạp. Nạp sẵn hụt thì /call/tts đọc lúc xin, chỉ với share, shareYes, shareNo, bye (ttsFor). */
 export function fixedLines(langs: readonly Lang[] = LANGS) {
   const out = new Set<string>();
   for (const lang of langs) {
@@ -1049,13 +1049,17 @@ async function sniff(file: string) {
   try { const { buffer, bytesRead } = await fh.read(Buffer.alloc(16), 0, 16, 0); return imageKind(buffer.subarray(0, bytesRead)); } finally { await fh.close(); }
 }
 
-// Bộ câu cố định (fixedLines, mọi thứ tiếng), gọn khoảng trắng như chữ máy khách gửi; tính một lần khi cần.
-let fixedSet: Set<string> | null = null;
-const isFixedLine = (text: string) => (fixedSet ??= new Set(fixedLines().map((s) => s.replace(/\s+/g, ' ').trim()))).has(text);
+// Câu xin phép chia sẻ, hai câu đáp và câu tạm biệt (mọi vai, mọi thứ tiếng), gọn khoảng trắng như chữ máy khách gửi; tính một lần khi cần.
+let mustSet: Set<string> | null = null;
+const mustVoice = (text: string) => (mustSet ??= new Set(LANGS.flatMap((lang) => CALL_ROLES.flatMap((role) => {
+  const L = callLines(role, (k, v) => tServer(lang, k, v));
+  return [L.share, L.shareYes, L.shareNo, L.bye];
+})).map((s) => s.replace(/\s+/g, ' ').trim()))).has(text);
 
 /** Giọng cho một câu (POST /call/tts). provider: nhà cung cấp đã chốt lúc nhấc máy, dùng đúng nhà đó và không tự đổi giữa chừng.
- *  kind 'fixed': lấy từ kho; câu cố định (fixedLines) chưa có thì đọc ngay một lần như câu bắt buộc rồi nằm trong kho mãi,
- *  chữ khác gửi kèm 'fixed' (ack) thì chỉ lấy từ kho. kind 'reply': câu đáp theo nội dung, chỉ đọc khi còn dư ngân sách. */
+ *  kind 'fixed': lấy từ kho; riêng câu xin phép chia sẻ, hai câu đáp và câu tạm biệt chưa có thì đọc ngay một lần như câu bắt buộc
+ *  rồi nằm trong kho mãi; câu cố định khác (máy khách xin trước, có khi không nói) chỉ lấy từ kho. kind 'reply': câu đáp theo nội dung,
+ *  chỉ đọc khi còn dư ngân sách. */
 export async function ttsFor(body: { text?: unknown; kind?: unknown; provider?: unknown }, who: string): Promise<{ url: string | null; reason?: string; off?: boolean }> {
   const text = String(body.text || '').replace(/\s+/g, ' ').trim();
   if (!text || text.length > TTS_MAX) return { url: null, reason: 'fail' };
@@ -1065,8 +1069,9 @@ export async function ttsFor(body: { text?: unknown; kind?: unknown; provider?: 
   const provider: Provider = asked === 'openai' || asked === 'gemini' ? asked : picked === 'device' ? defaultProvider() : picked;
   const hit = cachedSpeech(text, provider);
   if (hit) return { url: hit };
-  // Nạp sẵn lúc khởi động hụt (ngân sách ngày đã dưới 30%, một lần đọc lỗi): câu cố định đọc ngay ở đây, không thì chỉ còn chữ và chuông.
-  if (kind === 'fixed' && !isFixedLine(text)) return { url: null, reason: 'skip' };
+  // Nạp sẵn lúc khởi động hụt (ngân sách ngày đã dưới 30%, một lần đọc lỗi): câu xin phép, câu đáp, câu tạm biệt đọc ngay ở đây,
+  // không thì bước xin phép chỉ còn chữ và chuông. Câu cố định khác thiếu thì thôi (không tốn ngân sách cho câu có khi không nói).
+  if (kind === 'fixed' && !mustVoice(text)) return { url: null, reason: 'skip' };
   if (!providerOn(provider)) return { url: null, off: true, reason: 'nokey' };
   const gate = gateOf(provider);
   const why = gate.blocked(kind === 'reply');

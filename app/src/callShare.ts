@@ -45,20 +45,33 @@ const SHARE_NO: Record<Lang, RegExp> = {
   ko: /(아니|싫어|안 ?돼|나중에)/,
 };
 const SHARE_YES: Record<Lang, RegExp> = {
-  vi: /(^|\s)(được|ừ|ừm|ờ|dạ|có|ok|okay|vâng|đồng ý|có chứ)(\s|$)/,
+  vi: /(^|\s)(được|ừ|ok|okay|vâng|đồng ý|có chứ)(\s|$)/,
   en: /(^|\s)(yes|yeah|sure|ok|okay|go ahead)(\s|$)/,
   ko: /(^|\s)네(\s|$)|좋아요|그래요|돼요/,
 };
+/** "dạ", "có", "ừm", "ờ" chỉ là đồng ý khi là cả câu trả lời, có thể kèm ạ, chứ, vâng, được, rồi, có ("dạ", "dạ được", "dạ có ạ"):
+ *  đứng trong câu dài thì thường là tiếng đệm trước khi lưỡng lự ("dạ để con nghĩ đã", "có ai nghe"). */
+const SHARE_YES_WHOLE: Partial<Record<Lang, RegExp>> = {
+  vi: /^(dạ|có|ừm|ờ)( (ạ|chứ|vâng|được|rồi|có)){0,2}$/,
+};
+/** Câu lưỡng lự: chưa rõ, chờ bấm nút ("có lẽ", "có thể", "có khi", "để mẹ nghĩ đã", "để con xem", "để mẹ tính"). */
+const SHARE_HEDGE: Partial<Record<Lang, RegExp>> = {
+  vi: /(^|\s)(có lẽ|có thể|có khi)(\s|$)|(^|\s)để( \S+)* (nghĩ|xem|tính)(\s|$)/,
+};
 // i18n-ok-end
 
-/** Câu trả lời ngắn là đồng ý, từ chối, hay chưa rõ (null: chờ bấm nút). Gọn chữ như photoNo; lời rỗng hay dài quá 10 từ thì chưa rõ. */
+/** Câu trả lời ngắn là đồng ý, từ chối, hay chưa rõ (null: chờ bấm nút). Gọn chữ như photoNo; lời rỗng hay dài quá 10 từ thì chưa rõ.
+ *  Đồng ý nhầm thì không gỡ được (tập, sổ nhớ sang cả nhà, có báo), còn chưa rõ chỉ hiện hai nút rồi hết giờ là giữ riêng: nghi thì chưa rõ. */
 export function shareAnswer(text: string | null | undefined, lang: Lang = 'vi'): 'yes' | 'no' | null {
-  const s = String(text ?? '').toLowerCase().normalize('NFC').replace(/[.,!?…~"“”]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const raw = String(text ?? '');
+  const s = raw.toLowerCase().normalize('NFC').replace(/[.,!?…~"“”]+/g, ' ').replace(/\s+/g, ' ').trim();
   if (!s || s.split(' ').length > 10) return null;
   if (SHARE_REFUSE[lang].test(s)) return 'no';
+  // Có dấu hỏi là hỏi lại ("dạ?" của người lớn tuổi là "gì cơ?"), hay lưỡng lự: chưa rõ. Xét trước "không sao" ("không sao, để mẹ nghĩ đã").
+  if (/[?？]/.test(raw) || SHARE_HEDGE[lang]?.test(s)) return null;
   if (SHARE_SURE[lang]?.test(s)) return 'yes';
   if (SHARE_NO[lang].test(s)) return 'no';
-  return SHARE_YES[lang].test(s) ? 'yes' : null;
+  return SHARE_YES[lang].test(s) || SHARE_YES_WHOLE[lang]?.test(s) ? 'yes' : null;
 }
 
 /** Chặng kế tiếp. Sự kiện không hợp chặng hiện tại thì trả lại đúng đối tượng cũ (nơi gọi so sánh để bỏ qua). */
