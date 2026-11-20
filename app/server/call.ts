@@ -15,6 +15,7 @@ import { weekKey } from './recap.ts';
 import { buildPodcastsForCall, rebuildCallSoon, shareCall } from './podcast.ts';
 import { extractCall, extractSoon } from './memory.ts';
 import { loadScriptExtras, type ScriptExtras } from './callfacts.ts';
+import { finishLive, liveAnswerRow, liveCheckFor, relayAnswer, storeLiveAnswer } from './calllive.ts';
 import { cachedSpeech, defaultProvider, gateOf, hasVoice, initTtsBudget, pickProvider, providerOn, speech, transcribe, ttsStatus, TTS_MAX, type Provider } from './voice.ts';
 import path from 'node:path';
 import { open, rename, unlink } from 'node:fs/promises';
@@ -193,7 +194,7 @@ export const checkinQ = (text: string): CallQuestion => ({ text, topic: 'hoi-tha
 /** Loại ngày đi đôi với chủ đề: chuyện ngày cưới luôn hỏi ngày cưới (để ghi lịch), chủ đề khác không bao giờ mang loại ngày cưới. */
 const eventFor = (theme: string, event: CallQuestion['event']): CallQuestion['event'] =>
   theme === 'ngay-cuoi' ? 'wedding' : event === 'wedding' ? 'none' : event;
-const storyQ = (text: string, theme: StoryTheme, photo = false, event: CallQuestion['event'] = 'none'): CallQuestion =>
+export const storyQ = (text: string, theme: StoryTheme, photo = false, event: CallQuestion['event'] = 'none'): CallQuestion =>
   ({ text, topic: THEME_TOPIC[theme], photo, event: eventFor(theme, event), part: 'story', theme });
 /** Câu tạm biệt cố định theo vai (giọng nằm sẵn trong kho), không hứa "cả nhà cùng nghe" vì chuyện có thể được giữ riêng. */
 const byeOf = (c: Ctx) => callLines(c.member.role, (k, v) => tServer(c.lang, k, v)).bye;
@@ -262,6 +263,18 @@ export function templateScript(c: Ctx, week: string): CallScript {
     mascot: c.mascot ?? DEFAULT_MASCOT_NAME,
     v: 2, follow: MAX_STORY_FOLLOW,
   };
+}
+
+/** Mây Live: câu mở mẫu của một chủ đề, dự phòng khi câu mở của model không qua lớp lọc (server/calllive.ts). Cùng câu và cùng biến
+ *  với templateScript; vai này không có câu mẫu cho chủ đề ấy thì tên chủ đề. Bộ kiểm câu LiveCheck truyền thẳng làm p được. */
+export function templateOpener(p: { lang: Lang; role: string; name: string; mascot: string }, theme: StoryTheme): string {
+  const parent = p.role === 'bo' || p.role === 'me';
+  const who = parent ? 'parent' : 'child';
+  if (!TEMPLATE_THEMES[who].includes(theme)) return tServer(p.lang, `topic.${THEME_TOPIC[theme]}`);
+  const self = p.role === 'bo' ? tServer(p.lang, 'call.self.bo') : p.role === 'me' ? tServer(p.lang, 'call.self.me') : tServer(p.lang, 'onboarding.self.con');
+  const call = parent ? self[0].toUpperCase() + self.slice(1) : p.name;
+  const other = tServer(p.lang, p.role === 'bo' ? 'call.self.me' : 'call.self.bo');
+  return tServer(p.lang, `callScript.template.${who}.story.${theme}`, { self, Self: call, call, other, name: p.name, mascot: p.mascot });
 }
 
 /** Câu cuối mỗi cuộc gọi (trừ cuộc gọi đầu): có lời nào khó nói muốn nhắn ai trong nhà không. Con thì gợi ý bố mẹ, bố mẹ thì gợi ý con.
@@ -828,6 +841,15 @@ export async function saveRelays(call: { id: string; family_id: string; member_i
   }
 }
 
+/** Mây Live, ngay sau khi /finish chốt: rút người nhận từ đúng lời của ô lời nhắn (lời dài nhất, relayAnswer). Lệnh kết thúc đi sau mọi lượt
+ *  trong hàng chờ nên lúc này ô lời nhắn đã đủ; rút khi từng lượt tới thì câu "dạ có" trước lời thật có thể thành lời nhắn. Không lưu tệp tiếng. */
+async function liveRelays(call: { id: string; family_id: string; member_id: string }) {
+  try {
+    const a = await relayAnswer(call.id);
+    if (a) await saveRelays(call, { ...a, media: null });
+  } catch (e) { console.error('[call] lỗi lưu lời nhắn:', (e as Error).message); }
+}
+
 // i18n-ok-begin: prompt rút ngày tháng (tiếng Anh) và nhãn nội bộ.
 // ---------- Rút ngày tháng sau cuộc gọi ----------
 
@@ -987,6 +1009,10 @@ const START_AI_MS = 7000;
 const byMember = (req: express.Request) => (req as express.Request & { member: { id: string } }).member.id;
 const limitStart = limitBy({ name: 'call-start', per: new Limit(30, 3600e3), key: byMember });
 const limitAnswer = limitBy({ name: 'call-answer', per: new Limit(30, 10 * 60e3), key: byMember });
+// Mây Live: một cuộc gọi 15 phút không có số câu hỏi thêm cố định, mỗi lượt kể một lần gửi; lượt Live không chép lời, không gọi AI.
+const limitAnswerLive = limitBy({ name: 'call-answer-live', per: new Limit(120, 10 * 60e3), key: byMember });
+/** Chọn trần theo ?live=1 trên đường dẫn (đọc được trước multer, thân chưa có): không có thì limitAnswer như cũ. ?live=1 chỉ mở được nhánh Live (/answer). */
+const limitAnswerBy: express.RequestHandler = (req, res, next) => (req.query.live === '1' ? limitAnswerLive : limitAnswer)(req, res, next);
 const limitReply = limitBy({ name: 'call-reply', per: new Limit(20, 10 * 60e3), key: byMember });
 const limitTts = limitBy({ name: 'call-tts', per: new Limit(150, 10 * 60e3), key: byMember });
 // Nhiều thành viên giả cùng một nơi: thêm trần theo IP (cả nhà dùng chung wifi vẫn dư).
@@ -1138,12 +1164,29 @@ export function callRouter(upload: multer.Multer) {
 
   // Một lượt kể: idx là câu chuyện, turn 0 câu chính, 1..MAX_STORY_FOLLOW là câu hỏi thêm (question là đúng câu Mây đã hỏi).
   // Gửi lại (hàng chờ thử lại) thì thay hàng cũ cùng (idx, turn), không bao giờ thành hai hàng.
-  r.post('/call/:id/answer', limitAnswer, upload.single('file'), h(async (req, res) => {
+  r.post('/call/:id/answer', limitAnswerBy, upload.single('file'), h(async (req, res) => {
     const { rows: [call] } = await pool.query('select * from calls where id = $1 and member_id = $2', [req.params.id, req.member.id]);
     // multer đã ghi tệp trước khi kiểm: từ chối thì xoá luôn, không để tệp mồ côi.
     const drop = () => (req.file ? unlink(req.file.path).catch(() => {}) : undefined);
     if (!call) { await drop(); return res.status(404).json(errorBody('call_not_found')); }
     const script: CallScript = JSON.parse(call.script);
+    // Mây Live (kịch bản v3, live=1): máy đã chép lời, Mây đã đáp trong cuộc gọi, nên không chép lời, không gọi AI; lượt không trần 4.
+    // Ô, lượt, chủ đề, thẻ câu hỏi qua lớp lọc: liveAnswerRow. Ô lời nhắn giữ lời dài nhất và rút người nhận lúc chốt (/finish).
+    if (script.v === 3 && yes(req.body?.live)) {
+      const row = liveAnswerRow(script, req.body, await liveCheckFor(call));
+      if (!row) { await drop(); return res.status(400).json(errorBody('question_not_found')); }
+      const relay = row.topic === 'loi-nhan';
+      // Tiếng của lời nhắn khó nói không giữ lại (hàng call_answers không có media như đường cũ; relays.media chưa nơi nào đọc, tệp không hàng nào trỏ tới thì xoá người không dọn được).
+      const stored = await storeLiveAnswer(call, row, relay ? null : media(req.file));
+      if (relay) await drop();
+      res.json({ ok: true, transcript: row.transcript, reply: null, ai: null });
+      // Tới sau khi đã chốt (máy khách gửi lại): lời nhắn rút ngay, chuyện thì dựng lại tập và rút lại sổ nhớ như đường cũ.
+      if (relay) { if (stored && call.status === 'done') void saveRelays(call, { question: row.question, transcript: row.transcript, media: null }).catch((e) => console.error('[call] lỗi lưu lời nhắn:', (e as Error).message)); }
+      else if (call.status === 'done') { rebuildCallSoon(call.id); extractSoon(call.id); }
+      return;
+    }
+    // ?live=1 (trần riêng 120) chỉ cho lượt Live ở trên: không mở đường cũ, nơi có chép lời và AI.
+    if (req.query.live === '1') { await drop(); return res.status(400).json(errorBody('question_not_found')); }
     const idx = Number(req.body.idx);
     const q = script.questions[idx];
     if (!q) { await drop(); return res.status(400).json(errorBody('question_not_found')); }
@@ -1285,10 +1328,15 @@ export function callRouter(upload: multer.Multer) {
   }));
 
   // Gọi lặp được (máy khách thử lại khi mạng chập): chỉ lần đầu chốt cuộc gọi và chạy việc sau cuộc gọi, các lần sau chỉ trả ok.
-  r.post('/call/:id/finish', h(async (req, res) => {
+  // Mây Live gửi kèm (multipart của hàng chờ, nên có upload.none()) câu hẹn hook và các câu Mây đã nói may: finishLive kiểm, ghi câu hẹn
+  // và log câu nghi bịa trước khi chốt, lỗi chỉ ghi log; chốt xong thì rút lời nhắn khó nói từ ô lời nhắn. Không có hai trường ấy thì như cũ.
+  r.post('/call/:id/finish', upload.none(), h(async (req, res) => {
+    const live = !!req.body && ('hook' in req.body || 'may' in req.body);
+    if (live) await finishLive(String(req.params.id), req.member.id, req.body).catch((e) => console.error('[call-live] lỗi chốt cuộc gọi:', (e as Error).message));
     const { rowCount } = await pool.query(`update calls set status = 'done', done_at = now() where id = $1 and member_id = $2 and status = 'ready'`, [req.params.id, req.member.id]);
     res.json({ ok: true });
     if (rowCount) void afterCall(req.params.id);
+    if (rowCount && live) void liveRelays({ id: String(req.params.id), family_id: req.member.family_id, member_id: req.member.id });
   }));
 
   // Ảnh của cuộc gọi chưa chia sẻ chỉ người kể thấy.

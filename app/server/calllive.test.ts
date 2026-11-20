@@ -1,28 +1,34 @@
 // Kiểm thử Mây Live bản thử (server/calllive.ts, server/liveconfig.ts): cấu hình, token dùng một lần, tiền mỗi cuộc gọi,
-// kịch bản v3, nhấc máy (công tắc, trần phút, xin token) và kết thúc (ghi giây, tiền); dữ liệu Live (riêng tư), lời dặn, bảy công cụ (task 3).
-// Không cần DB, không gọi mạng: DB giả theo đúng từng câu trong LIVE_SQL, Google thay bằng deps.fetch giả.
+// kịch bản v3, nhấc máy (công tắc, trần phút, xin token) và kết thúc (ghi giây, tiền); dữ liệu Live (riêng tư), lời dặn, bảy công cụ (task 3);
+// ô chuyện, lượt kể Live, thẻ câu hỏi qua lớp lọc và kiểm điều riêng, câu hẹn và log chống bịa lúc chốt, /answer?live=1 và /finish (task 4).
+// Không cần DB, không gọi mạng: DB giả theo đúng từng câu trong LIVE_SQL, Google thay bằng deps.fetch giả; các test qua callRouter ở cuối
+// thay pool.query bằng DB giả (như server/missions.test.ts).
 // Chạy: node --import tsx --test server/calllive.test.ts
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readdirSync } from 'node:fs';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { LiveDeps } from './calllive.ts';
+import type { LiveCheck, LiveDeps } from './calllive.ts';
 import type { Ctx } from './call.ts';
 import type { ScriptExtras } from './callfacts.ts';
+import type { CallScript, StoryTheme } from '../src/shared.ts';
 
 process.env.MEDIA_DIR = mkdtempSync(path.join(tmpdir(), 'calllive-test-'));
+// Không bao giờ gọi AI thật: lời nhắn rút lúc chốt (saveRelays) đi đường không có AI.
+for (const k of ['GEMINI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) delete process.env[k];
 // Log [call-live] của máy chủ gom vào đây (test đọc được, đầu ra test sạch). console.error giữ nguyên để lỗi thật vẫn hiện.
 const logs: string[] = [];
 console.log = console.warn = (...a: unknown[]) => { logs.push(a.map(String).join(' ')); };
 
 const L = await import('./calllive.ts');
 const { liveConfig } = await import('./liveconfig.ts');
-const { LIVE_FIRST_STORY, STORY_THEMES, themesFor } = await import('../src/shared.ts');
-const { seedsFor } = await import('./callfacts.ts');
-const { langMiddleware } = await import('./i18n.ts');
+const { LIVE_FIRST_STORY, STORY_THEMES, THEME_TOPIC, themesFor } = await import('../src/shared.ts');
+const { seedsFor, topicMap } = await import('./callfacts.ts');
+const { langMiddleware, tServer } = await import('./i18n.ts');
+const C = await import('./call.ts');
 const express = (await import('express')).default;
 const multer = (await import('multer')).default;
 
@@ -38,14 +44,73 @@ const lanCtx = (id = 'lan', o: Partial<Ctx> = {}): Ctx => ({
 });
 
 type Row = Record<string, any>;
-/** DB giả: đúng từng câu trong LIVE_SQL, điều kiện viết lại bằng JS. */
-function fakeDb(t: { members?: Row[]; calls?: Row[] } = {}) {
+type Tables = { members?: Row[]; calls?: Row[]; families?: Row[]; facts?: Row[]; events?: Row[]; answers?: Row[]; relays?: Row[]; photos?: Record<string, number> };
+/** DB giả: đúng từng câu trong LIVE_SQL, điều kiện viết lại bằng JS. lenient: câu lạ trả rỗng (việc nền sau /finish của call.ts),
+ *  không thì báo lỗi. onCas: chạy một lần ngay trước lần ghi kịch bản kế tiếp (giả một lần ghi khác chen vào giữa). */
+function fakeDb(t: Tables = {}, o: { lenient?: boolean } = {}) {
   const S = L.LIVE_SQL;
   const db = {
-    members: t.members ?? [], calls: t.calls ?? [],
+    members: t.members ?? [], calls: t.calls ?? [], families: t.families ?? [], facts: t.facts ?? [], events: t.events ?? [],
+    answers: t.answers ?? [], relays: t.relays ?? [], photos: t.photos ?? {},
+    sql: [] as string[], cas: 0, onCas: undefined as undefined | (() => void),
     async query(q: string, v: any[] = []): Promise<{ rows: Row[]; rowCount: number }> {
       const out = (rows: Row[], n = rows.length) => ({ rows, rowCount: n });
+      db.sql.push(q);
+      // Câu của call.ts (callRouter, saveRelays) mà test qua HTTP cần.
+      if (q.startsWith('insert into relays')) {
+        const [id, family_id, call_id, from_id, to_id, transcript, media, said, push] = v;
+        db.relays.push({ id, family_id, call_id, from_id, to_id, transcript, media, said, push });
+        return out([], 1);
+      }
       switch (q) {
+        case 'select * from calls where id = $1 and member_id = $2': return out(db.calls.filter((c) => c.id === v[0] && c.member_id === v[1]));
+        case `update calls set status = 'done', done_at = now() where id = $1 and member_id = $2 and status = 'ready'`: {
+          const c = db.calls.find((x) => x.id === v[0] && x.member_id === v[1] && x.status === 'ready');
+          if (c) c.status = 'done';
+          return out([], c ? 1 : 0);
+        }
+        case 'select status from calls where id = $1': return out(db.calls.filter((c) => c.id === v[0]).map((c) => ({ status: c.status })));
+        case 'select 1 from relays where call_id = $1 limit 1': return out(db.relays.filter((r) => r.call_id === v[0]).map(() => ({ '?column?': 1 })));
+        case 'select id, name, role, lang from members where family_id = $1 order by created_at':
+          return out(db.members.filter((m) => m.family_id === v[0]).map((m) => ({ id: m.id, name: m.name, role: m.role, lang: m.lang ?? null })));
+        case 'select mascot_name from families where id = $1': return out(db.families.filter((f) => f.id === v[0]).map((f) => ({ mascot_name: f.mascot_name ?? null })));
+        case 'delete from call_answers where call_id = $1 and idx = $2 and turn = $3': {
+          const n = db.answers.length;
+          db.answers = db.answers.filter((a) => !(a.call_id === v[0] && a.idx === v[1] && a.turn === v[2]));
+          return out([], n - db.answers.length);
+        }
+        case 'insert into call_answers (id, call_id, family_id, member_id, idx, turn, question, topic, media, transcript, seconds) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)': {
+          const [id, call_id, family_id, member_id, idx, turn, question, topic, media, transcript, seconds] = v;
+          db.answers.push({ id, call_id, family_id, member_id, idx, turn, question, topic, media, transcript, seconds });
+          return out([], 1);
+        }
+        case S.script: return out(db.calls.filter((c) => c.id === v[0] && c.member_id === v[1]).map(({ id, family_id, member_id, script }) => ({ id, family_id, member_id, script })));
+        case S.cas: {
+          const hook = db.onCas;
+          db.onCas = undefined;
+          hook?.();
+          db.cas++;
+          const c = db.calls.find((x) => x.id === v[0] && x.script === v[1]);
+          if (c) c.script = v[2];
+          return out([], c ? 1 : 0);
+        }
+        case S.checkMember: {
+          const m = db.members.find((x) => x.id === v[0]);
+          const f = m && db.families.find((x) => x.id === m.family_id);
+          return out(m ? [{ name: m.name, role: m.role, intro: m.intro ?? null, mascot_name: f?.mascot_name ?? null }] : []);
+        }
+        case S.checkFamily: return out(db.members.filter((m) => m.family_id === v[0]).map((m) => ({ name: m.name, city: m.city ?? null })));
+        case S.checkFacts:
+          return out(db.facts.filter((f) => f.family_id === v[0] && !f.replacement_id && (f.visibility === 'family' || f.source_id === v[1]))
+            .map(({ text, text_en, visibility, source_id }) => ({ text, text_en, visibility, source_id })));
+        case S.checkEvents: return out(db.events.filter((e) => e.family_id === v[0]).map((e) => ({ title: e.title })));
+        case S.checkAnswers:
+          return out(db.answers.filter((a) => a.call_id === v[0] && a.topic !== 'loi-nhan' && (a.transcript ?? '') !== '').map((a) => ({ transcript: a.transcript })));
+        case S.checkCounts: return out([{ done: db.calls.filter((c) => c.member_id === v[0] && c.status === 'done').length, photos: db.photos[v[0]] ?? 0 }]);
+        case S.slotLen: return out(db.answers.filter((a) => a.call_id === v[0] && a.idx === v[1] && a.turn === v[2]).map((a) => ({ n: (a.transcript ?? '').length })));
+        case S.relaySlot:
+          return out(db.answers.filter((a) => a.call_id === v[0] && a.idx === 1 && a.topic === 'loi-nhan')
+            .sort((a, b) => (b.transcript ?? '').length - (a.transcript ?? '').length).slice(0, 1).map((a) => ({ question: a.question, transcript: a.transcript })));
         case S.member: return out(db.members.filter((m) => m.id === v[0]).map((m) => ({ may_live: m.may_live })));
         case S.usedToday:
           return out([{ sec: db.calls.filter((c) => c.live_at != null && +c.live_at >= +v[0]).reduce((s, c) => s + (c.live_sec ?? v[1]), 0) }]);
@@ -62,6 +127,7 @@ function fakeDb(t: { members?: Row[]; calls?: Row[] } = {}) {
           return out([], c ? 1 : 0);
         }
       }
+      if (o.lenient) return out([], 0);
       throw new Error(`DB giả chưa biết câu này: ${q}`);
     },
   };
@@ -99,7 +165,7 @@ async function serve(d: LiveDeps) {
     const r = await fetch(`${base}${p}`, { method: 'POST', headers: { 'x-member': who, 'x-lang': 'vi', 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
     return { status: r.status, body: await r.json() };
   };
-  return { post, close: () => server.close() };
+  return { post, base, close: () => server.close() };
 }
 
 test('cấu hình Live: mặc định, công tắc tắt, thiếu khoá, đổi bằng biến', () => {
@@ -570,5 +636,419 @@ test('nhấc máy Live: token mang lời dặn thật và bảy công cụ; tr�
     assert.ok(text3.includes('"pending_messages": []'));
   } finally {
     srv.close(); srv2.close(); srv3.close();
+  }
+});
+
+// ---------- Task 4: ô chuyện, lượt kể Live, thẻ câu hỏi, câu hẹn ----------
+
+/** Bộ kiểm câu của Lan: tên trong nhà, linh vật, nơi ở; điều riêng là đau lưng; chưa có cuộc gọi trước, chưa có ảnh. */
+const K: LiveCheck = { hay: 'Lan An Mây Hải Phòng', privates: ['Mẹ bị đau lưng mấy tháng nay'], allow: { prevCall: false, ownStory: true, photos: false },
+  lang: 'vi', role: 'me', name: 'Lan', mascot: 'Mây' };
+/** Một ô chuyện như saveStory lưu (chữ mặc định là mã chủ đề). */
+const story = (theme: StoryTheme, text: string = theme) => ({ text, topic: THEME_TOPIC[theme], photo: false, event: 'none' as const, part: 'story' as const, theme });
+
+/** Nhà của Lan cho các test có DB giả: Lan (mẹ) và An (con), điều riêng của Lan là đau lưng, cuộc gọi v3 c1 đang mở (call ghi đè các cột của c1). */
+const lanHome = (o: Tables = {}, call: Row = {}) => fakeDb({
+  members: [{ id: 'lan', family_id: 'F', name: 'Lan', role: 'me', intro: '{}' }, { id: 'an', family_id: 'F', name: 'An', role: 'con' }],
+  families: [{ id: 'F', mascot_name: null }],
+  facts: [{ family_id: 'F', text: 'Mẹ bị đau lưng mấy tháng nay', text_en: 'Mom has had back pain for months', visibility: 'self', source_id: 'lan' }],
+  calls: [{ id: 'c1', family_id: 'F', member_id: 'lan', status: 'ready', script: JSON.stringify(L.liveScript(lanCtx())), ...call }],
+  ...o,
+});
+const scriptOf = (db: { calls: Row[] }, id = 'c1'): CallScript => JSON.parse(db.calls.find((c) => c.id === id)!.script);
+
+test('ô chuyện: thêm cuối, gửi lại thì như cũ, khác chủ đề thì thay, tới trước thì lấp chỗ trống, ngoài khoảng thì không nhận', () => {
+  const s = L.liveScript(lanCtx());                                  // 2 ô
+  const q = (theme: StoryTheme) => story(theme);
+  const a = L.placeStory(s, 2, q('mon-an'))!;
+  assert.equal(a.questions.length, 3);
+  assert.equal(L.placeStory(a, 2, q('mon-an')), a);
+  assert.equal(L.placeStory(a, 2, q('que-nha'))!.questions[2].theme, 'que-nha');
+  const gap = L.placeStory(s, 4, q('ban-be'))!;
+  assert.deepEqual(gap.questions.slice(2).map((x) => x.theme), ['ban-be', 'ban-be', 'ban-be']);
+  assert.equal(L.placeStory(gap, 3, q('tuoi-tho'))!.questions[3].theme, 'tuoi-tho');
+  assert.equal(L.placeStory(s, 1, q('mon-an')), null);
+  assert.equal(L.placeStory(s, 22, q('mon-an')), null);
+  assert.equal(L.placeStory({ ...s, v: 2 }, 2, q('mon-an')), null);
+  // Thêm: ô cuối nhận được là 21 (20 chuyện); không sửa kịch bản truyền vào; ô 0, 1 giữ nguyên; ô lấp chỗ trống nhận câu mở thật khi tới
+  // (cùng chủ đề, khác câu); ô không phải số nguyên thì không nhận.
+  assert.equal(L.placeStory(s, 21, q('mon-an'))!.questions.length, 22);
+  assert.equal(s.questions.length, 2);
+  assert.deepEqual(gap.questions.slice(0, 2), s.questions);
+  assert.equal(L.placeStory(gap, 2, story('ban-be', 'Câu mở thật'))!.questions[2].text, 'Câu mở thật');
+  assert.equal(L.placeStory(s, 2.5, q('mon-an')), null);
+  // Bản đồ chủ đề (task 2, phán quyết R3) đọc đúng ô chuyện v3: mỗi ô tính lượt riêng, hai ô cùng chủ đề lấy ô sâu nhất.
+  const told = topicMap([{ script: L.placeStory(gap, 3, q('tuoi-tho'))!, doneAt: '2026-11-21', storyTurns: 9, turnsByIdx: { 2: 1, 3: 4, 4: 2 } }]);
+  assert.deepEqual(told.map((t) => [t.theme, t.turns]).sort(), [['ban-be', 2], ['tuoi-tho', 4]]);
+});
+
+test('chủ đề lượt Live: hỏi thăm, lời nhắn, ô có sẵn, ô chưa tới thì theo theme, theme lạ thì ký ức', () => {
+  const s = L.placeStory(L.liveScript(lanCtx()), 2, story('mon-an'))!;
+  assert.equal(L.liveTopic(s, 0, 'tuoi-tho'), 'hoi-tham');
+  assert.equal(L.liveTopic(s, 1, 'tuoi-tho'), 'loi-nhan');
+  assert.equal(L.liveTopic(s, 2, 'tuoi-tho'), 'mon-an');      // ô có sẵn thắng theme gửi kèm
+  assert.equal(L.liveTopic(s, 5, 'tuoi-tho'), 'tuoi-tho');
+  assert.equal(L.liveTopic(s, 5, 'que-nha'), 'ky-niem');      // theo THEME_TOPIC
+  assert.equal(L.liveTopic(s, 5, 'abc'), 'ky-niem');
+  assert.equal(L.liveTopic(s, 5, undefined), 'ky-niem');
+});
+
+test('điều riêng: trùng một cặp chữ của điều riêng là trúng, cặp chữ toàn chữ thường gặp thì không', () => {
+  assert.equal(L.privateHit('Dạo này mẹ còn đau lưng không ạ?', ['Mẹ bị đau lưng mấy tháng nay']), true);
+  assert.equal(L.privateHit('Mẹ kể con nghe về bữa cơm của mẹ nhé', ['Chuyện của mẹ với bà']), false);
+  assert.equal(L.privateHit('Mẹ kể con nghe đi', []), false);
+  // Thêm: không phân biệt hoa thường, dấu câu; một chữ trùng thì không; đúng ranh giới chữ ("anh" không khớp trong "canh"); tiếng Anh cũng vậy.
+  assert.equal(L.privateHit('ĐAU LƯNG, mẹ ơi', ['Mẹ bị đau lưng']), true);
+  assert.equal(L.privateHit('Mẹ có đau không', ['Mẹ bị đau lưng']), false);
+  assert.equal(L.privateHit('canh chua', ['anh chuan bi']), false);
+  assert.equal(L.privateHit('Mom, how is your back pain?', ['Mom has had back pain for months']), true);
+  assert.equal(L.privateHit('Tell me about your mom', ['Mom has had back pain for months']), false);
+});
+
+test('thẻ câu hỏi: câu sạch giữ nguyên; tên lạ hay điều riêng thì dùng câu mở; câu mở cũng hỏng thì tên chủ đề', () => {
+  assert.equal(L.cardText('Hồi đó Mẹ ở với ai ạ?', 'OPENER', K, 'tuoi-tho'), 'Hồi đó Mẹ ở với ai ạ?');
+  assert.equal(L.cardText('Hồi đó Mẹ ở với cô Thảo ạ?', 'Mẹ kể con nghe về tuổi thơ nhé', K, 'tuoi-tho'), 'Mẹ kể con nghe về tuổi thơ nhé');
+  assert.equal(L.cardText('Mẹ còn đau lưng không ạ?', 'Lần trước mẹ kể...', K, 'tuoi-tho'), tServer('vi', 'topic.tuoi-tho'));
+  // Thêm: gạch dài thành dấu phẩy, bỏ ngoặc kép, một dòng, tối đa 300 chữ; câu rỗng thì câu mở; đã có cuộc gọi trước thì "lần trước" được;
+  // tên chủ đề theo thứ tiếng của người nghe.
+  assert.equal(L.cardText('Hồi đó — Mẹ ở "với" ai ạ?\nDòng hai', 'X', K, 'tuoi-tho'), 'Hồi đó, Mẹ ở với ai ạ?');
+  assert.equal(L.cardText('a'.repeat(400), 'X', K, 'tuoi-tho').length, 300);
+  assert.equal(L.cardText('  ', 'Mẹ kể con nghe về tuổi thơ nhé', K, 'tuoi-tho'), 'Mẹ kể con nghe về tuổi thơ nhé');
+  assert.equal(L.cardText('Lần trước mẹ kể chuyện bà, rồi sao nữa ạ?', 'X', { ...K, allow: { ...K.allow, prevCall: true } }, 'tuoi-tho'), 'Lần trước mẹ kể chuyện bà, rồi sao nữa ạ?');
+  assert.equal(L.cardText('', '', { ...K, lang: 'en' }, 'mon-an'), tServer('en', 'topic.mon-an'));
+});
+
+test('câu mở mẫu: đúng câu và biến của bộ câu mẫu theo vai; chủ đề không có câu mẫu thì tên chủ đề', () => {
+  const me = { lang: 'vi' as const, role: 'me', name: 'Lan', mascot: 'Mây' };
+  assert.equal(C.templateOpener(me, 'tuoi-tho'), 'Hồi nhỏ mẹ hay chơi ở đâu, với ai? Mẹ kể con nghe một buổi chiều ngày ấy nhé.');
+  assert.equal(C.templateOpener({ ...me, role: 'con', name: 'An' }, 'ban-be'), 'Kể mình nghe về một người bạn thân hồi đi học đi. Hai người hay làm gì cùng nhau?');
+  assert.equal(C.templateOpener(me, 'cong-viec'), tServer('vi', 'topic.cuoc-song'));
+  assert.equal(C.templateOpener({ ...me, role: 'con', name: 'An' }, 'ngay-cuoi'), tServer('vi', 'topic.ngay-cuoi'));   // con không có câu mẫu ngày cưới
+  // Cùng câu với bộ câu mẫu (templateScript) ở chủ đề nó chọn, mọi vai và thứ tiếng: LiveCheck dùng thẳng làm p được.
+  for (const lang of ['vi', 'en', 'ko'] as const) {
+    for (const [role, name] of [['me', 'Lan'], ['bo', 'Hùng'], ['con', 'An']]) {
+      const st = C.templateScript(lanCtx('x', { lang, member: { id: 'x', name, role, intro: {} } }), '2026-11-16').questions[1];
+      assert.equal(C.templateOpener({ ...K, lang, role, name }, st.theme!), st.text, `${lang} ${role}`);
+    }
+  }
+});
+
+test('lượt Live: không trần 4 lượt, lời nhắn luôn lượt 0, ô chưa có vẫn đúng chủ đề, ngoài khoảng thì bỏ, kịch bản cũ thì bỏ', () => {
+  const s = L.liveScript(lanCtx());
+  const body = { idx: '2', turn: '7', question: 'Hồi đó Mẹ ở với ai ạ?', transcript: 'ở với bà', seconds: '4.2', theme: 'tuoi-tho', opener: 'Mẹ kể con nghe về tuổi thơ nhé' };
+  assert.deepEqual(L.liveAnswerRow(s, body, K), { idx: 2, turn: 7, topic: 'tuoi-tho', question: 'Hồi đó Mẹ ở với ai ạ?', transcript: 'ở với bà', seconds: 4.2 });
+  assert.equal(L.liveAnswerRow(s, { ...body, turn: '250' }, K)!.turn, 199);
+  const relay = L.liveAnswerRow(s, { ...body, idx: '1', turn: '3' }, K)!;
+  assert.deepEqual([relay.turn, relay.topic], [0, 'loi-nhan']);
+  assert.equal(L.liveAnswerRow(s, { ...body, idx: '22' }, K), null);
+  assert.equal(L.liveAnswerRow({ ...s, v: 2 }, body, K), null);
+  // Thêm: câu Mây hỏi trong chuyện qua lớp lọc (tên lạ: câu mở; câu mở cũng hỏng: câu mẫu của chủ đề); ô có sẵn thì theo chủ đề của ô.
+  assert.equal(L.liveAnswerRow(s, { ...body, question: 'Hồi đó Mẹ ở với cô Thảo ạ?' }, K)!.question, 'Mẹ kể con nghe về tuổi thơ nhé');
+  assert.equal(L.liveAnswerRow(s, { ...body, question: 'Mẹ còn đau lưng không ạ?', opener: 'Lần trước mẹ kể...' }, K)!.question, C.templateOpener(K, 'tuoi-tho'));
+  const inSlot = L.liveAnswerRow(L.placeStory(s, 2, story('mon-an'))!, { ...body, question: 'x cô Thảo', opener: '' }, K)!;
+  assert.deepEqual([inSlot.topic, inSlot.question], ['mon-an', C.templateOpener(K, 'mon-an')]);
+  assert.equal(L.liveAnswerRow(s, { ...body, theme: 'abc', question: '', opener: '' }, K)!.question, C.templateOpener(K, 'que-nha'));
+  // Hỏi thăm và lời nhắn không thành thẻ chuyện: chỉ làm sạch (thiếu câu thì câu của ô); hỏi thăm cũng không trần lượt; chưa có lời chép thì null.
+  assert.equal(L.liveAnswerRow(s, { idx: '0', turn: '12', question: 'Dạo này mẹ — khoẻ không ạ?' }, K)!.question, 'Dạo này mẹ, khoẻ không ạ?');
+  assert.equal(L.liveAnswerRow(s, { idx: '0', turn: '12' }, K)!.turn, 12);
+  assert.equal(L.liveAnswerRow(s, { idx: '1' }, K)!.question, s.questions[1].text);
+  const bare = L.liveAnswerRow(s, { idx: 0 }, K)!;
+  assert.deepEqual([bare.transcript, bare.seconds, bare.turn], [null, null, 0]);
+  for (const idx of ['-1', 'abc', '1.5', '']) assert.equal(L.liveAnswerRow(s, { ...body, idx }, K), null, idx);
+});
+
+test('ô lời nhắn giữ lời dài nhất (phán quyết R6): lượt sau ngắn hơn không đè, dài hơn thì thay; ô chuyện thì lượt nào cũng ghi, gửi lại thì thay', async () => {
+  const db = lanHome();
+  const call = db.calls[0] as { id: string; family_id: string; member_id: string };
+  const s = L.liveScript(lanCtx());
+  const ask ='Mẹ có điều gì khó nói muốn con nhắn ai không ạ?';
+  const relay = (transcript: string) => L.liveAnswerRow(s, { idx: '1', turn: '0', question: ask, transcript }, K)!;
+  const msg = 'Con nhắn An là mẹ thương con lắm, con nhớ giữ sức khoẻ nhé';
+  assert.equal(await L.storeLiveAnswer(call, relay('Dạ có'), '/media/a1.webm', db), true);
+  assert.equal(await L.storeLiveAnswer(call, relay(msg), '/media/a2.webm', db), true);
+  assert.equal(await L.storeLiveAnswer(call, relay('Dạ vâng, tạm biệt con'), '/media/a3.webm', db), false);
+  assert.equal(await L.storeLiveAnswer(call, relay(msg), '/media/a2b.webm', db), false);   // gửi lại y hệt: giữ hàng cũ
+  const rows = db.answers.filter((a) => a.idx === 1);
+  assert.equal(rows.length, 1);
+  // Lời nhắn khó nói không bao giờ có media ở call_answers (podcast chỉ lấy hàng có media).
+  assert.deepEqual([rows[0].transcript, rows[0].topic, rows[0].turn, rows[0].media, rows[0].question], [msg, 'loi-nhan', 0, null, ask]);
+  // Lời nhắn để rút người nhận lúc chốt là đúng hàng ấy; cuộc gọi không có lời nhắn thì null.
+  assert.deepEqual(await L.relayAnswer('c1', db), { question: ask, transcript: msg });
+  assert.equal(await L.relayAnswer('khong-co', db), null);
+  // Ô chuyện: mỗi (ô, lượt) một hàng có media, lượt sau ngắn hơn vẫn ghi; gửi lại thì thay hàng cũ.
+  const turn = (t: string, transcript: string) => L.liveAnswerRow(s, { idx: '2', turn: t, question: 'Hồi đó Mẹ ở với ai ạ?', transcript, theme: 'tuoi-tho', opener: '' }, K)!;
+  assert.equal(await L.storeLiveAnswer(call, turn('0', 'dài lắm lắm lắm'), '/media/s0.webm', db), true);
+  assert.equal(await L.storeLiveAnswer(call, turn('1', 'ngắn'), '/media/s1.webm', db), true);
+  assert.equal(await L.storeLiveAnswer(call, turn('1', 'ngắn'), '/media/s1b.webm', db), true);
+  assert.deepEqual(db.answers.filter((a) => a.idx === 2).map((a) => [a.turn, a.media, a.topic]), [[0, '/media/s0.webm', 'tuoi-tho'], [1, '/media/s1b.webm', 'tuoi-tho']]);
+});
+
+test('bộ kiểm câu: điều riêng là điều self của chính người nghe và điều chưa nói; dữ liệu thật không có lời nhắn khó nói; cờ theo cuộc gọi xong và ảnh', async () => {
+  const db = lanHome({
+    members: [{ id: 'lan', family_id: 'F', name: 'Lan', role: 'me', intro: JSON.stringify({ kid: 'son', food: 'canh chua', love: 'never', unsaid: 'Con xin lỗi mẹ chuyện năm ngoái' }) },
+      { id: 'an', family_id: 'F', name: 'An', role: 'con', city: 'hanoi' }],
+    families: [{ id: 'F', mascot_name: 'Bông' }],
+    facts: [
+      { family_id: 'F', text: 'Mẹ bị đau lưng mấy tháng nay', text_en: 'Mom has had back pain for months', visibility: 'self', source_id: 'lan' },
+      { family_id: 'F', text: 'An thích canh chua', text_en: 'An loves sour soup', visibility: 'family', source_id: 'an' },
+      { family_id: 'F', text: 'BÍ MẬT CỦA AN', text_en: 'AN SECRET', visibility: 'self', source_id: 'an' },
+      { family_id: 'F', text: 'Câu cũ đã thay', text_en: 'Old replaced', visibility: 'family', source_id: 'an', replacement_id: 'x' },
+    ],
+    events: [{ family_id: 'F', title: 'Sinh nhật An' }],
+    answers: [
+      { call_id: 'c1', idx: 2, turn: 0, topic: 'tuoi-tho', transcript: 'hồi đó có cô Thảo ở cạnh nhà' },
+      { call_id: 'c1', idx: 1, turn: 0, topic: 'loi-nhan', transcript: 'nhắn chị Hoa là em xin lỗi' },
+    ],
+  });
+  const call = { id: 'c1', family_id: 'F', member_id: 'lan', script: db.calls[0].script };
+  const k = await L.loadLiveCheck(call, db);
+  assert.deepEqual(k.privates, ['Mẹ bị đau lưng mấy tháng nay', 'Mom has had back pain for months', 'Con xin lỗi mẹ chuyện năm ngoái']);
+  for (const w of ['Lan', 'An', 'Bông', 'Hà Nội', 'An thích canh chua', 'An loves sour soup', 'Sinh nhật An', 'cô Thảo', 'son', 'canh chua']) assert.ok(k.hay.includes(w), w);
+  for (const w of ['đau lưng', 'back pain', 'BÍ MẬT', 'AN SECRET', 'Câu cũ', 'Hoa', 'xin lỗi', 'never']) assert.ok(!k.hay.includes(w), w);
+  assert.deepEqual(k.allow, { prevCall: false, ownStory: true, photos: false });
+  assert.deepEqual([k.lang, k.role, k.name, k.mascot], ['vi', 'me', 'Lan', 'Bông']);
+  // Tên người nghe vừa kể trong cuộc gọi này thì thẻ giữ được; tên chỉ có trong lời nhắn khó nói thì không.
+  assert.equal(L.cardText('Cô Thảo hồi đó ở cạnh nhà mẹ ạ?', 'X', k, 'tuoi-tho'), 'Cô Thảo hồi đó ở cạnh nhà mẹ ạ?');
+  assert.equal(L.cardText('Mẹ nhắn chị Hoa điều gì ạ?', 'X', k, 'tuoi-tho'), 'X');
+  // Có cuộc gọi đã xong và có ảnh: được nhắc cuộc gọi trước và ảnh (liveAllow, một chỗ tính).
+  db.calls.push({ id: 'c0', family_id: 'F', member_id: 'lan', status: 'done', script: '{}' });
+  db.photos.lan = 2;
+  assert.deepEqual((await L.loadLiveCheck(call, db)).allow, { prevCall: true, ownStory: true, photos: true });
+  // DB giả (không phải pool) thì không nhớ đệm: mỗi lần đều đọc lại.
+  const reads = () => db.sql.filter((q) => q === L.LIVE_SQL.checkMember).length;
+  const n = reads();
+  await L.liveCheckFor(call, db);
+  assert.equal(reads(), n + 1);
+});
+
+test('lưu ô chuyện: câu mở qua lớp lọc, hỏng thì câu mẫu; ghi đè đồng thời thì thử lại; cuộc gọi người khác thì missing', async () => {
+  const db = lanHome();
+  assert.equal(await L.saveStory('c1', 'lan', { idx: '2', theme: 'tuoi-tho', opener: 'Hồi đó Mẹ ở với cô Thảo ạ?' }, db), 'ok');
+  let s = scriptOf(db);
+  assert.deepEqual(s.questions[2], { text: C.templateOpener(K, 'tuoi-tho'), topic: 'tuoi-tho', photo: false, event: 'none', part: 'story', theme: 'tuoi-tho' });
+  // Một /story khác (ô 4) ghi chen vào giữa lúc đọc và lúc ghi: lần ghi đầu hụt, đọc lại rồi ghi lên bản mới, không mất ô nào.
+  db.onCas = () => {
+    const c = db.calls[0];
+    c.script = JSON.stringify(L.placeStory(JSON.parse(c.script), 4, story('ban-be', 'Mẹ kể con nghe về bạn thân hồi nhỏ nhé')));
+  };
+  const before = db.cas;
+  assert.equal(await L.saveStory('c1', 'lan', { idx: '3', theme: 'mon-an', opener: 'Mẹ kể con nghe về món canh chua nhé' }, db), 'ok');
+  assert.equal(db.cas - before, 2);
+  s = scriptOf(db);
+  assert.deepEqual(s.questions.map((q) => q.theme ?? null), [null, null, 'tuoi-tho', 'mon-an', 'ban-be']);
+  assert.equal(s.questions[3].text, 'Mẹ kể con nghe về món canh chua nhé');   // câu mở sạch giữ nguyên
+  // Gửi lại đúng như cũ (hàng chờ thử lại): không ghi gì.
+  const n = db.cas;
+  assert.equal(await L.saveStory('c1', 'lan', { idx: 3, theme: 'mon-an', opener: 'Mẹ kể con nghe về món canh chua nhé' }, db), 'ok');
+  assert.equal(db.cas, n);
+  // Câu mở chạm điều riêng của chính người nghe: câu mẫu, điều riêng không bao giờ thành thẻ.
+  await L.saveStory('c1', 'lan', { idx: '5', theme: 'que-nha', opener: 'Dạo này mẹ còn đau lưng không, kể con nghe về quê mình nhé' }, db);
+  assert.equal(scriptOf(db).questions[5].text, C.templateOpener(K, 'que-nha'));
+  assert.doesNotMatch(db.calls[0].script, /đau lưng/);
+  // Chuyện ngày cưới mang loại ngày cưới cho lịch chung, như bộ câu cũ.
+  await L.saveStory('c1', 'lan', { idx: '6', theme: 'ngay-cuoi', opener: 'Mẹ kể con nghe ngày cưới của mẹ nhé' }, db);
+  assert.equal(scriptOf(db).questions[6].event, 'wedding');
+  assert.equal(await L.saveStory('c1', 'an', { idx: '7', theme: 'mon-an', opener: 'x' }, db), 'missing');
+  assert.equal(await L.saveStory('khong-co', 'lan', { idx: '7', theme: 'mon-an', opener: 'x' }, db), 'missing');
+  for (const b of [{ idx: '7', theme: 'abc' }, { idx: '1', theme: 'mon-an' }, { idx: '22', theme: 'mon-an' }, { idx: 'x', theme: 'mon-an' }, { theme: 'mon-an' }]) {
+    assert.equal(await L.saveStory('c1', 'lan', { ...b, opener: 'x' }, db), 'invalid', JSON.stringify(b));
+  }
+  // Kịch bản cũ (v2) không có ô chuyện Live.
+  const old = lanHome({}, { script: JSON.stringify(C.templateScript(lanCtx(), '2026-11-16')) });
+  assert.equal(await L.saveStory('c1', 'lan', { idx: '2', theme: 'mon-an', opener: 'x' }, old), 'invalid');
+});
+
+test('chốt cuộc gọi Live: lưu câu hẹn sạch; câu hẹn có tên lạ hay điều riêng thì bỏ; đếm câu nghi bịa', async () => {
+  const db = lanHome();
+  const hook = 'Tuần sau Mẹ kể tiếp chuyện bà ngoại nhé';
+  const may = JSON.stringify(['Chào Mẹ ạ', 'Lần trước Mẹ kể chuyện bà']);
+  logs.length = 0;
+  assert.deepEqual(await L.finishLive('c1', 'lan', { may, hook }, db), { lines: 2, flagged: 1, hook: true });
+  assert.equal(scriptOf(db).next_hook, hook);
+  assert.ok(logs.includes('[call-live] câu nghi bịa: "Lần trước Mẹ kể chuyện bà" (nhắc cuộc gọi trước không có)'), logs.join('\n'));
+  assert.ok(logs.some((l) => l.includes('[call-live] cuộc gọi c1: 2 câu của Mây, 1 câu nghi bịa')), logs.join('\n'));
+  for (const bad of ['Tuần sau kể con nghe chuyện cô Thảo', 'Tuần sau mẹ hết đau lưng chưa']) {
+    logs.length = 0;
+    assert.equal((await L.finishLive('c1', 'lan', { may: '[]', hook: bad }, db)).hook, false, bad);
+    assert.equal(scriptOf(db).next_hook, hook, bad);   // câu hỏng không được ghi
+    assert.ok(logs.some((l) => l.startsWith('[call-live] bỏ câu hẹn')), logs.join('\n'));
+    assert.ok(!logs.some((l) => l.includes('đau lưng')));   // log không chép điều riêng
+  }
+  // may là mảng (thân JSON) cũng được, tối đa 120 câu; không có câu hẹn thì không ghi gì; gửi lại cùng câu hẹn thì không ghi lại.
+  const n = db.cas;
+  assert.deepEqual(await L.finishLive('c1', 'lan', { may: Array(130).fill('Dạ vâng ạ') }, db), { lines: 120, flagged: 0, hook: false });
+  assert.deepEqual(await L.finishLive('c1', 'lan', { may: 'không phải JSON', hook }, db), { lines: 0, flagged: 0, hook: true });
+  assert.equal(db.cas, n);
+  // Câu hẹn dài thì cắt còn tối đa 200 chữ.
+  await L.finishLive('c1', 'lan', { hook: `Tuần sau mẹ kể tiếp nhé ${'à '.repeat(200)}` }, db);
+  const long = scriptOf(db).next_hook!;
+  assert.ok(long.startsWith('Tuần sau mẹ kể tiếp nhé à') && long.length <= 200 && long.length >= 190, long);
+  // Cuộc gọi người khác, không có, hay kịch bản cũ: không làm gì.
+  const zero = { lines: 0, flagged: 0, hook: false };
+  assert.deepEqual(await L.finishLive('c1', 'an', { may, hook }, db), zero);
+  assert.deepEqual(await L.finishLive('khong-co', 'lan', { may, hook }, db), zero);
+  const old = lanHome({}, { script: JSON.stringify(C.templateScript(lanCtx(), '2026-11-16')) });
+  assert.deepEqual(await L.finishLive('c1', 'lan', { may, hook }, old), zero);
+  assert.equal(scriptOf(old).next_hook, undefined);
+  // Đã có cuộc gọi xong: "lần trước" không còn là câu nghi bịa.
+  const later = lanHome();
+  later.calls.push({ id: 'c0', family_id: 'F', member_id: 'lan', status: 'done', script: '{}' });
+  assert.equal((await L.finishLive('c1', 'lan', { may }, later)).flagged, 0);
+});
+
+test('POST /call/:id/story: thân JSON hay multipart (hàng chờ gửi FormData) đều được; sai thì 400 live_story_invalid, cuộc gọi người khác 404', async () => {
+  const db = lanHome();
+  const srv = await serve(deps({ db }));
+  try {
+    assert.deepEqual(await srv.post('/api/call/c1/story', 'lan', { idx: 2, theme: 'mon-an', opener: 'Mẹ kể con nghe về món canh chua nhé' }), { status: 200, body: { ok: true } });
+    const fd = new FormData();
+    fd.set('idx', '3'); fd.set('theme', 'tuoi-tho'); fd.set('opener', 'Mẹ kể con nghe về tuổi thơ nhé');
+    const r = await fetch(`${srv.base}/api/call/c1/story`, { method: 'POST', headers: { 'x-member': 'lan', 'x-lang': 'vi' }, body: fd });
+    assert.deepEqual([r.status, await r.json()], [200, { ok: true }]);
+    assert.deepEqual(scriptOf(db).questions.slice(2).map((q) => [q.theme, q.text]),
+      [['mon-an', 'Mẹ kể con nghe về món canh chua nhé'], ['tuoi-tho', 'Mẹ kể con nghe về tuổi thơ nhé']]);
+    const bad = await srv.post('/api/call/c1/story', 'lan', { idx: 4, theme: 'abc', opener: 'x' });
+    assert.deepEqual([bad.status, bad.body.code, bad.body.error], [400, 'live_story_invalid', 'Câu chuyện không hợp lệ']);
+    const miss = await srv.post('/api/call/c1/story', 'an', { idx: 4, theme: 'mon-an', opener: 'x' });
+    assert.deepEqual([miss.status, miss.body.code], [404, 'call_not_found']);
+  } finally {
+    srv.close();
+  }
+});
+
+// ---------- Qua callRouter (pool giả): /answer?live=1 và /finish. Để cuối tệp: pool.query bị thay tới hết tệp. ----------
+
+const { pool } = await import('./db.ts');
+const until = async (ok: () => boolean, ms = 3000) => {
+  const end = Date.now() + ms;
+  while (!ok() && Date.now() < end) await new Promise((r) => setTimeout(r, 10));
+  return ok();
+};
+
+/** App express gắn callRouter thật (multer ghi tệp vào MEDIA_DIR); pool.query là DB giả; req.member như lớp auth (nhà theo bảng members). */
+async function serveCall(db: ReturnType<typeof fakeDb>) {
+  (pool as any).query = db.query;
+  const app = express();
+  app.use(express.json());
+  app.use(langMiddleware);
+  app.use((req: any, _res, next) => {
+    const id = String(req.headers['x-member']);
+    req.member = { id, family_id: db.members.find((m) => m.id === id)?.family_id ?? 'F' };
+    next();
+  });
+  app.use('/api', C.callRouter(multer({ dest: process.env.MEDIA_DIR! })));
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
+  const form = async (p: string, who: string, fields: Record<string, string>, file = false) => {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+    if (file) fd.set('file', new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/webm' }), 'turn.webm');
+    const r = await fetch(`${base}${p}`, { method: 'POST', headers: { 'x-member': who, 'x-lang': 'vi' }, body: fd });
+    return { status: r.status, body: await r.json() };
+  };
+  return { form, base, close: () => server.close() };
+}
+
+test('/answer?live=1: đúng ô và lượt (không trần 4), thẻ qua lớp lọc, không chép lời, không AI; trần riêng 120; ?live=1 không mở đường cũ; đường cũ giữ nguyên', async () => {
+  const v3 = L.placeStory(L.liveScript(lanCtx()), 2, story('tuoi-tho', 'Mẹ kể con nghe về tuổi thơ nhé'))!;
+  const v2 = JSON.stringify(C.templateScript(lanCtx(), '2026-11-16'));
+  const db = fakeDb({
+    members: [{ id: 'lan-a', family_id: 'FA', name: 'Lan', role: 'me', intro: '{}' }, { id: 'hung-a', family_id: 'FA', name: 'Hùng', role: 'bo', intro: '{}' }],
+    families: [{ id: 'FA' }],
+    calls: [
+      { id: 'live-a', family_id: 'FA', member_id: 'lan-a', status: 'ready', script: JSON.stringify(v3) },
+      { id: 'v2-a', family_id: 'FA', member_id: 'lan-a', status: 'ready', script: v2 },
+      { id: 'old-a', family_id: 'FA', member_id: 'hung-a', status: 'ready', script: v2 },
+    ],
+  }, { lenient: true });
+  const srv = await serveCall(db);
+  const files = () => readdirSync(process.env.MEDIA_DIR!).length;
+  try {
+    const r = await srv.form('/call/live-a/answer?live=1', 'lan-a',
+      { live: '1', idx: '2', turn: '7', question: 'Hồi đó Mẹ ở với cô Thảo ạ?', transcript: '', seconds: '4.2', theme: 'tuoi-tho', opener: 'Mẹ kể con nghe về tuổi thơ nhé' }, true);
+    assert.deepEqual(r, { status: 200, body: { ok: true, transcript: null, reply: null, ai: null } });
+    const row = db.answers.find((a) => a.call_id === 'live-a')!;
+    assert.deepEqual([row.idx, row.turn, row.topic, row.question, row.transcript, row.seconds], [2, 7, 'tuoi-tho', 'Mẹ kể con nghe về tuổi thơ nhé', null, 4.2]);
+    assert.match(row.media, /^\/media\/\w+$/);
+    // Trần riêng của lượt Live: thêm 40 lượt trong 10 phút vẫn nhận (trần cũ 30 đã chặn).
+    for (let i = 0; i < 40; i++) {
+      const x = await srv.form('/call/live-a/answer?live=1', 'lan-a', { live: '1', idx: '0', turn: String(i), question: 'Dạo này mẹ khoẻ không ạ?', transcript: 'khoẻ' });
+      assert.equal(x.status, 200, `lượt ${i}`);
+    }
+    assert.equal(db.answers.filter((a) => a.call_id === 'live-a' && a.idx === 0).length, 40);
+    // ?live=1 mà không phải lượt Live trên kịch bản v3: 400, tệp bị xoá, không đi đường cũ (đường cũ có chép lời và AI).
+    const n = files();
+    const notV3 = await srv.form('/call/v2-a/answer?live=1', 'lan-a', { live: '1', idx: '1', turn: '0', transcript: 'x' }, true);
+    assert.deepEqual([notV3.status, notV3.body.code], [400, 'question_not_found']);
+    assert.equal((await srv.form('/call/live-a/answer?live=1', 'lan-a', { idx: '2', turn: '0', transcript: 'x' }, true)).status, 400);
+    // Ô ngoài khoảng: 400, tệp bị xoá.
+    const out = await srv.form('/call/live-a/answer?live=1', 'lan-a', { live: '1', idx: '22', turn: '0', transcript: 'x' }, true);
+    assert.deepEqual([out.status, out.body.code], [400, 'question_not_found']);
+    assert.equal(files(), n);
+    assert.ok(!db.answers.some((a) => a.call_id === 'v2-a'));
+    // Đường cũ (không ?live=1, kịch bản v2): như trước, lượt trần 4, câu hỏi thêm theo câu máy gửi, trần 30 lượt mỗi 10 phút.
+    const o = await srv.form('/call/old-a/answer', 'hung-a', { idx: '1', turn: '7', question: 'Câu hỏi thêm', transcript: 'chuyện cũ' });
+    assert.deepEqual(o, { status: 200, body: { ok: true, transcript: 'chuyện cũ', reply: null, ai: null } });
+    const orow = db.answers.find((a) => a.call_id === 'old-a')!;
+    assert.deepEqual([orow.idx, orow.turn, orow.question, orow.topic], [1, 4, 'Câu hỏi thêm', JSON.parse(v2).questions[1].topic]);
+    for (let i = 1; i < 30; i++) assert.equal((await srv.form('/call/old-a/answer', 'hung-a', { idx: '1', turn: '1', transcript: 'x' })).status, 200, `cũ ${i}`);
+    const cap = await srv.form('/call/old-a/answer', 'hung-a', { idx: '1', turn: '1', transcript: 'x' });
+    assert.deepEqual([cap.status, cap.body.code], [429, 'slow_down']);
+  } finally {
+    srv.close();
+  }
+});
+
+test('ô lời nhắn qua /answer?live=1 rồi /finish: giữ lời dài nhất, rút lời nhắn lúc chốt từ đúng lời ấy; /finish lưu câu hẹn, ghi log chống bịa; /finish không thân thì như cũ', async () => {
+  const db = fakeDb({
+    members: [{ id: 'lan-b', family_id: 'FB', name: 'Lan', role: 'me', intro: '{}', lang: 'vi' }, { id: 'an-b', family_id: 'FB', name: 'An', role: 'con', lang: 'vi' }],
+    families: [{ id: 'FB' }],
+    calls: [
+      { id: 'live-b', family_id: 'FB', member_id: 'lan-b', status: 'ready', script: JSON.stringify(L.liveScript(lanCtx())) },
+      { id: 'old-b', family_id: 'FB', member_id: 'lan-b', status: 'ready', script: JSON.stringify(C.templateScript(lanCtx(), '2026-11-16')) },
+    ],
+  }, { lenient: true });
+  const srv = await serveCall(db);
+  const ask = 'Mẹ có điều gì khó nói muốn con nhắn ai không ạ?';
+  const relay = (transcript: string) => srv.form('/call/live-b/answer?live=1', 'lan-b', { live: '1', idx: '1', turn: '0', question: ask, transcript, seconds: '2' }, true);
+  const update = `update calls set status = 'done', done_at = now() where id = $1 and member_id = $2 and status = 'ready'`;
+  try {
+    const msg = 'Con nhắn An là mẹ thương con lắm, con nhớ giữ sức khoẻ nhé';
+    const n = readdirSync(process.env.MEDIA_DIR!).length;
+    for (const t of ['Dạ có', msg, 'Dạ vâng, tạm biệt con']) assert.equal((await relay(t)).status, 200, t);
+    // Tiếng của lời nhắn khó nói không giữ lại tệp nào (relays.media chưa nơi nào đọc; tệp không hàng nào trỏ tới thì xoá người không dọn được).
+    assert.equal(readdirSync(process.env.MEDIA_DIR!).length, n);
+    assert.deepEqual(db.answers.filter((a) => a.call_id === 'live-b').map((a) => [a.idx, a.transcript, a.media]), [[1, msg, null]]);
+    // Cuộc gọi chưa chốt: chưa rút lời nhắn (lượt sau có thể mới là lời thật).
+    assert.ok(!db.sql.includes('select 1 from relays where call_id = $1 limit 1'));
+    logs.length = 0;
+    const f = await srv.form('/call/live-b/finish', 'lan-b', { hook: 'Tuần sau Mẹ kể tiếp chuyện bà ngoại nhé', may: JSON.stringify(['Chào Mẹ ạ', 'Lần trước Mẹ kể chuyện bà']) });
+    assert.deepEqual(f, { status: 200, body: { ok: true } });
+    const call = db.calls.find((c) => c.id === 'live-b')!;
+    assert.equal(call.status, 'done');
+    assert.equal(JSON.parse(call.script).next_hook, 'Tuần sau Mẹ kể tiếp chuyện bà ngoại nhé');
+    assert.ok(logs.includes('[call-live] câu nghi bịa: "Lần trước Mẹ kể chuyện bà" (nhắc cuộc gọi trước không có)'), logs.join('\n'));
+    // Câu hẹn và log ghi trước khi chốt.
+    assert.ok(db.sql.lastIndexOf(L.LIVE_SQL.cas) < db.sql.indexOf(update));
+    assert.ok(await until(() => db.relays.length > 0), 'lời nhắn được rút lúc chốt');
+    assert.deepEqual(db.relays.map((x) => [x.call_id, x.from_id, x.to_id, x.transcript]), [['live-b', 'lan-b', 'an-b', msg]]);
+    // Gửi lại /finish (hàng chờ thử lại): không chốt lại, không rút lại.
+    assert.deepEqual(await srv.form('/call/live-b/finish', 'lan-b', { hook: 'Tuần sau Mẹ kể tiếp chuyện bà ngoại nhé', may: '[]' }), { status: 200, body: { ok: true } });
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(db.relays.length, 1);
+    // /finish không thân (màn cũ): chốt như trước, không đọc kịch bản, không rút lời nhắn kiểu Live, không log Live.
+    logs.length = 0;
+    const before = db.sql.length;
+    const r = await fetch(`${srv.base}/call/old-b/finish`, { method: 'POST', headers: { 'x-member': 'lan-b' } });
+    assert.deepEqual([r.status, await r.json()], [200, { ok: true }]);
+    assert.equal(db.calls.find((c) => c.id === 'old-b')!.status, 'done');
+    await new Promise((r) => setTimeout(r, 50));
+    const mine = db.sql.slice(before);
+    assert.ok(mine.includes(update));
+    assert.ok(!mine.includes(L.LIVE_SQL.script) && !mine.includes(L.LIVE_SQL.relaySlot));
+    assert.ok(!logs.some((l) => l.includes('[call-live]')));
+  } finally {
+    srv.close();
   }
 });

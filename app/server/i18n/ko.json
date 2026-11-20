@@ -241,5 +241,6 @@
   "error.live_off": "새 통화 방식이 지금은 꺼져 있어요",
   "error.live_not_enabled": "새 통화 방식을 아직 켜지 않았어요",
   "error.live_cap": "오늘은 새 방식 통화 시간을 다 썼어요",
-  "error.live_token": "새 방식 통화를 연결하지 못했어요"
+  "error.live_token": "새 방식 통화를 연결하지 못했어요",
+  "error.live_story_invalid": "올바르지 않은 이야기예요"
 }

@@ -245,5 +245,6 @@
   "error.live_off": "The new way of calling is off right now",
   "error.live_not_enabled": "You haven't turned on the new way of calling yet",
   "error.live_cap": "No more new-style call minutes today",
-  "error.live_token": "Couldn't connect the new-style call"
+  "error.live_token": "Couldn't connect the new-style call",
+  "error.live_story_invalid": "That story isn't valid"
 }

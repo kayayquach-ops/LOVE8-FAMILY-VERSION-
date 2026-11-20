@@ -241,5 +241,6 @@
   "error.live_off": "Cuộc gọi kiểu mới đang tắt",
   "error.live_not_enabled": "Chưa bật thử cuộc gọi kiểu mới",
   "error.live_cap": "Hôm nay hết phút gọi kiểu mới",
-  "error.live_token": "Chưa nối được cuộc gọi kiểu mới"
+  "error.live_token": "Chưa nối được cuộc gọi kiểu mới",
+  "error.live_story_invalid": "Câu chuyện không hợp lệ"
 }

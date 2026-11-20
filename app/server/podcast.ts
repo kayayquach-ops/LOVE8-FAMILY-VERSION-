@@ -398,9 +398,10 @@ async function callAnswers(callId: string): Promise<AnswerRow[]> {
   return rows.filter((a) => existsSync(mediaFile(a.media)));
 }
 
-/** Cuộc gọi v2: chỉ chuyện chính (part 'story') thành tập, trả về số câu của nó. Cuộc gọi cũ: null (mọi câu chuyện, như trước). */
+/** Cuộc gọi v2: chỉ chuyện chính (part 'story') thành tập, trả về số câu của nó. Cuộc gọi Live (v3): các ô chuyện, từ ô LIVE_FIRST_STORY.
+ *  Cuộc gọi cũ: null (mọi câu chuyện, như trước). */
 export function episodeIdx(script: Pick<CallScript, 'v' | 'questions'>): number[] | null {
-  if (script.v !== 2) return null;
+  if (script.v !== 2 && script.v !== 3) return null;
   return script.questions.flatMap((q, i) => (q.part === 'story' ? [i] : []));
 }
 const episodeIdxOf = (raw: string) => { try { return episodeIdx(JSON.parse(raw)); } catch { return null; } };

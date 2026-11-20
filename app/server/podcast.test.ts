@@ -43,6 +43,13 @@ test('câu hỏi thăm không bao giờ thành tập; cuộc gọi v2 chỉ chuy
   assert.equal(P.episodeIdx({ questions: [q(), q(), q()] }), null);
 });
 
+test('tập theo cuộc gọi v3: chỉ các ô chuyện thành tập', () => {
+  const qs = [{ part: 'checkin' }, { topic: 'loi-nhan' }, { part: 'story' }, { part: 'story' }] as any;
+  assert.deepEqual(P.episodeIdx({ v: 3, questions: qs }), [2, 3]);
+  assert.deepEqual(P.episodeIdx({ v: 2, questions: [{ part: 'checkin' }, { part: 'story' }] as any }), [1]);
+  assert.equal(P.episodeIdx({ questions: [] as any }), null);
+});
+
 test('luật khi không có AI: đủ 25 giây tiếng nói và lời chép đủ dài', () => {
   const [ok, short, few, bare, bareLong] = P.groupStories([
     ans(0, 0, 18, words(30)), ans(0, 1, 9, words(10)), // 27 giây, 40 từ
