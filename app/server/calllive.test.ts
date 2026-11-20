@@ -1158,3 +1158,20 @@ test('/finish rút lời nhắn theo kịch bản v3, không theo trường gử
     srv.close();
   }
 });
+
+test('lời dặn Live: mọi câu nhắn của app (CUE) có trong APP MESSAGES, kể cả hai câu nhắc chào (máy bỏ trên bàn, Google sắp đóng kết nối)', async () => {
+  const { CUE } = await import('../src/liveTurns.ts');
+  const b = L.liveBrief(lanCtx('lan', { extras: extras() }), []);
+  const app = b.slice(b.indexOf('APP MESSAGES.'), b.indexOf('DATA:'));
+  const pairs: Array<[string, string]> = [
+    [CUE.open, '(The call just connected'], [CUE.silent, '(The teller has been quiet.)'], [CUE.clock, '(Two minutes left'],
+    [CUE.shareYes, '(Share answer: yes'], [CUE.shareNo, '(Share answer: no'], [CUE.photos(0), '(No photos for now.)'],
+    [CUE.remind, '(Reminder:'], [CUE.idle, '(Still nothing heard'], [CUE.away, '(The line will drop'],
+  ];
+  for (const [cue, head] of pairs) {
+    assert.ok(cue.startsWith(head), `câu nhắn bắt đầu bằng ${head}`);
+    assert.ok(app.includes(head), `APP MESSAGES có ${head}`);
+  }
+  assert.ok(CUE.photos(3).endsWith(' photos arrived.)') && app.includes(' photos arrived.)'));
+  assert.ok(app.includes('end_call'), 'hai câu nhắc chào: gọi end_call kèm câu hẹn');
+});

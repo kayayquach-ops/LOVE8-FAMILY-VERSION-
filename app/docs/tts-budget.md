@@ -2,6 +2,8 @@
 
 **Từ 14/11/2026: giọng Mây chỉ dùng Gemini.** `TTS_PROVIDER` mặc định là `gemini` (người dùng nghe giọng OpenAI thấy như giọng máy, chốt chỉ dùng Gemini). Gemini hết ngân sách ngày (`GEMINI_TTS_DAILY`, mặc định 70, hạn mức thật Tier 1 chừng 100/ngày cho cả project) hoặc bị 429 thì cuộc gọi dùng giọng máy, không rơi sang OpenAI. Phần OpenAI bên dưới vẫn còn trong code, chỉ chạy khi đặt `TTS_PROVIDER=auto` hoặc `openai`. Chép lời dự phòng OpenAI và chép từng chữ cho podcast (`voiceedit.ts`) chưa đổi.
 
+**Mây Live (thử, từ 21/11/2026) không dùng ngân sách này.** Người bật "Thử Mây mới" gọi bằng Gemini Live (`src/CallLive.tsx`): giọng Mây do Live sinh liền trong cuộc gọi, không qua `POST /api/call/tts`, không vào kho `MEDIA_DIR/tts`, không tính vào `GEMINI_TTS_DAILY`. Live bị chặn bằng phút thay cho số câu: tối đa `MAY_CALL_MAX_SEC` (540) giây mỗi cuộc gọi và `MAY_LIVE_DAILY_MIN` (120) phút mỗi ngày cả app, tiền ghi theo token (`calls.live_usd`, log `[call-live]`). Chi tiết: `docs/may-moi.md` mục "Mây Live (thử)". Người không bật thử vẫn đi đường cũ, mọi số dưới đây giữ nguyên.
+
 ## Chọn nhà cung cấp (mới)
 
 - `TTS_PROVIDER` = `auto` (mặc định) | `openai` | `gemini`. `auto`: có `OPENAI_API_KEY` thì **OpenAI `gpt-4o-mini-tts`** là giọng chính; OpenAI đang bị chặn (key sai, hết số dư, 429) thì **Gemini** (nếu có key và còn ngân sách); không thì giọng máy. `openai` hoặc `gemini` ép một nhà, không rơi sang nhà kia.

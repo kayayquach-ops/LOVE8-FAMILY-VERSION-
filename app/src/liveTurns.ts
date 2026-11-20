@@ -1,6 +1,6 @@
 // Logic cuộc gọi Mây Live ở máy khách, hàm thuần cho CallLive.tsx nối vào (task 6, 7). Kiểm bằng src/liveTurns.test.ts.
 // Công cụ của model làm gì với trạng thái cuộc gọi và đáp model câu gì (onTool), lượt nào vào ô nào (onRec, onTurn), ghi giọng từng lượt
-// (captureNext), xin phép chia sẻ (onShareEnd, askStep), nhắc chống bịa một lần (remindFor, remindAllow), nhắc đồng hồ (clockDue, clockCue), nhắc
+// (captureNext), xin phép chia sẻ (onShareEnd, askStep, giữ tiếng Mây: holdNext), báo sau bước xin ảnh (photoCue), nhắc chống bịa một lần (remindFor, remindAllow), nhắc đồng hồ (clockDue, clockCue), nhắc
 // im lặng (silentDue), máy bỏ trên bàn (idleDue), Google sắp đóng kết nối (awayMs), cúp sau lời chào (byeDue), lúc bắt đầu ghi lượt người kể (recDue),
 // chốt (finishJob).
 // Ô 0 hỏi thăm, ô 1 lời nhắn khó nói, chuyện từ ô LIVE_FIRST_STORY (kịch bản v3, server/calllive.ts). Lời đồng ý chia sẻ chỉ từ hai nút hoặc
@@ -10,7 +10,8 @@
 //   trước khi lượt ấy được gửi (lúc done); bản chụp giữ cho lượt ấy ô lúc nó bắt đầu, công cụ chỉ có hiệu lực từ lượt sau.
 // - turn: onTurn(state, { key, question, transcript, seconds }) ngay (chỉ chờ bản ghi để gửi job); consent true thì đưa lời chép cho shareNext
 //   ({ type: 'heard' }), không theo "lượt tới lúc đang xin phép" (lượt nói trước câu hỏi chia sẻ cũng tới lúc ấy).
-// - Tiếng Mây bị giữ lúc xin phép vẫn báo captureNext ({ type: 'audio' }) để lượt trả lời khép được (R8); { type: 'asked' } theo askStep.
+// - Tiếng Mây bị giữ lúc xin phép (holdNext) vẫn báo captureNext ({ type: 'audio' }) để lượt trả lời khép được (R8); lượt của Mây xong lúc đang giữ
+//   mà lượt trả lời còn đang ghi (Mây im, không có tiếng) thì cũng báo { type: 'audio' } trước done; { type: 'asked' } theo askStep.
 // - mayLine: remindFor với allow của cuộc gọi Live (remindAllow): ownStory true, message true khi có lời nhắn chờ, photos true khi DATA có ảnh
 //   hoặc ảnh đã tới trong cuộc gọi này (CUE.photos(n) với n > 0).
 import { slipLive, type Allow } from '../server/guard.ts';
@@ -174,6 +175,23 @@ export function onShareEnd(s: LiveState, end: 'yes' | 'no' | 'timeout' | 'hangup
   return end === 'yes'
     ? { state, cue: CUE.shareYes, job: { url: `/api/call/${s.id}/share`, fields: {} } }
     : { state, cue: CUE.shareNo, job: { url: `/api/call/${s.id}/keep`, fields: {} } };
+}
+
+/** Giữ tiếng Mây lúc xin phép (phán quyết 11): Live tự đáp "dạ được" trước khi app kịp quyết, nên từ lúc câu hỏi đã hỏi xong (asked, askStep) tới lúc
+ *  có câu trả lời, tiếng và phụ đề của Mây không phát (tiếng vẫn báo captureNext, R8). 'share': đang giữ. 'tail': câu trả lời tới giữa một lượt của
+ *  Mây (bấm nút, hết giờ), bỏ nốt lượt ấy rồi thôi giữ (lượt sau là câu Mây đáp câu nhắn chia sẻ). Câu trả lời tới lúc lượt của Mây đã xong (mayDone,
+ *  lời đọc được ngay lúc ấy) hay bước xin phép dừng vì cúp máy, end_call, goAway ('hangup') thì thôi giữ ngay, để câu đáp và lời chào được nghe. */
+export type Hold = 'share' | 'tail' | null;
+export function holdNext(h: Hold, e: { type: 'asked' } | { type: 'decided'; end: 'yes' | 'no' | 'timeout' | 'hangup'; mayDone: boolean } | { type: 'done' }): Hold {
+  if (e.type === 'asked') return 'share';
+  if (e.type === 'decided') return e.end === 'hangup' || e.mayDone ? null : 'tail';
+  return h === 'tail' ? null : h;
+}
+
+/** Câu báo model sau bước xin ảnh: chọn n ảnh, hay bấm Để sau, huỷ khung chọn (n 0). Ô ảnh còn hiện (on) thì luôn báo; đã ẩn (Mây đã sang việc khác,
+ *  quá 90 giây) thì chỉ báo khi có ảnh, vì chọn muộn vẫn là ảnh thật; đang chào hay đang giữ tiếng lúc xin phép (quiet) thì không báo. */
+export function photoCue(p: { n: number; on: boolean; quiet: boolean }): string | null {
+  return p.quiet || (!p.on && p.n === 0) ? null : CUE.photos(p.n);
 }
 
 /** R8: sau ask_share, câu hỏi chia sẻ coi là đã hỏi (gửi { type: 'asked' } cho shareNext) khi lượt có tiếng của Mây sau lời đáp công cụ xong.
