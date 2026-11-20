@@ -51,7 +51,7 @@ Mã: `server/memory.ts` (rút sổ nhớ), `server/may.ts` (người nhận, hà
 - Tối đa 60 sự thật đã có, mới nhất trước: điều người kể đã kể, hoặc điều người khác kể về người kể mà cả nhà được biết (`visibility = 'family'`); chưa bị thay; không thuộc chính cuộc gọi này. Điều `self` người khác kể về người kể thì không đưa vào.
 
 **Luật câu gốc (chống bịa)**
-- Mỗi sự thật, mỗi tín hiệu phải có `evidence` nằm nguyên trong một câu trả lời của cuộc gọi. So sau khi gấp chữ (`foldText`: NFC, chữ thường, dấu câu thành khoảng trắng, gộp khoảng trắng); câu gốc gấp xong dài 8 tới 300 ký tự. Không thấy thì bỏ.
+- Mỗi sự thật, mỗi tín hiệu phải có `evidence` nằm nguyên trong một câu trả lời của cuộc gọi. So sau khi gấp chữ (`foldText`: NFC, chữ thường, dấu câu thành khoảng trắng, gộp khoảng trắng); câu gốc gấp xong dài 8 tới 300 ký tự. So trọn từ: câu gốc "Mẹ nhớ an" cắt từ "Mẹ nhớ anh Hùng lắm" không được nhận, nên không thành sự thật hay lời nhắc gửi nhầm cho An. Không thấy thì bỏ.
 - `text` và `text_en`: một dòng, gạch dài thành dấu phẩy, bỏ ngoặc kép, không rỗng, tối đa 160 ký tự; qua `suspect()` với dữ liệu là câu gốc cộng tên mọi người trong nhà (tên lạ, số lạ thì bỏ).
 - `about` là thứ tự trong danh sách người trong nhà, `-1` là cả nhà hoặc người ngoài danh sách; số khác thì bỏ.
 - Tối đa 12 sự thật và 4 tín hiệu mỗi cuộc gọi. AI không trả lời hoặc trả sai dạng thì `memory_tries + 1`, không ghi gì. AI trả danh sách rỗng là rút xong, không có gì để nhớ.
@@ -63,7 +63,7 @@ Mã: `server/memory.ts` (rút sổ nhớ), `server/may.ts` (người nhận, hà
 - `replaces` trỏ tới một sự thật đã có: sự thật cũ nhận `replacement_id` là mã sự thật mới, từ đó không đưa vào AI nữa.
 - Chỉ nhận mã nằm trong danh sách sự thật đã đưa cho AI.
 - Rút lại một cuộc gọi: gỡ `replacement_id` đang trỏ tới sự thật của cuộc gọi đó, xoá sự thật của cuộc gọi đó, rồi ghi lại. Lần rút sau vẫn thấy sự thật cũ mà lần trước đã thay, nên không treo mã đã xoá.
-- `details` = `{ evidence, sensitive, occasion, lang }`. `occasion` chỉ là một trong `OCCASION_KEYS`, khác thì rỗng.
+- `details` = `{ evidence, sensitive, occasion, lang }`. `occasion` chỉ là một trong `OCCASION_KEYS`, khác thì null. Trong schema gửi AI, không gắn dịp là `'none'` (không dùng chuỗi rỗng trong enum vì Gemini có thể không nhận), lúc đọc đổi về null.
 - Xong thì `calls.memory_at = now()`. Cuộc gọi không có câu trả lời nào có lời chép cũng đánh dấu xong.
 
 **Tín hiệu** (rút cùng lần gọi AI, `checkSignal`)
@@ -86,3 +86,4 @@ Mã: `server/memory.ts` (rút sổ nhớ), `server/may.ts` (người nhận, hà
 - Chỉ chạy khi có khoá AI. Bắt đầu 60 giây sau khởi động, mỗi 20 giây một cuộc gọi, cuộc gọi xong cũ nhất trước.
 - Lấy cuộc gọi `status = 'done'`, `memory_at` trống, `memory_tries < 3`; thử tối đa 3 lần, quá thì bỏ qua.
 - Hết cuộc gọi cần rút thì dừng; cuộc gọi mới do `afterCall` rút. Cuộc gọi lỗi lúc đó được rút bù ở lần khởi động sau.
+- AI lỗi (429, hết hạn mức, quá giờ) thì dừng đợt rút bù ngay sau cuộc gọi lỗi đầu tiên, chỉ cuộc gọi đó mất một lượt thử; lần khởi động sau chạy tiếp. Như vậy một lần AI hỏng không đốt hết 3 lượt thử của mọi cuộc gọi cũ. Một cuộc gọi tự nó lỗi mãi thì sau 3 lần khởi động sẽ bị bỏ qua, các cuộc gọi sau tiếp tục.

@@ -43,16 +43,16 @@ export type ExtractInput = {
   answers: Array<{ id: string; question: string; transcript: string }>;   // never loi-nhan
   known: Array<{ id: string; kind: string; text_en: string }>;            // facts of the speaker from earlier calls
 };
-export type FactDraft = { kind: FactKind; aboutId: string | null; text: string; textEn: string; evidence: string; answerId: string; sensitive: boolean; occasion: OccasionKey | ''; replaces: string | null };
+export type FactDraft = { kind: FactKind; aboutId: string | null; text: string; textEn: string; evidence: string; answerId: string; sensitive: boolean; occasion: OccasionKey | null; replaces: string | null };
 export type SignalDraft = { kind: SignalKind; target: string; evidence: string; date: { day: number; month: number } | null };
 
 // ---------- Kiểm điều AI trả về ----------
 
-/** Mã câu trả lời đầu tiên chứa nguyên câu gốc (so sau khi gấp chữ). Câu gốc gấp xong phải dài 8 tới 300 ký tự. */
+/** Mã câu trả lời đầu tiên chứa nguyên câu gốc, trọn từ (so sau khi gấp chữ: "mẹ nhớ an" không khớp "mẹ nhớ anh"). Câu gốc gấp xong phải dài 8 tới 300 ký tự. */
 export function findEvidence(evidence: string, answers: ExtractInput['answers']): string | null {
   const e = foldText(evidence);
   if (e.length < 8 || e.length > 300) return null;
-  return answers.find((a) => foldText(a.transcript).includes(e))?.id ?? null;
+  return answers.find((a) => ` ${foldText(a.transcript)} `.includes(` ${e} `))?.id ?? null;
 }
 
 /** Một dòng chữ sạch như cleanLine ở call.ts: gạch dài thành dấu phẩy, bỏ ngoặc kép, một dòng. */
@@ -83,7 +83,7 @@ export function checkFact(raw: unknown, p: ExtractInput): FactDraft | 'same' | n
   if (knownId(r.same_as, p)) return 'same';
   return {
     kind: r.kind, aboutId, text, textEn, evidence, answerId, sensitive: r.private === true,
-    occasion: isIn(OCCASION_KEYS, r.occasion) ? r.occasion : '', replaces: knownId(r.replaces, p),
+    occasion: isIn(OCCASION_KEYS, r.occasion) ? r.occasion : null, replaces: knownId(r.replaces, p),
   };
 }
 
@@ -136,7 +136,8 @@ const MEMORY_SCHEMA = {
           text_en: { type: 'string' },
           evidence: { type: 'string' },
           private: { type: 'boolean' },
-          occasion: { type: 'string', enum: ['', ...OCCASION_KEYS] },
+          // 'none' thay cho chuỗi rỗng: responseJsonSchema của Gemini có thể không nhận enum rỗng. checkFact đổi 'none' về null.
+          occasion: { type: 'string', enum: ['none', ...OCCASION_KEYS] },
           same_as: { type: 'string' },
           replaces: { type: 'string' },
         },
@@ -172,7 +173,7 @@ Facts:
 5. kind: person (a relative or friend mentioned), place, food, habit, like, worry, wish, milestone (school, work, wedding, moving house), occasion, health, relationship.
 6. private is true for health, money, conflicts, worries and anything the speaker may not want others to hear.
 7. same_as is the id of a known_facts entry that says the same thing; replaces is the id of a known_facts entry this fact corrects or updates. Only ids from known_facts, otherwise empty.
-8. occasion is set only when the fact is about how the family keeps that occasion, otherwise empty.
+8. occasion is set only when the fact is about how the family keeps that occasion, otherwise none.
 9. Skip small talk and anything not worth remembering. At most ${MAX_FACTS_PER_CALL} facts.
 
 Signals, only when the speaker clearly said it, at most ${MAX_SIGNALS_PER_CALL}:
@@ -288,15 +289,15 @@ export function extractSoon(callId: string): void {
   }, 30_000));
 }
 
-/** Rút bù một cuộc gọi cũ chưa rút (cũ nhất trước, bỏ cuộc gọi đã thử 3 lần). Cuộc gọi cũ không xếp tín hiệu. true khi đã xử lý một cuộc gọi. */
+/** Rút bù một cuộc gọi cũ chưa rút (cũ nhất trước, bỏ cuộc gọi đã thử 3 lần). Cuộc gọi cũ không xếp tín hiệu.
+ *  true khi đã xử lý xong một cuộc gọi; false khi hết cuộc gọi cần rút hoặc AI lỗi (AI đang hỏng thì dừng, khỏi đốt lượt thử của mọi cuộc gọi cũ). */
 export async function backfillOnce(deps: MemoryDeps = DEPS): Promise<boolean> {
   const { rows: [next] } = await deps.db.query(MEM_SQL.next);
   if (!next) return false;
-  await extractCall(next.id, { signals: false }, deps);
-  return true;
+  return (await extractCall(next.id, { signals: false }, deps)) !== 'failed';
 }
 
-/** Rút bù sau khi khởi động 60 giây, mỗi cuộc gọi cách nhau gapMs, hết cuộc gọi cần rút thì dừng (cuộc gọi mới do afterCall rút). Không có AI thì thôi. */
+/** Rút bù sau khi khởi động 60 giây, mỗi cuộc gọi cách nhau gapMs; hết cuộc gọi cần rút hay AI lỗi thì dừng tới lần khởi động sau (cuộc gọi mới do afterCall rút). Không có AI thì thôi. */
 export function startMemoryBackfill(deps: MemoryDeps = DEPS, gapMs = 20_000): void {
   if (!hasAI()) return;
   const tick = async () => {

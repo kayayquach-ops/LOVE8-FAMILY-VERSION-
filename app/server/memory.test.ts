@@ -45,9 +45,12 @@ const hung = { id: 'hung', name: 'Hùng', role: 'bo' }, lan = { id: 'lan', name:
 const p: ExtractInput = { lang: 'vi', speaker: lan, family: [hung, lan, an], answers, known: [{ id: 'old1', kind: 'food', text_en: 'Mom cooks sour soup' }] };
 test('sự thật: phải có câu gốc, tên và số có trong câu gốc, đúng loại, đúng người', () => {
   const ok = { kind: 'food', about: 2 /* An */, text: 'Mẹ hay nấu canh chua cá lóc mỗi khi An được điểm cao',
-    text_en: 'Mom cooks sour fish soup whenever An gets good marks', evidence: 'mẹ hay nấu canh chua cá lóc', private: false, occasion: '', same_as: '', replaces: '' };
+    text_en: 'Mom cooks sour fish soup whenever An gets good marks', evidence: 'mẹ hay nấu canh chua cá lóc', private: false, occasion: 'none', same_as: '', replaces: '' };
   const f = M.checkFact(ok, p) as any;
   assert.equal(f.aboutId, an.id); assert.equal(f.answerId, 'a1'); assert.equal(f.replaces, null);
+  assert.equal(f.occasion, null);                                                     // AI trả 'none' là không gắn dịp nào
+  assert.equal((M.checkFact({ ...ok, occasion: 'tet' }, p) as any).occasion, 'tet');
+  assert.equal((M.checkFact({ ...ok, occasion: 'halloween' }, p) as any).occasion, null);
   assert.equal(M.checkFact({ ...ok, kind: 'gossip' }, p), null);
   assert.equal(M.checkFact({ ...ok, evidence: 'mẹ nấu phở' }, p), null);
   assert.equal(M.checkFact({ ...ok, text: 'Mẹ hay nấu canh chua cá lóc cho Minh' }, p), null); // tên lạ giữa câu (suspect không kiểm chữ đầu câu tiếng Việt)
@@ -75,6 +78,14 @@ test('tín hiệu: low, good_news, upcoming chỉ về chính người kể; upc
   assert.equal(s({ kind: 'upcoming', target: '' }), null);
   assert.deepEqual(s({ kind: 'upcoming', target: '', day: 25, month: 11 })?.date, { day: 25, month: 11 });
   assert.equal(s({ evidence: 'không có câu này' }), null);
+});
+test('câu gốc trọn từ: "Mẹ nhớ an" cắt từ "Mẹ nhớ anh Hùng lắm" không được nhận, không thành sự thật hay tín hiệu cho An', () => {
+  const q: ExtractInput = { ...p, answers: [{ id: 'a2', question: 'q', transcript: 'Mẹ nhớ anh Hùng lắm' }] };
+  assert.equal(M.findEvidence('Mẹ nhớ an', q.answers), null);
+  assert.equal(M.findEvidence('Mẹ nhớ anh Hùng', q.answers), 'a2');
+  assert.equal(M.checkSignal({ kind: 'miss', target: 'An', evidence: 'Mẹ nhớ an', day: 0, month: 0 }, q), null);
+  assert.equal(M.checkFact({ kind: 'person', about: 2, text: 'Mẹ nhớ An', text_en: 'Mom misses An', evidence: 'Mẹ nhớ an',
+    private: false, occasion: 'none', same_as: '', replaces: '' }, q), null);
 });
 
 // ---------- Rút sổ nhớ sau cuộc gọi (DB giả) ----------
@@ -147,7 +158,7 @@ class FakeDb {
 
 // Lời kể của Lan trong câu chuyện chính (ans2); sự thật và tín hiệu dưới đây chép câu gốc từ đây.
 const STORY = 'Hồi An còn ở nhà, mẹ hay nấu canh chua cá lóc mỗi lần An được điểm cao. Giờ mẹ hay làm bánh xèo vào cuối tuần. Dạo này mẹ hay bị đau lưng. Mẹ nhớ An lắm, muốn gọi cho An.';
-const fact = (o: Row): Row => ({ about: 1, private: false, occasion: '', same_as: '', replaces: '', ...o });
+const fact = (o: Row): Row => ({ about: 1, private: false, occasion: 'none', same_as: '', replaces: '', ...o });
 const foodFact = fact({ kind: 'food', about: 2, text: 'Mẹ hay nấu canh chua cá lóc mỗi khi An được điểm cao', text_en: 'Mom cooks sour fish soup whenever An gets good marks', evidence: 'mẹ hay nấu canh chua cá lóc mỗi lần An được điểm cao' });
 const foodFact2 = fact({ kind: 'food', text: 'Giờ mẹ hay làm bánh xèo vào cuối tuần', text_en: 'Mom now makes banh xeo on weekends', evidence: 'Giờ mẹ hay làm bánh xèo vào cuối tuần' });
 const healthFact = fact({ kind: 'health', text: 'Dạo này mẹ hay bị đau lưng', text_en: 'Mom often has back pain lately', evidence: 'Dạo này mẹ hay bị đau lưng', private: true });
@@ -178,6 +189,10 @@ test('rút sổ nhớ: không đọc lời nhắn khó nói, không có điều 
   handler = gemini(reply);
   assert.equal(await M.extractCall('c1', { signals: true }, deps), 'done');
   assert.doesNotMatch(JSON.stringify(lastInput()), /lời nhắn riêng|bí mật không nói/);
+  // Schema gửi Gemini không có enum chuỗi rỗng: không gắn dịp là 'none', lưu lại là null.
+  const occ: string[] = sent.at(-1).generationConfig.responseJsonSchema.properties.facts.items.properties.occasion.enum;
+  assert.ok(occ.includes('none') && !occ.includes(''));
+  assert.ok(mine().every((f) => f.details.occasion === null));
   assert.deepEqual(mine().map((f) => [f.kind, f.visibility]).sort(), [['food', 'family'], ['food', 'family'], ['health', 'self']]);
   assert.equal(db.facts.find((f) => f.id === 'old1')!.replacement_id, mine().find((f) => f.text === foodFact2.text)!.id);
   assert.deepEqual(db.signals.map((s) => [s.to_id, s.kind]), [['an', 'miss']]);
@@ -190,6 +205,13 @@ test('rút hai lần cùng một cuộc gọi: sự thật một lần, tín hi�
   assert.equal(db.signals.length, 1);
   // Lần rút sau vẫn thấy sự thật cũ mà lần trước đã thay, nên thay lại đúng sự thật mới, không treo mã đã xoá.
   assert.equal(db.facts.find((f) => f.id === 'old1')!.replacement_id, mine().find((f) => f.text === foodFact2.text)!.id);
+});
+test('câu gốc cắt giữa từ (anh thành an): rút xong mà không có sự thật, không có tín hiệu gửi nhầm cho An', async () => {
+  db.answers.find((a) => a.id === 'ans2')!.transcript = 'Mẹ nhớ anh Hùng lắm';
+  handler = gemini({ facts: [fact({ kind: 'person', about: 2, text: 'Mẹ nhớ An', text_en: 'Mom misses An', evidence: 'Mẹ nhớ an' })],
+    signals: [{ kind: 'miss', target: 'An', evidence: 'Mẹ nhớ an', day: 0, month: 0 }] });
+  assert.equal(await M.extractCall('c1', { signals: true }, deps), 'done');
+  assert.equal(mine().length, 0); assert.equal(db.signals.length, 0);
 });
 test('chưa đồng ý chia sẻ: mọi sự thật của cuộc gọi là riêng', async () => {
   handler = gemini(reply); db.calls.c1.shared = false;
@@ -212,4 +234,16 @@ test('AI hỏng: đếm lần thử, không ghi gì; rút bù đi từ cuộc g�
   assert.equal(await M.backfillOnce(deps), true);  assert.ok(db.calls.c1.memory_at);
   assert.equal(await M.backfillOnce(deps), false); assert.equal(db.calls.c9.memory_at, null);
   assert.equal(db.signals.length, 0);
+});
+test('AI hỏng giữa lúc rút bù: dừng ngay sau cuộc gọi lỗi đầu tiên, không đốt lượt thử của cuộc gọi khác', async () => {
+  handler = async () => new Response('{}', { status: 500 });
+  db.calls.c0 = { ...db.calls.c1, id: 'c0', done_at: new Date('2026-10-01') };   // cũ hơn c1, có câu trả lời
+  db.answers.push({ ...db.answers.find((a) => a.id === 'ans2')!, id: 'ans0', call_id: 'c0' });
+  let runs = 0;
+  while (await M.backfillOnce(deps)) runs++;   // đúng vòng của startMemoryBackfill: chỉ chạy tiếp khi true
+  assert.equal(runs, 0);
+  assert.equal(sent.length, 1);                // một lần gọi AI rồi dừng
+  assert.equal(db.calls.c0.memory_tries, 1);
+  assert.equal(db.calls.c1.memory_tries, 0);
+  assert.equal(db.calls.c1.memory_at, null);
 });
