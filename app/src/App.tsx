@@ -240,7 +240,7 @@ export function App() {
         if (t === 'home' || t === 'camera' || t === 'may') { setSheet(null); setTab(t); } else setSheet(t);
       }} />}
       {sheet === 'feed' && <Feed me={me} start={feedPost} onClose={() => { setSheet(null); void load(); }} />}
-      {sheet === 'jar' && <Jar me={me} onClose={() => setSheet(null)} />}
+      {sheet === 'jar' && <Jar me={me} onClose={() => setSheet(null)} onGo={(s) => { if (s === 'camera') { setSheet(null); setTab('camera'); } else setSheet(s); }} />}
       {sheet === 'calendar' && <Calendar me={me} onClose={() => setSheet(null)} onWish={() => setSheet('chat')} />}
       {sheet === 'shot' && shot && (
         <GroupShot key={shot.id} me={me} shot={shot} onChange={(s) => putShot(s)}

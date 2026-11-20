@@ -11,6 +11,7 @@ import { migrate, pool } from './db.ts';
 import { errorBody, isLang, langMiddleware, langOf, LANGS, tReq, tServer } from './i18n.ts';
 import { calendarRouter, migrateCalendar } from './calendar.ts';
 import { jarRouter, migrateJar } from './jar.ts';
+import { MISSIONS, missionsRouter, syncMissions, weekKey } from './missions.ts';
 import { homeRouter } from './home.ts';
 import { chatRouter, chatStreamRouter, migrateChat } from './chat.ts';
 import { lettersRouter, migrateLetters } from './letters.ts';
@@ -306,24 +307,9 @@ app.delete('/api/posts/:id', h(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// Tuần tính từ thứ Hai, theo giờ Việt Nam.
-function weekKey(d = new Date()) {
-  const t = new Date(d.getTime() + 7 * 3600e3);
-  const day = (t.getUTCDay() + 6) % 7;
-  const monday = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() - day));
-  return monday.toISOString().slice(0, 10);
-}
-
 // Câu hỏi tuần (khoá week.q.1 đến week.q.10) và nhiệm vụ (khoá week.mission.<key>) nằm trong bảng chữ máy chủ.
+// Tuần (weekKey: từ thứ Hai, giờ Việt Nam) và danh sách nhiệm vụ ở server/missions.ts.
 const QUESTIONS = Array.from({ length: 10 }, (_, i) => `week.q.${i + 1}`);
-
-const MISSIONS = [
-  { key: 'call', points: 2 },
-  { key: 'video', points: 2 },
-  { key: 'love', points: 3 },
-  { key: 'meal', points: 1 },
-  { key: 'memory', points: 2 },
-];
 
 const JAR = 40;
 
@@ -331,6 +317,8 @@ app.get('/api/week', h(async (req, res) => {
   const fid = req.member!.family_id;
   const week = weekKey();
   const start = new Date(`${week}T00:00:00+07:00`);
+  // Nhiệm vụ tự đánh dấu theo việc đã làm trong tuần, trước khi đọc dấu xong và điểm.
+  await syncMissions(fid).catch((e) => console.error(e));
   const [counts, done, total, meals, top] = await Promise.all([
     pool.query('select kind, count(*)::int n from posts where family_id = $1 and created_at >= $2 group by kind', [fid, start]),
     pool.query('select mission, member_id from missions_done where family_id = $1 and week = $2', [fid, week]),
@@ -361,13 +349,8 @@ app.get('/api/week', h(async (req, res) => {
   res.json(body);
 }));
 
-app.post('/api/missions/:key', h(async (req, res) => {
-  if (!MISSIONS.some((m) => m.key === req.params.key)) return res.status(404).json(errorBody('mission_not_found'));
-  await pool.query('insert into missions_done (family_id, member_id, mission, week) values ($1,$2,$3,$4) on conflict do nothing', [
-    req.member!.family_id, req.member!.id, req.params.key, weekKey(),
-  ]);
-  res.json({ ok: true });
-}));
+// Nhiệm vụ không còn tự tích tay (server/missions.ts): POST /api/missions/:key trả 410.
+app.use('/api', missionsRouter);
 
 // Ảnh thu nhỏ đứng trước kho gốc: /media/w/360/<tệp>.
 app.get('/media/w/:size/:file', thumbRoute(MEDIA_DIR));
