@@ -6,7 +6,7 @@ import { Hug } from './Hug';
 import { MayTab } from './MayTab';
 import { NotifyAsk } from './NotifyAsk';
 import { Greeting, JoinWait, Onboarding, sendKept } from './Onboarding';
-import type { Me, Shot } from './shared';
+import { mascotNameOf, type Me, type Shot } from './shared';
 import { GroupShot } from './GroupShot';
 import { isInviteFor, isPendingFor, shotIdFrom } from './shot';
 import { Calendar } from './Calendar';
@@ -31,6 +31,7 @@ const loadSettings = () => import('./Settings');
 const loadMascotSheet = () => import('./MascotSheet');
 const loadPodcast = () => import('./Podcast');
 const loadCall = () => import('./Call');
+const loadCallLive = () => import('./CallLive');
 const loadFaceTime = () => import('./FaceTime');
 const Settings = lazy(() => loadSettings().then((m) => ({ default: m.Settings })));
 const MascotSheet = lazy(() => loadMascotSheet().then((m) => ({ default: m.MascotSheet })));
@@ -38,7 +39,17 @@ const Letters = lazy(() => loadLetters().then((m) => ({ default: m.Letters })));
 const Recap = lazy(() => loadRecap().then((m) => ({ default: m.Recap })));
 const Podcast = lazy(() => loadPodcast().then((m) => ({ default: m.Podcast })));
 const Call = lazy(() => loadCall().then((m) => ({ default: m.Call })));
+const CallLive = lazy(() => loadCallLive().then((m) => ({ default: m.CallLive })));
 const FaceTime = lazy(() => loadFaceTime().then((m) => ({ default: m.FaceTime })));
+
+// Thử Mây mới (Mây Live): mở app một lần bằng link có ?thu-may-moi thì máy này thấy công tắc "Thử Mây mới" trong Cài đặt (MayMemory.tsx).
+// Đọc một lần lúc mở app rồi bỏ khỏi thanh địa chỉ.
+if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('thu-may-moi')) {
+  try { localStorage.setItem('mayLiveBeta', '1'); } catch {}
+  const u = new URL(location.href);
+  u.searchParams.delete('thu-may-moi');
+  history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+}
 
 const HUG_KEY = 'homeletter-hug-day';
 const ME_KEY = 'homeletter-me';
@@ -66,6 +77,9 @@ export function App() {
   // Mã của máy là một lời xin vào nhà còn chờ: hiện màn chờ thay cho app. denied: lời xin đã mất, báo một câu rồi về màn đầu.
   const [waiting, setWaiting] = useState<(JoinWaitInfo & { denied?: boolean }) | null>(null);
   const [calling, setCalling] = useState(false);
+  // Mây Live không nối được trong cuộc gọi này: về màn gọi cũ. Đóng cuộc gọi thì lần sau thử Live lại.
+  const [liveOff, setLiveOff] = useState(false);
+  useEffect(() => { if (!calling) setLiveOff(false); }, [calling]);
   // Đến lịch gọi thì chỉ hiện thẻ mời trên Trang chủ; màn đổ chuông chỉ mở khi người dùng bấm Nghe máy.
   const [callDue, setCallDue] = useState(false);
   const [callTrial, setCallTrial] = useState(false);
@@ -123,7 +137,7 @@ export function App() {
     // Màn gọi video tải sau cùng, lúc rảnh hẳn: chỉ là mã và khai báo chữ, tệp phông của phần chụp chung chỉ tải khi vẽ đến.
     const w = window as Window & { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number };
     const idle = (f: () => void) => (w.requestIdleCallback ? w.requestIdleCallback(f, { timeout: 4000 }) : f());
-    const warm = () => { void loadCall(); void loadPodcast(); void loadRecap(); void loadLetters(); void loadSettings(); idle(() => void loadFaceTime()); };
+    const warm = () => { void loadCall(); void loadCallLive(); void loadPodcast(); void loadRecap(); void loadLetters(); void loadSettings(); idle(() => void loadFaceTime()); };
     const t = setTimeout(() => idle(warm), 2500);
     return () => clearTimeout(t);
   }, []);
@@ -231,6 +245,8 @@ export function App() {
   // Đóng chat bằng bất kỳ đường nào thì lần mở sau về danh sách, không mở lại luồng cũ của thông báo.
   useEffect(() => { if (sheet !== 'chat') setChatWith(null); }, [sheet]);
 
+  const closeCall = (done: boolean) => { setCalling(false); if (done) setCallDue(false); void checkCall(); if (done) { setPodcastId(null); setSheet('podcast'); } };
+
   let body = null;
   if (!ready) body = null;
   else if (!me && waiting) body = (
@@ -270,7 +286,7 @@ export function App() {
       )}
       {sheet === 'chat' && <Chat me={me} live={!!room} start={chatWith} onClose={() => { setSheet(null); void loadUnread(); }} onVideo={startFaceTime} onVoice={startVoiceCall} />}
       <Suspense fallback={null}>
-      {sheet === 'settings' && <Settings me={me} onClose={() => setSheet(null)} onProfile={() => setSheet('family')} onMascot={() => setSheet('mascot')} />}
+      {sheet === 'settings' && <Settings me={me} onClose={() => { setSheet(null); void loadMe().catch(() => {}); }} onProfile={() => setSheet('family')} onMascot={() => setSheet('mascot')} />}
       {sheet === 'mascot' && <MascotSheet me={me} onClose={() => setSheet(null)} onSaved={() => void loadMe().catch(() => {})} />}
       {sheet === 'letters' && <Letters me={me} onClose={() => setSheet(null)} />}
       {sheet === 'recap' && <Recap me={me} onClose={() => setSheet(null)} onCamera={() => { setSheet(null); setTab('camera'); }} />}
@@ -280,7 +296,9 @@ export function App() {
       {!facetime && !calling && room && !room.members.includes(me.me.id) && skipRoom !== room.id && (!room.to || room.to === me.me.id) && (
         <Incoming me={me} room={room} onAccept={() => startFaceTime(null, { audio: !!room.audio })} onDecline={() => setSkipRoom(room.id)} />
       )}
-      {calling && <Call me={me} onClose={(done) => { setCalling(false); if (done) setCallDue(false); void checkCall(); if (done) { setPodcastId(null); setSheet('podcast'); } }} />}
+      {calling && (me.mayLive && !liveOff
+        ? <CallLive me={me} onClose={closeCall} onFallback={() => { setLiveOff(true); toast(t('call.live.fallback', { mascot: mascotNameOf(me.family) })); }} />
+        : <Call me={me} onClose={closeCall} />)}
       </Suspense>
     </>
   );

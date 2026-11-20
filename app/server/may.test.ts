@@ -9,6 +9,7 @@ import type { Pending } from './may.ts';
 
 const M = await import('./may.ts');
 const { langMiddleware } = await import('./i18n.ts');
+const { liveConfig } = await import('./liveconfig.ts');
 const express = (await import('express')).default;
 
 // Nhà bốn người: bố Hùng, mẹ Lan, hai con An và Bình. Mặc định ở Hà Nội, ai cũng bật "Mây nhắc mình liên lạc".
@@ -220,10 +221,15 @@ function fakeDb(t: { members?: Row[]; signals?: Row[]; nudges?: Row[]; messages?
           s.sent_at = v[1];
           return out([{ id: s.id }]);
         }
-        case S.getNudge: return out(db.members.filter((m) => m.id === v[0]).map((m) => ({ may_nudge: m.may_nudge })));
+        case S.getNudge: return out(db.members.filter((m) => m.id === v[0]).map((m) => ({ may_nudge: m.may_nudge, may_live: m.may_live ?? false })));
         case S.setNudge: {
           const m = db.members.find((x) => x.id === v[0]);
           if (m) m.may_nudge = v[1];
+          return out([], m ? 1 : 0);
+        }
+        case S.setLive: {
+          const m = db.members.find((x) => x.id === v[0]);
+          if (m) m.may_live = v[1];
           return out([], m ? 1 : 0);
         }
         case S.open: {
@@ -410,7 +416,7 @@ test('bấm lời nhắc: chỉ người nhận, ghi lúc mở một lần, tr�
   }
 });
 
-test('công tắc "Mây nhắc mình liên lạc": mặc định bật, tắt được, sai kiểu thì 400', async () => {
+test('công tắc "Mây nhắc mình liên lạc" và "Thử Mây mới": nhắc mặc định bật, thử mặc định tắt, đổi được, sai kiểu thì 400', async () => {
   const db = fakeDb({ members: [kin('an', 'An', 'con'), kin('lan', 'Lan', 'me')] });
   const app = express();
   app.use(express.json());
@@ -424,16 +430,28 @@ test('công tắc "Mây nhắc mình liên lạc": mặc định bật, tắt đ
     const r = await fetch(`${base}/api/may/settings`, { method, headers: { 'x-member': who, 'x-lang': 'vi', 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
     return { status: r.status, body: await r.json() };
   };
+  // Máy chủ có Mây Live không (MAY_LIVE, GEMINI_API_KEY): công tắc thử chỉ hiện khi có.
+  const liveAvail = liveConfig().on;
   try {
-    assert.deepEqual(await send('GET', 'an'), { status: 200, body: { nudges: true } });
+    assert.deepEqual(await send('GET', 'an'), { status: 200, body: { nudges: true, live: false, liveAvail } });
     const bad = await send('PUT', 'an', { nudges: 'no' });
     assert.equal(bad.status, 400);
     assert.equal(bad.body.code, 'may_settings_invalid');
     assert.equal((await send('PUT', 'an', {})).status, 400);
-    assert.deepEqual((await send('PUT', 'an', { nudges: false })).body, { nudges: false });
+    assert.deepEqual((await send('PUT', 'an', { nudges: false })).body, { nudges: false, live: false, liveAvail });
     assert.equal(db.members.find((m) => m.id === 'an')!.may_nudge, false);
     assert.equal(db.members.find((m) => m.id === 'lan')!.may_nudge, true);   // chỉ đổi của mình
-    assert.deepEqual((await send('GET', 'an')).body, { nudges: false });
+    assert.deepEqual((await send('GET', 'an')).body, { nudges: false, live: false, liveAvail });
+    // Thử Mây mới: bật được, chỉ của mình, không đụng công tắc nhắc; sai kiểu thì 400.
+    assert.deepEqual((await send('PUT', 'an', { live: true })).body, { nudges: false, live: true, liveAvail });
+    assert.equal(db.members.find((m) => m.id === 'an')!.may_live, true);
+    assert.equal(db.members.find((m) => m.id === 'lan')!.may_live, undefined);
+    const badLive = await send('PUT', 'an', { live: 'yes' });
+    assert.equal(badLive.status, 400);
+    assert.equal(badLive.body.code, 'may_settings_invalid');
+    assert.equal((await send('PUT', 'an', { nudges: true, live: 'yes' })).status, 400);
+    assert.equal(db.members.find((m) => m.id === 'an')!.may_nudge, false);   // lần sai không đổi gì
+    assert.deepEqual((await send('GET', 'an')).body, { nudges: false, live: true, liveAvail });
   } finally {
     server.close();
   }

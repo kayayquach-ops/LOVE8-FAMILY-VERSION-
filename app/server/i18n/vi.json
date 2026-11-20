@@ -237,5 +237,9 @@
   "error.translate_limit": "Hôm nay nhà mình dịch nhiều rồi, mai dịch tiếp nhé",
   "error.translate_failed": "Chưa dịch được, thử lại sau nhé",
   "error.may_settings_invalid": "Chưa lưu được cài đặt",
-  "error.memory_not_found": "Không thấy dòng này"
+  "error.memory_not_found": "Không thấy dòng này",
+  "error.live_off": "Cuộc gọi kiểu mới đang tắt",
+  "error.live_not_enabled": "Chưa bật thử cuộc gọi kiểu mới",
+  "error.live_cap": "Hôm nay hết phút gọi kiểu mới",
+  "error.live_token": "Chưa nối được cuộc gọi kiểu mới"
 }

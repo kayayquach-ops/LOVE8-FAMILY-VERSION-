@@ -154,7 +154,7 @@ export type Ctx = {
   extras?: ScriptExtras;
 };
 
-async function context(memberId: string, fid: string): Promise<Ctx> {
+export async function context(memberId: string, fid: string): Promise<Ctx> {
   const [m, fam, ev, asked, stories, caps, done, ph, vt, mascot] = await Promise.all([
     pool.query('select id, name, role, intro from members where id = $1', [memberId]),
     pool.query('select name, role from members where family_id = $1 order by created_at', [fid]),
@@ -189,7 +189,7 @@ async function context(memberId: string, fid: string): Promise<Ctx> {
 const lastWord = (name: string) => name.trim().split(/\s+/).pop() || name;
 
 /** Bộ câu v2: câu hỏi thăm (đáp ngắn cũng được, không thành tập) và câu mở chuyện chính. */
-const checkinQ = (text: string): CallQuestion => ({ text, topic: 'hoi-tham', photo: false, event: 'none', part: 'checkin' });
+export const checkinQ = (text: string): CallQuestion => ({ text, topic: 'hoi-tham', photo: false, event: 'none', part: 'checkin' });
 /** Loại ngày đi đôi với chủ đề: chuyện ngày cưới luôn hỏi ngày cưới (để ghi lịch), chủ đề khác không bao giờ mang loại ngày cưới. */
 const eventFor = (theme: string, event: CallQuestion['event']): CallQuestion['event'] =>
   theme === 'ngay-cuoi' ? 'wedding' : event === 'wedding' ? 'none' : event;
@@ -281,7 +281,7 @@ export function scriptReusable(old: CallScript | null, c: Pick<Ctx, 'lang' | 'ma
 // ---------- Chống bịa: suspect() ở guard.ts (dấu hiệu bịa vi, en, ko + tên riêng, con số phải có trong dữ liệu) ----------
 
 /** Tên đầy đủ của ngôn ngữ người nghe, cho dòng "Reply in ..." của prompt. */
-const LANG_NAME: Record<Lang, string> = { vi: 'Vietnamese', en: 'English', ko: 'Korean' };
+export const LANG_NAME: Record<Lang, string> = { vi: 'Vietnamese', en: 'English', ko: 'Korean' };
 
 // i18n-ok-begin: prompt gửi AI (tiếng Anh, có ví dụ theo từng thứ tiếng), không phải chữ hiện cho người dùng.
 // ---------- AI soạn câu hỏi ----------
@@ -309,7 +309,7 @@ const SCRIPT_SCHEMA = {
 };
 
 /** Cách Mây xưng hô và giọng nói theo ngôn ngữ người nghe. */
-const ADDRESS: Record<Lang, string> = {
+export const ADDRESS: Record<Lang, string> = {
   vi: `Vietnamese, the way a warm, unhurried person really talks on the phone.
 When talking to a parent (role bo or me), Mây calls itself "con" and addresses them as Bố or Mẹ. When talking to a child (role con), Mây calls itself "mình" and uses their name.`,
   en: `English, the way a warm, unhurried family member really talks on the phone. Simple everyday words.
@@ -325,7 +325,7 @@ const EXAMPLES: Record<Lang, { story: string; forbidden: string }> = {
 };
 
 /** Prompt viết sẵn cho tên Mây: nhà đã đặt tên khác thì thay bằng tên ấy (tiếng Hàn bỏ luật "chỉ viết chữ Latin"). */
-function named(prompt: string, name: string) {
+export function named(prompt: string, name: string) {
   if (name === DEFAULT_MASCOT_NAME) return prompt;
   return prompt.replace('writes its own name only as Mây in Latin letters, never in Hangul', `writes its own name exactly as ${name}`).split('Mây').join(name);
 }

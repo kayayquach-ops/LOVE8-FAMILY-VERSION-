@@ -46,7 +46,9 @@ export type JoinRequest = { id: string; name: string; role: Role; city: string |
 /** approverId: người duyệt người mới (người vào nhà sớm nhất còn ở nhà). requests: chỉ người duyệt có; waiting: người khác chỉ biết số người đang chờ. */
 export type Me = { family: Family; me: Member; members: Member[]; unseen: number; approverId?: string | null; requests?: JoinRequest[]; waiting?: number;
   /** Mình có đang bật chia sẻ vị trí với cả nhà không (chỉ người gọi /api/me biết của chính mình). */
-  locShare?: boolean };
+  locShare?: boolean;
+  /** Mình đã bật "Thử Mây mới" (members.may_live) và máy chủ đang mở Mây Live: cuộc gọi tuần dùng màn CallLive. */
+  mayLive?: boolean };
 
 export type Week = {
   week: string;
@@ -80,11 +82,15 @@ export const EVENT_HINTS = ['none', 'wedding', 'anniversary', 'birthday', 'memor
 /** part (bộ câu v2): checkin là câu hỏi thăm, story là câu mở chuyện chính (kèm theme); câu lời nhắn không có part. */
 export type CallQuestion = { text: string; topic: Topic; photo: boolean; event: (typeof EVENT_HINTS)[number]; part?: 'checkin' | 'story'; theme?: StoryTheme };
 /** `lang`: thứ tiếng của bộ câu (bản cũ không có là tiếng Việt). `mascot`: tên linh vật lúc soạn (bản cũ không có là Mây). */
-export type CallScript = { greeting: string; questions: CallQuestion[]; goodbye: string; source: 'ai' | 'template' | 'first'; lang?: 'vi' | 'en' | 'ko'; mascot?: string;
-  /** 2: hỏi thăm, một chuyện chính, lời nhắn (nếu có). Bản cũ không có là ba câu rời. */ v?: 2;
+export type CallScript = { greeting: string; questions: CallQuestion[]; goodbye: string; source: 'ai' | 'template' | 'first' | 'live'; lang?: 'vi' | 'en' | 'ko'; mascot?: string;
+  /** 2: hỏi thăm, một chuyện chính, lời nhắn (nếu có). 3: Mây Live (server/calllive.ts), ô 0 hỏi thăm, ô 1 lời nhắn, chuyện từ ô LIVE_FIRST_STORY.
+   *  Bản cũ không có là ba câu rời. */ v?: 2 | 3;
   /** Trần câu hỏi thêm của chuyện chính. */ follow?: number;
   /** Cuộc gọi thử (cuộc gọi đầu của người mới). */ trial?: boolean;
-  /** Mã các sự thật trong sổ nhớ mà AI đã dùng khi soạn (chỉ mã có trong dữ liệu đưa vào); /call/start đánh dấu đã dùng. */ used?: string[] };
+  /** Mã các sự thật trong sổ nhớ mà AI đã dùng khi soạn (chỉ mã có trong dữ liệu đưa vào); /call/start đánh dấu đã dùng. */ used?: string[];
+  /** Mây Live: câu móc để mở đầu cuộc gọi sau. */ next_hook?: string };
+/** Kịch bản v3 (Mây Live): ô 0 hỏi thăm và ô 1 lời nhắn luôn có, chuyện đầu tiên ở ô này. */
+export const LIVE_FIRST_STORY = 2;
 
 /** Hàm tra chữ: máy khách truyền `t`, máy chủ truyền `tServer` theo ngôn ngữ của người nghe. */
 export type Tr = (key: string, vars?: Record<string, string | number>) => string;

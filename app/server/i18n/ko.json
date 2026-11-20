@@ -237,5 +237,9 @@
   "error.translate_limit": "오늘은 번역을 많이 했어요. 내일 다시 해 주세요",
   "error.translate_failed": "번역하지 못했어요. 잠시 후 다시 해 주세요",
   "error.may_settings_invalid": "설정을 저장하지 못했어요",
-  "error.memory_not_found": "이 항목을 찾을 수 없어요"
+  "error.memory_not_found": "이 항목을 찾을 수 없어요",
+  "error.live_off": "새 통화 방식이 지금은 꺼져 있어요",
+  "error.live_not_enabled": "새 통화 방식을 아직 켜지 않았어요",
+  "error.live_cap": "오늘은 새 방식 통화 시간을 다 썼어요",
+  "error.live_token": "새 방식 통화를 연결하지 못했어요"
 }

@@ -257,3 +257,53 @@ Mã: `server/may.ts` (`GET/PUT /api/may/settings`), `server/memory.ts` (`makeMem
 **"Mây nhớ gì về mình"**: `GET /api/may/memory` trả tối đa 100 điều mới nhất `{ id, text, kind, by, createdAt }`. Điều được thấy: `about_id` là mình, chưa bị thay (`replacement_id` null), cùng nhà, và do chính mình kể (mọi chế độ) hoặc `visibility = 'family'`. Điều người khác kể riêng (`self`) về mình không hiện, không xoá được. `text` là câu gốc khi `details.lang` trùng thứ tiếng người xem, khác thì `text_en`. `by` là tên người kể, rỗng khi chính mình kể (máy khách chỉ in "X kể" khi có `by`).
 
 `DELETE /api/may/memory/:id` xoá cứng đúng dòng thấy được ở trên, trả `{ ok: true }`; không thấy thì 404 `memory_not_found` (cùng câu trả lời cho mã không có và mã của người khác). `replacement_id` không có khoá ngoại, nên xoá một điều mới không vướng gì; các điều cũ từng bị nó thay giữ nguyên trạng đã thay, không tự hiện lại.
+
+## Mây Live (thử)
+
+Bản thử của kế hoạch `docs/superpowers/plans/2026-11-21-may-live.md` (task 1): cuộc gọi tuần nói thẳng với Gemini Live như "gọi Nếp" của app TOPIK, thay cho kịch bản soạn trước, giọng đọc từng câu và chờ đáp 8 giây. Chỉ người bật thử mới vào; mọi người khác vẫn đi đường cũ (`/call/start`, `Call.tsx`, `speech.ts`, `voice.ts`, `ttsgate.ts` không đổi gì).
+
+Mã: `server/liveconfig.ts` (cấu hình), `server/calllive.ts` (token, trần, ghi tiền), `src/CallLive.tsx` (màn gọi), `src/livePlayer.ts` (phát giọng), `src/liveUsage.ts` (cộng token), `public/mic-worklet.js` (mic 16 kHz). Kiểm: `server/calllive.test.ts`, `src/liveUsage.test.ts`, test công tắc trong `server/may.test.ts`.
+
+**Công tắc**
+- Cả máy chủ: `MAY_LIVE=off` (hay `0`) là tắt; thiếu `GEMINI_API_KEY` cũng là tắt. Tắt thì `/api/me` trả `mayLive: false` (ai cũng về màn cũ), `/api/call/live` trả 503 `live_off`, Cài đặt ẩn công tắc thử.
+- Từng người: `members.may_live` (mặc định false), công tắc "Thử Mây mới" trong Cài đặt, ngay dưới "Mây nhắc mình liên lạc". `GET /api/may/settings` trả `{ nudges, live, liveAvail }` (`liveAvail` là máy chủ đang mở Live); `PUT` nhận `{ nudges?, live? }`, phải có ít nhất một, gửi trường nào thì trường đó phải là boolean, sai thì 400 `may_settings_invalid` và không đổi gì.
+- Công tắc thử bị ẩn: chỉ hiện khi `liveAvail` và máy này đã mở app một lần bằng link có `?thu-may-moi` (`App.tsx` ghi `localStorage.mayLiveBeta = '1'` lúc mở app rồi bỏ tham số khỏi thanh địa chỉ). Máy chủ vẫn tự kiểm `members.may_live` (403 `live_not_enabled`), công tắc máy chủ và trần phút, nên lộ link cũng chỉ tốn tới trần ngày.
+- `/api/me` trả `mayLive` = đã bật thử và máy chủ đang mở. `App.tsx`: `mayLive` thì cuộc gọi tuần mở `CallLive`, không thì `Call`. Đóng Cài đặt là tải lại `/api/me` để công tắc có tác dụng ngay.
+
+**Cột mới** (`migrateLive`, chạy ngay sau `migrateMay`): `members.may_live`; `calls.live_at` (lúc phát token, chỉ cuộc gọi Live có), `calls.live_sec` (giây máy khách báo, đã kẹp), `calls.live_usd` (tiền ước tính), `calls.live_usage` (JSON token đã làm sạch). Cuộc gọi Live là một hàng `calls` bình thường: `shared = false`, `trial` khi người này chưa gọi xong lần nào, `script` là kịch bản v3 `{ v: 3, source: 'live', questions: [hỏi thăm, lời nhắn] }` (hai ô luôn có, chuyện bắt đầu từ ô `LIVE_FIRST_STORY = 2`). `scriptReusable` đòi v2 nên `/call/start` không bao giờ dùng lại hàng này. Bản thử chưa ghi lượt kể nào và chưa chốt `status = 'done'`.
+
+**Nhấc máy** (`POST /api/call/live`, theo đúng thứ tự): công tắc máy chủ (503 `live_off`), công tắc của người này (403 `live_not_enabled`), lượt `call-live` 10 lần mỗi giờ mỗi người (429 `live_cap`), trần phút trong ngày (429 `live_cap`), xin token ở Google (`auth_tokens`, lỗi thì 502 `live_token` và log `[call-live] không xin được token: <mã> <200 ký tự đầu>`). Được thì tạo hàng `calls` rồi trả `{ id, token, model, maxSec }`. Token dùng một lần, phải mở phiên trong 60 giây, hết hạn sau `maxSec + 30` giây; model, giọng, lời dặn, VAD, cuộn ngữ cảnh và chép lời hai chiều khoá sẵn trong token (`tokenRequest`), máy khách không đổi được. Lời dặn bản thử (`spikeBrief`, tiếng Anh, task 3 thay): Mây gọi cho người này, xưng hô theo vai (`ADDRESS` của `call.ts`), mỗi lượt một tới ba câu ngắn, chào tên, hỏi hôm nay thế nào rồi nói theo chuyện người nghe kể, không nói mình là AI, kết bằng `Reply in <ngôn ngữ>.`; nhà đặt tên linh vật khác thì thay theo (`named`).
+
+**Trần và khi chạm trần**
+- Một cuộc gọi: `maxSec = min(MAY_CALL_MAX_SEC, giây còn lại trong ngày)`. Máy khách tự cúp khi đủ `maxSec`; token hết hạn sau thêm 30 giây nên bỏ qua đồng hồ máy khách cũng không gọi lâu hơn.
+- Cả máy chủ mỗi ngày (giờ Việt Nam, từ 0:00): `MAY_LIVE_DAILY_MIN` phút. Đã dùng là tổng `live_sec` của các hàng có `live_at` từ 0:00; hàng chưa báo về tính đủ `MAY_CALL_MAX_SEC`. Còn dưới 60 giây thì 429 `live_cap`.
+- Bấm Nghe máy liên tục: quá 10 lần mỗi giờ thì cũng 429 `live_cap`.
+- Mọi lần bị từ chối (503, 403, 429, 502, mất mạng): máy khách đóng mic và về màn gọi cũ kèm toast "Mây mới đang nghỉ, mình gọi kiểu cũ nhé". Live không dùng ngân sách giọng đọc 70 câu mỗi ngày của đường cũ.
+
+**Kết thúc** (`POST /api/call/:id/live-end`, thân `{ sec, usage, lat }`, máy khách gửi một lần bằng `keepalive`): chỉ người gọi, chỉ lần đầu (hàng còn `live_sec` trống); người khác hay lần sau thì không đổi gì, luôn trả `{ ok: true }`. `sec` làm tròn rồi kẹp trong 0 tới `min(3600, số giây từ live_at + 30)`. `usage` làm sạch bằng `cleanUsage` (số nguyên dương, mỗi số tối đa 5e7, không có prompt lẫn response thì bỏ). Tiền `callUsd`, giá mỗi triệu token chép từ gọi Nếp: chữ vào 0,75, tiếng vào 3, chữ ra 4,5, tiếng ra 12 USD; phần token Live không tách loại thì tính là chữ lúc vào, tiếng lúc ra. Mỗi cuộc gọi một dòng log: `[call-live] cuộc gọi <8 ký tự đầu của mã>: <giây> s, <tiền> USD, đáp sau trung vị <ms> ms`.
+
+**Màn gọi** (`src/CallLive.tsx`)
+- Chuông như màn cũ (Để sau, Nghe máy). Nghe máy: ngay trong cú chạm tạo AudioContext, xin mic (khử vọng, lọc ồn, tự chỉnh âm lượng), nạp `/mic-worklet.js`, hiện "Đang nối máy...", rồi xin token. Không được (máy chủ từ chối, mất mạng, không cho dùng mic, máy không có AudioWorklet) thì đóng mic, về màn cũ.
+- Được thì nối WebSocket `BidiGenerateContentConstrained` bằng token, gửi `setup`; phiên sẵn sàng thì nhắc Mây chào rồi bắt đầu tính giờ.
+- Mic gửi PCM 16 kHz từng mẩu 40 ms. Lúc Mây nói và thêm 600 ms cộng độ trễ loa sau đó thì không gửi: tiếng loa dội vào mic làm Gemini tưởng bị ngắt lời.
+- Phụ đề là lời Mây nói, dòng nhỏ bên dưới là lời người nghe (Gemini chép). Gemini báo bị ngắt lời thì dừng giọng ngay. Lời gọi công cụ nào cũng được trả "ok" ngay.
+- Kết thúc bằng nút cúp máy hay khi đủ `maxSec`. Socket đóng trước khi phiên sẵn sàng: báo 0 giây rồi về màn cũ. Đóng giữa chừng: mã 1011, 1008 thì toast "Mây đang bận, lát gọi lại nhé", còn lại "Mất kết nối rồi".
+- Chỉ có trong bản thử (task 6 bỏ): dòng "Mây đáp sau X giây" là độ trễ lượt vừa rồi, tính từ mẩu mic to cuối của người nghe (RMS trên 1000) tới mẩu tiếng đầu tiên Mây đáp; lời chào đầu không tính; mọi giá trị gửi lên trong `lat`. Mỗi lượt người nghe nói được ghi lại, từ lúc mic mở lại sau lượt của Mây tới mẩu tiếng đầu của Mây lượt sau (dưới 1 giây thì bỏ): hiện "Đã ghi X giây" và nút nghe lại lượt gần nhất, để biết mic có thu lẫn tiếng loa không.
+
+**Biến môi trường** (đều có mặc định, không đặt gì vẫn chạy khi có `GEMINI_API_KEY`)
+
+| Biến | Mặc định | Dùng để |
+|---|---|---|
+| `MAY_LIVE` | trống (bật) | `off` hay `0` tắt Live cả máy chủ |
+| `GEMINI_API_KEY` | | khoá Gemini chung của app; thiếu là tắt Live |
+| `GEMINI_LIVE_MODEL` | `gemini-3.8-live` | model Live (gửi đi thành `models/<tên>`) |
+| `MAY_LIVE_VOICE`, rồi `GEMINI_VOICE` | `Zephyr` | giọng Mây |
+| `MAY_LIVE_SILENCE_MS` | 1600 | im chừng này mili giây là người nghe nói xong |
+| `MAY_LIVE_CTX_TRIGGER`, `MAY_LIVE_CTX_TARGET` | 12000, 7000 | ngữ cảnh quá trigger token thì bỏ lượt cũ tới còn target |
+| `MAY_CALL_MAX_SEC` | 900 | trần một cuộc gọi (giây) |
+| `MAY_LIVE_DAILY_MIN` | 120 | trần cả máy chủ mỗi ngày giờ Việt Nam (phút) |
+| `LIVE_USD_IN_TEXT`, `LIVE_USD_IN_AUDIO`, `LIVE_USD_OUT_TEXT`, `LIVE_USD_OUT_AUDIO` | 0.75, 3, 4.5, 12 | giá USD mỗi triệu token, đổi khi Google đổi giá |
+
+**Chấp nhận** (phán quyết R13): người bật thử mà Live đã có token rồi vẫn không nối được thì hàng v3 `ready` mới nhất che hàng v2 dùng lại được của tuần; màn cũ gọi `/call/start` sẽ soạn bộ câu mới, tốn một lượt AI soạn câu (4 lượt mỗi giờ mỗi người). Chỉ người bật thử gặp.
+
+**Thử trên điện thoại**: mở app một lần bằng `https://homeletter-production.up.railway.app/?thu-may-moi` ở đúng chỗ mình đã vào nhà (iPhone: Safari và app trên Màn hình chính giữ dữ liệu riêng). Vào Nhà, bấm nút chỉnh ở góc trên để mở Cài đặt, mục "Bạn nhỏ của nhà", bật "Thử Mây mới", đóng Cài đặt. Sang tab Mây, bấm "Gọi cho Mây", Nghe máy: nghe Mây chào bằng tiếng Việt giọng Zephyr, nói vài lượt, đọc dòng "Mây đáp sau X giây" (đường cũ khoảng 8 giây), bấm nghe lại lượt vừa ghi xem mic có lẫn tiếng Mây không. Cúp máy rồi xem log Railway dòng `[call-live] cuộc gọi ...`. Muốn thôi thì tắt công tắc; muốn tắt cho mọi người thì đặt `MAY_LIVE=off`.

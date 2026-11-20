@@ -33,6 +33,8 @@ import { joinPublicRouter, joinRouter, joinView, memberAuth, memberFields, migra
 import { locationRouter, memberLoc, migrateLocation } from './location.ts';
 import { makeMemoryRouter, migrateMemory, startMemoryBackfill } from './memory.ts';
 import { makeMayRouter, markCallContact, migrateMay, startMayScheduler } from './may.ts';
+import { makeLiveRouter, migrateLive } from './calllive.ts';
+import { liveConfig } from './liveconfig.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -178,6 +180,8 @@ app.use('/api', membersRouter());
 app.use('/api', locationRouter());
 app.use('/api', joinRouter(joinDeps));
 app.use('/api', makeMayRouter());
+// Mây Live (thử): token dùng một lần và ghi tiền, chỉ người bật "Thử Mây mới" (server/calllive.ts).
+app.use('/api', makeLiveRouter(upload));
 app.use('/api', makeMemoryRouter());
 
 app.get('/api/me', h(async (req, res) => {
@@ -195,7 +199,9 @@ app.get('/api/me', h(async (req, res) => {
   const { mascot_name, mascot_shape, ...fam } = f.rows[0];
   const family = { ...fam, mascotName: mascot_name || DEFAULT_MASCOT_NAME, mascotShape: isMascotShape(mascot_shape) ? mascot_shape : 'cloud' };
   const locShare = ms.rows.some((x) => x.id === m.id && x.loc_share === true);
-  res.json({ family, me: members.find((x) => x.id === m.id), members, unseen: unseen.rows[0].n, locShare, ...join });
+  // Cuộc gọi tuần kiểu mới: mình đã bật thử và máy chủ đang mở Mây Live.
+  const mayLive = ms.rows.some((x) => x.id === m.id && x.may_live === true) && liveConfig().on;
+  res.json({ family, me: members.find((x) => x.id === m.id), members, unseen: unseen.rows[0].n, locShare, mayLive, ...join });
 }));
 
 // Linh vật của nhà: ai trong nhà cũng đổi được tên (1-20 ký tự) và hình. Gửi trường nào thì đổi trường đó.
@@ -400,6 +406,7 @@ await migrateCall(pool);
 await migratePodcast(pool);
 await migrateMemory(pool);
 await migrateMay(pool);
+await migrateLive(pool);
 void refreshFirstVoicePodcasts().catch((e) => console.error('[podcast]', e));
 await migratePush(pool);
 await migrateShot(pool);

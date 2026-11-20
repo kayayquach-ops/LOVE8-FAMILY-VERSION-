@@ -241,6 +241,12 @@
   "call.card.trialLen": "3분 정도",
   "call.card.pick": "받기",
   "call.card.later": "나중에",
+  "call.live.connecting": "연결하고 있어요...",
+  "call.live.fallback": "새 {mascot}가 쉬고 있어요. 원래 방식으로 통화해요",
+  "call.live.busy": "{mascot}가 바빠요. 조금 있다 다시 전화해요",
+  "call.live.lost": "연결이 끊겼어요",
+  "call.live.lat": "{mascot}가 {s}초 만에 대답했어요",
+  "call.live.rec": "{s}초 녹음했어요",
 
   "common.seconds": "{n}초",
 
@@ -908,6 +914,7 @@
   "chat.translating": "번역 중...",
   "settings.autoTranslate": "메시지 자동 번역",
   "may.settings.nudge": "{mascot}가 연락하라고 알려줘요",
+  "may.settings.live": "새 {mascot} 써 보기",
   "may.memory.title": "{mascot}가 나에 대해 기억하는 것",
   "may.memory.empty": "{mascot}가 아직 기억하는 게 없어요",
   "may.memory.by": "{name}님이 들려줌",

@@ -241,6 +241,12 @@
   "call.card.trialLen": "khoảng 3 phút",
   "call.card.pick": "nghe máy",
   "call.card.later": "để sau",
+  "call.live.connecting": "Đang nối máy...",
+  "call.live.fallback": "{mascot} mới đang nghỉ, mình gọi kiểu cũ nhé",
+  "call.live.busy": "{mascot} đang bận, lát gọi lại nhé",
+  "call.live.lost": "Mất kết nối rồi",
+  "call.live.lat": "{mascot} đáp sau {s} giây",
+  "call.live.rec": "Đã ghi {s} giây",
 
   "common.seconds": "{n} giây",
 
@@ -908,6 +914,7 @@
   "chat.translating": "đang dịch...",
   "settings.autoTranslate": "Tự dịch tin nhắn",
   "may.settings.nudge": "{mascot} nhắc mình liên lạc",
+  "may.settings.live": "Thử {mascot} mới",
   "may.memory.title": "{mascot} nhớ gì về mình",
   "may.memory.empty": "{mascot} chưa nhớ gì về bạn",
   "may.memory.by": "{name} kể",

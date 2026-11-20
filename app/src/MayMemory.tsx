@@ -1,4 +1,4 @@
-// Cài đặt của Mây: công tắc "Mây nhắc mình liên lạc" và danh sách "Mây nhớ gì về mình" (xoá được từng dòng).
+// Cài đặt của Mây: công tắc "Mây nhắc mình liên lạc", công tắc "Thử Mây mới" (Mây Live, ẩn) và danh sách "Mây nhớ gì về mình" (xoá được từng dòng).
 import { useEffect, useRef, useState } from 'react';
 import { api } from './api';
 import { t } from './i18n';
@@ -8,22 +8,41 @@ import { toast } from './ui';
 
 type Fact = { id: string; text: string; kind: string; by: string; createdAt: string };
 
+/** Máy này đã mở app bằng link có ?thu-may-moi (App.tsx ghi mayLiveBeta): mới thấy công tắc "Thử Mây mới". */
+const liveBeta = () => { try { return localStorage.getItem('mayLiveBeta') === '1'; } catch { return false; } };
+
 export function MaySettings({ me }: { me: Me }) {
   const mascot = mascotNameOf(me.family);
   const [nudges, setNudges] = useState(true);
+  const [live, setLive] = useState(false);
+  // Công tắc thử chỉ hiện khi máy chủ đang mở Mây Live và máy này đã mở link thử.
+  const [liveAvail, setLiveAvail] = useState(false);
   const [open, setOpen] = useState(false);
   const [facts, setFacts] = useState<Fact[] | null>(null);
 
   // Giá trị máy chủ đang giữ (lần đọc hay lần lưu được gần nhất): lưu lỗi thì công tắc về đúng giá trị ấy, không về giá trị tạm
   // của lần bấm trước (bấm nhanh hai lần mà cả hai lỗi thì công tắc vẫn khớp máy chủ).
   const saved = useRef(true);
-  useEffect(() => { api.maySettings().then((s) => { saved.current = s.nudges; setNudges(s.nudges); }).catch(() => {}); }, []);
+  const savedLive = useRef(false);
+  useEffect(() => {
+    api.maySettings().then((s) => {
+      saved.current = s.nudges; setNudges(s.nudges);
+      savedLive.current = s.live; setLive(s.live);
+      setLiveAvail(s.liveAvail && liveBeta());
+    }).catch(() => {});
+  }, []);
 
   const flip = () => {
     tap();
     const v = !nudges;
     setNudges(v);
-    api.setMaySettings(v).then(() => { saved.current = v; }).catch((e) => { setNudges(saved.current); toast((e as Error).message); });
+    api.setMaySettings({ nudges: v }).then(() => { saved.current = v; }).catch((e) => { setNudges(saved.current); toast((e as Error).message); });
+  };
+  const flipLive = () => {
+    tap();
+    const v = !live;
+    setLive(v);
+    api.setMaySettings({ live: v }).then(() => { savedLive.current = v; }).catch((e) => { setLive(savedLive.current); toast((e as Error).message); });
   };
   const toggleList = () => {
     tap();
@@ -42,6 +61,12 @@ export function MaySettings({ me }: { me: Me }) {
         <span>{t('may.settings.nudge', { mascot })}</span>
         <i className={nudges ? 'on' : ''} aria-hidden><u /></i>
       </button>
+      {liveAvail && (
+        <button className="set-switch" role="switch" aria-checked={live} onClick={flipLive}>
+          <span>{t('may.settings.live', { mascot })}</span>
+          <i className={live ? 'on' : ''} aria-hidden><u /></i>
+        </button>
+      )}
       <button className="set-switch" aria-expanded={open} onClick={toggleList}>
         <span>{t('may.memory.title', { mascot })}</span>
       </button>

@@ -244,6 +244,12 @@
   "call.card.trialLen": "about 3 minutes",
   "call.card.pick": "answer",
   "call.card.later": "later",
+  "call.live.connecting": "Connecting...",
+  "call.live.fallback": "The new {mascot} is resting, let's call the usual way",
+  "call.live.busy": "{mascot} is busy, call again in a bit",
+  "call.live.lost": "Lost the connection",
+  "call.live.lat": "{mascot} answered in {s} s",
+  "call.live.rec": "Recorded {s} s",
 
   "common.seconds": "{n} sec",
 
@@ -924,6 +930,7 @@
   "chat.translating": "translating...",
   "settings.autoTranslate": "Translate messages automatically",
   "may.settings.nudge": "{mascot} reminds me to get in touch",
+  "may.settings.live": "Try the new {mascot}",
   "may.memory.title": "What {mascot} remembers about me",
   "may.memory.empty": "{mascot} doesn't remember anything about you yet",
   "may.memory.by": "Told by {name}",
