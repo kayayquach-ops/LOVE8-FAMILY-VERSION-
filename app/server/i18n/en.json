@@ -34,7 +34,7 @@
   "error.join_busy": "Too many people are waiting to join this home. Try again later",
   "error.slow_down": "That was a bit fast. Wait a moment and try again",
   "error.post_not_found": "This post isn't here anymore",
-  "error.podcast_not_found": "This episode isn't here anymore",
+  "error.podcast_not_found": "This story isn't here anymore",
   "error.file_too_big": "That file is too big. Pick a smaller one",
   "error.photo_type": "This photo type can't be used yet. Pick a JPG or PNG",
 

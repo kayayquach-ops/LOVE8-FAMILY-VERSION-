@@ -250,24 +250,41 @@ export function Home({ me, callDue, onCall, onChanged, onOpen }: { me: Me; callD
 
       {letters}
 
+      {/* Nhà mình kể: mỗi chuyện là một tấm ảnh lấy liền, dải giấy dưới ảnh ghi tay "{tên} kể". Chuyện mới nhất to hơn. */}
       {data && (
         <section className="home-sec fade-only">
           <div className="home-h"><h2>{t('home.podcasts')}{invite && <i className="home-dot" aria-label={t('home.callWaiting')} />}</h2></div>
           {shelf.length ? (
-            <div className="home-rail">
-              {shelf.map((p) => (
-                <button key={p.id} className="home-pod" onClick={go('podcast', p.id)}>
-                  <span className="home-cover">{p.cover ? <img src={thumb(p.cover, 360)} alt="" loading="lazy" decoding="async" /> : <Doodle name="mic" size={30} />}</span>
-                  <b>{p.title}</b>
-                  <span>{byId(p.memberId)?.name ?? p.topic}</span>
-                </button>
-              ))}
+            <div className="home-pods">
+              {shelf.map((p, i) => {
+                const who = byId(p.memberId);
+                return (
+                  <button key={p.id} className={`home-pod${i ? '' : ' new'}`} onClick={go('podcast', p.id)}>
+                    <span className="home-polar">
+                      <span className="home-polar-pic">{p.cover ? <img src={thumb(p.cover, 360)} alt="" loading="lazy" decoding="async" /> : <Doodle name="mic" size={i ? 30 : 38} />}</span>
+                      <span className="home-polar-cap">
+                        {who ? <Avatar m={who} size={i ? 18 : 20} /> : <Doodle name="house" size={18} />}
+                        <span>{who ? t('home.podcastTeller', { name: given(who.name) }) : t('podcast.family')}</span>
+                      </span>
+                    </span>
+                    <b>{p.title}</b>
+                    <small><Icon name="play" size={11} />{Math.floor(p.duration / 60)}:{String(Math.floor(p.duration % 60)).padStart(2, '0')}</small>
+                  </button>
+                );
+              })}
             </div>
           ) : (
-            <button className="home-pod-empty" onClick={go('podcast')}>
-              <Doodle name="mic" size={28} />
-              <span>{t('home.podcastEmpty')}</span>
-            </button>
+            // Chưa có chuyện nào: một tấm ảnh trắng chờ chuyện đầu tiên, một câu mời và nút gọi linh vật.
+            <div className="home-pod-empty">
+              <span className="home-polar" aria-hidden>
+                <span className="home-polar-pic"><Doodle name="mic" size={30} /></span>
+                <span className="home-polar-cap" />
+              </span>
+              <span className="home-pod-invite">
+                <span>{t('home.podcastEmpty')}</span>
+                <button className="home-pod-call" onClick={() => { tap(); onCall(); }}><Icon name="phone" size={18} />{t('podcast.callNow')}</button>
+              </span>
+            </div>
           )}
         </section>
       )}
