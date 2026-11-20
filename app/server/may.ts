@@ -64,9 +64,15 @@ export const MAY_SQL = {
      where s.sent_at is null and s.dropped is null`,
   history: 'select to_id, sent_at from may_nudges where to_id = any($1) and sent_at > $2',
   drop: 'update may_signals set dropped = $2 where id = $1 and sent_at is null and dropped is null',
-  // Giành tín hiệu: chỉ lượt nhận lại được hàng mới gửi, nên hai lượt chạy cùng lúc vẫn chỉ gửi một lần.
-  claim: 'update may_signals set sent_at = $2 where id = $1 and sent_at is null and dropped is null returning id',
-  insertNudge: 'insert into may_nudges (id, family_id, signal_id, from_id, to_id, kind, sent_at) values ($1,$2,$3,$4,$5,$6,$7)',
+  // Giành tín hiệu và ghi lời nhắc trong MỘT câu ($1 tín hiệu, $2 lúc gửi, $3 mã lời nhắc): chỉ lượt nhận lại được hàng mới gửi,
+  // nên hai lượt chạy cùng lúc vẫn chỉ gửi một lần; không bao giờ có tín hiệu đã gửi mà thiếu lời nhắc (lượt khác đếm trần luôn thấy nó).
+  claimNudge: `with c as (
+       update may_signals set sent_at = $2 where id = $1 and sent_at is null and dropped is null
+       returning id, family_id, from_id, to_id, kind, sent_at
+     )
+     insert into may_nudges (id, family_id, signal_id, from_id, to_id, kind, sent_at)
+     select $3::text, family_id, id, from_id, to_id, kind, sent_at from c
+     returning id`,
   // $1 nhà, $2 lúc liên lạc, $3 = $2 - 48 giờ, $4 mọi người trong cuộc gọi, $5 người vừa nối.
   markContact: `update may_nudges set contact_at = $2 where family_id = $1 and contact_at is null and sent_at > $3
      and from_id = any($4) and to_id = any($4) and (from_id = any($5) or to_id = any($5))`,
@@ -264,7 +270,7 @@ async function closeByMessages(db: Db, now: Date) {
 }
 
 /** Một lượt: khép vòng tin nhắn riêng, rồi bỏ tín hiệu hết hạn hay đã tắt công tắc, gửi lời nhắc tới hạn (mỗi người nhận tối đa một).
- *  Mỗi tín hiệu phải giành được (MAY_SQL.claim) mới ghi may_nudges và gửi thông báo. */
+ *  Mỗi tín hiệu phải giành được (MAY_SQL.claimNudge, cùng câu ghi may_nudges) mới gửi thông báo. */
 export async function mayTick(deps: MayDeps = DEPS): Promise<{ sent: number; dropped: number }> {
   const { db } = deps;
   const now = deps.now();
@@ -283,11 +289,10 @@ export async function mayTick(deps: MayDeps = DEPS): Promise<{ sent: number; dro
   for (const d of drop) dropped += (await db.query(MAY_SQL.drop, [d.id, d.why])).rowCount ?? 0;
   const byId = new Map(rows.map((r) => [r.id, r]));
   for (const p of send) {
-    const { rows: won } = await db.query(MAY_SQL.claim, [p.id, now]);
+    const id = randomUUID();
+    const { rows: won } = await db.query(MAY_SQL.claimNudge, [p.id, now, id]);
     if (!won.length) continue;
     const r = byId.get(p.id)!;
-    const id = randomUUID();
-    await db.query(MAY_SQL.insertNudge, [id, r.family_id, p.id, p.fromId, p.toId, p.kind, now]);
     const from: Kin = { id: p.fromId, name: r.from_name, role: r.from_role }, to: Kin = { id: p.toId, name: r.to_name, role: r.to_role };
     const mascot = r.mascot_name || DEFAULT_MASCOT_NAME;
     deps.notify([p.toId], (l) => ({ kind: 'may', ...nudgeText(p.kind, l, from, to, mascot), tag: `may-${id}`, open: `may:${id}`, ttl: 12 * 3600 }));
@@ -296,15 +301,30 @@ export async function mayTick(deps: MayDeps = DEPS): Promise<{ sent: number; dro
   return { sent, dropped };
 }
 
+/** Mỗi lúc chỉ một lượt: lượt trước chưa xong (DB chậm) thì lượt tới bỏ qua, xong rồi (kể cả lỗi) mới chạy tiếp. Lỗi chỉ ghi log. */
+export function oneAtATime(tick: () => Promise<{ sent: number; dropped: number }>): () => Promise<void> {
+  let busy = false;
+  return async () => {
+    if (busy) return;
+    busy = true;
+    try {
+      const r = await tick();
+      if (r.sent || r.dropped) console.log(`[may] gửi ${r.sent} lời nhắc, bỏ ${r.dropped} tín hiệu`);
+    } catch (e) {
+      console.error('[may] lượt gửi lời nhắc lỗi:', e);
+    } finally {
+      busy = false;
+    }
+  };
+}
+
 let started = false;
-/** Lượt đầu 30 giây sau khởi động, rồi mỗi 60 giây. Lỗi chỉ ghi log, không làm sập máy chủ. */
+/** Lượt đầu 30 giây sau khởi động, rồi mỗi 60 giây, không bao giờ hai lượt chồng nhau. Lỗi chỉ ghi log, không làm sập máy chủ. */
 export function startMayScheduler() {
   if (started) return;
   started = true;
-  const run = () => void mayTick()
-    .then((r) => { if (r.sent || r.dropped) console.log(`[may] gửi ${r.sent} lời nhắc, bỏ ${r.dropped} tín hiệu`); })
-    .catch((e) => console.error('[may] lượt gửi lời nhắc lỗi:', e));
-  setTimeout(() => { run(); setInterval(run, 60e3); }, 30e3);
+  const run = oneAtATime(() => mayTick());
+  setTimeout(() => { void run(); setInterval(() => void run(), 60e3); }, 30e3);
 }
 
 const h = (fn: (req: any, res: express.Response) => Promise<unknown>) => (req: any, res: express.Response) =>

@@ -152,15 +152,13 @@ function fakeDb(t: { members?: Row[]; signals?: Row[]; nudges?: Row[]; messages?
           if (s) s.dropped = v[1];
           return out([], s ? 1 : 0);
         }
-        case S.claim: {
+        case S.claimNudge: {
+          // Một câu: giành tín hiệu (chỉ khi chưa gửi, chưa bỏ) và ghi lời nhắc từ chính hàng vừa giành.
           const s = db.signals.find((x) => x.id === v[0] && x.sent_at == null && x.dropped == null);
-          if (s) s.sent_at = v[1];
-          return out(s ? [{ id: s.id }] : []);
-        }
-        case S.insertNudge: {
-          const [id, family_id, signal_id, from_id, to_id, kind, sent_at] = v;
-          db.nudges.push({ id, family_id, signal_id, from_id, to_id, kind, sent_at, opened_at: null, contact_at: null });
-          return out([], 1);
+          if (!s) return out([]);
+          s.sent_at = v[1];
+          db.nudges.push({ id: v[2], family_id: s.family_id, signal_id: s.id, from_id: s.from_id, to_id: s.to_id, kind: s.kind, sent_at: s.sent_at, opened_at: null, contact_at: null });
+          return out([{ id: v[2] }]);
         }
         case S.open: {
           const n = db.nudges.find((x) => x.id === v[0] && x.to_id === v[1] && x.family_id === v[2] && inFam(x.to_id, v[2]) && inFam(x.from_id, v[2]));
@@ -215,6 +213,46 @@ test('một lượt gửi: báo đúng người, ghi lời nhắc, chạy hai l�
   assert.deepEqual(await M.mayTick(deps), { sent: 0, dropped: 0 });
 });
 
+test('hai lượt chồng nhau, lượt trước còn kẹt ở câu giành tín hiệu: người nhận vẫn chỉ một lời nhắc trong ngày', async () => {
+  // Hai tín hiệu cho An: bố muốn gọi (ưu tiên hơn), mẹ nhớ. Lượt A kẹt ở câu giành tín hiệu tới khi lượt B chạy xong.
+  const sig = (id: string, from_id: string, kind: string): Row => ({ id, family_id: 'F', from_id, to_id: 'an', kind, evidence: '', due_at: ago(2), expires_at: ago(-20), created_at: ago(2), sent_at: null, dropped: null });
+  const db = fakeDb({ members: [kin('lan', 'Lan', 'me'), kin('hung', 'Hùng', 'bo'), kin('an', 'An', 'con')], signals: [sig('s1', 'hung', 'want_contact'), sig('s2', 'lan', 'miss')] });
+  let release!: () => void;
+  const held = new Promise<void>((r) => { release = r; });
+  const slow = { query: async (q: string, v?: any[]) => { if (q === M.MAY_SQL.claimNudge) await held; return db.query(q, v); } };
+  const sent: string[] = [];
+  const notify = (ids: string[]) => { sent.push(ids[0]); };
+  const a = M.mayTick({ db: slow, notify, now: () => now });
+  await new Promise((r) => setTimeout(r, 10));
+  await M.mayTick({ db, notify, now: () => now });
+  release();
+  await a;
+  assert.deepEqual(sent, ['an']);
+  assert.deepEqual(db.nudges.map((n) => n.signal_id), ['s1']);
+  assert.equal(db.signals.find((x) => x.id === 's2')!.sent_at, null);       // còn chờ, mai mới tới lượt
+});
+
+test('bộ hẹn giờ: lượt trước chưa xong thì lượt sau bỏ qua, xong rồi thì chạy tiếp; lỗi chỉ ghi log', async (t) => {
+  let runs = 0;
+  const gates: Array<() => void> = [];
+  const openAll = () => gates.splice(0).forEach((g) => g());
+  const run = M.oneAtATime(async () => { runs++; await new Promise<void>((r) => gates.push(r)); return { sent: 0, dropped: 0 }; });
+  const first = run(), second = run();           // lượt thứ hai chồng lên lượt đầu: bỏ qua
+  assert.equal(runs, 1);
+  openAll();
+  await Promise.all([first, second]);
+  const again = run();                           // lượt trước xong rồi: chạy
+  assert.equal(runs, 2);
+  openAll();
+  await again;
+  const err = t.mock.method(console, 'error', () => {});
+  const broken = M.oneAtATime(async () => { runs++; throw new Error('DB sập'); });
+  await broken();                                // không ném ra ngoài
+  await broken();                                // lỗi xong thì cờ đã gỡ: chạy lại được
+  assert.equal(runs, 4);
+  assert.equal(err.mock.callCount(), 2);
+});
+
 test('một lượt gửi: bỏ tín hiệu hết hạn hay đã tắt công tắc, khép vòng bằng tin nhắn riêng', async () => {
   const db = fakeDb({
     members: [kin('lan', 'Lan', 'me'), kin('an', 'An', 'con'), kin('binh', 'Bình', 'con', { may_nudge: false })],
@@ -234,17 +272,18 @@ test('một lượt gửi: bỏ tín hiệu hết hạn hay đã tắt công t�
 });
 
 test('bấm lời nhắc: chỉ người nhận, ghi lúc mở một lần, trả người cần gọi', async () => {
-  const db = fakeDb({ members: [kin('lan', 'Lan', 'me'), kin('an', 'An', 'con'), kin('binh', 'Bình', 'con')], nudges: [nudge('n1', 'lan', 'an', ago(1))] });
-  // App express gắn makeMayRouter(deps) sau một middleware đặt req.member từ header x-member (như members.test.ts).
+  const db = fakeDb({ members: [kin('lan', 'Lan', 'me'), kin('an', 'An', 'con'), kin('binh', 'Bình', 'con'), kin('xuan', 'Xuân', 'con', { family_id: 'G' })],
+    nudges: [nudge('n1', 'lan', 'an', ago(1))] });
+  // App express gắn makeMayRouter(deps) sau một middleware đặt req.member từ header x-member, x-family (như members.test.ts).
   const app = express();
   app.use(langMiddleware);
-  app.use((req: any, _res, next) => { req.member = { id: String(req.headers['x-member']), family_id: 'F' }; next(); });
+  app.use((req: any, _res, next) => { req.member = { id: String(req.headers['x-member']), family_id: String(req.headers['x-family'] ?? 'F') }; next(); });
   app.use('/api', M.makeMayRouter({ db, notify: () => {}, now: () => now }));
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  const post = async (path: string, who: string) => {
-    const r = await fetch(`${base}${path}`, { method: 'POST', headers: { 'x-member': who, 'x-lang': 'vi' } });
+  const post = async (path: string, who: string, family = 'F') => {
+    const r = await fetch(`${base}${path}`, { method: 'POST', headers: { 'x-member': who, 'x-family': family, 'x-lang': 'vi' } });
     return { status: r.status, body: await r.json() };
   };
   try {
@@ -257,6 +296,9 @@ test('bấm lời nhắc: chỉ người nhận, ghi lúc mở một lần, tr�
     assert.equal((await open('binh')).status, 404);
     // Thêm: mã lỗi ổn định; người kể đã rời nhà thì cũng không mở được.
     assert.equal((await open('binh')).body.code, 'nudge_not_found');
+    // Người nhà khác cầm đúng mã lời nhắc thật: 404 như mã không có.
+    assert.deepEqual(await post('/api/may/nudges/n1/open', 'xuan', 'G'), await post('/api/may/nudges/khong-co/open', 'xuan', 'G'));
+    assert.equal((await post('/api/may/nudges/n1/open', 'xuan', 'G')).body.code, 'nudge_not_found');
     db.members = db.members.filter((m) => m.id !== 'lan');
     assert.equal((await open('an')).status, 404);
   } finally {
