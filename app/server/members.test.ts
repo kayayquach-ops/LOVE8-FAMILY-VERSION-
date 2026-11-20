@@ -530,3 +530,20 @@ test('DELETE /api/members/:id: 400 tự xoá, 404 nhà khác hay không có (gi�
     server.close();
   }
 });
+
+// ---------- Tin riêng (server/chat.ts, messages.to_id) ----------
+
+test('tin riêng: xoá x thì mất cả luồng riêng có x ở bên nào, luồng riêng của người khác giữ, tệp ảnh gửi riêng được gom', async () => {
+  const db = seed();
+  db.add('messages', { id: 'dm-x-a1', family_id: A, author_id: x, to_id: a1, kind: 'text', text: 'riêng' });
+  db.add('messages', { id: 'dm-a1-x', family_id: A, author_id: a1, to_id: x, kind: 'photo', media: '/media/dm-a1.jpg' });
+  db.add('messages', { id: 'dm-a1-a3', family_id: A, author_id: a1, to_id: a3, kind: 'text', text: 'riêng' });
+  db.check();
+  const out = await M.removeMember(db.connect, A, a1, x);
+  assert.equal(out.status, 'ok');
+  db.check();
+  assert.deepEqual(db.cascaded, []);
+  assert.deepEqual(db.t.messages.map((r) => r.id).sort(), ['dm-a1-a3', 'm-a1', 'm-a3', 'm-b']);
+  assert.ok(!db.t.messages.some((r) => r.to_id === x || r.author_id === x));
+  assert.ok(out.status === 'ok' && out.files.includes('dm-a1.jpg'), 'ảnh a1 gửi riêng cho x được gom để dọn');
+});

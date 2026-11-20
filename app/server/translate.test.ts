@@ -14,13 +14,14 @@ const T = await import('./translate.ts');
 
 // i18n-ok-begin: dữ liệu kiểm thử
 type Row = { message_id: string; lang: string; text: string; family_id: string; kst_day: string };
-let messages: Array<{ id: string; family_id: string; kind: string; text: string | null }> = [];
+let messages: Array<{ id: string; family_id: string; kind: string; text: string | null; author_id?: string; to_id?: string | null }> = [];
 let cache: Row[] = [];
 const queries: string[] = [];
 const db = {
   async query(q: string, v: any[] = []) {
     queries.push(q);
-    if (q.startsWith('select id, kind, text from messages')) return { rows: messages.filter((m) => m.id === v[0] && m.family_id === v[1]) };
+    // Đúng điều kiện của MESSAGE_FOR: cùng nhà, và là tin cả nhà hoặc tin riêng mình gửi hay nhận.
+    if (q === T.MESSAGE_FOR) return { rows: messages.filter((m) => m.id === v[0] && m.family_id === v[1] && (!m.to_id || m.author_id === v[2] || m.to_id === v[2])) };
     if (q.startsWith('select text from message_translations')) return { rows: cache.filter((r) => r.message_id === v[0] && r.lang === v[1]) };
     if (q.startsWith('select count(*)::int n from message_translations')) return { rows: [{ n: cache.filter((r) => r.family_id === v[0] && r.kst_day === v[1]).length }] };
     if (q.includes('insert into message_translations')) {
@@ -44,7 +45,7 @@ const gemini = (translation: string): Handler => async () =>
   new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify({ translation }) }] } }] }), { status: 200 });
 
 const NOW = Date.parse('2026-11-18T03:00:00Z'); // 12:00 ngày 2026-11-18 giờ Hàn
-const mine = { family_id: 'f1' };
+const mine = { id: 'u1', family_id: 'f1' };
 
 beforeEach(() => {
   messages = [
@@ -81,8 +82,22 @@ test('ngày hạn mức tính theo giờ Hàn: 16:00 UTC đã sang ngày sau', a
   assert.equal(cache[0].kst_day, '2026-11-19');
 });
 
+test('tin riêng: hai người trong cuộc dịch được, người thứ ba cùng nhà nhận 404 như tin không có, không gọi AI', async () => {
+  messages.push({ id: 'dm1', family_id: 'f1', kind: 'text', text: '비밀이야', author_id: 'u2', to_id: 'u1' });
+  const third = await T.translateMessage(db, { id: 'u3', family_id: 'f1' }, 'dm1', 'vi', NOW);
+  assert.equal(third.status, 404);
+  assert.equal((third.body as any).code, 'translate_not_found');
+  assert.equal(calls.length, 0);
+  // Câu lệnh phải có điều kiện người trong cuộc, không chỉ điều kiện nhà.
+  assert.match(T.MESSAGE_FOR, /to_id is null or author_id = \$3 or to_id = \$3/);
+  assert.equal((await T.translateMessage(db, mine, 'dm1', 'vi', NOW)).status, 200, 'người nhận');
+  assert.equal((await T.translateMessage(db, { id: 'u2', family_id: 'f1' }, 'dm1', 'en', NOW)).status, 200, 'người gửi');
+  // Bản dịch đã lưu cũng không lọt sang người thứ ba.
+  assert.equal((await T.translateMessage(db, { id: 'u3', family_id: 'f1' }, 'dm1', 'vi', NOW)).status, 404);
+});
+
 test('nhà khác không dịch được tin của nhà mình: 404, không gọi AI', async () => {
-  const r = await T.translateMessage(db, { family_id: 'f2' }, 'm1', 'vi', NOW);
+  const r = await T.translateMessage(db, { id: 'u9', family_id: 'f2' }, 'm1', 'vi', NOW);
   assert.equal(r.status, 404);
   assert.equal((r.body as any).code, 'translate_not_found');
   assert.equal(calls.length, 0);
@@ -134,7 +149,7 @@ test('hạn mức mỗi nhà mỗi ngày: đủ thì 429 translate_limit, nhà k
   assert.equal((await T.translateMessage(db, mine, 'm1', 'vi', Date.parse('2026-11-18T15:00:00Z'))).status, 200);
   // Nhà khác có bộ đếm riêng.
   messages.push({ id: 'm4', family_id: 'f2', kind: 'text', text: 'hello' });
-  assert.equal((await T.translateMessage(db, { family_id: 'f2' }, 'm4', 'ko', NOW)).status, 200);
+  assert.equal((await T.translateMessage(db, { id: 'u9', family_id: 'f2' }, 'm4', 'ko', NOW)).status, 200);
 });
 
 test('không có khoá AI: 503 translate_unavailable, không ghi gì', async () => {

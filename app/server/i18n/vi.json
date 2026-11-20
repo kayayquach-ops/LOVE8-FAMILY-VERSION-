@@ -161,6 +161,7 @@
   "push.chat.photo": "Gửi một tấm ảnh",
   "push.chat.voice": "Gửi một tin nhắn thoại",
   "push.chat.many": "{name} gửi {n} tin nhắn",
+  "push.dm.title": "{name} nhắn riêng cho bạn",
   "push.relay.title": "Lời nhắn từ {name}",
   "push.join.title": "{name} muốn vào nhà",
   "push.relay.body": "{to} ơi, {name} có đôi lời muốn nói với {to}. Gọi cho {name} một chút nhé.",

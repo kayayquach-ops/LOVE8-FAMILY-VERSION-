@@ -81,6 +81,9 @@ export const PLAN: Step[] = [
     why: 'tin người khác trả lời tin của người này: giữ tin, bỏ trỏ tới tin đã xoá' },
   { table: 'messages', op: 'delete', any: [{ col: 'author_id', in: 'member' }],
     why: 'tin nhắn người này gửi trong chat nhà' },
+  // Tin riêng (server/chat.ts, messages.to_id): luồng riêng có người này ở bên nào cũng xoá hết.
+  { table: 'messages', op: 'delete', any: [{ col: 'to_id', in: 'member' }],
+    why: 'tin riêng người khác gửi cho người này (tin riêng người này gửi đã xoá ở bước trên)' },
   { table: 'message_reads', op: 'delete', any: [{ col: 'member_id', in: 'member' }],
     why: 'mốc đã đọc chat của người này' },
   { table: 'letters', op: 'delete', any: [{ col: 'from_id', in: 'member' }, { col: 'to_id', in: 'member' }],

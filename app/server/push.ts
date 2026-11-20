@@ -188,7 +188,7 @@ export async function pushRelays(callId: string) {
 
 // Tin nhắn: gộp các tin liên tiếp của một người, chờ yên 4 giây (tối đa 12 giây) rồi mới gửi.
 const CHAT_QUIET = 4000, CHAT_MAX = 12000;
-const pending = new Map<string, { fid: string; mid: string; n: number; last: string; first: number; timer: ReturnType<typeof setTimeout> }>();
+const pending = new Map<string, { fid: string; mid: string; to?: string; n: number; last: string; first: number; timer: ReturnType<typeof setTimeout> }>();
 
 /** Tin chữ giữ nguyên; hình dán, ảnh, tin thoại lưu bằng mã, tới lúc gửi mới đổi thành chữ theo người nhận. */
 const CODE = '\u0000';
@@ -214,6 +214,29 @@ export function notifyChat(familyId: string, memberId: string, m: { kind: string
     p.timer = setTimeout(fire, Math.max(0, Math.min(CHAT_QUIET, p.first + CHAT_MAX - now)));
   } else {
     pending.set(key, { fid: familyId, mid: memberId, n: 1, last: chatLine(m), first: now, timer: setTimeout(fire, CHAT_QUIET) });
+  }
+}
+
+/** Tin riêng (server/chat.ts): chỉ báo cho người nhận, gộp tin liên tiếp như notifyChat. Chạm vào thì mở đúng luồng tin riêng. */
+export function notifyChatTo(familyId: string, memberId: string, toId: string, m: { kind: string; text?: string | null }) {
+  const key = `${familyId}:${memberId}:${toId}`;
+  const now = Date.now();
+  const p = pending.get(key);
+  const fire = () => {
+    const q = pending.get(key);
+    if (!q) return;
+    pending.delete(key);
+    void nameOf(q.mid).then((name) => notifyMembers([q.to!], (l) => ({
+      kind: 'chat', title: tServer(l, 'push.dm.title', { name: who(l, name) }), body: chatBody(l, q.last), tag: `dm-${q.mid}`, open: `chat:${q.mid}`, ttl: 24 * 3600,
+    }))).catch((e) => console.error('[push]', e));
+  };
+  if (p) {
+    clearTimeout(p.timer);
+    p.n++;
+    p.last = chatLine(m);
+    p.timer = setTimeout(fire, Math.max(0, Math.min(CHAT_QUIET, p.first + CHAT_MAX - now)));
+  } else {
+    pending.set(key, { fid: familyId, mid: memberId, to: toId, n: 1, last: chatLine(m), first: now, timer: setTimeout(fire, CHAT_QUIET) });
   }
 }
 

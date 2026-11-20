@@ -161,6 +161,7 @@
   "push.chat.photo": "사진을 보냈어요",
   "push.chat.voice": "음성 메시지를 보냈어요",
   "push.chat.many": "{name}님이 메시지 {n}개를 보냈어요",
+  "push.dm.title": "{name}님이 나에게 메시지를 보냈어요",
   "push.relay.title": "{name}님의 한마디",
   "push.join.title": "{name}님이 집에 들어오고 싶어 해요",
   "push.relay.body": "{to}님, {name}님이 전하고 싶은 말이 있대요. {name}님께 연락해 보세요.",
