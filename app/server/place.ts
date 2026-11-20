@@ -1,7 +1,7 @@
 // Múi giờ và giờ địa phương của từng người trên máy chủ (20/11/2026), cho Mây biết bên người nhận đang mấy giờ.
 // Múi giờ: vị trí thật nếu người đó đang chia sẻ, không thì members.city (mã có sẵn hoặc JSON CityPicker lưu), không thì nơi gần nhất
-// trong src/places.json. Nơi ở, giờ chênh, khoảng cách cho dữ liệu soạn câu (server/callfacts.ts). Không đụng DB; chỉ weatherAt gọi mạng
-// (open-meteo, fetch truyền vào được). Kiểm bằng server/place.test.ts.
+// trong src/places.json. Nơi ở, giờ chênh, khoảng cách cho dữ liệu soạn câu (server/callfacts.ts). Không đụng DB; chỉ weatherAt và
+// weatherFeelAt gọi mạng (open-meteo, fetch truyền vào được, chung một kho nhớ). Kiểm bằng server/place.test.ts.
 import { distanceM, nearestPlace, PLACE_KM, type LatLon } from '../src/geo.ts';
 import { cityOf } from '../src/shared.ts';
 import type { Lang } from './i18n.ts';
@@ -102,31 +102,63 @@ const WEATHER_EN: ReadonlyArray<readonly [readonly number[], string]> = [
   [[0], 'clear'], [[1, 2], 'few clouds'], [[3], 'cloudy'], [[45, 48], 'fog'],
   [[51, 53, 55, 56, 57], 'drizzle'], [[61, 63, 65, 66, 67, 80, 81, 82], 'rain'], [[71, 73, 75, 77, 85, 86], 'snow'], [[95, 96, 99], 'storm'],
 ];
+/** Mây Live: trời đáng nói thành cảm giác (mưa phùn cũng là mưa); mã khác không nói gì. */
+const FEEL_EN: Partial<Record<string, string>> = { drizzle: 'rainy', rain: 'rainy', snow: 'snowy', storm: 'stormy' };
 // i18n-ok-end
 const WEATHER_TTL_MS = 3600e3;
 /** Lỗi (open-meteo chậm, sập, trả sai dạng) cũng nhớ, ngắn hơn: mỗi ô toạ độ chỉ phải chờ 2 giây một lần mỗi 10 phút, không phải mỗi cuộc gọi. */
 const WEATHER_FAIL_TTL_MS = 10 * 60e3;
-const weatherCache = new Map<string, { at: number; text: string | null }>();
+/** Số đo thô (độ C, mã thời tiết open-meteo); weatherAt và weatherFeelAt đọc chung, null là lần hỏi lỗi. */
+type WeatherRaw = { temp: number; code: number };
+const weatherCache = new Map<string, { at: number; raw: WeatherRaw | null }>();
 
-/** Thời tiết hiện tại ("5°C, cloudy") từ open-meteo, như máy khách (src/time.ts). Toạ độ làm tròn 1 số lẻ (khoảng 11 km) trước khi hỏi,
+/** Nhóm chữ tiếng Anh của một mã thời tiết, không có thì undefined. */
+const weatherWord = (code: number) => WEATHER_EN.find(([codes]) => codes.includes(code))?.[1];
+
+/** Số đo hiện tại từ open-meteo, như máy khách (src/time.ts). Toạ độ làm tròn 1 số lẻ (khoảng 11 km) trước khi hỏi,
  *  nhớ 1 giờ theo toạ độ đó (lỗi thì nhớ null 10 phút, ghi log một lần); chờ tối đa 2 giây; lỗi gì cũng null. */
-export async function weatherAt(lat: number, lon: number, fetchFn: typeof fetch = fetch): Promise<string | null> {
+async function weatherRaw(lat: number, lon: number, fetchFn: typeof fetch): Promise<WeatherRaw | null> {
   const la = Math.round(lat * 10) / 10, lo = Math.round(lon * 10) / 10;
   const key = `${la},${lo}`;
   const hit = weatherCache.get(key);
-  if (hit && Date.now() - hit.at < (hit.text ? WEATHER_TTL_MS : WEATHER_FAIL_TTL_MS)) return hit.text;
-  let text: string | null = null;
+  if (hit && Date.now() - hit.at < (hit.raw ? WEATHER_TTL_MS : WEATHER_FAIL_TTL_MS)) return hit.raw;
+  let raw: WeatherRaw | null = null;
   try {
     const r = await fetchFn(`https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&current=temperature_2m,weather_code`, { signal: AbortSignal.timeout(2000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const cur = (await r.json())?.current;
     const temp = Number(cur?.temperature_2m);
     if (cur?.temperature_2m == null || !Number.isFinite(temp)) throw new Error('no temperature');
-    const word = WEATHER_EN.find(([codes]) => codes.includes(cur.weather_code))?.[1];
-    text = word ? `${Math.round(temp)}°C, ${word}` : `${Math.round(temp)}°C`;
+    // Mã không phải số thì không khớp nhóm nào, như trước.
+    raw = { temp, code: typeof cur.weather_code === 'number' ? cur.weather_code : NaN };
   } catch (e) {
     console.warn(`[place] không lấy được thời tiết ở ${key}, 10 phút nữa mới hỏi lại:`, (e as Error).message);
   }
-  weatherCache.set(key, { at: Date.now(), text });
-  return text;
+  weatherCache.set(key, { at: Date.now(), raw });
+  return raw;
+}
+
+/** Thời tiết hiện tại ("5°C, cloudy") cho bộ câu cũ; chuỗi giữ nguyên như trước khi có weatherFeelAt. Lỗi gì cũng null. */
+export async function weatherAt(lat: number, lon: number, fetchFn: typeof fetch = fetch): Promise<string | null> {
+  const raw = await weatherRaw(lat, lon, fetchFn);
+  if (!raw) return null;
+  const word = weatherWord(raw.code);
+  return word ? `${Math.round(raw.temp)}°C, ${word}` : `${Math.round(raw.temp)}°C`;
+}
+
+/** Mây Live: thời tiết thành cảm giác, không bao giờ có số ("cold and rainy"). Nóng lạnh theo độ C làm tròn như chuỗi cũ:
+ *  từ 8 trở xuống rất lạnh, từ 15 trở xuống lạnh, từ 35 rất nóng, từ 31 nóng; rồi mưa, tuyết, bão. Dễ chịu, không đáng nói thì null. */
+export function weatherFeel(tempC: number, code: number): string | null {
+  const t = Math.round(tempC);
+  const words = [
+    t <= 8 ? 'very cold' : t <= 15 ? 'cold' : t >= 35 ? 'very hot' : t >= 31 ? 'hot' : undefined,
+    FEEL_EN[weatherWord(code) ?? ''],
+  ].filter(Boolean);
+  return words.length ? words.join(' and ') : null;
+}
+
+/** weatherFeel từ open-meteo, chung kho nhớ với weatherAt: gọi sau weatherAt cùng toạ độ thì không hỏi mạng lần nữa. Lỗi gì cũng null. */
+export async function weatherFeelAt(lat: number, lon: number, fetchFn: typeof fetch = fetch): Promise<string | null> {
+  const raw = await weatherRaw(lat, lon, fetchFn);
+  return raw ? weatherFeel(raw.temp, raw.code) : null;
 }

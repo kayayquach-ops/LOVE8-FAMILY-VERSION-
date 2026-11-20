@@ -54,6 +54,26 @@ test('thời tiết lỗi thì nhớ 10 phút: gọi lại trong lúc đó khôn
   try { await quiet(async () => { await P.weatherAt(20, 20, down); }); } finally { Date.now = now; }
   assert.equal(n, 2);
 });
+test('thời tiết thành cảm giác: lạnh, nóng, mưa; dễ chịu thì không có; không bao giờ có số', () => {
+  assert.equal(P.weatherFeel(5, 0), 'very cold');
+  assert.equal(P.weatherFeel(12, 61), 'cold and rainy');
+  assert.equal(P.weatherFeel(24, 0), null);
+  assert.equal(P.weatherFeel(24, 95), 'stormy');
+  assert.equal(P.weatherFeel(33, 1), 'hot');
+  assert.equal(P.weatherFeel(36, 0), 'very hot');
+  assert.equal(P.weatherFeel(-3, 73), 'very cold and snowy');
+  assert.equal(P.weatherFeel(20, 53), 'rainy');                                              // mưa phùn cũng là mưa
+  assert.equal(P.weatherFeel(20, 45), null);                                                 // sương mù không đáng nói
+  for (const t of [-5, 5, 12, 33, 40]) assert.doesNotMatch(P.weatherFeel(t, 61) ?? '', /\d/);
+});
+test('thời tiết cảm giác dùng chung kho với thời tiết cũ: một lần hỏi mạng, chuỗi cũ giữ nguyên', async () => {
+  let n = 0;
+  const ok = (async () => { n++; return new Response(JSON.stringify({ current: { temperature_2m: 5.2, weather_code: 3 } })); }) as typeof fetch;
+  assert.equal(await P.weatherAt(50.1, 30.5, ok), '5°C, cloudy');
+  assert.equal(await P.weatherFeelAt(50.1, 30.5, ok), 'very cold');
+  assert.equal(n, 1);
+  await quiet(async () => { assert.equal(await P.weatherFeelAt(11, 11, (async () => { throw new Error('mạng'); }) as typeof fetch), null); });
+});
 test('giờ chênh giữa hai nơi', () => {
   assert.equal(P.hoursApart('Asia/Seoul', 'Asia/Ho_Chi_Minh', new Date('2026-11-20T00:00:00Z')), 2);
 });
