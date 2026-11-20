@@ -44,6 +44,7 @@ export async function migratePodcast(p: pg.Pool) {
     alter table podcasts add column if not exists poster text;
     alter table podcasts add column if not exists video_status text not null default 'none';
     alter table podcasts add column if not exists tries int not null default 0;
+    alter table podcasts add column if not exists shared boolean not null default true;
     alter table call_answers add column if not exists turn int not null default 0;
     alter table vault add column if not exists story int;
     create table if not exists podcast_plans (call_id text primary key, sig text not null, plan text not null, created_at timestamptz not null default now());

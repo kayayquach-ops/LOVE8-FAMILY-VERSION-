@@ -2,9 +2,10 @@
 // Ai trong nhà cũng xoá được người khác cùng nhà (người tạo nhà cũng có thể là tài khoản thử), không tự xoá mình được ở đường này.
 // Mã không thuộc nhà mình (kể cả người ở nhà khác) luôn trả 404, không lộ là có hay không.
 // Tự rời nhà: DELETE /api/me, xoá chính mình theo cùng PLAN. Người cuối cùng rời thì xoá luôn nhà theo FAMILY_PLAN
-// (lời xin vào nhà, video tuần, podcast chủ đề, lịch...), không để lại nhà trống. Người duyệt rời thì join.ts tự lấy người vào sớm kế tiếp.
+// (lời xin vào nhà, video tuần, podcast chủ đề, lịch, sổ nhớ và lời nhắc của Mây...), không để lại nhà trống. Người duyệt rời thì join.ts tự lấy người vào sớm kế tiếp.
 //
 // Làm trong một giao dịch, theo bảng PLAN bên dưới (thứ tự đã tính cho khoá ngoại, không tắt kiểm tra khoá ngoại).
+// Sổ nhớ và hàng chờ của Mây (memory_facts, may_signals, may_nudges) xoá hết, kể cả điều người khác kể về người này.
 // Đồ chung giữ lại: ảnh chụp chung người khác tạo (chỉ bỏ phần ảnh của người này), bài người khác đăng từ ảnh chụp chung
 // người này tạo (thành ảnh thường), video tuần, tập podcast theo chủ đề, ngày trong lịch người khác thêm.
 // Tệp media chỉ xoá sau khi giao dịch xong, và chỉ tệp không còn hàng nào nhắc tới (ví dụ ảnh ghép người khác đã đăng thì giữ).
@@ -67,6 +68,14 @@ export const PLAN: Step[] = [
   { table: 'relays', op: 'delete',
     any: [{ col: 'from_id', in: 'member' }, { col: 'to_id', in: 'member' }, { col: 'call_id', in: 'calls' }, { col: 'delivered_call_id', in: 'calls' }],
     why: 'lời nhắn người này gửi hoặc nhận qua Mây, và lời nhắn gắn với cuộc gọi của người này' },
+  { table: 'may_nudges', op: 'delete', any: [{ col: 'from_id', in: 'member' }, { col: 'to_id', in: 'member' }],
+    why: 'lời nhắc Mây gửi người này, và lời nhắc người này được nhắc cho người khác' },
+  { table: 'may_signals', op: 'delete',
+    any: [{ col: 'from_id', in: 'member' }, { col: 'to_id', in: 'member' }, { col: 'call_id', in: 'calls' }],
+    why: 'tín hiệu chờ gửi người này gây ra hoặc nhận, và tín hiệu gắn với cuộc gọi của người này' },
+  { table: 'memory_facts', op: 'delete',
+    any: [{ col: 'about_id', in: 'member' }, { col: 'source_id', in: 'member' }, { col: 'call_id', in: 'calls' }],
+    why: 'điều Mây nhớ về người này (kể cả do người khác kể), điều người này kể, và điều rút từ cuộc gọi của người này' },
   { table: 'podcast_words', op: 'delete', any: [{ col: 'key', in: 'wordKeys' }],
     why: 'mốc từng từ (lời người này nói) của câu trả lời và tin giọng nói sắp xoá' },
   { table: 'call_answers', op: 'delete', any: [{ col: 'member_id', in: 'member' }, { col: 'call_id', in: 'calls' }],
@@ -135,6 +144,9 @@ export const FAMILY_PLAN: Step[] = [
   { table: 'shots', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'lượt chụp chung còn sót (phần ảnh xoá theo cascade)' },
   { table: 'posts', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'bài còn sót (cảm xúc, trả lời xoá theo cascade)' },
   { table: 'messages', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'tin nhắn còn sót' },
+  { table: 'may_nudges', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'lời nhắc của Mây còn sót' },
+  { table: 'may_signals', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'tín hiệu chờ gửi còn sót' },
+  { table: 'memory_facts', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'sổ nhớ của Mây còn sót' },
   { table: 'calls', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'cuộc gọi tuần còn sót' },
   { table: 'members', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'không còn ai (vừa kiểm trong cùng giao dịch)' },
   { table: 'families', op: 'delete', any: [{ col: 'id', in: 'family' }], why: 'chính ngôi nhà (mã nhà mất theo, gõ lại thì không thấy nhà)' },

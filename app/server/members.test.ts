@@ -77,11 +77,20 @@ const covered = (set: (s: string) => boolean) => new Set(M.PLAN.flatMap((s) => s
 test('lược đồ: đọc được đủ các bảng đã biết (để kiểm thử dưới không đỗ vì đọc thiếu)', () => {
   for (const t of ['families', 'members', 'posts', 'reactions', 'replies', 'missions_done', 'google_auth', 'seen', 'events', 'calls', 'call_answers',
     'vault', 'relays', 'messages', 'message_reads', 'member_seed', 'owned_seeds', 'letters', 'podcasts', 'podcast_plans', 'podcast_words',
-    'push_subs', 'push_prefs', 'push_sent', 'recaps', 'shots', 'shot_parts', 'shot_runs', 'app_settings']) assert.ok(schema.has(t), t);
+    'push_subs', 'push_prefs', 'push_sent', 'recaps', 'shots', 'shot_parts', 'shot_runs', 'app_settings', 'memory_facts', 'may_signals', 'may_nudges']) assert.ok(schema.has(t), t);
   assert.ok(schema.get('posts')!.has('shot_id'), 'cột thêm bằng alter table');
   assert.ok(schema.get('events')!.has('created_by'));
   assert.deepEqual(schema.get('relays')!.get('to_id')!.ref, { table: 'members', col: 'id', cascade: true });
   assert.deepEqual(schema.get('replies')!.get('author_id')!.ref, { table: 'members', col: 'id', cascade: false });
+});
+
+test('lược đồ: mọi create table, add column chạy lặp được (if not exists)', () => {
+  for (const f of readdirSync(here).filter((x) => x.endsWith('.ts') && !x.endsWith('.test.ts'))) {
+    const src = readFileSync(path.join(here, f), 'utf8');
+    // Chỉ bắt câu lệnh thật (tên bảng rồi dấu mở ngoặc), không bắt chú thích như "create table / add column".
+    assert.doesNotMatch(src, /create table\s+(?!if not exists)\w+\s*\(/i, f);
+    assert.doesNotMatch(src, /alter table\s+\w+\s+add column\s+(?!if not exists)/i, f);
+  }
 });
 
 test('kế hoạch xoá phủ mọi cột trỏ tới thành viên trong server/*.ts', () => {
@@ -359,6 +368,15 @@ function seed() {
   db.add('relays', { id: 'rl-3', family_id: A, call_id: 'c-3', from_id: a3, to_id: a1, media: '/media/ans-3.webm' });
   db.add('podcast_plans', { call_id: 'c-x', sig: 's', plan: '{}' });
   db.add('podcast_plans', { call_id: 'c-3', sig: 's', plan: '{}' });
+  const fact = (id: string, fam: string, about: string | null, source: string, call: string | null) =>
+    db.add('memory_facts', { id, family_id: fam, about_id: about, source_id: source, kind: 'food', text: id, text_en: id, call_id: call, visibility: 'family' });
+  fact('mf-x', A, x, x, 'c-x'); fact('mf-a1-x', A, x, a1, null); fact('mf-x-a1', A, a1, x, null);
+  fact('mf-a3', A, a3, a3, 'c-3'); fact('mf-a3-all', A, null, a3, 'c-3'); fact('mf-b', B, b1, b1, 'c-b');
+  const sig = (id: string, fam: string, from: string, to: string, call: string | null) =>
+    db.add('may_signals', { id, family_id: fam, from_id: from, to_id: to, kind: 'miss', call_id: call, expires_at: '2026-11-21T00:00:00Z' });
+  sig('sg-x-a1', A, x, a1, 'c-x'); sig('sg-a3-x', A, a3, x, 'c-3'); sig('sg-a3-a1', A, a3, a1, 'c-3'); sig('sg-b', B, b1, b2, 'c-b');
+  const nud = (id: string, fam: string, from: string, to: string) => db.add('may_nudges', { id, family_id: fam, from_id: from, to_id: to, kind: 'miss' });
+  nud('nd-x-a1', A, x, a1); nud('nd-a1-x', A, a1, x); nud('nd-a3-a1', A, a3, a1); nud('nd-b', B, b1, b2);
   const pod = (id: string, fam: string, key: string, kind: string, member: string | null, extra: Row = {}) =>
     db.add('podcasts', { id, family_id: fam, key, kind, member_id: member, topic: 'gia-dinh', title: id, status: 'ready', ...extra });
   pod('pod-first', A, `first:${x}`, 'person', x, { media: '/media/podcasts/pod-first.m4a?v=1', poster: '/media/pod-first-1.jpg', cover: '/media/xp1.jpg' });
@@ -462,6 +480,9 @@ test('xoá x: hết mọi hàng của x, khoá ngoại vẫn đúng, không nh�
   assert.deepEqual(ids('google_auth', 'state'), ['g-a1']);
   assert.deepEqual(ids('member_seed', 'member_id'), [a1]);
   assert.deepEqual(ids('owned_seeds', 'member_id'), []);
+  assert.deepEqual(ids('memory_facts'), ['mf-a3', 'mf-a3-all', 'mf-b']);
+  assert.deepEqual(ids('may_signals'), ['sg-a3-a1', 'sg-b']);
+  assert.deepEqual(ids('may_nudges'), ['nd-a3-a1', 'nd-b']);
   assert.equal(db.t.families.length, 2, 'nhà vẫn còn');
   assert.equal(db.t.recaps.length, 1, 'video tuần giữ');
   assert.equal(db.t.app_settings.length, 1);

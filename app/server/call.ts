@@ -49,6 +49,10 @@ export async function migrateCall(p: pg.Pool) {
     );
     create unique index if not exists relays_call_to on relays (call_id, to_id);
     create index if not exists relays_pending on relays (to_id) where delivered_at is null;
+    alter table calls add column if not exists shared boolean not null default true;
+    alter table calls add column if not exists trial boolean not null default false;
+    alter table calls add column if not exists memory_at timestamptz;
+    alter table calls add column if not exists memory_tries int not null default 0;
   `);
   // Bộ đếm ngân sách TTS sống qua lần deploy (bảng app_settings: tts_budget, tts_budget_openai, stt_budget_openai).
   await p.query('create table if not exists app_settings (key text primary key, value text not null)');
