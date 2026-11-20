@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import type { ScriptExtras } from './callfacts.ts';
 
 process.env.MEDIA_DIR = mkdtempSync(path.join(tmpdir(), 'call-test-'));
 process.env.GEMINI_API_KEY = 'test-key-not-real';
@@ -236,6 +237,15 @@ const ctx = (role: string, family: Array<{ name: string; role: string }>) => ({
   photoCount: 0, captions: [], mascot: 'Mây',
 });
 const both = [{ name: 'Hùng', role: 'bo' }, { name: 'Lan', role: 'me' }, { name: 'An', role: 'con' }];
+/** Dữ liệu soạn câu lớn dần (loadScriptExtras) của Lan: một sự thật về An, Noel còn 24 ngày. */
+const extras: ScriptExtras = {
+  age: 52,
+  place: { name: 'Hà Nội', country: 'Việt Nam', tz: 'Asia/Ho_Chi_Minh', localTime: '20:00', weather: '18°C, cloudy' },
+  family: [],
+  memory: [{ id: 'f1', about: 'An', toldBy: 'An', toldByYou: false, kind: 'food', fact: 'An loves sour soup' }],
+  occasions: [{ key: 'noel', name: 'Noel', date: '2026-12-25', inDays: 24, who: null }],
+  told: [], themes: themesFor('me', true, false), gaps: [],
+};
 
 test('bộ câu mẫu v2: hỏi thăm, một chuyện chính mời kể, lời nhắn cuối; nhà một người thì không hỏi lời nhắn', () => {
   const both = [{ name: 'Hùng', role: 'bo' }, { name: 'Lan', role: 'me' }, { name: 'An', role: 'con' }];
@@ -315,6 +325,23 @@ test('người nhận mặc định', () => {
   assert.deepEqual(call.defaultRecipients('bo', [fam[1], fam[2]]).map((m) => m.id), ['m-an']);
   // Không có ai đúng vai thì gửi mọi người khác.
   assert.deepEqual(call.defaultRecipients('con', [{ id: 'c2', name: 'Bình', role: 'con', lang: null }]).map((m) => m.id), ['c2']);
+});
+
+test('dữ liệu soạn câu: sổ nhớ, dịp, chủ đề đã kể, nơi ở; mục trống ghi none yet; không có thời tiết thì không có mục thời tiết', () => {
+  const facts = call.scriptFacts({ ...ctx('me', both), extras: { ...extras, memory: [], occasions: [], place: { ...extras.place, weather: null } } });
+  assert.match(String(facts.memory), /^none yet/);
+  assert.match(String(facts.upcoming_occasions), /^none yet/);
+  assert.equal('weather' in (facts.person as any).lives_in, false);
+  assert.deepEqual(call.scriptFacts({ ...ctx('me', both), extras }).untold_themes, extras.themes.filter((t) => !extras.told.some((x) => x.theme === t)));
+});
+test('AI báo đã dùng sự thật nào: chỉ nhận mã có trong dữ liệu', async () => {
+  handler = gemini({ greeting: 'Mẹ ơi.', checkin: 'Dạo này Mẹ thế nào ạ?', story: { text: 'Mẹ kể con nghe về món canh chua nhé.', theme: 'mon-an', photo: false, event: 'none' }, used_facts: ['f1', 'zzz'] });
+  assert.deepEqual((await call.aiScript({ ...ctx('me', both), extras }, '2026-11-16'))!.used, ['f1']);
+});
+test('bộ câu mẫu chọn chủ đề chưa kể', () => {
+  const told: ScriptExtras['told'] = [{ theme: 'tuoi-tho', times: 1, turns: 3, last: '2026-11-08' }, { theme: 'que-nha', times: 1, turns: 2, last: '2026-11-15' }];
+  const sc = call.templateScript({ ...ctx('con', both), extras: { ...extras, told, themes: themesFor('con', true, false) } }, '2026-11-16');
+  assert.equal(sc.questions[1].theme, 'mon-an');
 });
 // i18n-ok-end
 

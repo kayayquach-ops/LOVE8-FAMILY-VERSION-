@@ -83,7 +83,8 @@ export type CallQuestion = { text: string; topic: Topic; photo: boolean; event: 
 export type CallScript = { greeting: string; questions: CallQuestion[]; goodbye: string; source: 'ai' | 'template' | 'first'; lang?: 'vi' | 'en' | 'ko'; mascot?: string;
   /** 2: hỏi thăm, một chuyện chính, lời nhắn (nếu có). Bản cũ không có là ba câu rời. */ v?: 2;
   /** Trần câu hỏi thêm của chuyện chính. */ follow?: number;
-  /** Cuộc gọi thử (cuộc gọi đầu của người mới). */ trial?: boolean };
+  /** Cuộc gọi thử (cuộc gọi đầu của người mới). */ trial?: boolean;
+  /** Mã các sự thật trong sổ nhớ mà AI đã dùng khi soạn (chỉ mã có trong dữ liệu đưa vào); /call/start đánh dấu đã dùng. */ used?: string[] };
 
 /** Hàm tra chữ: máy khách truyền `t`, máy chủ truyền `tServer` theo ngôn ngữ của người nghe. */
 export type Tr = (key: string, vars?: Record<string, string | number>) => string;

@@ -22,3 +22,15 @@ test('giờ địa phương và đổi giờ địa phương ra mốc thật', (
   assert.equal(P.zonedTime('Asia/Seoul', '2026-11-24', 540).toISOString(), '2026-11-24T00:00:00.000Z');
   assert.equal(P.zonedTime('America/Los_Angeles', '2026-03-08', 540).toISOString(), '2026-03-08T16:00:00.000Z');
 });
+
+test('thời tiết trên máy chủ: đọc open-meteo, nhớ 1 giờ, lỗi thì không có', async () => {
+  let n = 0;
+  const ok = (async () => { n++; return new Response(JSON.stringify({ current: { temperature_2m: 4.6, weather_code: 3 } })); }) as typeof fetch;
+  assert.equal(await P.weatherAt(35.18, 129.08, ok), '5°C, cloudy');
+  assert.equal(await P.weatherAt(35.18, 129.08, ok), '5°C, cloudy');
+  assert.equal(n, 1);
+  assert.equal(await P.weatherAt(10, 10, (async () => { throw new Error('mạng'); }) as typeof fetch), null);
+});
+test('giờ chênh giữa hai nơi', () => {
+  assert.equal(P.hoursApart('Asia/Seoul', 'Asia/Ho_Chi_Minh', new Date('2026-11-20T00:00:00Z')), 2);
+});

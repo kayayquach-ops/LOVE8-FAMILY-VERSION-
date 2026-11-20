@@ -150,3 +150,36 @@ Mã: `src/Call.tsx` (luồng cuộc gọi), `src/callShare.ts` (chặng của b�
 - `POST /api/call/start`: người chưa có cuộc gọi xong thì soạn `aiScript(c, week, START_AI_MS, { trial: true })` (đầu vào AI có `trial: true`, prompt dặn một chuyện dễ, ấm, lấy từ câu trả lời giới thiệu hoặc nơi ở; không có câu lời nhắn; `follow = TRIAL_FOLLOW` = 2; `trial: true`). AI lỗi, quá hạn hay hết lượt soạn thì `firstScript`. Dòng `calls` ghi `trial = true`.
 - Máy khách: `App.tsx` giữ `callTrial` từ `/api/call/due`, `Home` truyền `trial` cho `CallCard`; thẻ hiện `call.card.trial` và `call.card.trialLen` (khoảng 3 phút).
 - Test: `server/call.test.ts` (`dueState`, `aiScript` với `trial`).
+
+## Soạn câu từ dữ liệu lớn dần
+
+Mã: `server/callfacts.ts` (nạp và chọn dữ liệu), `server/place.ts` (nơi ở, giờ chênh, khoảng cách, thời tiết), `server/call.ts` (`context`, `scriptFacts`, `aiScript`, `templateScript`, `/call/start`). Test: `server/callfacts.test.ts`, `server/place.test.ts`, `server/call.test.ts`.
+
+**Nạp** (`loadScriptExtras`, gọi trong `context()` song song các câu cũ; lỗi thì ghi log `[call]` và soạn như cũ, không có các mục mới). Bốn câu SQL (`EXTRAS_SQL`) rồi ngày của nhà:
+- Người nghe: tên, vai, ngày sinh, thành phố, vị trí, `intro` (chỉ đọc `food`, `seen` để biết hồ sơ còn trống gì; "điều chưa nói" không bao giờ đọc), nhà đã có ngày cưới trong lịch chưa.
+- Cả nhà: tên, vai, thành phố, vị trí.
+- Sổ nhớ: tối đa 300 sự thật mới nhất chưa bị thay, `visibility = 'family'` hoặc chính người nghe kể. Điều `self` của người khác không bao giờ lấy, `pickFacts` lọc lần nữa.
+- Cuộc gọi đã xong của người nghe (100 gần nhất), kèm số lượt kể có lời chép ngoài câu hỏi thăm và lời nhắn khó nói (`NO_EPISODE_TOPICS`).
+- Ngày của nhà trong 30 ngày tới: `upcoming()` ở `server/calendar.ts` (sinh nhật theo ngày sinh, các ngày trong lịch).
+
+**Đưa cho AI** (`scriptFacts`, nhãn tiếng Anh, mục trống ghi `none yet: ...`)
+- `person.age`; `person.lives_in`: `place`, `country`, `local_time`, `weather` (không có thời tiết thì không có mục `weather`; không biết ở đâu thì `none yet`); `person.profile_gaps`: `food`, `seen` khi khảo sát bỏ trống (`food` cũng không tính là trống nếu sổ nhớ đã có sự thật loại `food` về người nghe).
+- `family_members`: người khác trong nhà, `lives_in`, và chỉ khi biết cả hai nơi mới có `hours_apart` (đồng hồ người đó nhanh hơn người nghe bao nhiêu giờ, làm tròn nửa giờ) và `distance_km`.
+- `memory`: `[{ id, about, told_by, told_by_you, kind, fact }]`, `about` là tên người hoặc `whole family`, `fact` là `text_en`.
+- `upcoming_occasions`: `[{ name, date, in_days, who }]`. `told_themes`: `[{ theme, times, depth, last }]` (`depth` là `deep` khi lần kể sâu nhất từ 3 lượt, không thì `short`), mới nhất trước. `untold_themes`, `allowed_themes`.
+- Không có dữ liệu lớn dần (test, nạp lỗi) thì chỉ các mục cũ. `wedding_question_allowed` và chủ đề hợp lệ giờ cùng một hàm `themesOf`.
+
+**Chọn sự thật** (`pickFacts`, tối đa `MAX_MEMORY` = 30): chỉ điều `family` hoặc người nghe kể. Điểm: về chính người nghe 4, người nghe kể 1, chưa dùng lần nào 3 (đã dùng mà lần cuối quá 30 ngày thì 1), gắn dịp có trong 30 ngày tới 3. Điểm cao trước, bằng điểm thì mới trước. AI trả `used_facts` (bắt buộc trong schema); chỉ nhận mã có trong `memory`, ghi vào `script.used`; `/call/start` đánh dấu `used_at = now(), used_count + 1` (chỉ trong nhà đó), lỗi thì ghi log, không chặn cuộc gọi. Bộ câu dùng lại trong tuần không đánh dấu lần nữa.
+
+**Dịp** (`upcomingOccasions`, trong `OCCASION_DAYS` = 30 ngày, tính theo ngày ở nơi người nghe): Tết Nguyên đán (âm 1/1), Trung thu (âm 15/8), Noel 25/12, Tết Dương lịch 1/1, 8/3, 20/10, 20/11, Ngày của Mẹ (Chủ nhật thứ hai tháng 5), Ngày của Bố (Chủ nhật thứ ba tháng 6), Ngày Cha Mẹ ở Hàn 8/5. Âm lịch qua `nextOccurrence` của `src/lunar.ts`. Tên theo thứ tiếng người nghe (khoá máy chủ `occasion.<mã>`). Ngày của nhà giữ tên trong lịch: loại `birthday` (kèm `who` là tên người khi là sinh nhật theo ngày sinh), `wedding` cho ngày cưới và ngày kỷ niệm, còn lại `event`.
+
+**Bản đồ chủ đề** (`topicMap`): cuộc gọi v2 lấy `theme` của câu chuyện chính; cuộc gọi cũ ba câu rời chỉ tính chủ đề `ngay-cuoi`, `tuoi-tho`, `mon-an` (trùng tên chủ đề chuyện chính), chủ đề khác bỏ qua. Mỗi chủ đề: số cuộc gọi đã kể, lần kể sâu nhất (số lượt), ngày gần nhất.
+
+**Luật prompt thêm** (12 tới 16): giờ và thời tiết chỉ lấy từ `lives_in`, không có thời tiết thì không nhắc; dịp chỉ lấy từ `upcoming_occasions`, dịp có sự thật trong sổ nhớ thì câu mở được hỏi sâu (năm nay, mấy năm trước); chủ đề chọn trong `untold_themes` hoặc chủ đề mới kể `short`, ưu tiên chủ đề hợp dịp (`tet-cac-dip` gần Tết, Noel, Trung thu), không bao giờ là chủ đề của lần kể mới nhất, luật ngày cưới vẫn đứng trước; sự thật người khác kể chỉ dùng kèm ai kể ("mẹ kể là ..."), không nói như Mây tự biết; tên trong sổ nhớ viết đúng như có; `profile_gaps` có thì câu hỏi thăm được lồng một câu (bao lâu chưa gặp cả nhà, món nhớ nhất).
+- Lớp lọc: dữ liệu đối chiếu của `suspect()` có thêm tên tháng tiếng Anh của các dịp và giờ kiểu 12 giờ ("8 giờ tối" khi `local_time` là 20:00). Sổ nhớ có điều chính người nghe kể thì được nói "Mẹ từng kể".
+
+**Bộ câu mẫu** (`templateScript`): ngày cưới vẫn trước nếu được hỏi; có bản đồ chủ đề thì lấy chủ đề đầu tiên theo thứ tự ưu tiên chưa kể lần nào và câu chưa hỏi; kể hết rồi mới xoay vòng theo tuần như cũ.
+
+**Thời tiết** (`weatherAt`): open-meteo như máy khách (`current=temperature_2m,weather_code`), toạ độ làm tròn 1 số lẻ (khoảng 11 km) trước khi hỏi, nhớ 1 giờ theo toạ độ đó trong bộ nhớ máy chủ, chờ tối đa 2 giây, lỗi gì cũng bỏ. Chữ "5°C, cloudy" tiếng Anh, cùng nhóm mã như `src/time.ts` (`clear`, `few clouds`, `cloudy`, `fog`, `drizzle`, `rain`, `snow`, `storm`).
+
+**Nơi ở** (`placeOfMember`): vị trí thật nếu đang chia sẻ, không thì `members.city`. Thành phố tự chọn thì gọi đúng tên ấy; vị trí thật thì tên nơi gần nhất trong `src/places.json` khi trong 60 km, xa hơn chỉ biết nước. Tên nơi và tên nước theo thứ tiếng người nghe.

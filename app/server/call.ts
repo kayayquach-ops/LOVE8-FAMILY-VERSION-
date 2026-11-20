@@ -14,6 +14,7 @@ import { mascotName, pool } from './db.ts';
 import { weekKey } from './recap.ts';
 import { buildPodcastsForCall, rebuildCallSoon } from './podcast.ts';
 import { extractCall, extractSoon } from './memory.ts';
+import { loadScriptExtras, type ScriptExtras } from './callfacts.ts';
 import { cachedSpeech, defaultProvider, gateOf, hasVoice, initTtsBudget, pickProvider, providerOn, speech, transcribe, ttsStatus, TTS_MAX, type Provider } from './voice.ts';
 import path from 'node:path';
 import { open, rename, unlink } from 'node:fs/promises';
@@ -147,10 +148,13 @@ export type Ctx = {
   captions: string[];
   /** Tên linh vật của nhà (families.mascot_name), chưa đặt thì Mây. */
   mascot?: string;
+  /** Dữ liệu lớn dần (server/callfacts.ts): sổ nhớ, dịp, bản đồ chủ đề, nơi ở, giờ, thời tiết. Nạp lỗi (hay trong test) thì không có. */
+  extras?: ScriptExtras;
 };
 
 async function context(memberId: string, fid: string): Promise<Ctx> {
-  const [m, fam, ev, asked, stories, caps, done, ph, vt, mascot] = await Promise.all([
+  const lang = reqLang();
+  const [m, fam, ev, asked, stories, caps, done, ph, vt, mascot, extras] = await Promise.all([
     pool.query('select id, name, role, intro from members where id = $1', [memberId]),
     pool.query('select name, role from members where family_id = $1 order by created_at', [fid]),
     pool.query('select kind, title, day, month, year from events where family_id = $1', [fid]),
@@ -163,8 +167,8 @@ async function context(memberId: string, fid: string): Promise<Ctx> {
     pool.query(`select count(*)::int n from posts where author_id = $1 and kind = 'photo'`, [memberId]),
     pool.query(`select count(*)::int n from vault where member_id = $1`, [memberId]),
     mascotName(fid),
+    loadScriptExtras({ id: memberId, family_id: fid }, lang).catch((e) => { console.warn('[call] không nạp được dữ liệu soạn câu:', (e as Error).message); return undefined; }),
   ]);
-  const lang = reqLang();
   let intro: Record<string, string> = {};
   try { intro = introLabels(JSON.parse(m.rows[0]?.intro || '{}'), lang); } catch {}
   return {
@@ -176,6 +180,7 @@ async function context(memberId: string, fid: string): Promise<Ctx> {
     photoCount: (ph.rows[0]?.n ?? 0) + (vt.rows[0]?.n ?? 0),
     captions: caps.rows.map((r) => r.caption),
     mascot,
+    extras,
   };
 }
 
@@ -192,11 +197,10 @@ const storyQ = (text: string, theme: StoryTheme, photo = false, event: CallQuest
   ({ text, topic: THEME_TOPIC[theme], photo, event: eventFor(theme, event), part: 'story', theme });
 /** Câu tạm biệt cố định theo vai (giọng nằm sẵn trong kho), không hứa "cả nhà cùng nghe" vì chuyện có thể được giữ riêng. */
 const byeOf = (c: Ctx) => callLines(c.member.role, (k, v) => tServer(c.lang, k, v)).bye;
-/** Đủ bố lẫn mẹ trong nhà, lịch đã có ngày cưới chưa (luật hỏi ngày cưới). */
-const pairOf = (c: Ctx) => ({
-  hasPair: c.family.some((m) => m.role === 'bo') && c.family.some((m) => m.role === 'me'),
-  hasWedding: c.events.some((e) => e.kind === 'wedding'),
-});
+/** Chủ đề chuyện chính được hỏi người này (themesFor): ngày cưới chỉ khi nhà có đủ bố lẫn mẹ và lịch chưa có ngày cưới. */
+const themesOf = (c: Ctx) => themesFor(c.member.role,
+  c.family.some((m) => m.role === 'bo') && c.family.some((m) => m.role === 'me'),
+  c.events.some((e) => e.kind === 'wedding'));
 
 /** Cuộc gọi đầu tiên (cuộc gọi thử): chào, hỏi thăm, một chuyện dễ kể, tối đa 2 câu hỏi thêm, không hỏi lời nhắn. Soạn sẵn, không gọi AI. */
 export function firstScript(c: Ctx): CallScript {
@@ -234,16 +238,17 @@ export function templateScript(c: Ctx, week: string): CallScript {
   const other = T(role === 'bo' ? 'call.self.me' : 'call.self.bo');
   const vars = { self, Self: call, call, other, name, mascot: c.mascot ?? DEFAULT_MASCOT_NAME };
   const S = (k: string) => T(`callScript.template.${who}.${k}`, vars);
-  // Chỉ hỏi ngày cưới khi trong nhà có đủ cả bố lẫn mẹ và lịch chưa có ngày cưới (themesFor).
-  const { hasPair, hasWedding } = pairOf(c);
-  const allowed = themesFor(role, hasPair, hasWedding);
+  // Chỉ hỏi ngày cưới khi trong nhà có đủ cả bố lẫn mẹ và lịch chưa có ngày cưới (themesOf).
+  const allowed = themesOf(c);
   const pool = TEMPLATE_THEMES[who].filter((t) => allowed.includes(t)).map((theme) =>
     storyQ(tServer(c.lang, `callScript.template.${who}.story.${theme}`, vars), theme, theme === 'ngay-cuoi'));
   const fresh = pool.filter((x) => !c.asked.includes(x.text));
   const list = fresh.length ? fresh : pool;
-  // Chuyện ngày cưới luôn hỏi trước nếu được hỏi; còn lại xoay vòng theo tuần.
+  // Chuyện ngày cưới luôn hỏi trước nếu được hỏi; rồi chủ đề chưa kể đầu tiên theo thứ tự ưu tiên (bản đồ chủ đề);
+  // kể hết rồi (hay không có bản đồ) thì xoay vòng theo tuần.
+  const untold = c.extras && fresh.find((x) => !c.extras!.told.some((t) => t.theme === x.theme));
   const shift = Math.floor(Date.parse(week) / (7 * 86400e3)) % list.length;
-  const story = list.find((x) => x.theme === 'ngay-cuoi') ?? list[shift];
+  const story = list.find((x) => x.theme === 'ngay-cuoi') ?? untold ?? list[shift];
   const relay = relayQuestion(c);
   return {
     greeting: S('greeting'),
@@ -281,7 +286,7 @@ const LANG_NAME: Record<Lang, string> = { vi: 'Vietnamese', en: 'English', ko: '
 const SCRIPT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['greeting', 'checkin', 'story'],
+  required: ['greeting', 'checkin', 'story', 'used_facts'],
   properties: {
     greeting: { type: 'string' },
     checkin: { type: 'string' },
@@ -296,6 +301,7 @@ const SCRIPT_SCHEMA = {
         event: { type: 'string', enum: [...EVENT_HINTS] },
       },
     },
+    used_facts: { type: 'array', items: { type: 'string' } },
   },
 };
 
@@ -329,11 +335,11 @@ LANGUAGE AND TONE. ${ADDRESS[lang]}
 Short sentences. No em dash or long dash, no emoji, no lists, no quotation marks.
 The lines are read aloud, so never write the English app name; if a name is needed, Mây calls itself Mây. Mây is the one who called, so never thank the person for calling. Write every person's name exactly as it appears in the input, never translated or transliterated. The role codes bo, me and con are not names: never write them as words.
 
-WHAT YOU MAY USE. Only the facts in the JSON input. Every field is real data from the database. A field that starts with "none yet" (for example "none yet: no previous call", "none yet: no photos", "none yet: no calendar events") means there is nothing, so you know nothing about it. Field values may be in another language; never copy them word for word unless it is a name or a food the person wrote.
+WHAT YOU MAY USE. Only the facts in the JSON input. Every field is real data from the database. A field that starts with "none yet" (for example "none yet: no previous call", "none yet: no photos", "none yet: no calendar events") means there is nothing, so you know nothing about it. A field that is missing from the input is unknown too. Field values may be in another language; never copy them word for word unless it is a name or a food the person wrote.
 
 HARD RULES, never break them:
 1. Never mention a photo, message, call, earlier session, memory or detail that is not in the input. Never write ${ex.forbidden} or anything similar unless that exact thing is in the input.
-2. Never guess a name, date, place, country, number, age or relationship. Use only names and facts that appear in the input. Do not assume where anyone lives or studies.
+2. Never guess a name, date, place, country, number, age or relationship. Use only names and facts that appear in the input. Do not assume where anyone lives or studies; only lives_in says where someone lives.
 3. Ask only open, safe questions that assume nothing. Every question must be answerable without any outside data, by a person who just picked up the phone.
 4. Write exactly two questions, each one or two short sentences.
    checkin: one short question about how they are right now, answerable in a word, assuming nothing outside the input.
@@ -348,6 +354,13 @@ HARD RULES, never break them:
 10. Earlier answers come from past calls. Refer to them only as being from an earlier call (last time) and never with today, now or any present-tense time. If previous_calls says none yet, never refer to any earlier call at all. Never put a time on an earlier answer (no last week, no 지난주). Never assume whether a child is a son or a daughter unless the intro says so. Never invent relatives (grandchildren, siblings, cousins, anyone's children) unless listed in family_members.
 11. The intro field "unsaid" is private: it may guide your tone, but never quote it or hint at its content.
 
+FAMILY DATA THAT GROWS OVER TIME (each rule applies only when its field is in the input):
+12. Local time and weather come only from person.lives_in. If lives_in has no weather, never mention the weather. In family_members, lives_in, hours_apart (how many hours that member's clock is ahead of the person's; negative means behind) and distance_km tell where the others are.
+13. Occasions come only from upcoming_occasions (in_days is how many days away). When an occasion there is within 30 days and a memory entry talks about it, the story may ask deeper about that occasion: how they will keep it this year, how it was in earlier years.
+14. Unless rule 8 applies, pick story.theme from untold_themes or from a told_themes entry with depth short. Prefer the theme that fits an upcoming occasion (tet-cac-dip near Lunar New Year, Christmas or Mid-Autumn). Never use the theme of the first told_themes entry, which is the newest. story.theme is always one of allowed_themes.
+15. memory lists what the family told Mây in earlier calls. An entry with told_by_you false was told by someone else: use it only together with who told it (for example: Mẹ kể là ..., or Mom told me ...), never as if Mây knew it by itself. Write every name from memory exactly as given. used_facts lists the id of every memory entry your lines use, or is empty.
+16. When profile_gaps is a list, the checkin may weave in one gap question: seen is how long since they last saw the family, food is the home dish they miss most (for a parent, the dish their child loves most).
+
 The greeting is one or two short sentences and mentions nothing outside the input.${trial ? `
 
 TRIAL CALL. The input field trial is true: this is the person's very first call, a short getting-to-know-you chat. The story is one easy, warm, everyday story or a favorite memory, taken from the intro answers or from where they live, never anything heavy. Keep it light and inviting.` : ''}
@@ -355,37 +368,65 @@ TRIAL CALL. The input field trial is true: this is the person's very first call,
 Reply in ${LANG_NAME[lang]}. The greeting, checkin and story text must be written in ${LANG_NAME[lang]} only.`, name);
 }
 
-/** Dữ liệu thật đưa cho AI: mục trống ghi rõ "none yet" bằng nhãn tiếng Anh trung tính. */
+/** Danh sách rỗng thì nhãn "none yet: ..." như các mục khác. */
+const orNone = <T>(list: T[], label: string): T[] | string => (list.length ? list : `none yet: ${label}`);
+
+/** Nơi ở của người nghe cho AI: chỉ những gì biết chắc; không có thời tiết thì không có mục weather; không biết ở đâu thì "none yet". */
+function livesIn(p: ScriptExtras['place']) {
+  if (!p.name && !p.country) return 'none yet: place not known';
+  return { ...(p.name ? { place: p.name } : {}), ...(p.country ? { country: p.country } : {}), local_time: p.localTime, ...(p.weather ? { weather: p.weather } : {}) };
+}
+
+/** Dữ liệu thật đưa cho AI: mục trống ghi rõ "none yet" bằng nhãn tiếng Anh trung tính. Có dữ liệu lớn dần (extras) thì thêm tuổi, nơi ở,
+ *  cả nhà ở đâu, sổ nhớ, dịp sắp tới, bản đồ chủ đề; không có thì chỉ các mục cũ. */
 export function scriptFacts(c: Ctx) {
   const today = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
-  const parent = c.member.role === 'bo' || c.member.role === 'me';
-  const hasPair = c.family.some((m) => m.role === 'bo') && c.family.some((m) => m.role === 'me');
   const intro = Object.fromEntries(Object.entries(c.member.intro).filter(([, v]) => String(v ?? '').trim()));
+  const x = c.extras;
   return {
     today,
-    person: { name: c.member.name, role: c.member.role, intro: Object.keys(intro).length ? intro : 'none yet: no intro answers' },
-    family_members: c.family,
+    person: {
+      name: c.member.name, role: c.member.role, intro: Object.keys(intro).length ? intro : 'none yet: no intro answers',
+      ...(x ? { age: x.age ?? 'none yet: no birth date', lives_in: livesIn(x.place), profile_gaps: orNone(x.gaps, 'nothing missing') } : {}),
+    },
+    family_members: x
+      ? orNone(x.family.map((m) => ({ name: m.name, role: m.role, lives_in: m.place ?? 'none yet: place not known',
+        // Giờ chênh, khoảng cách chỉ khi biết cả hai nơi (không thì là đoán theo giờ Việt Nam).
+        ...(m.km != null ? { hours_apart: m.hoursApart, distance_km: m.km } : {}) })), 'no one else in the family')
+      : c.family,
     calendar: c.events.length ? c.events : 'none yet: no calendar events',
     previous_calls: c.doneCalls.length ? { count: c.doneCalls.length, last: c.doneCalls[0] } : 'none yet: no previous call',
     own_earlier_answers: c.stories.length ? c.stories : 'none yet: no transcribed answers',
     saved_photos: c.photoCount ? { count: c.photoCount, captions: c.captions.length ? c.captions : 'none yet: no captions' } : 'none yet: no photos',
     already_asked: c.asked.length ? c.asked : 'none yet: nothing asked',
-    wedding_question_allowed: parent && hasPair && !c.events.some((e) => e.kind === 'wedding'),
+    wedding_question_allowed: themesOf(c).includes('ngay-cuoi'),
+    ...(x ? {
+      memory: orNone(x.memory.map((m) => ({ id: m.id, about: m.about, told_by: m.toldBy, told_by_you: m.toldByYou, kind: m.kind, fact: m.fact })), 'nothing in memory'),
+      upcoming_occasions: orNone(x.occasions.map((o) => ({ name: o.name, date: o.date, in_days: o.inDays, who: o.who })), 'no occasion in the next 30 days'),
+      told_themes: orNone(x.told.map((t) => ({ theme: t.theme, times: t.times, depth: t.turns >= 3 ? 'deep' : 'short', last: t.last })), 'no story told'),
+      untold_themes: orNone(x.themes.filter((t) => !x.told.some((d) => d.theme === t)), 'every theme told'),
+      allowed_themes: x.themes,
+    } : {}),
   };
 }
 
 const MONTH_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 /** Trả lời của AI theo SCRIPT_SCHEMA (lời tạm biệt là câu cố định nên AI không viết). */
-type ScriptRaw = { greeting: string; checkin: string; story: { text: string; theme: string; photo: boolean; event: CallQuestion['event'] } };
+type ScriptRaw = { greeting: string; checkin: string; story: { text: string; theme: string; photo: boolean; event: CallQuestion['event'] }; used_facts?: unknown };
 
 export async function aiScript(c: Ctx, week: string, timeoutMs?: number, opts: { trial?: boolean } = {}): Promise<CallScript | null> {
   const trial = !!opts.trial;
   const facts = scriptFacts(c);
-  // Tên tháng tiếng Anh của các ngày có trong lịch cũng tính là dữ liệu thật ("your birthday in March").
+  const x = c.extras;
+  // Tên tháng tiếng Anh của các ngày có trong lịch và các dịp sắp tới cũng tính là dữ liệu thật ("your birthday in March"),
+  // giờ địa phương kiểu 12 giờ cũng vậy (20:00 là "8 giờ tối").
   // Mã vai (bo, me, con) không phải tên: bỏ khỏi dữ liệu đối chiếu để câu "Hi Bo" bị chặn.
-  const hay = JSON.stringify(facts).replace(/"role":"(bo|me|con)"/g, '') + ' ' + c.events.map((e) => MONTH_EN[e.month - 1] ?? '').join(' ') + ' ' + (c.mascot ?? '');
-  const allow: Allow = { prevCall: c.doneCalls.length > 0, ownStory: c.stories.length > 0, photos: c.photoCount > 0 };
+  const months = [...c.events.map((e) => e.month), ...(x?.occasions ?? []).map((o) => Number(o.date.slice(5, 7)))].map((m) => MONTH_EN[m - 1] ?? '');
+  const hour12 = x ? String(Number(x.place.localTime.slice(0, 2)) % 12 || 12) : '';
+  const hay = JSON.stringify(facts).replace(/"role":"(bo|me|con)"/g, '') + ' ' + months.join(' ') + ' ' + hour12 + ' ' + (c.mascot ?? '');
+  // Sổ nhớ có điều chính người này kể thì được nói "Mẹ từng kể...".
+  const allow: Allow = { prevCall: c.doneCalls.length > 0, ownStory: c.stories.length > 0 || !!x?.memory.some((m) => m.toldByYou), photos: c.photoCount > 0 };
   const r = await askJSON<ScriptRaw>(scriptSystem(c.lang, c.mascot, trial), JSON.stringify(trial ? { ...facts, trial: true } : facts, null, 1), SCRIPT_SCHEMA, undefined, timeoutMs);
   if (!r) return null;
   const tpl = templateScript(c, week);
@@ -402,11 +443,13 @@ export async function aiScript(c: Ctx, week: string, timeoutMs?: number, opts: {
   const s = r.story;
   const text = ok(s?.text), theme = s?.theme;
   const event = eventFor(String(theme), EVENT_HINTS.includes(s?.event) ? s.event : 'none');
-  const { hasPair, hasWedding } = pairOf(c);
-  const fits = !!text && isTheme(theme) && themesFor(c.member.role, hasPair, hasWedding).includes(theme)
+  const fits = !!text && isTheme(theme) && themesOf(c).includes(theme)
     && (event !== 'wedding' || facts.wedding_question_allowed) && !c.asked.includes(text);
   const story = fits ? storyQ(text, theme, !!s.photo, event) : tpl.questions[1];
   const relay = trial ? null : relayQuestion(c);
+  // Sự thật AI nói đã dùng: chỉ nhận mã có trong sổ nhớ đã đưa vào; /call/start đánh dấu đã dùng.
+  const ids = new Set((x?.memory ?? []).map((m) => m.id));
+  const used = [...new Set(Array.isArray(r.used_facts) ? r.used_facts : [])].filter((id): id is string => typeof id === 'string' && ids.has(id));
   return {
     greeting: ok(r.greeting) ?? tpl.greeting,
     questions: [checkin ? checkinQ(checkin) : tpl.questions[0], story, ...(relay ? [relay] : [])],
@@ -416,6 +459,7 @@ export async function aiScript(c: Ctx, week: string, timeoutMs?: number, opts: {
     mascot: c.mascot ?? DEFAULT_MASCOT_NAME,
     v: 2, follow: trial ? TRIAL_FOLLOW : MAX_STORY_FOLLOW,
     ...(trial ? { trial: true } : {}),
+    ...(used.length ? { used } : {}),
   };
 }
 
@@ -1015,6 +1059,11 @@ export function callRouter(upload: multer.Multer) {
     const id = randomUUID();
     // Cuộc gọi mới chưa đồng ý chia sẻ: bước xin phép cuối chuyện chính (POST /call/:id/share) mới bật shared.
     await pool.query('insert into calls (id, family_id, member_id, week, script, shared, trial) values ($1,$2,$3,$4,$5,false,$6)', [id, fid, mid, week, JSON.stringify(script), first]);
+    // Sự thật AI đã dùng khi soạn: lần sau ưu tiên điều chưa nhắc (pickFacts). Lỗi thì thôi, không chặn cuộc gọi.
+    if (script.used?.length) {
+      await pool.query('update memory_facts set used_at = now(), used_count = used_count + 1 where id = any($1) and family_id = $2', [script.used, fid])
+        .catch((e) => console.warn('[call] không đánh dấu được sự thật đã dùng:', (e as Error).message));
+    }
     res.json({ id, script, relays });
     // Giọng đọc do máy khách xin khi cần (lời chào + câu đầu một lần, mỗi câu sau xin trước một câu), máy chủ không tự đọc trước.
   }));
