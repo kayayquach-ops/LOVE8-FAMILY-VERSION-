@@ -5,6 +5,7 @@ import { fileName, shrinkImage } from './media';
 import { thumb, type Me, type Podcast } from './shared';
 import { tap } from './sound';
 import { speak, stopSpeaking, unlockSpeech } from './speech';
+import { ago } from './time';
 import { Avatar, Doodle, Icon, toast } from './ui';
 import './podcast.css';
 import './story.css';
@@ -215,11 +216,19 @@ function AudioPlayer({ ep, me }: { ep: Ep; me: Me }) {
   }
 
   const c = ep.chapters[cur];
+  const who = ep.memberId ? me.members.find((m) => m.id === ep.memberId) : undefined;
   return (
     <div className="pd-player fade" key={ep.id}>
-      <div className={`pd-art${ep.story && !(ep.poster || ep.cover) ? ' st-note' : ''}`}>{ep.poster || ep.cover ? <img src={thumb(ep.poster ?? ep.cover, 1080)} alt="" decoding="async" /> : <Doodle name="mic" size={56} />}</div>
+      {/* Ảnh lấy liền như trên kệ ở Trang chủ: dải giấy dưới ảnh ghi tay ai kể; dòng dưới tên chuyện là lúc kể (độ dài đã có ở thanh tua). */}
+      <div className="pd-polar">
+        <div className={`pd-art${ep.story && !(ep.poster || ep.cover) ? ' st-note' : ''}`}>{ep.poster || ep.cover ? <img src={thumb(ep.poster ?? ep.cover, 1080)} alt="" decoding="async" /> : <Doodle name="mic" size={56} />}</div>
+        <div className="pd-polar-cap">
+          {who ? <Avatar m={who} size={24} /> : <Doodle name="house" size={22} />}
+          <span>{who ? t('podcast.tells', { name: who.name }) : t('podcast.family')}</span>
+        </div>
+      </div>
       <div className="pd-title">{ep.title}</div>
-      <div className="pd-meta">{teller(ep, me)} · {mmss(ep.duration)}</div>
+      <div className="pd-meta">{ago(ep.createdAt)}</div>
       <audio ref={audio} src={ep.media ?? undefined} preload="metadata"
         onEnded={() => { wantRef.current = false; setWant(false); setTime(ep.duration); }} />
       <Seek time={time} duration={ep.duration} onSeek={seek} />
