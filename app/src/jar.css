@@ -38,7 +38,7 @@
 
 .jr-h { margin: 28px 4px 10px; font-family: var(--f-display); font-weight: 700; font-size: 19px; letter-spacing: -0.01em; }
 
-/* Danh sách trắng bo tròn: nhiệm vụ tuần (ô tích vẽ tay) và quà. */
+/* Danh sách trắng bo tròn: nhiệm vụ tuần (ô vẽ tay chỉ là dấu, tự tích khi làm xong; dòng chưa làm bấm để tới chỗ làm) và quà. */
 .jr-list { background: var(--paper); border-radius: 24px; box-shadow: inset 0 0 0 1px rgba(23, 21, 28, .07); padding: 4px 16px; }
 .jr .jr-task, .jr-gift { width: 100%; display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; min-height: 56px; padding: 10px 0; border-bottom: 1px solid rgba(23, 21, 28, .07); text-align: left; font-size: 15.5px; line-height: 1.4; color: var(--ink); }
 .jr .jr-task:last-child, .jr-gift:last-child { border-bottom: 0; }
@@ -49,7 +49,7 @@
 .jr-task em { font-size: 18px; }
 .jr-task.done .jr-task-text > span { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--accent); text-decoration-thickness: 2px; }
 .jr-task.done em { opacity: .45; }
-.jr .jr-task:not(:disabled):active .doodle { transform: scale(.9); }
+.jr button.jr-task:active .doodle { transform: scale(.9); }
 .jr-gift .doodle { color: var(--muted); }
 .jr-gift em { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .jr-gift > span { color: var(--soft); }
@@ -57,7 +57,7 @@
 .jr-gift.open > span { color: var(--ink); }
 .jr-gift.open em { font-size: 17px; color: var(--accent); }
 
-/* Cửa hàng giấy gấp sao: ô giấy có ngôi sao, tên giấy, giá. Giữ nguyên luồng mua (chưa bán thì hộp thoại "sắp mở bán"). */
+/* Giấy gấp sao: ô giấy có ngôi sao, tên giấy. Giấy nào cũng dùng được, không bán lẻ (sau này gói gia đình lo hết). */
 .jr-papers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .jr .jr-paper { display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 112px; padding: 14px 6px 10px; border-radius: 18px; background: var(--paper); box-shadow: inset 0 0 0 1px rgba(23, 21, 28, .08); text-align: center; transition: transform .15s; }
 .jr-paper b { font-size: 13px; font-weight: 500; line-height: 1.25; }
@@ -65,8 +65,3 @@
 .jr-paper i.hand { font-size: 15px; line-height: 1; }
 .jr .jr-paper.on { box-shadow: inset 0 0 0 1.5px var(--ink); }
 .jr .jr-paper:active { transform: scale(.95); transition-duration: 0s; }
-
-.jr-soon { gap: 4px; text-align: center; }
-.jr-soon h3 { margin: 12px 0 0; font-size: 26px; }
-.jr-soon p { margin: 6px 0 0; color: var(--soft); font-size: 15px; line-height: 1.5; }
-.jr-soon .btn { margin-top: 18px; }

@@ -1,27 +1,31 @@
 import express from 'express';
 import { pool } from './db.ts';
 import { errorBody, tReq, tVi } from './i18n.ts';
+import { syncMissions } from './missions.ts';
 
 export const JAR_CAPACITY = 40;
 
 export type SeedShape = 'heart' | 'round' | 'star' | 'petal' | 'drop' | 'leaf';
-export type SeedDef = { id: string; name: string; colors: [string, string]; shape: SeedShape; price: number };
+export type SeedDef = { id: string; name: string; colors: [string, string]; shape: SeedShape };
 
+// Mọi loại giấy đều dùng được, không bán lẻ từng giấy: sau này cả gói gia đình trả theo tháng/kỳ lo hết.
 export const CATALOG: SeedDef[] = [
-  { id: 'heart_red', name: tVi('jar.seed.heart_red'), colors: ['#D9534F', '#A23430'], shape: 'heart', price: 0 },
-  { id: 'lotus', name: tVi('jar.seed.lotus'), colors: ['#F2B5C4', '#C9798F'], shape: 'round', price: 0 },
-  { id: 'sun', name: tVi('jar.seed.sun'), colors: ['#F6C453', '#C98E1B'], shape: 'star', price: 0 },
-  { id: 'leaf', name: tVi('jar.seed.leaf'), colors: ['#8DB580', '#4F7A47'], shape: 'leaf', price: 0 },
-  { id: 'pearl', name: tVi('jar.seed.pearl'), colors: ['#F4EFE8', '#B9AEA0'], shape: 'round', price: 19000 },
-  { id: 'sakura', name: tVi('jar.seed.sakura'), colors: ['#F9C9D6', '#E58CA5'], shape: 'petal', price: 19000 },
-  { id: 'gold', name: tVi('jar.seed.gold'), colors: ['#E8B93C', '#9C6F0C'], shape: 'heart', price: 29000 },
-  { id: 'crystal', name: tVi('jar.seed.crystal'), colors: ['#BFE3F2', '#6FA8C4'], shape: 'drop', price: 29000 },
-  { id: 'rainbow', name: tVi('jar.seed.rainbow'), colors: ['#B48AE0', '#F08A7A'], shape: 'star', price: 39000 },
-  { id: 'dew', name: tVi('jar.seed.dew'), colors: ['#9FD8CF', '#4E9E94'], shape: 'drop', price: 19000 },
+  { id: 'heart_red', name: tVi('jar.seed.heart_red'), colors: ['#D9534F', '#A23430'], shape: 'heart' },
+  { id: 'lotus', name: tVi('jar.seed.lotus'), colors: ['#F2B5C4', '#C9798F'], shape: 'round' },
+  { id: 'sun', name: tVi('jar.seed.sun'), colors: ['#F6C453', '#C98E1B'], shape: 'star' },
+  { id: 'leaf', name: tVi('jar.seed.leaf'), colors: ['#8DB580', '#4F7A47'], shape: 'leaf' },
+  { id: 'pearl', name: tVi('jar.seed.pearl'), colors: ['#F4EFE8', '#B9AEA0'], shape: 'round' },
+  { id: 'sakura', name: tVi('jar.seed.sakura'), colors: ['#F9C9D6', '#E58CA5'], shape: 'petal' },
+  { id: 'gold', name: tVi('jar.seed.gold'), colors: ['#E8B93C', '#9C6F0C'], shape: 'heart' },
+  { id: 'crystal', name: tVi('jar.seed.crystal'), colors: ['#BFE3F2', '#6FA8C4'], shape: 'drop' },
+  { id: 'rainbow', name: tVi('jar.seed.rainbow'), colors: ['#B48AE0', '#F08A7A'], shape: 'star' },
+  { id: 'dew', name: tVi('jar.seed.dew'), colors: ['#9FD8CF', '#4E9E94'], shape: 'drop' },
 ];
 
-const FREE = CATALOG.filter((s) => s.price === 0).map((s) => s.id);
+// Người chưa chọn giấy thì lần lượt nhận một trong bốn giấy đầu (như trước khi bỏ giá, để lọ cũ không đổi màu).
+const DEFAULTS = CATALOG.slice(0, 4).map((s) => s.id);
 
+// owned_seeds: giấy đã mua thời còn bán lẻ. Không dùng nữa nhưng giữ nguyên bảng và dữ liệu (members.ts PLAN vẫn xoá theo người).
 export async function migrateJar(p: { query: (sql: string) => Promise<unknown> }) {
   await p.query(`
     create table if not exists member_seed (member_id text primary key, seed text not null default 'heart_red');
@@ -39,10 +43,11 @@ const wrap = (fn: (req: any, res: any) => Promise<unknown>) => (req: any, res: a
 
 jarRouter.get('/jar', wrap(async (req, res) => {
   const { id: me, family_id: fid } = req.member;
-  const [ms, sel, own, ev] = await Promise.all([
+  // Nhiệm vụ tự đánh dấu trước khi đếm sao (server/missions.ts). Lỗi thì vẫn trả lọ như cũ.
+  await syncMissions(fid).catch((e) => console.error(e));
+  const [ms, sel, ev] = await Promise.all([
     pool.query('select id from members where family_id = $1 order by created_at', [fid]),
     pool.query('select member_id, seed from member_seed where member_id in (select id from members where family_id = $1)', [fid]),
-    pool.query('select seed from owned_seeds where member_id = $1', [me]),
     pool.query(
       `select who, at from (
          select author_id who, created_at at from posts where family_id = $1
@@ -56,12 +61,12 @@ jarRouter.get('/jar', wrap(async (req, res) => {
   const picked = new Map<string, string>(sel.rows.map((r: any) => [r.member_id, r.seed]));
   const seeds = ms.rows.map((m: any, i: number) => ({
     memberId: m.id,
-    seed: picked.get(m.id) ?? FREE[i % FREE.length],
+    seed: picked.get(m.id) ?? DEFAULTS[i % DEFAULTS.length],
     count: cycle.filter((e: any) => e.who === m.id).length,
   }));
   res.json({
     capacity: JAR_CAPACITY, level, gifts: Math.floor(total / JAR_CAPACITY), seeds, catalog: CATALOG.map((s) => ({ ...s, name: tReq(`jar.seed.${s.id}`) })),
-    owned: own.rows.map((r: any) => r.seed), mine: seeds.find((s: any) => s.memberId === me)?.seed ?? FREE[0],
+    mine: seeds.find((s: any) => s.memberId === me)?.seed ?? DEFAULTS[0],
   });
 }));
 
@@ -69,10 +74,7 @@ jarRouter.put('/jar/seed', wrap(async (req, res) => {
   const seed = String(req.body?.seed || '');
   const def = CATALOG.find((s) => s.id === seed);
   if (!def) return res.status(400).json(errorBody('seed_not_found'));
-  if (def.price > 0) {
-    const { rowCount } = await pool.query('select 1 from owned_seeds where member_id = $1 and seed = $2', [req.member.id, seed]);
-    if (!rowCount) return res.status(403).json(errorBody('seed_locked'));
-  }
+  // Chỗ kiểm gói gia đình sau này: khi có gói trả theo tháng/kỳ, nhà chưa có gói thì chặn ở đây (chưa làm, hiện ai cũng dùng được mọi giấy).
   await pool.query(
     'insert into member_seed (member_id, seed) values ($1,$2) on conflict (member_id) do update set seed = excluded.seed',
     [req.member.id, seed],
