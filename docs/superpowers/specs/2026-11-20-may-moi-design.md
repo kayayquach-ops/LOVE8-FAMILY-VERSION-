@@ -152,5 +152,11 @@ Một agent đọc bản này như người sẽ làm, hỏi 13 điểm. Các đ
 
 1. **Giữ giọng Gemini.** Hạn mức khoảng 70 câu mới mỗi ngày giữ nguyên; người làm phải tiết kiệm câu đọc (gộp câu đáp và câu bồi vào một lần đọc, dùng kho giọng cho câu cố định) và hết lượt thì hiện chữ kèm chuông nhẹ như hiện tại. Ghi con số dự kiến số cuộc gọi mỗi ngày.
 2. **Thẻ cuộc gọi thử hiện 10 phút sau khi vào nhà** (người dùng: "10 phút đi"). Để thành hằng số dễ đổi.
-3. **Được dùng chuyện người này kể khi hỏi người khác, nhưng phải hỏi người kể có muốn cho cả nhà biết chuyện đó không.** Cách làm **(Claude chốt)**: cuối chuyện chính, nếu chuyện có chi tiết đáng chia sẻ, Mây hỏi một câu ngắn kiểu "Mây kể chuyện này cho An nghe được không?" (hoặc "cho cả nhà nghe"). Đồng ý thì các sự thật rút từ chuyện đó mang `visibility = 'family'` và được dùng khi hỏi người khác (luôn nói rõ ai kể) và cho kiểu video "hai thế hệ"; không đồng ý, không trả lời hoặc hết giờ thì mang `visibility = 'self'`, chỉ dùng khi hỏi chính người kể. Tập "nhà mình kể" vẫn theo luật hiện có (cả nhà nghe được), nên câu hỏi phải nói rõ là "kể lại cho An khi Mây gọi An". Người kể đổi ý được trong mục "Mây nhớ gì về mình".
-4. **Bộ ảnh và video cho pitch để tiếng Việt** (việc riêng, không thuộc bản này).
+3. **Hỏi trước khi chia sẻ, và chuyện chưa đồng ý thì giữ riêng** (người dùng sửa lại cách Claude đề xuất, 20/11):
+   - Cuối chuyện chính, Mây hỏi: "Mây chia sẻ câu chuyện này cho cả nhà nghe được không?"
+   - **Đồng ý**: tập "nhà mình kể" của chuyện này hiện cho cả nhà như hiện tại, kèm thông báo kể chuyện tới người được nhắc trong chuyện hoặc cả nhà (ví dụ "Mẹ vừa kể cho An nghe một chuyện, nghe nhé"); các sự thật rút từ chuyện mang `visibility = 'family'`, Mây được dùng khi hỏi người khác (luôn nói rõ ai kể) và cho kiểu video "hai thế hệ".
+   - **Không đồng ý, không trả lời hoặc hết giờ**: tập của chuyện này **chỉ người kể thấy** (giữ trong app của mẹ), có nút "chia sẻ cho cả nhà" để lúc nào muốn thì mở; sự thật mang `visibility = 'self'`. Bấm chia sẻ sau thì đổi cả tập lẫn sự thật sang `family` và gửi thông báo như trường hợp đồng ý.
+   - Cần thêm vào bảng `podcasts` (hoặc bảng kế hoạch tập) cột chủ sở hữu và trạng thái chia sẻ; mọi chỗ liệt kê tập (trang chủ, trang "nhà mình kể", phim tuần, video câu chuyện) phải lọc tập riêng của người khác. Tập cũ coi như đã chia sẻ.
+   - Trả lời bằng giọng (hiểu "được", "ừ", "không", "thôi" và tương đương en/ko) hoặc hai nút trên màn hình, giống màn xin ảnh (`src/callPhoto.ts`).
+4. **Số liệu lời nhắc** (`may_nudges`) vẫn làm để biết Mây nối được bao nhiêu cuộc gọi; người dùng nói buổi pitch dùng bộ ảnh và video, không phải slide, nên không cần màn báo cáo riêng.
+5. **Bộ ảnh và video cho pitch để tiếng Việt** (việc riêng, không thuộc bản này).
