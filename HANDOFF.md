@@ -182,10 +182,10 @@ Người dùng và bạn trong đội (Đạt) báo lỗi và xin thêm tính n�
   - Nhắn riêng: `messages.to_id`, `messages.read_at`, `?with=`, `GET /api/chat/threads`, đẩy riêng `notifyChatTo`; `app/docs/tin-rieng.md`.
   - "nhà mình kể": đổi tên mọi chữ podcast người dùng thấy, kệ ảnh lấy liền ở trang chủ; viên tên trên ảnh tuần đọc rõ ở chế độ tối.
 - Chưa kiểm: mọi SQL mới trên Postgres thật; `add column if not exists ... references` (messages.to_id) cần Postgres 13 trở lên; iPhone thật cho vị trí, gọi thoại, mic sau màn xin ảnh; hai máy thật Wi-Fi + 4G cho gọi video.
-- Mây mới: bản thiết kế `docs/superpowers/specs/2026-11-20-may-moi-design.md`; đã làm code ở nhánh này, chưa deploy (xem mục "21/11: Mây mới" bên dưới).
+- Mây mới: bản thiết kế `docs/superpowers/specs/2026-11-20-may-moi-design.md`; ĐÃ DEPLOY 20/11 bản 74f1d1e (xem mục "21/11: Mây mới" bên dưới).
 - Bộ ảnh và video cho pitch tuần sau: chờ người dùng chọn chữ tiếng Hàn hay tiếng Việt kèm phụ đề Hàn.
 
-## 21/11: Mây mới (chưa deploy)
+## 21/11: Mây mới (ĐÃ DEPLOY 20/11 18:30 giờ VN, bản 74f1d1e, đã push nhánh + main)
 
 Làm lại Mây, nhánh `ux-simple-poetic`, 9 task. Chi tiết từng phần ở `app/docs/may-moi.md`, thiết kế ở `docs/superpowers/specs/2026-11-20-may-moi-design.md`. Chưa deploy, chưa chạy trên Postgres thật (mọi test dùng DB giả).
 
