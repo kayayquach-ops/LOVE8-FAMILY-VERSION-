@@ -4,6 +4,7 @@ import { LANG_NAMES, LANGS, setLang, t, useLang, type Key } from './i18n';
 import { setThemeMode, THEME_MODES, useThemeMode } from './theme';
 import { Notify } from './Notify';
 import { LocationShare } from './LocationShare';
+import { MaySettings } from './MayMemory';
 import { GoogleMark } from './Onboarding';
 import { mascotNameOf, type Me } from './shared';
 import { setUiSounds, tap, uiSoundsOn } from './sound';
@@ -59,6 +60,7 @@ export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose
           <span className="set-name"><b>{mascotNameOf(me.family)}</b></span>
           <span className="chip">{t('may.customize')}</span>
         </button>
+        <MaySettings me={me} />
 
         <div className="h2">{t('family.language')}</div>
         <div className="panel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>

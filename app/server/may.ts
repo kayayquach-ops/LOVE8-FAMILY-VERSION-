@@ -83,6 +83,9 @@ export const MAY_SQL = {
   markContact: `update may_nudges set contact_at = $2 where family_id = $1 and contact_at is null and sent_at > $3
      and from_id = any($4) and to_id = any($4) and (from_id = any($5) or to_id = any($5))`,
   // Bấm lời nhắc: chỉ người nhận, khi người nhận và người kể còn trong nhà. opened_at ghi một lần.
+  // Công tắc "Mây nhắc mình liên lạc" của chính người dùng.
+  getNudge: 'select may_nudge from members where id = $1',
+  setNudge: 'update members set may_nudge = $2 where id = $1',
   open: `update may_nudges n set opened_at = coalesce(n.opened_at, now())
      where n.id = $1 and n.to_id = $2 and n.family_id = $3
        and exists (select 1 from members m where m.id = n.to_id and m.family_id = $3)
@@ -396,6 +399,16 @@ const h = (fn: (req: any, res: express.Response) => Promise<unknown>) => (req: a
 /** Gắn sau auth. POST /may/nudges/:id/open: người nhận bấm thông báo, trả { peerId } là người kể để máy gọi thoại ngay. */
 export function makeMayRouter(deps: MayDeps = DEPS) {
   const r = express.Router();
+  r.get('/may/settings', h(async (req, res) => {
+    const { rows } = await deps.db.query(MAY_SQL.getNudge, [req.member.id]);
+    res.json({ nudges: rows[0]?.may_nudge !== false });
+  }));
+  r.put('/may/settings', h(async (req, res) => {
+    const nudges = req.body?.nudges;
+    if (typeof nudges !== 'boolean') return res.status(400).json(errorBody('may_settings_invalid'));
+    await deps.db.query(MAY_SQL.setNudge, [req.member.id, nudges]);
+    res.json({ nudges });
+  }));
   r.post('/may/nudges/:id/open', h(async (req, res) => {
     const me = req.member as { id: string; family_id: string };
     const { rows } = await deps.db.query(MAY_SQL.open, [String(req.params.id), me.id, me.family_id]);

@@ -198,6 +198,12 @@ function fakeDb(t: { members?: Row[]; signals?: Row[]; nudges?: Row[]; messages?
           s.sent_at = v[1];
           return out([{ id: s.id }]);
         }
+        case S.getNudge: return out(db.members.filter((m) => m.id === v[0]).map((m) => ({ may_nudge: m.may_nudge })));
+        case S.setNudge: {
+          const m = db.members.find((x) => x.id === v[0]);
+          if (m) m.may_nudge = v[1];
+          return out([], m ? 1 : 0);
+        }
         case S.open: {
           const n = db.nudges.find((x) => x.id === v[0] && x.to_id === v[1] && x.family_id === v[2] && inFam(x.to_id, v[2]) && inFam(x.from_id, v[2]));
           if (n) n.opened_at ??= new Date();
@@ -377,6 +383,35 @@ test('bấm lời nhắc: chỉ người nhận, ghi lúc mở một lần, tr�
     assert.equal((await post('/api/may/nudges/n1/open', 'xuan', 'G')).body.code, 'nudge_not_found');
     db.members = db.members.filter((m) => m.id !== 'lan');
     assert.equal((await open('an')).status, 404);
+  } finally {
+    server.close();
+  }
+});
+
+test('công tắc "Mây nhắc mình liên lạc": mặc định bật, tắt được, sai kiểu thì 400', async () => {
+  const db = fakeDb({ members: [kin('an', 'An', 'con'), kin('lan', 'Lan', 'me')] });
+  const app = express();
+  app.use(express.json());
+  app.use(langMiddleware);
+  app.use((req: any, _res, next) => { req.member = { id: String(req.headers['x-member']), family_id: 'F' }; next(); });
+  app.use('/api', M.makeMayRouter({ db, notify: () => {}, now: () => now }));
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const send = async (method: string, who: string, body?: unknown) => {
+    const r = await fetch(`${base}/api/may/settings`, { method, headers: { 'x-member': who, 'x-lang': 'vi', 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    return { status: r.status, body: await r.json() };
+  };
+  try {
+    assert.deepEqual(await send('GET', 'an'), { status: 200, body: { nudges: true } });
+    const bad = await send('PUT', 'an', { nudges: 'no' });
+    assert.equal(bad.status, 400);
+    assert.equal(bad.body.code, 'may_settings_invalid');
+    assert.equal((await send('PUT', 'an', {})).status, 400);
+    assert.deepEqual((await send('PUT', 'an', { nudges: false })).body, { nudges: false });
+    assert.equal(db.members.find((m) => m.id === 'an')!.may_nudge, false);
+    assert.equal(db.members.find((m) => m.id === 'lan')!.may_nudge, true);   // chỉ đổi của mình
+    assert.deepEqual((await send('GET', 'an')).body, { nudges: false });
   } finally {
     server.close();
   }

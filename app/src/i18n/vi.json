@@ -906,5 +906,11 @@
   "chat.translate": "dịch",
   "chat.translated": "bản dịch",
   "chat.translating": "đang dịch...",
-  "settings.autoTranslate": "Tự dịch tin nhắn"
+  "settings.autoTranslate": "Tự dịch tin nhắn",
+  "may.settings.nudge": "{mascot} nhắc mình liên lạc",
+  "may.memory.title": "{mascot} nhớ gì về mình",
+  "may.memory.empty": "{mascot} chưa nhớ gì về bạn",
+  "may.memory.by": "{name} kể",
+  "may.memory.forget": "Xoá",
+  "may.memory.forgot": "Đã xoá"
 }

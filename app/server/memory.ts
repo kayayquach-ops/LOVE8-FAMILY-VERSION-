@@ -2,11 +2,12 @@
 // Sau mỗi cuộc gọi một lần gọi AI rút sự thật và tín hiệu; mỗi điều phải có câu gốc nằm trong câu trả lời, không thì bỏ.
 // Lời nhắn khó nói (topic loi-nhan) và "điều chưa nói" (intro.unsaid) không bao giờ tới đây. Chi tiết: docs/may-moi.md.
 // Kiểm bằng server/memory.test.ts (DB giả theo từng câu trong MEM_SQL, Gemini giả).
+import express from 'express';
 import { randomUUID } from 'node:crypto';
 import { pool } from './db.ts';
 import { askJSON, hasAI } from './ai.ts';
 import { suspect } from './guard.ts';
-import { langOf, type Lang } from './i18n.ts';
+import { errorBody, langOf, reqLang, type Lang } from './i18n.ts';
 import { foldText, planSignals, queueSignals, SIGNAL_KINDS, type SignalKind, type SignalMember } from './may.ts';
 
 export { foldText };
@@ -225,6 +226,13 @@ export const MEM_SQL = {
      and kind not in ('health', 'worry') and coalesce(details->>'sensitive', '') <> 'true'`,
   done: 'update calls set memory_at = now() where id = $1',
   failed: 'update calls set memory_tries = memory_tries + 1 where id = $1',
+  // Điều Mây nhớ về chính mình: do mình kể (mọi chế độ) hoặc người khác kể cho cả nhà; điều riêng người khác kể thì không.
+  list: `select f.id, f.kind, f.text, f.text_en, f.details->>'lang' lang, f.source_id, s.name by_name, f.created_at
+     from memory_facts f join members s on s.id = f.source_id
+     where f.family_id = $1 and f.about_id = $2 and f.replacement_id is null and (f.source_id = $2 or f.visibility = 'family')
+     order by f.created_at desc limit 100`,
+  forget: `delete from memory_facts where id = $1 and family_id = $2 and about_id = $3 and replacement_id is null
+     and (source_id = $3 or visibility = 'family') returning id`,
   next: `select id from calls where status = 'done' and memory_at is null and memory_tries < 3 order by done_at limit 1`,
 };
 
@@ -314,4 +322,27 @@ export function startMemoryBackfill(deps: MemoryDeps = DEPS, gapMs = 20_000): vo
     if (more) setTimeout(tick, gapMs);
   };
   setTimeout(tick, 60_000);
+}
+
+const h = (fn: (req: any, res: express.Response) => Promise<unknown>) => (req: any, res: express.Response) =>
+  fn(req, res).catch((e) => { console.error('[memory]', e); res.status(500).json(errorBody('server')); });
+
+/** Gắn sau auth. GET /may/memory: những điều Mây nhớ về người xem, chữ theo thứ tiếng của người xem. DELETE /may/memory/:id: xoá một dòng. */
+export function makeMemoryRouter(deps: { db: Db } = { db: pool }) {
+  const r = express.Router();
+  r.get('/may/memory', h(async (req, res) => {
+    const me = req.member as { id: string; family_id: string };
+    const lang = reqLang();
+    const { rows } = await deps.db.query(MEM_SQL.list, [me.family_id, me.id]);
+    res.json(rows.map((f) => ({ id: f.id, text: f.lang === lang ? f.text : f.text_en, kind: f.kind, by: f.source_id === me.id ? '' : String(f.by_name ?? ''), createdAt: new Date(f.created_at).toISOString() })));
+  }));
+  // Xoá cứng: đây là dòng nhớ của chính người đó. Các dòng cũ từng bị dòng này thay thế (replacement_id) không có khoá ngoại,
+  // nên vẫn xoá được; chúng giữ nguyên trạng đã thay, không tự sống lại.
+  r.delete('/may/memory/:id', h(async (req, res) => {
+    const me = req.member as { id: string; family_id: string };
+    const { rows } = await deps.db.query(MEM_SQL.forget, [String(req.params.id), me.family_id, me.id]);
+    if (!rows[0]) return res.status(404).json(errorBody('memory_not_found'));
+    res.json({ ok: true });
+  }));
+  return r;
 }

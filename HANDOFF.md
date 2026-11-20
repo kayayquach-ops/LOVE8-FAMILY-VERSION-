@@ -184,3 +184,14 @@ Người dùng và bạn trong đội (Đạt) báo lỗi và xin thêm tính n�
 - Chưa kiểm: mọi SQL mới trên Postgres thật; `add column if not exists ... references` (messages.to_id) cần Postgres 13 trở lên; iPhone thật cho vị trí, gọi thoại, mic sau màn xin ảnh; hai máy thật Wi-Fi + 4G cho gọi video.
 - Mây mới: bản thiết kế `docs/superpowers/specs/2026-11-20-may-moi-design.md` (đã soát), còn 3 câu chờ người dùng: hạn mức giọng (giữ Gemini hay Google Cloud TTS), thẻ cuộc gọi thử sau bao lâu, có dùng chuyện người này hỏi người kia không. Chưa làm code.
 - Bộ ảnh và video cho pitch tuần sau: chờ người dùng chọn chữ tiếng Hàn hay tiếng Việt kèm phụ đề Hàn.
+
+## 21/11: Mây mới (chưa deploy)
+
+Làm lại Mây, nhánh `ux-simple-poetic`, 9 task. Chi tiết từng phần ở `app/docs/may-moi.md`, thiết kế ở `docs/superpowers/specs/2026-11-20-may-moi-design.md`. Chưa deploy, chưa chạy trên Postgres thật (mọi test dùng DB giả).
+
+- **Đã đổi**: Mây có sổ nhớ (rút điều nghe được sau mỗi cuộc gọi, mỗi điều phải có câu gốc trong lời kể); bộ câu v2 soạn từ dữ liệu lớn dần; cuộc gọi thử cho người mới sau 10 phút; hỏi thăm rồi mới vào chuyện chính, hỏi thêm tối đa 4 câu; câu xin phép chia sẻ cuối cuộc gọi, tập chưa chia sẻ chỉ người kể thấy; Mây nối người (lời nhắc liên lạc); tin "vừa kể một chuyện" khi tập được chia sẻ; cài đặt: công tắc "Mây nhắc mình liên lạc" và danh sách "Mây nhớ gì về mình" xoá được từng dòng.
+- **Bảng và cột mới** (migration chạy lặp, không sửa hàng cũ): `memory_facts`, `may_signals`, `may_nudges`; cột mới `members.may_nudge`, `calls.shared`, `podcasts.shared` và các cột đếm rút sổ nhớ trên `calls` (`memory_at`, `memory_tries`). Cuộc gọi và tập cũ mặc định đã chia sẻ.
+- **Giọng**: chỉ Gemini, `GEMINI_TTS_DAILY` mặc định 70 câu mới mỗi ngày cho cả app. Mỗi cuộc gọi 2 tới 7 câu giọng mới (thường khoảng 6), nên 70 câu đủ khoảng 10 cuộc gọi đủ giọng mỗi ngày, sau đó hiện chữ kèm chuông nhẹ. Bốn câu cố định mới tốn 12 câu giọng mỗi thứ tiếng một lần. Xem `app/docs/tts-budget.md`.
+- **Luật lời nhắc**: chỉ gửi 9:00 tới trước 21:30 giờ người nhận; tối đa 1 lời nhắc mỗi người mỗi ngày và 3 trong 7 ngày (mọi loại cộng chung); ưu tiên `want_contact` > `miss` > `low` > `good_news` > `upcoming`; hết hạn `miss`/`want_contact` 24 giờ, `low`/`good_news` 48 giờ, `upcoming` hết ngày hôm trước sự việc; liên lạc tính trong 48 giờ sau lời nhắc. `worry` chỉ vào sổ nhớ, không thành lời nhắc. Tin chuyện mới đi riêng: hạn 72 giờ, không tính trần, theo công tắc "Tin nhà".
+- **Để sau**: tập podcast hai thế hệ (video nhiều người kể) và kiểu video "kể liền mạch" riêng chưa làm; tập chuyện hiện nối lời người kể không kèm giọng Mây.
+- **Trước khi deploy**: chạy thử trên Postgres thật (SQL mới của sổ nhớ, hàng chờ, cài đặt), thử thật trên iPhone (chạm thông báo gọi thoại, danh sách "Mây nhớ gì về mình"), rồi mới đẩy.

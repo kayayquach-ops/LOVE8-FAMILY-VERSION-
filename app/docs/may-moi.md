@@ -242,3 +242,13 @@ Bấm lại hay gửi lại không đổi gì: chỉ tập còn riêng mới đ�
 **Tin chuyện mới** (`queueStory`: `may_signals.kind = 'story'`, `ref` là mã tập, `evidence` rỗng, hạn `STORY_TTL_H` = 72 giờ từ lúc xếp): `mayTick` gửi khi tập đã dựng xong tiếng (câu lấy hàng chờ left join `podcasts` theo `ref`, `status = 'ready'`), trong khung 9:00 tới trước 21:30 giờ người nhận, chưa hết hạn. Không tính trần, không theo công tắc "Mây nhắc mình liên lạc", không tranh lượt với lời nhắc liên lạc (cùng người cùng lượt vẫn gửi cả hai), không ghi `may_nudges` (giành bằng `MAY_SQL.claimStory`), nên cũng không tính vào trần lời nhắc. Tập không bao giờ dựng xong thì tín hiệu hết hạn.
 
 **Thông báo**: `kind: 'post'` (theo công tắc "Tin nhà"), tiêu đề `nudge.story.title` ("Mẹ vừa kể một chuyện"), thân `nudge.story.body` ("Mẹ vừa kể cho An nghe một chuyện, nghe nhé."), người kể gọi như lời nhắc (bố mẹ nói với con theo vai, còn lại theo tên, tiếng Hàn kèm 님), viết hoa chữ đầu; `tag: story-<mã tập>`, `open: podcast:<mã tập>`, `ttl` 24 giờ. Chạm thông báo: `App.tsx` mở tab podcast ở đúng tập đó.
+
+## Cài đặt (task 9)
+
+Mã: `server/may.ts` (`GET/PUT /api/may/settings`), `server/memory.ts` (`makeMemoryRouter`, `MEM_SQL.list`, `MEM_SQL.forget`), `src/MayMemory.tsx` (`MaySettings`, chèn trong `src/Settings.tsx` ngay sau ô "Bạn nhỏ của nhà").
+
+**Công tắc "Mây nhắc mình liên lạc"** (`members.may_nudge`, mặc định bật): `GET` trả `{ nudges }`, `PUT { nudges }` chỉ nhận kiểu boolean, sai thì 400 `may_settings_invalid`. Tắt thì không ai bị xếp tín hiệu nhắc người này và lời nhắc đang chờ bị bỏ (`dropped = 'off'`); người này vẫn có điều nhớ trong sổ. Tin chuyện mới không theo công tắc này (theo công tắc "Tin nhà"). Máy khách đổi công tắc ngay, lỗi thì trả lại và hiện toast.
+
+**"Mây nhớ gì về mình"**: `GET /api/may/memory` trả tối đa 100 điều mới nhất `{ id, text, kind, by, createdAt }`. Điều được thấy: `about_id` là mình, chưa bị thay (`replacement_id` null), cùng nhà, và do chính mình kể (mọi chế độ) hoặc `visibility = 'family'`. Điều người khác kể riêng (`self`) về mình không hiện, không xoá được. `text` là câu gốc khi `details.lang` trùng thứ tiếng người xem, khác thì `text_en`. `by` là tên người kể, rỗng khi chính mình kể (máy khách chỉ in "X kể" khi có `by`).
+
+`DELETE /api/may/memory/:id` xoá cứng đúng dòng thấy được ở trên, trả `{ ok: true }`; không thấy thì 404 `memory_not_found` (cùng câu trả lời cho mã không có và mã của người khác). `replacement_id` không có khoá ngoại, nên xoá một điều mới không vướng gì; các điều cũ từng bị nó thay giữ nguyên trạng đã thay, không tự hiện lại.

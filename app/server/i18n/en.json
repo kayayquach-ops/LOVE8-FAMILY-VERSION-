@@ -239,5 +239,7 @@
   "error.translate_not_found": "Couldn't find this message",
   "error.translate_unavailable": "Translation isn't available right now",
   "error.translate_limit": "Your family has translated a lot today, try again tomorrow",
-  "error.translate_failed": "Couldn't translate, please try again later"
+  "error.translate_failed": "Couldn't translate, please try again later",
+  "error.may_settings_invalid": "Couldn't save the setting",
+  "error.memory_not_found": "This line isn't here anymore"
 }

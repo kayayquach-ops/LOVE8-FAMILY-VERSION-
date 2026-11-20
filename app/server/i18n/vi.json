@@ -235,5 +235,7 @@
   "error.translate_not_found": "Không thấy tin nhắn này",
   "error.translate_unavailable": "Chưa dịch được lúc này",
   "error.translate_limit": "Hôm nay nhà mình dịch nhiều rồi, mai dịch tiếp nhé",
-  "error.translate_failed": "Chưa dịch được, thử lại sau nhé"
+  "error.translate_failed": "Chưa dịch được, thử lại sau nhé",
+  "error.may_settings_invalid": "Chưa lưu được cài đặt",
+  "error.memory_not_found": "Không thấy dòng này"
 }
