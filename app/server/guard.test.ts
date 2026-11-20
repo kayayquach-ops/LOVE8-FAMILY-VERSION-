@@ -1,7 +1,7 @@
 // Kiểm lớp lọc chống bịa suspect() và đọc ngày parseDate() cho vi, en, ko. Không gọi mạng. Chạy cùng npm run test:tts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDate, suspect, type Allow } from './guard.ts';
+import { parseDate, slip, suspect, type Allow } from './guard.ts';
 
 const NONE: Allow = { prevCall: false, ownStory: false, photos: false };
 const ALL: Allow = { prevCall: true, ownStory: true, photos: true };
@@ -67,6 +67,14 @@ test('suspect: dấu hiệu bịa bị chặn (vi, en, ko)', () => {
     ['Con gái của mẹ dạo này thế nào?', 'vi'],
   ];
   for (const [s, lang] of bad) assert.ok(suspect(s, HAY, NONE, lang), s);
+});
+
+test('slip: dấu hiệu bịa không cần dữ liệu, suspect vẫn như cũ', () => {
+  assert.ok(slip('Lần trước mẹ kể', { prevCall: false, ownStory: true, photos: false }), 'chưa có cuộc gọi trước: có dấu hiệu');
+  assert.equal(slip('Lần trước mẹ kể', { prevCall: true, ownStory: true, photos: false }), null, 'có cuộc gọi trước: không sao');
+  assert.equal(slip('Minh ơi, bạn 25 tuổi rồi nhỉ?', NONE, 'vi'), null, 'tên, con số cần dữ liệu thật: slip không xét');
+  assert.equal(suspect('Lần trước bạn kể về quê, kể tiếp nhé?', HAY, NONE, 'vi'), 'nhắc cuộc gọi trước không có', 'suspect: lý do như cũ (phần slip)');
+  assert.equal(suspect('Minh ơi, dạo này thế nào?', HAY, NONE, 'vi'), 'tên "Minh" không có trong dữ liệu', 'suspect: lý do như cũ (phần cần dữ liệu)');
 });
 
 test('parseDate: vi, en, ko', () => {

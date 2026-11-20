@@ -47,13 +47,22 @@ const GENDER: Array<[RegExp, RegExp]> = [
 
 const fold = (s: string) => s.toLowerCase().normalize('NFC');
 
-/** Lý do câu này có dấu hiệu bịa (nhắc điều không có trong dữ liệu), hoặc null nếu ổn. haystack là toàn bộ dữ liệu thật đã đưa vào. */
-export function suspect(text: string, haystack: string, allow: Allow, lang: Lang = 'vi'): string | null {
+/** Phần của suspect() không cần dữ liệu thật: mốc thời gian, tin nhắn, cuộc gọi trước, điều đã kể, ảnh đã gửi. Máy khách cũng gọi
+ *  (nhắc chống bịa giữa cuộc gọi Mây Live, src/liveTurns.ts). Mẫu chạy cho mọi thứ tiếng nên lang chưa dùng, giữ cho cùng khuôn với suspect. */
+export function slip(text: string, allow: Allow, lang: Lang = 'vi'): string | null {
   const t = fold(text);
   for (const [why, re] of ALWAYS) if (!(allow.message && why === MESSAGE) && re.test(t)) return why;
   if (!allow.prevCall && PREV_CALL.some((re) => re.test(t))) return 'nhắc cuộc gọi trước không có';
   if (!allow.ownStory && OWN_STORY.some((re) => re.test(t))) return 'nhắc điều đã kể mà chưa có';
   if (!allow.photos && PHOTOS.some((re) => re.test(t))) return 'nhắc ảnh đã gửi mà chưa có';
+  return null;
+}
+
+/** Lý do câu này có dấu hiệu bịa (nhắc điều không có trong dữ liệu), hoặc null nếu ổn. haystack là toàn bộ dữ liệu thật đã đưa vào. */
+export function suspect(text: string, haystack: string, allow: Allow, lang: Lang = 'vi'): string | null {
+  const early = slip(text, allow, lang);
+  if (early) return early;
+  const t = fold(text);
   const hay = fold(haystack);
   for (const n of text.match(/\d+/g) ?? []) if (!hay.includes(n)) return `con số ${n} không có trong dữ liệu`;
   // Nước, thành phố viết bằng chữ Hàn (chữ Latin đã do phần kiểm tên viết hoa lo): phải có trong dữ liệu.

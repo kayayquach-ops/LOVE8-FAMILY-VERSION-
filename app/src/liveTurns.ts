@@ -1,0 +1,210 @@
+// Logic cuộc gọi Mây Live ở máy khách, hàm thuần cho CallLive.tsx nối vào (task 6, 7). Kiểm bằng src/liveTurns.test.ts.
+// Công cụ của model làm gì với trạng thái cuộc gọi và đáp model câu gì (onTool), lượt nào vào ô nào (onRec, onTurn), ghi giọng từng lượt
+// (captureNext), xin phép chia sẻ (onShareEnd, askStep), nhắc chống bịa một lần (remindFor), nhắc đồng hồ (clockDue), chốt (finishJob).
+// Ô 0 hỏi thăm, ô 1 lời nhắn khó nói, chuyện từ ô LIVE_FIRST_STORY (kịch bản v3, server/calllive.ts). Lời đồng ý chia sẻ chỉ từ hai nút hoặc
+// bộ đọc câu trả lời (shareNext, src/callShare.ts), không bao giờ từ model.
+// Nối vào (CallLive.tsx), theo đúng thứ tự tin tới, không chen await giữa:
+// - startRec của captureNext: state = onRec(state, key) rồi mới ghi. Mây gọi công cụ ngay trước câu nói đi kèm, tức là ở đầu câu đáp lượt vừa nói,
+//   trước khi lượt ấy được gửi (lúc done); bản chụp giữ cho lượt ấy ô lúc nó bắt đầu, công cụ chỉ có hiệu lực từ lượt sau.
+// - turn: onTurn(state, { key, question, transcript, seconds }) ngay (chỉ chờ bản ghi để gửi job); consent true thì đưa lời chép cho shareNext
+//   ({ type: 'heard' }), không theo "lượt tới lúc đang xin phép" (lượt nói trước câu hỏi chia sẻ cũng tới lúc ấy).
+// - Tiếng Mây bị giữ lúc xin phép vẫn báo captureNext ({ type: 'audio' }) để lượt trả lời khép được (R8); { type: 'asked' } theo askStep.
+import { slip, type Allow } from '../server/guard.ts';
+import { isTheme, LIVE_FIRST_STORY, type StoryTheme } from './shared';
+
+// i18n-ok-begin: câu nhắn và kết quả công cụ cho model (tiếng Anh như mọi prompt), không phải chữ hiện cho người dùng.
+export const CUE = {
+  open: '(The call just connected. Greet them by name and begin.)',
+  silent: '(The teller has been quiet.)',
+  clock: '(Two minutes left. Finish this story gently and go to the closing steps.)',
+  shareYes: "(Share answer: yes, the family may hear today's stories.)",
+  shareNo: "(Share answer: no, today's stories stay private.)",
+  photos: (n: number) => (n ? `(${n} photos arrived.)` : '(No photos for now.)'),
+  remind: '(Reminder: only DATA is true. Do not mention earlier calls, earlier stories or photos unless DATA has them.)',
+};
+const SAY = {
+  notOpened: 'Not opened: use a theme from DATA.allowed_themes and say the opener.',
+  opened: 'Story opened.',
+  closed: 'Story closed. Open the next seed or go to the closing steps.',
+  noStory: 'No story is open: skip the photo.',
+  photo: 'The photo button is showing. Wait for them; the app will tell you how many photos arrived.',
+  alone: 'They are the only one in the family: skip this step.',
+  untold: 'No story was told: skip this step.',
+  again: 'Already asked: do not ask again.',
+  share: 'The two buttons are showing. Ask your one short question now, then say nothing until the app tells you the answer.',
+  unknown: 'Unknown message id.',
+  delivered: 'Delivered.',
+  askNow: 'Ask now.',
+  bye: 'Say nothing more; the app hangs up.',
+};
+// i18n-ok-end
+
+/** Người kể im chừng này (Mây đã nói xong, máy phát đã im) thì nhắc model (CUE.silent), một lần mỗi lượt của Mây. */
+export const SILENT_MS = 12_000;
+/** Còn chừng này giây thì nhắc model sắp hết giờ (CUE.clock), một lần; xem clockDue. */
+export const CLOCK_LEFT_SEC = 120;
+/** Mây im chừng này (cộng độ trễ phát của máy) thì mở mic, bắt đầu ghi lượt mới (sự kiện gate). */
+export const MIC_GATE_MS = 600;
+/** Cuộc gọi chỉ được chừng này giây trở xuống thì không nhắc đồng hồ (R12): vừa vào đã bị bảo khép chuyện. */
+const CLOCK_MIN_SEC = 150;
+
+/** Một việc cho hàng chờ gửi (src/outbox.ts, nhóm là mã cuộc gọi). last: chỉ đi sau mọi việc trước nó của cuộc gọi (ô chuyện, chốt). */
+export type Job = { url: string; fields: Record<string, string>; last?: boolean };
+/** job: đưa vào hàng chờ. photo: hiện ô xin ảnh cho ô chuyện state.lastStory. share: hiện hai nút xin phép. end: Mây chào xong thì cúp máy. */
+export type Effect = { kind: 'job'; job: Job } | { kind: 'photo' } | { kind: 'share' } | { kind: 'end' };
+
+/** idx: ô của lượt sau; theme, opener: chuyện đang mở; next: ô chuyện kế tiếp; turns: số lượt đã gửi theo ô; storyTurns: số lượt kể chuyện đã gửi;
+ *  family: số người trong nhà; themes: chủ đề được mở (DATA.allowed_themes); relays: mã lời nhắn đang chờ, heard: mã đã chuyển;
+ *  share: bước xin phép; hook: câu hẹn tuần sau (end_call); reminded: đã nhắc chống bịa (một lần mỗi cuộc gọi);
+ *  lastStory: ô chuyện mở gần nhất (0: chưa có), giữ cả sau story_close để xin ảnh sau khi khép chuyện vẫn được (R5);
+ *  rec: ô lúc từng lượt bắt đầu ghi, theo key (onRec), bỏ khi lượt ấy gửi (onTurn). */
+export type LiveState = {
+  id: string; idx: number; theme: StoryTheme | null; opener: string; next: number; turns: Record<number, number>; storyTurns: number;
+  family: number; themes: StoryTheme[]; relays: string[]; heard: string[]; share: 'none' | 'asking' | 'done'; hook: string; reminded: boolean;
+  lastStory: number; rec: Record<number, TurnSlot>;
+};
+export type TurnSlot = { idx: number; theme: StoryTheme | null; opener: string; share: LiveState['share'] };
+
+export function liveStart(p: { id: string; family: number; themes: StoryTheme[]; relays: string[] }): LiveState {
+  return {
+    id: p.id, idx: 0, theme: null, opener: '', next: LIVE_FIRST_STORY, turns: {}, storyTurns: 0, family: p.family, themes: p.themes,
+    relays: p.relays, heard: [], share: 'none', hook: '', reminded: false, lastStory: 0, rec: {},
+  };
+}
+
+/** Một lời gọi công cụ của model: trạng thái mới, câu đáp model (toolResponse) và việc cho app làm. Gọi sai (chủ đề lạ, mã lạ, hỏi lần hai,
+ *  công cụ lạ) thì không làm gì, chỉ một câu ngắn để model đi tiếp. Ô lời nhắn (1) khép ở lời gọi công cụ kế tiếp, relay_open thì mở lại:
+ *  lượt nói thêm sau lời nhắn (chào, "dạ vâng") không đè lời nhắn. */
+export function onTool(s: LiveState, f: { name: string; args?: Record<string, unknown> }): { state: LiveState; result: string; effects: Effect[] } {
+  const st = s.idx === 1 ? { ...s, idx: 0 } : s;
+  const arg = (k: string) => String(f.args?.[k] ?? '').trim();
+  const say = (result: string, state = st, effects: Effect[] = []) => ({ state, result, effects });
+  const base = `/api/call/${s.id}`;
+  switch (f.name) {
+    case 'story_open': {
+      const theme = f.args?.theme, opener = arg('opener').slice(0, 300);
+      if (!isTheme(theme) || !st.themes.includes(theme) || !opener) return say(SAY.notOpened);
+      const idx = st.next;
+      return say(SAY.opened, { ...st, idx, next: idx + 1, theme, opener, lastStory: idx },
+        [{ kind: 'job', job: { url: `${base}/story`, fields: { idx: String(idx), theme, opener }, last: true } }]);
+    }
+    case 'story_close': return say(SAY.closed, { ...st, idx: 0, theme: null });
+    case 'ask_photo': return st.lastStory < LIVE_FIRST_STORY ? say(SAY.noStory) : say(SAY.photo, st, [{ kind: 'photo' }]);
+    case 'ask_share':
+      if (st.family < 2) return say(SAY.alone);
+      if (st.storyTurns === 0) return say(SAY.untold);
+      if (st.share !== 'none') return say(SAY.again);
+      return say(SAY.share, { ...st, share: 'asking' }, [{ kind: 'share' }]);
+    case 'relay_heard': {
+      const rid = arg('id');
+      if (!st.relays.includes(rid) || st.heard.includes(rid)) return say(SAY.unknown);
+      return say(SAY.delivered, { ...st, heard: [...st.heard, rid] },
+        [{ kind: 'job', job: { url: `${base}/relay/${encodeURIComponent(rid)}/heard`, fields: {} } }]);
+    }
+    case 'relay_open': return st.family < 2 ? say(SAY.alone) : say(SAY.askNow, { ...st, idx: 1 });
+    case 'end_call': return say(SAY.bye, { ...st, hook: arg('next_hook').slice(0, 200) }, [{ kind: 'end' }]);
+    default: return say('ok');
+  }
+}
+
+/** Lượt key bắt đầu ghi (captureNext ra startRec): chụp ô, chuyện và bước xin phép lúc ấy cho onTurn của lượt này. Nhờ vậy câu đáp hỏi thăm
+ *  không lọt vào chuyện vừa mở, đoạn cuối chuyện không rơi về ô 0 khi story_close, lời nhắn không mất hay rơi về ô 0 khi ask_share, end_call tới ngay sau. */
+export function onRec(s: LiveState, key: number): LiveState {
+  return { ...s, rec: { ...s.rec, [key]: { idx: s.idx, theme: s.theme, opener: s.opener, share: s.share } } };
+}
+
+/** Một lượt đã khép (captureNext ra turn): việc gửi /answer?live=1 (nơi gọi gắn bản ghi), hoặc null. Ô theo bản chụp của key (onRec), không có
+ *  thì theo trạng thái lúc này. Lượt bắt đầu lúc đang xin phép là câu trả lời xin phép (consent: đưa cho shareNext), không thành lượt kể. */
+export function onTurn(s: LiveState, t: { key?: number; question: string; transcript: string; seconds: number }): { state: LiveState; job: Job | null; consent: boolean } {
+  const at = (t.key !== undefined && s.rec[t.key]) || { idx: s.idx, theme: s.theme, opener: s.opener, share: s.share };
+  const rec = { ...s.rec };
+  if (t.key !== undefined) delete rec[t.key];
+  const st = { ...s, rec };
+  if (at.share === 'asking') return { state: st, job: null, consent: true };
+  if (t.seconds < 1 && !t.transcript.trim()) return { state: st, job: null, consent: false };
+  const turn = s.turns[at.idx] ?? 0, story = at.idx >= LIVE_FIRST_STORY;
+  const fields: Record<string, string> = {
+    live: '1', idx: String(at.idx), turn: String(turn), question: t.question.slice(0, 300), transcript: t.transcript, seconds: String(t.seconds),
+    ...(story ? { theme: at.theme ?? '', opener: at.opener } : {}),
+  };
+  return {
+    state: { ...st, turns: { ...s.turns, [at.idx]: turn + 1 }, storyTurns: s.storyTurns + (story ? 1 : 0) },
+    job: { url: `/api/call/${s.id}/answer?live=1`, fields }, consent: false,
+  };
+}
+
+/** Bước xin phép xong (shareNext tới done): việc gửi (đồng ý /share, không hay hết giờ /keep, cúp máy không gì) và câu nhắn model. Về ô 0. */
+export function onShareEnd(s: LiveState, end: 'yes' | 'no' | 'timeout' | 'hangup'): { state: LiveState; cue: string | null; job: Job | null } {
+  const state: LiveState = { ...s, share: 'done', idx: 0 };
+  if (end === 'hangup') return { state, cue: null, job: null };
+  return end === 'yes'
+    ? { state, cue: CUE.shareYes, job: { url: `/api/call/${s.id}/share`, fields: {} } }
+    : { state, cue: CUE.shareNo, job: { url: `/api/call/${s.id}/keep`, fields: {} } };
+}
+
+/** R8: sau ask_share, câu hỏi chia sẻ coi là đã hỏi (gửi { type: 'asked' } cho shareNext) khi lượt có tiếng của Mây sau lời đáp công cụ xong.
+ *  'tool': vừa đáp ask_share; 'spoke': Mây đã cất tiếng sau đó; 'asked': lượt ấy xong. Lượt chỉ có lời gọi công cụ mà xong trước khi Mây nói thì chưa tính. */
+export type AskStep = 'tool' | 'spoke' | 'asked';
+export function askStep(a: AskStep, e: 'audio' | 'done'): AskStep {
+  if (a === 'tool' && e === 'audio') return 'spoke';
+  if (a === 'spoke' && e === 'done') return 'asked';
+  return a;
+}
+
+/** Câu Mây vừa nói xong có dấu hiệu bịa (slip, không cần dữ liệu) thì nhắc model một lần mỗi cuộc gọi. */
+export function remindFor(s: LiveState, line: string, allow: Allow, lang: 'vi' | 'en' | 'ko'): { state: LiveState; cue: string | null } {
+  if (s.reminded || !slip(line, allow, lang)) return { state: s, cue: null };
+  return { state: { ...s, reminded: true }, cue: CUE.remind };
+}
+
+/** Đến lúc nhắc còn hai phút chưa (CUE.clock; nơi gọi giữ chỉ nhắc một lần). Cuộc gọi chỉ 150 giây trở xuống thì không nhắc. */
+export const clockDue = (maxSec: number, elapsedSec: number): boolean => maxSec > CLOCK_MIN_SEC && maxSec - elapsedSec <= CLOCK_LEFT_SEC;
+
+/** Việc chốt cuộc gọi (POST /finish, việc cuối của nhóm): câu hẹn và các câu Mây đã nói (tối đa 120, máy chủ ghi log chống bịa). Cuộc gọi Live nào cũng chốt bằng việc này. */
+export function finishJob(s: LiveState, may: string[]): Job {
+  return { url: `/api/call/${s.id}/finish`, fields: { hook: s.hook, may: JSON.stringify(may.slice(0, 120)) }, last: true };
+}
+
+// ---------- Ghi từng lượt ----------
+
+/** key đếm lượt ghi; recording: đang ghi; loud, heard: lượt đang ghi có tiếng to, lời chép; question: câu Mây nói xong gần nhất (câu hỏi của lượt sau);
+ *  mayLine: câu Mây đang nói; pending: lượt đã dừng ghi (Mây bắt đầu đáp) chờ Mây nói xong, vì lời chép của người kể có thể tới muộn. */
+export type Capture = { key: number; recording: boolean; loud: boolean; heard: string; question: string; mayLine: string; pending: { key: number; question: string; heard: string; loud: boolean } | null };
+/** gate: Mây im MIC_GATE_MS cộng độ trễ phát; loud: mic có tiếng to; in, out: lời chép của người kể, của Mây; audio: tiếng đầu tiên của Mây từ lần done
+ *  trước (kể cả tiếng không phát lúc xin phép); done: model turnComplete; hangup: cúp máy, mọi lý do. */
+export type CaptureEvent = { type: 'gate' } | { type: 'loud' } | { type: 'in'; text: string } | { type: 'out'; text: string } | { type: 'audio' } | { type: 'done' } | { type: 'hangup' };
+export type CaptureAction = { kind: 'startRec'; key: number } | { kind: 'stopRec'; key: number } | { kind: 'turn'; key: number; question: string; transcript: string } | { kind: 'mayLine'; text: string };
+export const CAPTURE_START: Capture = { key: 0, recording: false, loud: false, heard: '', question: '', mayLine: '', pending: null };
+
+const voiced = (p: { heard: string; loud: boolean }) => p.loud || !!p.heard.trim();
+const turnOf = (p: { key: number; question: string; heard: string }): CaptureAction => ({ kind: 'turn', key: p.key, question: p.question, transcript: p.heard.trim() });
+
+/** Bước kế của việc ghi từng lượt. Mic chỉ mở khi Mây im, nên lời chép tới sau khi lượt đã khép vẫn thuộc lượt ấy; lượt chỉ gửi (turn) khi Mây
+ *  nói xong và lượt có tiếng; cúp máy thì lượt đang ghi hay đang chờ gửi đúng một lần. */
+export function captureNext(c: Capture, e: CaptureEvent): { capture: Capture; actions: CaptureAction[] } {
+  switch (e.type) {
+    case 'gate':
+      if (c.recording) return { capture: c, actions: [] };
+      return { capture: { ...c, key: c.key + 1, recording: true, heard: '', loud: false }, actions: [{ kind: 'startRec', key: c.key + 1 }] };
+    case 'loud': return { capture: { ...c, loud: true }, actions: [] };
+    case 'in': return { capture: c.pending ? { ...c, pending: { ...c.pending, heard: c.pending.heard + e.text } } : { ...c, heard: c.heard + e.text }, actions: [] };
+    case 'out': return { capture: { ...c, mayLine: c.mayLine + e.text }, actions: [] };
+    case 'audio':
+      if (!c.recording) return { capture: c, actions: [] };
+      return { capture: { ...c, recording: false, pending: { key: c.key, question: c.question, heard: c.heard, loud: c.loud } }, actions: [{ kind: 'stopRec', key: c.key }] };
+    case 'done': {
+      const actions: CaptureAction[] = c.pending && voiced(c.pending) ? [turnOf(c.pending)] : [];
+      const line = c.mayLine.trim();
+      if (line) actions.push({ kind: 'mayLine', text: line });
+      return { capture: { ...c, pending: null, mayLine: '', question: line || c.question }, actions };
+    }
+    case 'hangup': {
+      const actions: CaptureAction[] = c.pending && voiced(c.pending) ? [turnOf(c.pending)] : [];
+      if (c.recording) {
+        actions.push({ kind: 'stopRec', key: c.key });
+        if (voiced(c)) actions.push(turnOf(c));
+      }
+      return { capture: { ...c, recording: false, pending: null }, actions };
+    }
+  }
+}
