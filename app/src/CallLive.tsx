@@ -13,8 +13,8 @@ import { snooze } from './callSnooze';
 import { getLang, t } from './i18n';
 import { livePlayer, type LivePlayer } from './livePlayer';
 import {
-  askStep, awayMs, byeDue, CAPTURE_START, captureNext, clockCue, CUE, finishJob, guarded, holdNext, idleDue, liveStart, MIC_GATE_MS, onRec, onShareEnd,
-  onShareUndo, onTool, onTurn, photoCue, recDue, remindAllow, remindFor, silentDue, waitingAnswer, type AskStep, type Capture, type CaptureAction, type CaptureEvent, type Hold, type LiveState,
+  askKeyAt, askStep, awayMs, byeDue, CAPTURE_START, captureNext, clockCue, CUE, finishJob, guarded, holdNext, idleDue, liveStart, MIC_GATE_MS, onRec,
+  onShareEnd, onShareUndo, onTool, onTurn, photoCue, recDue, remindAllow, remindFor, shareJob, silentDue, waitingNo, type AskStep, type Capture, type CaptureAction, type CaptureEvent, type Hold, type LiveState,
 } from './liveTurns';
 import { addUsage, emptyUsage, type LiveUsage } from './liveUsage';
 import { type Drive, type MascotMode } from './Mascot';
@@ -72,8 +72,9 @@ type Live = {
   /** Bước xin phép chia sẻ (callShare.ts; null: chưa tới), hẹn giờ của chặng đang chờ, bước của lượt hỏi (askStep; null: đã hỏi hay đã xong), giữ tiếng Mây
    *  (holdNext), key của lượt ghi gần nhất lúc đã hỏi (chỉ lượt key lớn hơn mới là câu trả lời), đã đồng ý bằng giọng mà chưa gỡ (nút Giữ riêng còn). */
   sh: ShareState | null; shT: number; ask: AskStep | null; hold: Hold; askKey: number; undo: boolean;
-  /** Ô xin ảnh đang hiện, ô chuyện của ảnh (state.lastStory lúc ask_photo, R5), hẹn giờ ẩn ô, lúc mở khung chọn ảnh (0: không mở), ảnh đang thu nhỏ để vào hàng chờ. */
-  photoOn: boolean; photoIdx: number; photoT: number; pickAt: number; photoWork: Promise<unknown>;
+  /** Ô xin ảnh đang hiện, ô chuyện của ảnh (state.lastStory lúc ask_photo, R5), hẹn giờ ẩn ô, lúc mở khung chọn ảnh (0: không mở), ảnh đang thu nhỏ để vào
+   *  hàng chờ, lượt ghi kế tiếp là lượt đầu sau khi mở khung chọn ảnh (gác lời chép muộn). */
+  photoOn: boolean; photoIdx: number; photoT: number; pickAt: number; photoWork: Promise<unknown>; pickGuard: boolean;
   /** Mây đã nói xong lượt (turnComplete), lúc gần nhất có tiếng (Mây nói, mic to, lời chép, lời nhắc), lúc nhắc im lặng (0: chưa, hay người kể đã
    *  nói lại), lúc nhắc Mây chào vì máy bỏ đó (0: chưa), đã nhắc đồng hồ. */
   mayDone: boolean; idleAt: number; nudgedAt: number; idleByeAt: number; clocked: boolean;
@@ -91,7 +92,7 @@ const fresh = (): Live => ({
   ctx: null, stream: null, node: null, player: null, ws: null, id: null, maxSec: 0, t0: 0, ended: false, usage: emptyUsage(), lats: [],
   quietAt: 0, loudAt: 0, waiting: false, gate: false, spoke: false, talking: false,
   st: null, cap: CAPTURE_START, recs: new Map(), work: [], count: 0, lines: [], allow: { prevCall: false, photos: false }, relays: 0, photos: 0,
-  sh: null, shT: 0, ask: null, hold: null, askKey: Infinity, undo: false, photoOn: false, photoIdx: 0, photoT: 0, pickAt: 0, photoWork: Promise.resolve(),
+  sh: null, shT: 0, ask: null, hold: null, askKey: Infinity, undo: false, photoOn: false, photoIdx: 0, photoT: 0, pickAt: 0, photoWork: Promise.resolve(), pickGuard: false,
   mayDone: false, idleAt: 0, nudgedAt: 0, idleByeAt: 0, clocked: false, hush: false,
   said: '', heard: '', newSaid: true, newHeard: true, raf: 0, timer: 0, wait: 0,
   bye: null, byeAt: 0, byeDoneAt: 0, talkAt: 0, byeT: 0, away: false, awayT: 0,
@@ -193,9 +194,9 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     drive.current.voice = null;
   }
 
-  /** Kết thúc một lần, mọi lý do: bước xin phép đang dở thì dừng như cúp máy (không gửi gì, chuyện giữ riêng), lượt đang ghi hay đang chờ gửi vào
-   *  hàng chờ đúng một lần, dọn hết, có token thì báo live-end (chưa nối xong thì 0 giây). Đã có lượt nào thì hiện màn chào và xếp lệnh chốt /finish
-   *  sau mọi lượt và ảnh (hàng chờ gửi tiếp kể cả khi đóng app); chưa có thì hoãn lời mời một ngày như màn cũ rồi đóng. */
+  /** Kết thúc một lần, mọi lý do: bước xin phép đang dở thì dừng như cúp máy (chuyện giữ riêng), lượt đang ghi hay đang chờ gửi vào hàng chờ đúng một
+   *  lần, dọn hết, có token thì báo live-end (chưa nối xong thì 0 giây). Đã có lượt nào thì hiện màn chào và xếp /share hay /keep theo ý định chia sẻ cuối
+   *  (shareJob) rồi lệnh chốt /finish, sau mọi lượt và ảnh (hàng chờ gửi tiếp kể cả khi đóng app); chưa có thì hoãn lời mời một ngày như màn cũ rồi đóng. */
   async function end(why: Why) {
     const L = S.current;
     if (L.ended) return;
@@ -219,6 +220,9 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     }
     if (!gone) { setPhase('bye'); setMode('happy'); setSent('wait'); }
     await Promise.all([Promise.race([Promise.all(L.work), wait(SETTLE_MS)]), Promise.race([L.photoWork, wait(PHOTO_WAIT_MS)])]);
+    // Ý định chia sẻ cuối cùng mới thành /share hay /keep, ngay trước lệnh chốt (việc cuối nhóm, đi sau nó). Chưa tới đây (app bị tắt) thì chuyện giữ riêng.
+    const sj = shareJob(L.st!);
+    if (sj) void outbox({ group: id, ...sj });
     const finished = outbox({ group: id, ...finishJob(L.st!, L.lines) }).then((r) => r !== null);
     if (gone) return;
     void finished.then((ok) => setSent(ok ? 'ok' : 'none'));
@@ -360,9 +364,10 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     if (a.kind === 'startRec') {
       // Chụp ô của lượt lúc nó bắt đầu (onRec), mọi lượt, trước khi ghi và kể cả khi máy không ghi được: thiếu bản chụp thì onTurn bỏ lượt.
       if (L.st) L.st = onRec(L.st, a.key);
-      // Lượt ngay sau lời nhắn khó nói, lượt bắt đầu lúc đang xin phép: gác (guarded), để lời chép muộn của lượt trước (đuôi lời nhắn, "...thì được")
-      // không vào lượt này (captureNext bỏ lời chép trước tiếng to đầu tiên).
-      if (guarded(L.st?.rec[a.key])) L.cap = captureNext(L.cap, { type: 'guard' }).capture;
+      // Lượt ngay sau lời nhắn khó nói, lượt bắt đầu lúc đang xin phép, lượt đầu sau khi mở khung chọn ảnh: gác (guarded), để lời chép muộn của lượt
+      // trước (đuôi lời nhắn, "...thì được") không vào lượt này (captureNext bỏ lời chép trước tiếng to đầu tiên).
+      if (guarded(L.st?.rec[a.key], L.pickGuard)) L.cap = captureNext(L.cap, { type: 'guard' }).capture;
+      L.pickGuard = false;
       let stop: Rec['stop'] = null;
       try { if (L.stream) stop = record(L.stream, AUDIO_TYPE()); } catch { /* máy không ghi được: lượt vẫn gửi lời chép */ }
       L.recs.set(a.key, { stop, t0: Date.now(), t1: 0, p: null });
@@ -383,11 +388,11 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     const rec = r?.p ?? Promise.resolve(null);
     if (!L.st || !L.id) return void rec.then(drop);
     const seconds = r ? Math.round(((r.t1 || Date.now()) - r.t0) / 100) / 10 : 0;
-    const out = onTurn(L.st, { key: a.key, question: a.question, transcript: a.transcript, seconds });
+    const out = onTurn(L.st, { key: a.key, question: a.question, transcript: a.transcript, seconds, askKey: L.askKey });
     L.st = out.state;
-    // Lượt bắt đầu lúc đang xin phép không gửi như lượt kể (job null). Chỉ lượt bắt đầu sau lúc đã hỏi (askKey) là câu trả lời, và chỉ bộ đọc câu trả
-    // lời quyết (shareNext): lượt mở trong khe giữa lời gọi ask_share và câu hỏi không bao giờ được đọc.
-    if (out.consent && a.key > L.askKey) shareGo({ type: 'heard', text: a.transcript });
+    // Chỉ lượt bắt đầu sau lúc đã hỏi (askKey) là câu trả lời, không gửi như lượt kể (job null), và chỉ bộ đọc câu trả lời quyết (shareNext). Lượt mở
+    // trong khe giữa lời gọi ask_share và câu hỏi là lượt kể của ô lúc nó bắt đầu (onTurn), không bao giờ được đọc.
+    if (out.consent) shareGo({ type: 'heard', text: a.transcript });
     const job = out.job, group = L.id;
     if (!job) return void rec.then(drop);
     L.count++;
@@ -471,11 +476,11 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
       L.hold = holdNext(L.hold, { type: 'done' });
       feed({ type: 'done' });
       // Lượt hỏi chia sẻ có tiếng đã xong: chặng nghe câu trả lời, từ đây giữ tiếng Mây (askStep, R8). Sau feed done: lượt ghi trước câu hỏi khép
-      // trước khi tính là đã hỏi; askKey là lượt ghi gần nhất lúc ấy, chỉ lượt sau nó (mở ở openTurn ngay dưới) mới là câu trả lời.
+      // trước khi tính là đã hỏi; chỉ lượt sau askKey (mở ở openTurn ngay dưới, hay đang ghi vì người kể chạm linh vật cắt câu hỏi) mới là câu trả lời.
       if (L.ask) {
         const s = askStep(L.ask, 'done');
         L.ask = s === 'asked' ? null : s;
-        if (s === 'asked') { L.askKey = L.cap.key; shareGo({ type: 'asked' }); }
+        if (s === 'asked') { L.askKey = askKeyAt(L.cap, true); shareGo({ type: 'asked' }); }
       }
       openTurn();
     }
@@ -507,9 +512,10 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
         else if (e.kind === 'photo') photoStart(r.state.lastStory);
         else if (e.kind === 'share') shareStart();
         else {
-          // end_call giữa bước xin phép (có khi giữa lượt Mây tự đáp, trước turnComplete): đọc lượt trả lời đang chờ khép (waitingAnswer: chỉ lượt sau lúc
-          // đã hỏi) rồi bước dừng; không có câu trả lời thì chuyện giữ riêng. quiet: không nhắn model, thôi giữ tiếng ngay để lời chào được nghe.
-          const text = waitingAnswer(L.cap, L.st, L.askKey);
+          // end_call giữa bước xin phép (có khi giữa lượt Mây tự đáp, trước turnComplete): lượt trả lời đang chờ khép chỉ được đọc khi là lời từ chối
+          // (waitingNo: lời chép lúc ấy có thể bị cắt, đồng ý thì không nhận), rồi bước dừng; còn lại chuyện giữ riêng. quiet: không nhắn model, thôi
+          // giữ tiếng ngay để lời chào được nghe.
+          const text = waitingNo(L.cap, L.st, L.askKey, getLang());
           if (text) shareGo({ type: 'heard', text }, true);
           shareGo({ type: 'hangup' }, true);
           startBye();
@@ -532,8 +538,8 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     clearTimeout(L.shT);
     // Câu hỏi chưa thành tiếng: không có gì để nghe, chỉ chờ nút (asked rồi timeout: chặng chờ nút, hết giờ là giữ riêng).
     L.shT = window.setTimeout(() => {
+      L.askKey = askKeyAt(L.cap, false);
       L.ask = null;
-      L.askKey = L.cap.key;
       shareGo({ type: 'asked' });
       shareGo({ type: 'timeout' });
     }, SHARE_ASK_MS);
@@ -556,18 +562,18 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     if (next.end) shareEnd(next.end, e.type === 'heard', quiet);
   }
 
-  /** Bước xin phép xong: việc của onShareEnd (đồng ý /share, không hay hết giờ /keep, cúp máy không gì) vào hàng chờ, trước lệnh chốt xếp lúc cúp máy;
-   *  ẩn hai nút, trừ khi đồng ý bằng giọng (voice): Giữ riêng còn tới lúc cúp để gỡ (undoShare); thôi giữ tiếng Mây (holdNext: còn giữa một lượt của
-   *  Mây thì bỏ nốt lượt ấy); nhắn model câu trả lời. quiet (Mây đang chào): không nhắn, thôi giữ ngay. */
+  /** Bước xin phép xong: ý định chia sẻ (onShareEnd; /share hay /keep chỉ xếp lúc cúp máy, shareJob trong end); ẩn hai nút, trừ khi đồng ý bằng giọng
+   *  (voice): Giữ riêng còn tới lúc cúp để đổi ý (undoShare); thôi giữ tiếng Mây (holdNext: còn giữa một lượt của Mây thì bỏ nốt lượt ấy); nhắn model
+   *  câu trả lời. quiet (Mây đang chào): không nhắn, thôi giữ ngay. Quyết trước lúc tính là đã hỏi (bấm nút lúc Mây còn hỏi) thì askKey tính lúc này. */
   function shareEnd(end: ShareEnd, voice: boolean, quiet: boolean) {
     const L = S.current;
+    if (L.askKey === Infinity) L.askKey = askKeyAt(L.cap, L.ask === 'spoke');
     L.ask = null;
     L.undo = voice && end === 'yes';
     setShareUi(L.undo ? 'undo' : null);
-    if (!L.st || !L.id) return;
+    if (!L.st) return;
     const r = onShareEnd(L.st, end);
     L.st = r.state;
-    if (r.job) void outbox({ group: L.id, ...r.job });
     if (quiet) { L.hold = null; return; }
     // Bấm nút lúc Mây còn đang hỏi: thôi nói ngay (như bước chia sẻ của Call.tsx); câu đáp câu nhắn tới ngay sau.
     if (end !== 'hangup') L.player?.stop();
@@ -575,16 +581,16 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     if (r.cue) cue(r.cue);
   }
 
-  /** Đồng ý bằng giọng rồi bấm Giữ riêng (trước khi cúp): gỡ lời đồng ý bằng /keep, việc cuối nhóm nên tới sau /share và trước lệnh chốt (onShareUndo);
-   *  Mây được nhắn chuyện giữ riêng, trừ lúc đang chào. Một lần. */
+  /** Đồng ý bằng giọng rồi bấm Giữ riêng (trước khi cúp): chỉ đổi ý định trên máy (onShareUndo; chưa có /share nào đã gửi, lúc cúp là /keep); Mây được
+   *  nhắn chuyện giữ riêng, trừ lúc đang chào. Một lần. */
   function undoShare() {
     const L = S.current;
-    if (!L.undo || !L.st || !L.id) return;
+    if (!L.undo || !L.st) return;
     L.undo = false;
     setShareUi(null);
     const r = onShareUndo(L.st);
-    void outbox({ group: L.id, ...r.job });
-    if (!L.bye && !L.away) cue(r.cue);
+    L.st = r.state;
+    if (r.cue && !L.bye && !L.away) cue(r.cue);
   }
 
   // ---------- Xin ảnh (như bước ảnh của Call.tsx) ----------
@@ -649,13 +655,17 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     }).catch(() => toast(t('call.photoFailed')));
   }
 
-  /** Mở khung chọn ảnh: lượt đang ghi khép luôn (bản ghi không dính lúc lục ảnh; lượt sau bắt đầu khi Mây đáp xong câu báo ảnh), mic thôi gửi Gemini
-   *  (onMic) và các lời nhắc chờ (tick), tới khi khung chọn trả về (photoDone) hay tối đa PHOTO_MS. */
+  /** Mở khung chọn ảnh: lượt đang ghi khép luôn (bản ghi không dính lúc lục ảnh; lượt sau bắt đầu khi Mây đáp xong câu báo ảnh), trừ khi đã có lượt chờ
+   *  gửi (captureNext chỉ giữ một, khép thêm sẽ đè mất nó); mic thôi gửi Gemini, báo Gemini dòng tiếng đã dừng (audioStreamEnd) và các lời nhắc chờ (tick),
+   *  tới khi khung chọn trả về (photoDone) hay tối đa PHOTO_MS. Lượt đầu sau đó bị gác: lời chép muộn của lời nói trước lúc chọn ảnh không vào nó. */
   function pickStart() {
     const L = S.current;
     here();
     L.pickAt = Date.now();
-    if (L.cap.recording) { feed({ type: 'audio' }); feed({ type: 'done' }); }
+    L.gate = false;
+    L.pickGuard = true;
+    if (L.cap.recording && !L.cap.pending) { feed({ type: 'audio' }); feed({ type: 'done' }); }
+    send({ realtimeInput: { audioStreamEnd: true } });
   }
 
   /** Khung chọn ảnh trả về (như Call.tsx). Chọn muộn mà ô đã ẩn vì Mây đi tiếp vẫn giữ ảnh cho đúng ô chuyện ấy. Khung chọn mở quá PHOTO_MS (mic, lời nhắc

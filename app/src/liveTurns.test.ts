@@ -2,8 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  askStep, awayMs, byeDue, CAPTURE_START, captureNext, clockCue, clockDue, CUE, finishJob, guarded, holdNext, idleDue, liveStart, onRec, onShareEnd, onShareUndo, onTool, onTurn, photoCue,
-  recDue, remindAllow, remindFor, SILENT_MS, silentDue, waitingAnswer, type AskStep, type Capture, type CaptureAction, type CaptureEvent, type Hold, type Job, type LiveState,
+  askStep, awayMs, byeDue, CAPTURE_START, captureNext, clockCue, clockDue, CUE, askKeyAt, finishJob, guarded, holdNext, idleDue, liveStart, onRec, onShareEnd, onShareUndo, onTool, onTurn, photoCue, shareJob,
+  recDue, remindAllow, remindFor, SILENT_MS, silentDue, waitingNo, type AskStep, type Capture, type CaptureAction, type CaptureEvent, type Hold, type Job, type LiveState,
 } from './liveTurns.ts';
 import { SHARE_START, shareNext, type ShareEvent, type ShareState } from './callShare.ts';
 import { LIVE_FIRST_STORY, LIVE_MAX_STORIES } from './shared.ts';
@@ -72,18 +72,21 @@ test('xin phép chia sẻ: nhà một người, chưa có chuyện, hỏi lần 
   assert.equal(t.job, null, 'câu trả lời xin phép không thành lượt kể');
   assert.equal(t.consent, true, 'lượt ấy là câu trả lời xin phép');
   const yes = onShareEnd(r.state, 'yes');
-  assert.deepEqual(yes.job, { url: '/api/call/c1/share', fields: {} }, 'đồng ý: gửi /share');
+  assert.ok(!('job' in yes), 'quyết xong chưa gửi gì: /share hay /keep chỉ xếp lúc cúp máy (shareJob)');
+  assert.equal(yes.state.intent, 'yes');
+  assert.deepEqual(shareJob(yes.state), { url: '/api/call/c1/share', fields: {} }, 'đồng ý: lúc cúp gửi /share');
   assert.equal(yes.cue, CUE.shareYes);
   assert.equal(yes.state.share, 'done');
   assert.equal(yes.state.idx, 0, 'xong bước xin phép thì về ô 0');
   const timeout = onShareEnd(r.state, 'timeout');
-  assert.deepEqual(timeout.job, { url: '/api/call/c1/keep', fields: {} }, 'hết giờ: giữ riêng');
+  assert.deepEqual(shareJob(timeout.state), { url: '/api/call/c1/keep', fields: {} }, 'hết giờ: giữ riêng');
   assert.equal(timeout.cue, CUE.shareNo);
   const no = onShareEnd(r.state, 'no');
-  assert.deepEqual(no.job, { url: '/api/call/c1/keep', fields: {} }, 'không đồng ý: giữ riêng');
+  assert.deepEqual(shareJob(no.state), { url: '/api/call/c1/keep', fields: {} }, 'không đồng ý: giữ riêng');
   assert.equal(no.cue, CUE.shareNo);
   const hang = onShareEnd(r.state, 'hangup');
-  assert.equal(hang.job, null, 'cúp máy: không gửi gì');
+  assert.equal(shareJob(hang.state), null, 'cúp máy: không gửi gì');
+  assert.equal(shareJob(S()), null, 'chưa hỏi: không gửi gì');
   assert.equal(hang.cue, null, 'cúp máy: không nhắn model');
   assert.equal(hang.state.share, 'done');
 });
@@ -327,13 +330,13 @@ test('cả cuộc gọi qua captureNext (13 bước): mọi lượt đúng ô, �
   may('Cả nhà nghe chuyện hôm nay được không ạ?', [{ name: 'ask_share' }]); // 11
   user('Dạ được'); // 12 trả lời xin phép, tiếng Mây tự đáp bị giữ nhưng vẫn báo captureNext
   feed({ type: 'audio' }); feed({ type: 'done' });
-  const se = onShareEnd(s, 'yes');
-  s = se.state;
-  if (se.job) jobs.push(se.job);
+  s = onShareEnd(s, 'yes').state;
   feed({ type: 'gate' });
   may('Chào mẹ, tuần sau kể tiếp nhé', [{ name: 'end_call', args: { next_hook: 'Tuần sau kể tiếp' } }]); // 13 chào
   user('Chào con');
   feed({ type: 'hangup' });
+  const sj = shareJob(s); // lúc cúp máy: lời đồng ý mới thành /share
+  if (sj) jobs.push(sj);
 
   const ans = jobs.filter((j) => j.url.includes('/answer')).map((j) => `${j.fields.idx}:${j.fields.turn}:${j.fields.transcript}`);
   assert.deepEqual(ans, ['0:0:Mẹ khoẻ', '2:0:A1', '2:1:A2', '2:2:A3', '2:3:A4 photo talk', '3:0:B1', '3:1:B2', '0:1:Ừ mẹ biết rồi', '1:0:SECRET mẹ thương bố', '0:2:Chào con'],
@@ -382,12 +385,12 @@ test('lượt có key mà không có bản chụp thì bỏ, không đoán ô (l
 
 test('kết thúc bước xin phép chỉ khi đang hỏi: gọi thừa thì không gửi gì', () => {
   const idle = onShareEnd(S(), 'yes');
-  assert.equal(idle.job, null, 'chưa hỏi: không gửi /share');
+  assert.equal(shareJob(idle.state), null, 'chưa hỏi: không gửi /share');
   assert.equal(idle.cue, null, 'chưa hỏi: không nhắn model');
   assert.equal(idle.state.share, 'none', 'chưa hỏi: bước xin phép không đổi');
   const done = onShareEnd(onTool(TOLD(), { name: 'ask_share' }).state, 'no').state;
   const twice = onShareEnd(done, 'yes');
-  assert.equal(twice.job, null, 'đã xong: lần sau không đổi thành đồng ý');
+  assert.equal(twice.state.intent, 'no', 'đã xong: lần sau không đổi thành đồng ý');
   assert.equal(twice.cue, null);
 });
 
@@ -575,8 +578,9 @@ test('giữ tiếng Mây lúc xin phép (phán quyết 11): từ lúc đã hỏi
   assert.equal(holdNext(null, { type: 'done' }), null, 'không giữ thì lượt xong không đổi gì');
 });
 
-/** Đường nối bước xin phép đúng thứ tự CallLive.tsx (lời gọi ask_share, tiếng Mây, lượt xong, nút, end_call), chỉ bằng hàm thuần: tiếng nào được
- *  phát, việc nào vào hàng chờ, câu nhắn nào gửi model. Bộ đọc câu trả lời chặt; chỉ lượt bắt đầu sau lúc đã hỏi (askKey) được đọc; lượt trả lời bị gác. */
+/** Đường nối bước xin phép đúng thứ tự CallLive.tsx (lời gọi ask_share, tiếng Mây, lượt xong, nút, end_call, cúp máy), chỉ bằng hàm thuần: tiếng nào
+ *  được phát, việc nào vào hàng chờ, câu nhắn nào gửi model. Bộ đọc câu trả lời chặt; chỉ lượt key lớn hơn askKey là câu trả lời; lượt trả lời bị gác;
+ *  /share hay /keep chỉ xếp lúc cúp máy, ngay trước /finish. */
 function shareWire() {
   const w = {
     s: TOLD(), c: CAPTURE_START, ask: null as AskStep | null, askKey: Infinity, hold: null as Hold, sh: SHARE_START as ShareState, mayDone: true,
@@ -589,9 +593,10 @@ function shareWire() {
     w.sh = next;
     if (e.type === 'asked') w.hold = holdNext(w.hold, { type: 'asked' });
     if (!next.end) return;
+    if (w.askKey === Infinity) w.askKey = askKeyAt(w.c, w.ask === 'spoke');
+    w.ask = null;
     const r = onShareEnd(w.s, next.end);
     w.s = r.state;
-    if (r.job) w.jobs.push(r.job);
     w.undo = next.end === 'yes' && e.type === 'heard';
     w.hold = quiet ? null : holdNext(w.hold, { type: 'decided', end: next.end, mayDone: w.mayDone });
     if (r.cue && !quiet) w.cues.push(r.cue);
@@ -605,10 +610,10 @@ function shareWire() {
         if (guarded(w.s.rec[a.key])) w.c = captureNext(w.c, { type: 'guard' }).capture;
       }
       if (a.kind !== 'turn') continue;
-      const t = onTurn(w.s, { key: a.key, question: a.question, transcript: a.transcript, seconds: 2 });
+      const t = onTurn(w.s, { key: a.key, question: a.question, transcript: a.transcript, seconds: 2, askKey: w.askKey });
       w.s = t.state;
       if (t.job) w.jobs.push(t.job);
-      if (t.consent && a.key > w.askKey) decide({ type: 'heard', text: a.transcript });
+      if (t.consent) decide({ type: 'heard', text: a.transcript });
     }
   };
   return {
@@ -626,25 +631,35 @@ function shareWire() {
       if (w.hold === 'share' && w.c.recording) feed({ type: 'audio' });
       w.hold = holdNext(w.hold, { type: 'done' });
       feed({ type: 'done' });
-      if (w.ask) { w.ask = askStep(w.ask, 'done'); if (w.ask === 'asked') { w.ask = null; w.askKey = w.c.key; decide({ type: 'asked' }); } }
+      if (w.ask) { w.ask = askStep(w.ask, 'done'); if (w.ask === 'asked') { w.ask = null; w.askKey = askKeyAt(w.c, true); decide({ type: 'asked' }); } }
       feed({ type: 'gate' });
     },
-    /** Mây gọi end_call (có thể giữa lượt tự đáp, trước turnComplete): đọc lượt trả lời đang chờ khép rồi mới dừng bước xin phép. */
+    /** Mây gọi end_call (có thể giữa lượt tự đáp, trước turnComplete): lượt trả lời đang chờ khép chỉ được đọc khi là lời từ chối, rồi bước dừng. */
     endCall: () => {
-      const text = waitingAnswer(w.c, w.s, w.askKey);
+      const text = waitingNo(w.c, w.s, w.askKey, 'vi');
       if (text) decide({ type: 'heard', text }, true);
       decide({ type: 'hangup' }, true);
     },
-    /** Bấm Giữ riêng sau lời đồng ý bằng giọng. */
+    /** Bấm Giữ riêng sau lời đồng ý bằng giọng: chỉ đổi ý định trên máy. */
     undo: () => {
       if (!w.undo) return;
       w.undo = false;
       const r = onShareUndo(w.s);
-      w.jobs.push(r.job);
-      w.cues.push(r.cue);
+      w.s = r.state;
+      if (r.cue) w.cues.push(r.cue);
+    },
+    /** Cúp máy (end() của CallLive): bước dở thì dừng, lượt đang ghi khép, rồi /share hay /keep theo ý định cuối, rồi /finish. */
+    end: () => {
+      decide({ type: 'hangup' });
+      feed({ type: 'hangup' });
+      const sj = shareJob(w.s);
+      if (sj) w.jobs.push(sj);
+      w.jobs.push(finishJob(w.s, []));
     },
   };
 }
+
+const urls = (jobs: Job[]) => jobs.map((j) => (j.url.includes('/answer') ? `answer:${j.fields.idx}:${j.fields.transcript}` : j.url));
 
 test('xin phép qua đường nối: câu hỏi được phát, Mây tự đáp bị giữ mà vẫn khép lượt trả lời (R8), lời đồng ý chỉ từ bộ đọc câu trả lời', () => {
   const x = shareWire();
@@ -661,9 +676,10 @@ test('xin phép qua đường nối: câu hỏi được phát, Mây tự đáp 
   x.may('Cảm ơn mẹ nhiều ạ');                      // câu đáp câu nhắn chia sẻ: phát
   assert.deepEqual(x.w.played, ['Cả nhà nghe chuyện hôm nay được không ạ?', 'Cảm ơn mẹ nhiều ạ'], 'câu Mây tự đáp không bao giờ được nghe');
   assert.deepEqual(x.w.cues, [CUE.shareYes]);
-  assert.deepEqual(x.w.jobs.map((j) => (j.url.includes('/answer') ? `answer:${j.fields.idx}:${j.fields.transcript}` : j.url)),
-    ['answer:2:Chuyện cuối', '/api/call/c1/share'], 'lượt kể cuối vẫn gửi; câu trả lời không thành lượt kể; đồng ý gửi /share');
+  assert.deepEqual(urls(x.w.jobs), ['answer:2:Chuyện cuối'], 'lượt kể cuối vẫn gửi; câu trả lời không thành lượt kể; /share chưa gửi');
   assert.equal(x.w.hold, null);
+  x.end();
+  assert.deepEqual(urls(x.w.jobs), ['answer:2:Chuyện cuối', '/api/call/c1/share', '/api/call/c1/finish'], 'giữ lời đồng ý tới lúc cúp: /share trước /finish');
 
   // Mây im hẳn (lượt không có tiếng): lượt trả lời vẫn khép khi lượt của Mây xong.
   const y = shareWire();
@@ -688,11 +704,12 @@ test('xin phép qua đường nối: câu hỏi được phát, Mây tự đáp 
   z.may('Dạ, chuyện hôm nay con giữ riêng nhé');
   assert.deepEqual(z.w.played, ['Cả nhà nghe được không ạ?', 'Dạ, chuyện hôm nay con giữ riêng nhé']);
   assert.deepEqual(z.w.cues, [CUE.shareNo]);
-  assert.deepEqual(z.w.jobs.map((j) => j.url), ['/api/call/c1/keep'], 'câu trả lời không thành lượt kể; giữ riêng gửi /keep');
   assert.equal(z.w.sh.end, 'no', 'lời tới sau khi đã quyết không lật được');
+  z.end();
+  assert.deepEqual(urls(z.w.jobs), ['/api/call/c1/keep', '/api/call/c1/finish'], 'câu trả lời không thành lượt kể; giữ riêng gửi /keep lúc cúp');
 });
 
-test('xin phép: lời nói trong khe trước câu hỏi không bao giờ là câu trả lời ("mà được cái là" không thành đồng ý)', () => {
+test('xin phép: lời nói trong khe trước câu hỏi không bao giờ là câu trả lời, mà là lượt kể của chuyện đang mở', () => {
   const g = shareWire();
   g.askShare();
   g.done();                                        // lượt chỉ có lời gọi ask_share xong trước câu hỏi: mic mở, một lượt bắt đầu trong khe ấy
@@ -700,12 +717,47 @@ test('xin phép: lời nói trong khe trước câu hỏi không bao giờ là c
   g.may('Cả nhà nghe chuyện hôm nay được không ạ?');
   g.done();                                        // câu hỏi xong: lượt trong khe khép trước, rồi mới tính là đã hỏi
   assert.equal(g.w.sh.stage, 'listen', 'vẫn đang nghe câu trả lời thật');
-  assert.ok(!g.w.jobs.some((j) => j.url.endsWith('/share')), 'không có /share');
   assert.deepEqual(g.w.cues, []);
+  assert.deepEqual(urls(g.w.jobs), ['answer:2:mà được cái là'], 'lời trong khe gửi như lượt kể của ô chuyện 2');
+  assert.equal(g.w.jobs[0].fields.theme, 'mon-an', 'mang chủ đề và câu mở theo bản chụp');
   g.user('Dạ được');
   g.may('Dạ');
   g.done();
   assert.equal(g.w.sh.end, 'yes', 'câu trả lời sau câu hỏi vẫn được đọc');
+  g.end();
+  assert.deepEqual(urls(g.w.jobs), ['answer:2:mà được cái là', '/api/call/c1/share', '/api/call/c1/finish']);
+});
+
+test('xin phép: chạm linh vật cắt câu hỏi rồi trả lời ngay: lượt ấy vẫn là câu trả lời', () => {
+  const c = shareWire();
+  c.askShare();
+  c.may('Cả nhà nghe chuyện hôm nay');            // câu hỏi đang phát thì người kể chạm linh vật
+  c.feed({ type: 'gate' });                        // mic mở ngay (hush), lượt mới bắt đầu giữa lượt của Mây
+  c.user('Dạ được');
+  c.done();                                        // lượt câu hỏi xong (phần bị cắt không tới): lượt đang ghi bắt đầu sau câu hỏi
+  assert.equal(c.w.askKey, c.w.c.key - 1, 'lượt đang ghi lúc đã hỏi tính là câu trả lời');
+  c.may('Dạ');                                     // Mây tự đáp (giữ)
+  c.done();
+  assert.equal(c.w.sh.end, 'yes');
+  assert.equal(askKeyAt({ ...CAPTURE_START, key: 5, recording: true }, true), 4);
+  assert.equal(askKeyAt({ ...CAPTURE_START, key: 5, recording: false }, true), 5);
+  assert.equal(askKeyAt({ ...CAPTURE_START, key: 5, recording: true }, false), 5, 'câu hỏi chưa thành tiếng: lượt đang ghi là lượt trong khe');
+});
+
+test('lượt bắt đầu lúc đang xin phép: key không lớn hơn askKey thì là lượt kể theo bản chụp, lớn hơn thì là câu trả lời', () => {
+  let s = onTool(TOLD(), { name: 'ask_share' }).state;
+  s = onRec(onRec(s, 3), 6);
+  const gap = onTurn(s, { key: 3, question: 'Q', transcript: 'thêm chuyện', seconds: 3, askKey: 5 });
+  assert.equal(gap.consent, false);
+  assert.equal(gap.job?.fields.idx, '2', 'ô chuyện lúc lượt bắt đầu');
+  assert.equal(gap.job?.fields.theme, 'mon-an');
+  assert.equal(gap.state.storyTurns, s.storyTurns + 1);
+  const ans = onTurn(gap.state, { key: 6, question: 'Q', transcript: 'Dạ được', seconds: 2, askKey: 5 });
+  assert.equal(ans.consent, true);
+  assert.equal(ans.job, null);
+  const notYet = onTurn(onRec(s, 7), { key: 7, question: 'Q', transcript: 'x', seconds: 2, askKey: Infinity });
+  assert.equal(notYet.consent, false, 'chưa hỏi (askKey vô cùng): lượt kể');
+  assert.equal(onTurn(onRec(s, 8), { key: 8, question: 'Q', transcript: 'Dạ', seconds: 2 }).consent, true, 'không truyền askKey: như cũ');
 });
 
 test('xin phép: đuôi lượt kể chép muộn không lọt vào lượt trả lời (lượt trả lời bị gác tới tiếng to đầu tiên)', () => {
@@ -717,12 +769,13 @@ test('xin phép: đuôi lượt kể chép muộn không lọt vào lượt tr�
   l.done();                                        // lượt kể cuối gửi, đã hỏi, lượt trả lời bắt đầu
   l.feed({ type: 'in', text: ' được' });           // đuôi lượt kể cuối, chép muộn, tới trước tiếng to đầu tiên của lượt trả lời
   l.done();                                        // Mây im: lượt trả lời khép mà không có tiếng
-  assert.ok(!l.w.jobs.some((j) => j.url.endsWith('/share')), 'không có /share');
   assert.equal(l.w.sh.stage, 'listen');
+  assert.notEqual(l.w.s.intent, 'yes');
   assert.equal(guarded(undefined), false);
   assert.equal(guarded({ idx: 0, theme: null, opener: '', share: 'asking', blank: false }), true, 'lượt bắt đầu lúc đang xin phép: gác');
   assert.equal(guarded({ idx: 0, theme: null, opener: '', share: 'none', blank: true }), true, 'lượt ngay sau lời nhắn khó nói: gác');
   assert.equal(guarded({ idx: 2, theme: 'mon-an', opener: 'x', share: 'none', blank: false }), false);
+  assert.equal(guarded({ idx: 2, theme: 'mon-an', opener: 'x', share: 'none', blank: false }, true), true, 'lượt đầu sau khi chọn ảnh: gác');
 });
 
 test('xin phép: chỉ có tiếng đệm thì nghe tiếp một lần, "dạ" rồi "được" ở hai lượt là đồng ý', () => {
@@ -734,40 +787,51 @@ test('xin phép: chỉ có tiếng đệm thì nghe tiếp một lần, "dạ" r
   r.may('Dạ vâng');
   r.done();
   assert.equal(r.w.sh.stage, 'listen', '"dạ" một mình: chưa rõ, vẫn nghe');
-  assert.ok(!r.w.jobs.some((j) => j.url.endsWith('/share')));
   r.user('được');
   r.may('Dạ');
   r.done();
   assert.equal(r.w.sh.end, 'yes');
 });
 
-test('xin phép: Mây gọi end_call giữa lượt tự đáp thì lượt trả lời đang chờ được đọc trước khi bước dừng; lời chào vẫn được nghe', () => {
+test('xin phép: Mây gọi end_call giữa lượt tự đáp: lượt đang chờ chỉ được đọc khi là lời từ chối, đồng ý (có khi bị cắt) thì giữ riêng', () => {
   const e = shareWire();
   e.askShare();
   e.may('Cả nhà nghe được không ạ?');
   e.done();
-  e.user('Dạ được');
+  e.user('được rồi');                              // lời chép bị cắt của "được rồi, thôi mẹ đi đây"
   e.may('Dạ');                                     // Mây tự đáp (giữ): lượt trả lời chờ khép
   e.endCall();                                     // end_call trước turnComplete
-  assert.equal(e.w.sh.end, 'yes');
-  assert.deepEqual(e.w.jobs.map((j) => j.url), ['/api/call/c1/share']);
+  assert.equal(e.w.sh.end, 'hangup', 'không nhận lời đồng ý ở đường này');
   assert.deepEqual(e.w.cues, [], 'Mây đang chào: không nhắn câu trả lời');
   e.may('Chào mẹ, tuần sau kể tiếp nhé');
   assert.deepEqual(e.w.played, ['Cả nhà nghe được không ạ?', 'Chào mẹ, tuần sau kể tiếp nhé'], 'lời chào được nghe');
   e.done();
-  assert.deepEqual(e.w.jobs.map((j) => j.url), ['/api/call/c1/share'], 'lượt khép sau đó không đọc lại');
-  // Chỉ lượt bắt đầu sau lúc đã hỏi, lúc đang xin phép, có lời.
+  e.end();
+  assert.deepEqual(urls(e.w.jobs), ['/api/call/c1/finish'], 'không /share: chuyện giữ riêng, nút chia sẻ ở tập vẫn dùng được');
+  const n = shareWire();
+  n.askShare();
+  n.may('Cả nhà nghe được không ạ?');
+  n.done();
+  n.user('thôi không');
+  n.may('Dạ');
+  n.endCall();
+  assert.equal(n.w.sh.end, 'no', 'lời từ chối thì nhận');
+  n.end();
+  assert.deepEqual(urls(n.w.jobs), ['/api/call/c1/keep', '/api/call/c1/finish']);
+  // waitingNo: chỉ lượt sau lúc đã hỏi, lúc đang xin phép, lời là từ chối.
   const st = onRec(onRec(onTool(TOLD(), { name: 'ask_share' }).state, 3), 4);
   const pend = (key: number, heard: string): Capture => ({ ...CAPTURE_START, key, pending: { key, question: '', heard, loud: true } });
-  assert.equal(waitingAnswer(pend(4, ' Dạ được '), st, 3), 'Dạ được');
-  assert.equal(waitingAnswer(pend(4, 'Dạ được'), st, 4), null, 'bắt đầu trước lúc đã hỏi: không đọc');
-  assert.equal(waitingAnswer(pend(4, '  '), st, 3), null, 'không có lời');
-  assert.equal(waitingAnswer({ ...CAPTURE_START, key: 4, recording: true, heard: 'được' }, st, 3), 'được', 'lượt còn đang ghi');
-  assert.equal(waitingAnswer(pend(4, 'được'), onRec(TOLD(), 4), 3), null, 'lượt không bắt đầu lúc đang xin phép');
-  assert.equal(waitingAnswer(CAPTURE_START, st, 3), null);
+  assert.equal(waitingNo(pend(4, ' thôi không '), st, 3, 'vi'), 'thôi không');
+  assert.equal(waitingNo(pend(4, 'Dạ được'), st, 3, 'vi'), null, 'đồng ý: không nhận ở đường này');
+  assert.equal(waitingNo(pend(4, 'Dạ'), st, 3, 'vi'), null, 'chưa rõ: không nhận');
+  assert.equal(waitingNo(pend(4, 'không'), st, 4, 'vi'), null, 'bắt đầu trước lúc đã hỏi: không đọc');
+  assert.equal(waitingNo(pend(4, '  '), st, 3, 'vi'), null, 'không có lời');
+  assert.equal(waitingNo({ ...CAPTURE_START, key: 4, recording: true, heard: 'đừng chia sẻ' }, st, 3, 'vi'), 'đừng chia sẻ', 'lượt còn đang ghi');
+  assert.equal(waitingNo(pend(4, 'không'), onRec(TOLD(), 4), 3, 'vi'), null, 'lượt không bắt đầu lúc đang xin phép');
+  assert.equal(waitingNo(CAPTURE_START, st, 3, 'vi'), null);
 });
 
-test('xin phép: đồng ý bằng giọng thì nút Giữ riêng còn tới lúc cúp; bấm thì gỡ (/keep là việc cuối, đi sau /share)', () => {
+test('xin phép: lời đồng ý chỉ là ý định trên máy tới lúc cúp; Giữ riêng sau lời đồng ý bằng giọng thì không bao giờ gửi /share', () => {
   const x = shareWire();
   x.askShare();
   x.may('Cả nhà nghe được không ạ?');
@@ -776,15 +840,25 @@ test('xin phép: đồng ý bằng giọng thì nút Giữ riêng còn tới lú
   x.may('Dạ');
   x.done();
   assert.equal(x.w.undo, true);
+  assert.equal(x.w.s.intent, 'yes');
   x.undo();
-  assert.deepEqual(x.w.jobs.slice(-2), [{ url: '/api/call/c1/share', fields: {} }, { url: '/api/call/c1/keep', fields: {}, last: true }]);
+  assert.equal(x.w.s.intent, 'no');
   assert.deepEqual(x.w.cues, [CUE.shareYes, CUE.shareNo]);
   x.undo();
-  assert.equal(x.w.jobs.length, 2, 'gỡ một lần');
+  assert.deepEqual(x.w.cues, [CUE.shareYes, CUE.shareNo], 'gỡ một lần');
+  x.end();
+  assert.deepEqual(urls(x.w.jobs), ['/api/call/c1/keep', '/api/call/c1/finish'], 'không có /share');
+  assert.deepEqual(onShareUndo(S()), { state: S(), cue: null }, 'chưa đồng ý: không gỡ gì');
   const b = shareWire();
   b.askShare();
   b.decide({ type: 'yes' });
   assert.equal(b.w.undo, false, 'bấm Chia sẻ là rõ ràng: không cần nút gỡ');
+  b.end();
+  assert.deepEqual(urls(b.w.jobs), ['/api/call/c1/share', '/api/call/c1/finish']);
+  const k = shareWire();
+  k.askShare();
+  k.end();
+  assert.deepEqual(urls(k.w.jobs), ['/api/call/c1/finish'], 'cúp lúc đang hỏi: không /share, không /keep');
 });
 
 test('báo model sau bước xin ảnh: ô ảnh còn hiện thì luôn báo; đã ẩn thì chỉ báo khi có ảnh; đang chào hay đang giữ tiếng thì không', () => {

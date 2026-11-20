@@ -8,14 +8,16 @@
 // Nối vào (CallLive.tsx), theo đúng thứ tự tin tới, không chen await giữa:
 // - startRec của captureNext: state = onRec(state, key) rồi mới ghi; bản chụp bị gác (guarded: blank, hay đang xin phép) thì gửi ngay { type: 'guard' }. Mây gọi công cụ ngay trước câu nói đi kèm, tức là ở đầu câu đáp lượt vừa nói,
 //   trước khi lượt ấy được gửi (lúc done); bản chụp giữ cho lượt ấy ô lúc nó bắt đầu, công cụ chỉ có hiệu lực từ lượt sau.
-// - turn: onTurn(state, { key, question, transcript, seconds }) ngay (chỉ chờ bản ghi để gửi job); consent true và key lớn hơn askKey (key của lượt ghi
-//   gần nhất lúc đã hỏi) thì đưa lời chép cho shareNext chặt ({ type: 'heard' }, { strict: true }), không theo "lượt tới lúc đang xin phép" (lượt nói
-//   trước câu hỏi, kể cả lượt mở trong khe giữa lời gọi ask_share và câu hỏi, cũng tới lúc ấy). Lượt của Mây xong: feed done trước, rồi mới asked.
+// - turn: onTurn(state, { key, question, transcript, seconds, askKey }) ngay (chỉ chờ bản ghi để gửi job); consent true (lượt bắt đầu lúc đang xin
+//   phép, key lớn hơn askKey: askKeyAt lúc đã hỏi) thì đưa lời chép cho shareNext chặt ({ type: 'heard' }, { strict: true }); lượt mở trong khe giữa
+//   lời gọi ask_share và câu hỏi là lượt kể. Lượt của Mây xong: feed done trước, rồi mới asked. end_call lúc đang xin phép: chỉ waitingNo.
+// - Câu trả lời chỉ là ý định (state.intent); lúc cúp máy shareJob ra /share hay /keep, xếp ngay trước finishJob.
 // - Tiếng Mây bị giữ lúc xin phép (holdNext) vẫn báo captureNext ({ type: 'audio' }) để lượt trả lời khép được (R8); lượt của Mây xong lúc đang giữ
 //   mà lượt trả lời còn đang ghi (Mây im, không có tiếng) thì cũng báo { type: 'audio' } trước done; { type: 'asked' } theo askStep.
 // - mayLine: remindFor với allow của cuộc gọi Live (remindAllow): ownStory true, message true khi có lời nhắn chờ, photos true khi DATA có ảnh
 //   hoặc ảnh đã tới trong cuộc gọi này (CUE.photos(n) với n > 0).
 import { slipLive, type Allow } from '../server/guard.ts';
+import { shareAnswer } from './callShare';
 import { isTheme, LIVE_FIRST_STORY, LIVE_MAX_STORIES, type StoryTheme } from './shared';
 
 // i18n-ok-begin: câu nhắn và kết quả công cụ cho model (tiếng Anh như mọi prompt), không phải chữ hiện cho người dùng.
@@ -79,13 +81,14 @@ export type Effect = { kind: 'job'; job: Job } | { kind: 'photo' } | { kind: 'sh
 
 /** idx: ô của lượt sau; theme, opener: chuyện đang mở; next: ô chuyện kế tiếp; turns: số lượt đã gửi theo ô; storyTurns: số lượt kể chuyện đã gửi;
  *  family: số người trong nhà; themes: chủ đề được mở (DATA.allowed_themes); relays: mã lời nhắn đang chờ, heard: mã đã chuyển;
- *  share: bước xin phép; hook: câu hẹn tuần sau (end_call); reminded: đã nhắc chống bịa (một lần mỗi cuộc gọi);
+ *  share: bước xin phép; intent: ý định chia sẻ sau bước ấy (yes, no; null: chưa quyết hay cúp lúc đang hỏi), chỉ thành /share hay /keep lúc cúp máy
+ *  (shareJob); hook: câu hẹn tuần sau (end_call); reminded: đã nhắc chống bịa (một lần mỗi cuộc gọi);
  *  lastStory: ô chuyện mở gần nhất (0: chưa có), giữ cả sau story_close để xin ảnh sau khi khép chuyện vẫn được (R5);
  *  rec: ô lúc từng lượt bắt đầu ghi, theo key (onRec), bỏ khi lượt ấy gửi (onTurn); lastRec: ô của lượt ghi gần nhất;
  *  ended: đã có end_call (các lần sau bỏ qua). */
 export type LiveState = {
   id: string; idx: number; theme: StoryTheme | null; opener: string; next: number; turns: Record<number, number>; storyTurns: number;
-  family: number; themes: StoryTheme[]; relays: string[]; heard: string[]; share: 'none' | 'asking' | 'done'; hook: string; reminded: boolean;
+  family: number; themes: StoryTheme[]; relays: string[]; heard: string[]; share: 'none' | 'asking' | 'done'; intent: 'yes' | 'no' | null; hook: string; reminded: boolean;
   lastStory: number; rec: Record<number, TurnSlot>; lastRec: number; ended: boolean;
 };
 /** blank: lượt ngay sau lời nhắn khó nói, câu hỏi của nó (câu Mây đáp lời nhắn, có khi nhắc lại lời nhắn) không gửi. */
@@ -94,7 +97,7 @@ export type TurnSlot = { idx: number; theme: StoryTheme | null; opener: string; 
 export function liveStart(p: { id: string; family: number; themes: StoryTheme[]; relays: string[] }): LiveState {
   return {
     id: p.id, idx: 0, theme: null, opener: '', next: LIVE_FIRST_STORY, turns: {}, storyTurns: 0, family: p.family, themes: p.themes,
-    relays: p.relays, heard: [], share: 'none', hook: '', reminded: false, lastStory: 0, rec: {}, lastRec: 0, ended: false,
+    relays: p.relays, heard: [], share: 'none', intent: null, hook: '', reminded: false, lastStory: 0, rec: {}, lastRec: 0, ended: false,
   };
 }
 
@@ -141,11 +144,12 @@ export function onRec(s: LiveState, key: number): LiveState {
   return { ...s, rec: { ...s.rec, [key]: slot }, lastRec: s.idx };
 }
 
-/** Một lượt đã khép (captureNext ra turn): việc gửi /answer?live=1 (nơi gọi gắn bản ghi), hoặc null. Ô theo bản chụp của key (onRec); không truyền
+/** Một lượt đã khép (captureNext ra turn): việc gửi /answer?live=1 (nơi gọi gắn bản ghi), hoặc null. askKey (askKeyAt): lượt bắt đầu lúc đang xin
+ *  phép mà key không lớn hơn askKey (nói trong khe trước câu hỏi, hay chưa hỏi) là lượt kể theo bản chụp; không truyền askKey thì mọi lượt ấy là câu trả lời. Ô theo bản chụp của key (onRec); không truyền
  *  key thì theo trạng thái lúc này. Có key mà không có bản chụp (nối thiếu onRec, lượt gửi hai lần) thì bỏ lượt, không đoán ô: đoán sai có thể đưa
  *  lời nhắn khó nói về ô 0 (vào sổ nhớ) hay lời thường vào ô 1 (máy chủ giữ lời dài nhất, có thể đè lời nhắn). Lượt bắt đầu lúc đang xin phép là
  *  câu trả lời xin phép (consent: đưa cho shareNext), không thành lượt kể. */
-export function onTurn(s: LiveState, t: { key?: number; question: string; transcript: string; seconds: number }): { state: LiveState; job: Job | null; consent: boolean } {
+export function onTurn(s: LiveState, t: { key?: number; question: string; transcript: string; seconds: number; askKey?: number }): { state: LiveState; job: Job | null; consent: boolean } {
   const rec = { ...s.rec };
   let at: TurnSlot = { idx: s.idx, theme: s.theme, opener: s.opener, share: s.share, blank: false };
   if (t.key !== undefined) {
@@ -154,7 +158,7 @@ export function onTurn(s: LiveState, t: { key?: number; question: string; transc
     delete rec[t.key];
   }
   const st = { ...s, rec };
-  if (at.share === 'asking') return { state: st, job: null, consent: true };
+  if (at.share === 'asking' && (t.askKey === undefined || t.key === undefined || t.key > t.askKey)) return { state: st, job: null, consent: true };
   if (t.seconds < 1 && !t.transcript.trim()) return { state: st, job: null, consent: false };
   const turn = s.turns[at.idx] ?? 0, story = at.idx >= LIVE_FIRST_STORY;
   const fields: Record<string, string> = {
@@ -167,15 +171,20 @@ export function onTurn(s: LiveState, t: { key?: number; question: string; transc
   };
 }
 
-/** Bước xin phép xong (shareNext tới done): việc gửi (đồng ý /share, không hay hết giờ /keep, cúp máy không gì) và câu nhắn model. Về ô 0.
+/** Bước xin phép xong (shareNext tới done): ý định (đồng ý yes; không hay hết giờ no; cúp máy null) và câu nhắn model. Về ô 0. Chưa gửi gì: /share,
+ *  /keep chỉ xếp lúc cúp máy (shareJob), nên Giữ riêng sau lời đồng ý chỉ đổi ý định trên máy, app bị tắt giữa chừng thì chuyện giữ riêng.
  *  Chỉ khi đang hỏi: chưa hỏi hay đã xong thì không đổi gì (lời đồng ý tới muộn không lật được lời từ chối). */
-export function onShareEnd(s: LiveState, end: 'yes' | 'no' | 'timeout' | 'hangup'): { state: LiveState; cue: string | null; job: Job | null } {
-  if (s.share !== 'asking') return { state: s, cue: null, job: null };
-  const state: LiveState = { ...s, share: 'done', idx: 0 };
-  if (end === 'hangup') return { state, cue: null, job: null };
-  return end === 'yes'
-    ? { state, cue: CUE.shareYes, job: { url: `/api/call/${s.id}/share`, fields: {} } }
-    : { state, cue: CUE.shareNo, job: { url: `/api/call/${s.id}/keep`, fields: {} } };
+export function onShareEnd(s: LiveState, end: 'yes' | 'no' | 'timeout' | 'hangup'): { state: LiveState; cue: string | null } {
+  if (s.share !== 'asking') return { state: s, cue: null };
+  const intent = end === 'yes' ? 'yes' : end === 'hangup' ? null : 'no';
+  const state: LiveState = { ...s, share: 'done', idx: 0, intent };
+  return { state, cue: intent === 'yes' ? CUE.shareYes : intent === 'no' ? CUE.shareNo : null };
+}
+
+/** Việc chia sẻ xếp lúc cúp máy, ngay trước lệnh chốt (việc cuối nhóm nên chốt đi sau nó): ý định yes thì /share, no thì /keep (gỡ lời đồng ý của lần
+ *  thử trước nếu có), chưa quyết thì không gì. */
+export function shareJob(s: LiveState): Job | null {
+  return s.intent ? { url: `/api/call/${s.id}/${s.intent === 'yes' ? 'share' : 'keep'}`, fields: {} } : null;
 }
 
 /** Giữ tiếng Mây lúc xin phép (phán quyết 11): Live tự đáp "dạ được" trước khi app kịp quyết, nên từ lúc câu hỏi đã hỏi xong (asked, askStep) tới lúc
@@ -189,22 +198,31 @@ export function holdNext(h: Hold, e: { type: 'asked' } | { type: 'decided'; end:
   return h === 'tail' ? null : h;
 }
 
-/** Đã đồng ý bằng giọng mà bấm Giữ riêng trước khi cúp: gỡ lời đồng ý (/keep gỡ được tới lúc chốt) và nhắn model chuyện giữ riêng. /keep là việc
- *  cuối nhóm để chỉ tới máy chủ sau /share (hai việc thường chạy song song, tới trước thì /share sau đó lại bật chia sẻ). */
-export function onShareUndo(s: LiveState): { cue: string; job: Job } {
-  return { cue: CUE.shareNo, job: { url: `/api/call/${s.id}/keep`, fields: {}, last: true } };
+/** Đã đồng ý bằng giọng mà bấm Giữ riêng trước khi cúp: ý định thành no (chưa có /share nào đã gửi, lúc cúp sẽ là /keep) và nhắn model chuyện giữ
+ *  riêng. Chưa đồng ý thì không đổi gì. */
+export function onShareUndo(s: LiveState): { state: LiveState; cue: string | null } {
+  return s.intent === 'yes' ? { state: { ...s, intent: 'no' }, cue: CUE.shareNo } : { state: s, cue: null };
 }
 
-/** Lượt mới có bị gác không (gửi { type: 'guard' } cho captureNext ngay sau startRec): lượt ngay sau lời nhắn khó nói (blank), và lượt bắt đầu lúc
- *  đang xin phép (lời chép muộn của lượt kể trước, "...thì được", không được thành câu trả lời). */
-export const guarded = (slot?: TurnSlot): boolean => !!slot && (slot.blank || slot.share === 'asking');
+/** askKey lúc tính là đã hỏi: lượt key lớn hơn mới là câu trả lời. Lượt đang ghi lúc ấy là câu trả lời khi câu hỏi đã thành tiếng (spoke: tiếng câu hỏi
+ *  dừng mọi lượt đang ghi, nên lượt đang ghi bắt đầu sau đó, như khi chạm linh vật cắt câu hỏi rồi trả lời ngay); câu hỏi chưa thành tiếng thì lượt
+ *  đang ghi là lời trong khe trước câu hỏi. */
+export const askKeyAt = (c: Capture, spoke: boolean): number => (c.recording && spoke ? c.key - 1 : c.key);
 
-/** Lời của lượt trả lời xin phép đang chờ khép (Mây gọi end_call giữa lượt tự đáp, trước turnComplete), để đọc trước khi bước xin phép dừng vì chào:
- *  lượt đang chờ gửi hay đang ghi, bắt đầu sau lúc đã hỏi (key > askKey), lúc đang xin phép, có lời. Không thì null. */
-export function waitingAnswer(c: Capture, s: LiveState, askKey: number): string | null {
+/** Lượt mới có bị gác không (gửi { type: 'guard' } cho captureNext ngay sau startRec): lượt ngay sau lời nhắn khó nói (blank), lượt bắt đầu lúc đang
+ *  xin phép (lời chép muộn của lượt kể trước, "...thì được", không được thành câu trả lời), lượt đầu sau khi mở khung chọn ảnh (afterPick: lời chép
+ *  muộn của lời nói trước lúc chọn ảnh). */
+export const guarded = (slot?: TurnSlot, afterPick = false): boolean => !!slot && (afterPick || slot.blank || slot.share === 'asking');
+
+/** Lời từ chối trong lượt trả lời xin phép đang chờ khép (Mây gọi end_call giữa lượt tự đáp, trước turnComplete), để đọc trước khi bước xin phép dừng
+ *  vì chào: lượt đang chờ gửi hay đang ghi, bắt đầu sau lúc đã hỏi (key > askKey), lúc đang xin phép, bộ đọc chặt hiểu là từ chối. Lời đồng ý thì null:
+ *  lời gọi công cụ tới ở đầu câu đáp của Mây, lời chép lúc ấy có thể bị cắt ("được rồi" của "được rồi, thôi mẹ đi đây"), mà đồng ý ở đây không ai nghe
+ *  Mây nhận lời; chuyện giữ riêng, nút chia sẻ ở tập vẫn dùng được. */
+export function waitingNo(c: Capture, s: LiveState, askKey: number, lang: 'vi' | 'en' | 'ko'): string | null {
   const p = c.pending ?? (c.recording ? { key: c.key, heard: c.heard } : null);
   const text = p?.heard.trim();
-  return p && text && p.key > askKey && s.rec[p.key]?.share === 'asking' ? text : null;
+  if (!p || !text || p.key <= askKey || s.rec[p.key]?.share !== 'asking') return null;
+  return shareAnswer(text, lang, { strict: true }) === 'no' ? text : null;
 }
 
 /** Câu báo model sau bước xin ảnh: chọn n ảnh, hay bấm Để sau, huỷ khung chọn (n 0). Ô ảnh còn hiện (on) thì luôn báo; đã ẩn (Mây đã sang việc khác,

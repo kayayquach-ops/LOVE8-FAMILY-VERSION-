@@ -67,11 +67,16 @@ const STRICT_HEDGE: Record<Lang, RegExp> = {
   en: /(^|\s)(maybe|not sure|let me|wait|hold on|i guess|hmm+|um+|uh+)(\s|$)/,
   ko: /(글쎄|생각|잠깐|아마|모르)/,
 };
-/** ...và chỉ lời đồng ý rõ ràng mới là đồng ý (không có SHARE_YES_WHOLE). "안 좋아요", "못 들려줘" không tính. Không bao giờ thêm 괜찮아요. */
+/** ...và chỉ lời đồng ý rõ ràng mới là đồng ý (không có SHARE_YES_WHOLE). "안 좋아요", "못 들려줘", 좋아하- không tính. Không bao giờ thêm 괜찮아요. */
 const STRICT_YES: Record<Lang, RegExp> = {
   vi: /(^|\s)(được|đồng ý|chia sẻ|có chứ)(\s|$)/,
   en: /(^|\s)(yes|sure|go ahead|of course|please do|share it|that['’]?s fine)(\s|$)/,
-  ko: /(?<!(안|못) ?)(좋아요|좋아|그래요|돼요|되요|공유해|들려줘|물론)/,
+  ko: /(?<!(안|못) ?)(좋아요|좋아(?![하해했])|그래요|돼요|되요|공유해|들려줘|물론)/,
+};
+/** Câu hỏi ngược ở chế độ chặt: đuôi câu "là sao", "cơ", "ai", "gì", "nào", "à", "hả" (không dùng "sao" trơn: "sao không" là đồng ý), "with who". */
+const STRICT_ASK: Partial<Record<Lang, RegExp>> = {
+  vi: /(^|\s)(là sao|cơ|ai|gì|nào|à|hả)$/,
+  en: /(^|\s)with whom?(\s|$)/,
 };
 /** Tiếng đệm: cả câu chỉ có những chữ này (kèm ạ, chứ, rồi, nhé, 요). Chế độ chặt coi là chưa rõ và nghe tiếp một lần (shareNext). */
 const BACKCHANNEL: Record<Lang, RegExp> = {
@@ -85,14 +90,14 @@ const norm = (raw: string) => raw.toLowerCase().normalize('NFC').replace(/[.,!?�
 
 /** Câu trả lời ngắn là đồng ý, từ chối, hay chưa rõ (null: chờ bấm nút). Gọn chữ như photoNo; lời rỗng hay dài quá 10 từ thì chưa rõ.
  *  Đồng ý nhầm thì không gỡ được (tập, sổ nhớ sang cả nhà, có báo), còn chưa rõ chỉ hiện hai nút rồi hết giờ là giữ riêng: nghi thì chưa rõ.
- *  o.strict (Mây Live): thêm câu lưỡng lự STRICT_HEDGE, và sau lời từ chối chỉ lời đồng ý rõ ràng STRICT_YES mới là đồng ý. */
+ *  o.strict (Mây Live): thêm câu lưỡng lự STRICT_HEDGE và câu hỏi ngược STRICT_ASK, và sau lời từ chối chỉ lời đồng ý rõ ràng STRICT_YES mới là đồng ý. */
 export function shareAnswer(text: string | null | undefined, lang: Lang = 'vi', o: ShareOpts = {}): 'yes' | 'no' | null {
   const raw = String(text ?? '');
   const s = norm(raw);
   if (!s || s.split(' ').length > 10) return null;
   if (SHARE_REFUSE[lang].test(s)) return 'no';
   // Có dấu hỏi là hỏi lại ("dạ?" của người lớn tuổi là "gì cơ?"), hay lưỡng lự: chưa rõ. Xét trước "không sao" ("không sao, để mẹ nghĩ đã").
-  if (/[?？]/.test(raw) || SHARE_HEDGE[lang]?.test(s) || (o.strict && STRICT_HEDGE[lang].test(s))) return null;
+  if (/[?？]/.test(raw) || SHARE_HEDGE[lang]?.test(s) || (o.strict && (STRICT_HEDGE[lang].test(s) || STRICT_ASK[lang]?.test(s)))) return null;
   if (SHARE_SURE[lang]?.test(s)) return 'yes';
   if (SHARE_NO[lang].test(s)) return 'no';
   if (o.strict) return STRICT_YES[lang].test(s) ? 'yes' : null;

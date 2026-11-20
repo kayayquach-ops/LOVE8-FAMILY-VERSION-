@@ -104,3 +104,18 @@ test('chế độ chặt: chỉ có tiếng đệm thì nghe tiếp một lần 
   // Mặc định: "dạ" vẫn là đồng ý như màn cũ.
   assert.equal(shareNext(listen, { type: 'heard', text: 'Dạ' }).end, 'yes');
 });
+
+test('chế độ chặt: câu hỏi ngược (đuôi "là sao", "cơ", "ai", "gì", "nào", "à", "hả"; "with who") chưa rõ; 좋아하- không phải 좋아', () => {
+  const S = { strict: true };
+  for (const s of ['chia sẻ là sao', 'chia sẻ cho ai cơ', 'được à', 'chia sẻ gì', 'chia sẻ cho ai', 'được hả']) assert.equal(shareAnswer(s, 'vi', S), null, s);
+  assert.equal(shareAnswer('sao không chia sẻ', 'vi', S), 'yes', '"sao không" vẫn là đồng ý');
+  assert.equal(shareAnswer('được chứ', 'vi', S), 'yes');
+  assert.equal(shareAnswer('ừ được nhé', 'vi', S), 'yes');
+  assert.equal(shareAnswer('share it with who', 'en', S), null);
+  assert.equal(shareAnswer('sure, share it with whom', 'en', S), null);
+  assert.equal(shareAnswer('좋아하시는 거', 'ko', S), null);
+  assert.equal(shareAnswer('좋아해요', 'ko', S), null);
+  assert.equal(shareAnswer('좋아요', 'ko', S), 'yes');
+  // Mặc định không đổi.
+  assert.equal(shareAnswer('được à'), 'yes', 'mặc định như cũ');
+});
