@@ -111,7 +111,8 @@ export type ScriptExtras = {
   age: number | null;
   place: { name: string | null; country: string | null; tz: string; localTime: string; weather: string | null };
   family: Array<{ name: string; role: string; place: string | null; hoursApart: number; km: number | null }>;
-  memory: Array<{ id: string; about: string; toldBy: string; toldByYou: boolean; kind: string; fact: string }>;
+  /** private: điều 'self' của chính người nghe (chỉ được nhắc nhẹ ở câu hỏi thăm, không bao giờ vào câu mở chuyện chính, vì câu mở thành thẻ trong tập cả nhà xem). */
+  memory: Array<{ id: string; about: string; toldBy: string; toldByYou: boolean; private: boolean; kind: string; fact: string }>;
   occasions: Occasion[]; told: ThemeTold[]; themes: StoryTheme[]; gaps: Array<'food' | 'seen'>;
 };
 
@@ -164,7 +165,7 @@ export async function loadScriptExtras(member: { id: string; family_id: string }
   const names = new Map<string, string>(family.map((m) => [m.id, m.name]));
   const memory = pickFacts(facts, { listenerId: me.id, occasionKeys: occasions.map((o) => o.key), now })
     .map((f) => ({ id: f.id, about: f.about_id == null ? 'whole family' : names.get(f.about_id), toldBy: names.get(f.source_id),
-      toldByYou: f.source_id === me.id, kind: f.kind, fact: f.text_en }))
+      toldByYou: f.source_id === me.id, private: f.visibility === 'self', kind: f.kind, fact: f.text_en }))
     .filter((f): f is ScriptExtras['memory'][number] => f.about != null && f.toldBy != null);
 
   // Chỉ đọc hai câu khảo sát food, seen để biết hồ sơ còn trống gì; "điều chưa nói" không bao giờ đọc ở đây.

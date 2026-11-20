@@ -148,13 +148,13 @@ export type Ctx = {
   captions: string[];
   /** Tên linh vật của nhà (families.mascot_name), chưa đặt thì Mây. */
   mascot?: string;
-  /** Dữ liệu lớn dần (server/callfacts.ts): sổ nhớ, dịp, bản đồ chủ đề, nơi ở, giờ, thời tiết. Nạp lỗi (hay trong test) thì không có. */
+  /** Dữ liệu lớn dần (server/callfacts.ts): sổ nhớ, dịp, bản đồ chủ đề, nơi ở, giờ, thời tiết. Chỉ nạp khi soạn bộ câu mới (/call/start);
+   *  nạp lỗi (hay trong test) thì không có. */
   extras?: ScriptExtras;
 };
 
 async function context(memberId: string, fid: string): Promise<Ctx> {
-  const lang = reqLang();
-  const [m, fam, ev, asked, stories, caps, done, ph, vt, mascot, extras] = await Promise.all([
+  const [m, fam, ev, asked, stories, caps, done, ph, vt, mascot] = await Promise.all([
     pool.query('select id, name, role, intro from members where id = $1', [memberId]),
     pool.query('select name, role from members where family_id = $1 order by created_at', [fid]),
     pool.query('select kind, title, day, month, year from events where family_id = $1', [fid]),
@@ -167,8 +167,8 @@ async function context(memberId: string, fid: string): Promise<Ctx> {
     pool.query(`select count(*)::int n from posts where author_id = $1 and kind = 'photo'`, [memberId]),
     pool.query(`select count(*)::int n from vault where member_id = $1`, [memberId]),
     mascotName(fid),
-    loadScriptExtras({ id: memberId, family_id: fid }, lang).catch((e) => { console.warn('[call] không nạp được dữ liệu soạn câu:', (e as Error).message); return undefined; }),
   ]);
+  const lang = reqLang();
   let intro: Record<string, string> = {};
   try { intro = introLabels(JSON.parse(m.rows[0]?.intro || '{}'), lang); } catch {}
   return {
@@ -180,7 +180,6 @@ async function context(memberId: string, fid: string): Promise<Ctx> {
     photoCount: (ph.rows[0]?.n ?? 0) + (vt.rows[0]?.n ?? 0),
     captions: caps.rows.map((r) => r.caption),
     mascot,
-    extras,
   };
 }
 
@@ -245,10 +244,13 @@ export function templateScript(c: Ctx, week: string): CallScript {
   const fresh = pool.filter((x) => !c.asked.includes(x.text));
   const list = fresh.length ? fresh : pool;
   // Chuyện ngày cưới luôn hỏi trước nếu được hỏi; rồi chủ đề chưa kể đầu tiên theo thứ tự ưu tiên (bản đồ chủ đề);
-  // kể hết rồi (hay không có bản đồ) thì xoay vòng theo tuần.
-  const untold = c.extras && fresh.find((x) => !c.extras!.told.some((t) => t.theme === x.theme));
-  const shift = Math.floor(Date.parse(week) / (7 * 86400e3)) % list.length;
-  const story = list.find((x) => x.theme === 'ngay-cuoi') ?? untold ?? list[shift];
+  // kể hết rồi (hay không có bản đồ) thì xoay vòng theo tuần, bỏ chủ đề vừa kể gần nhất nếu còn chủ đề khác.
+  const told = c.extras?.told ?? [];
+  const untold = c.extras && fresh.find((x) => !told.some((t) => t.theme === x.theme));
+  const newest = told.length ? told.reduce((a, b) => (b.last > a.last ? b : a)).theme : null;
+  const rota = list.length > 1 ? list.filter((x) => x.theme !== newest) : list;
+  const shift = Math.floor(Date.parse(week) / (7 * 86400e3)) % rota.length;
+  const story = list.find((x) => x.theme === 'ngay-cuoi') ?? untold ?? rota[shift];
   const relay = relayQuestion(c);
   return {
     greeting: S('greeting'),
@@ -360,6 +362,7 @@ FAMILY DATA THAT GROWS OVER TIME (each rule applies only when its field is in th
 14. Unless rule 8 applies, pick story.theme from untold_themes or from a told_themes entry with depth short. Prefer the theme that fits an upcoming occasion (tet-cac-dip near Lunar New Year, Christmas or Mid-Autumn). Never use the theme of the first told_themes entry, which is the newest. story.theme is always one of allowed_themes.
 15. memory lists what the family told Mây in earlier calls. An entry with told_by_you false was told by someone else: use it only together with who told it (for example: Mẹ kể là ..., or Mom told me ...), never as if Mây knew it by itself. Write every name from memory exactly as given. used_facts lists the id of every memory entry your lines use, or is empty.
 16. When profile_gaps is a list, the checkin may weave in one gap question: seen is how long since they last saw the family, food is the home dish they miss most (for a parent, the dish their child loves most).
+17. A memory entry with private true is something the person told only Mây. It may only be touched gently in the checkin, never used as or inside the story opener, because the story opener can later be shown to the whole family.
 
 The greeting is one or two short sentences and mentions nothing outside the input.${trial ? `
 
@@ -401,7 +404,7 @@ export function scriptFacts(c: Ctx) {
     already_asked: c.asked.length ? c.asked : 'none yet: nothing asked',
     wedding_question_allowed: themesOf(c).includes('ngay-cuoi'),
     ...(x ? {
-      memory: orNone(x.memory.map((m) => ({ id: m.id, about: m.about, told_by: m.toldBy, told_by_you: m.toldByYou, kind: m.kind, fact: m.fact })), 'nothing in memory'),
+      memory: orNone(x.memory.map((m) => ({ id: m.id, about: m.about, told_by: m.toldBy, told_by_you: m.toldByYou, private: m.private, kind: m.kind, fact: m.fact })), 'nothing in memory'),
       upcoming_occasions: orNone(x.occasions.map((o) => ({ name: o.name, date: o.date, in_days: o.inDays, who: o.who })), 'no occasion in the next 30 days'),
       told_themes: orNone(x.told.map((t) => ({ theme: t.theme, times: t.times, depth: t.turns >= 3 ? 'deep' : 'short', last: t.last })), 'no story told'),
       untold_themes: orNone(x.themes.filter((t) => !x.told.some((d) => d.theme === t)), 'every theme told'),
@@ -1052,10 +1055,15 @@ export function callRouter(upload: multer.Multer) {
     const old: CallScript | null = rows[0] ? JSON.parse(rows[0].script) : null;
     const relays = await pendingRelays(mid);
     if (scriptReusable(old, c, first)) return res.json({ id: rows[0].id, script: old, relays });
-    // Người dùng đã bấm Nghe máy và đang chờ: AI soạn quá 7 giây thì dùng bộ câu mẫu, không để màn hình im lặng.
+    // Người dùng đã bấm Nghe máy và đang chờ: nạp dữ liệu lớn dần (chỉ khi soạn mới, bộ câu dùng lại không cần) rồi AI soạn;
+    // cả hai quá 7 giây thì dùng bộ câu mẫu, không để màn hình im lặng.
+    const t0 = Date.now();
+    c.extras = await loadScriptExtras({ id: mid, family_id: fid }, c.lang)
+      .catch((e) => { console.warn('[call] không nạp được dữ liệu soạn câu:', (e as Error).message); return undefined; });
+    const aiMs = Math.max(1000, START_AI_MS - (Date.now() - t0));
     const script = first
-      ? (aiScripts.take(mid) ? await aiScript(c, week, START_AI_MS, { trial: true }) : null) ?? firstScript(c)
-      : (aiScripts.take(mid) ? await aiScript(c, week, START_AI_MS) : null) ?? templateScript(c, week);
+      ? (aiScripts.take(mid) ? await aiScript(c, week, aiMs, { trial: true }) : null) ?? firstScript(c)
+      : (aiScripts.take(mid) ? await aiScript(c, week, aiMs) : null) ?? templateScript(c, week);
     const id = randomUUID();
     // Cuộc gọi mới chưa đồng ý chia sẻ: bước xin phép cuối chuyện chính (POST /call/:id/share) mới bật shared.
     await pool.query('insert into calls (id, family_id, member_id, week, script, shared, trial) values ($1,$2,$3,$4,$5,false,$6)', [id, fid, mid, week, JSON.stringify(script), first]);

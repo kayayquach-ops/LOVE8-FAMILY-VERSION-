@@ -23,13 +23,36 @@ test('giờ địa phương và đổi giờ địa phương ra mốc thật', (
   assert.equal(P.zonedTime('America/Los_Angeles', '2026-03-08', 540).toISOString(), '2026-03-08T16:00:00.000Z');
 });
 
+/** Chạy fn với console.warn bị chặn (giữ đầu ra test sạch), trả về các lần ghi log. */
+async function quiet(fn: () => Promise<void>) {
+  const warns: unknown[][] = [];
+  const warn = console.warn;
+  console.warn = (...a: unknown[]) => { warns.push(a); };
+  try { await fn(); } finally { console.warn = warn; }
+  return warns;
+}
+
 test('thời tiết trên máy chủ: đọc open-meteo, nhớ 1 giờ, lỗi thì không có', async () => {
   let n = 0;
   const ok = (async () => { n++; return new Response(JSON.stringify({ current: { temperature_2m: 4.6, weather_code: 3 } })); }) as typeof fetch;
   assert.equal(await P.weatherAt(35.18, 129.08, ok), '5°C, cloudy');
   assert.equal(await P.weatherAt(35.18, 129.08, ok), '5°C, cloudy');
   assert.equal(n, 1);
-  assert.equal(await P.weatherAt(10, 10, (async () => { throw new Error('mạng'); }) as typeof fetch), null);
+  await quiet(async () => { assert.equal(await P.weatherAt(10, 10, (async () => { throw new Error('mạng'); }) as typeof fetch), null); });
+});
+test('thời tiết lỗi thì nhớ 10 phút: gọi lại trong lúc đó không hỏi mạng, chỉ ghi log một lần; quá 10 phút thì hỏi lại', async () => {
+  let n = 0;
+  const down = (async () => { n++; return new Response('{}', { status: 503 }); }) as typeof fetch;
+  const warns = await quiet(async () => {
+    assert.equal(await P.weatherAt(20, 20, down), null);
+    assert.equal(await P.weatherAt(20, 20, down), null);
+  });
+  assert.equal(n, 1);
+  assert.equal(warns.length, 1);
+  const now = Date.now;
+  Date.now = () => now() + 11 * 60e3;
+  try { await quiet(async () => { await P.weatherAt(20, 20, down); }); } finally { Date.now = now; }
+  assert.equal(n, 2);
 });
 test('giờ chênh giữa hai nơi', () => {
   assert.equal(P.hoursApart('Asia/Seoul', 'Asia/Ho_Chi_Minh', new Date('2026-11-20T00:00:00Z')), 2);

@@ -242,7 +242,7 @@ const extras: ScriptExtras = {
   age: 52,
   place: { name: 'Hà Nội', country: 'Việt Nam', tz: 'Asia/Ho_Chi_Minh', localTime: '20:00', weather: '18°C, cloudy' },
   family: [],
-  memory: [{ id: 'f1', about: 'An', toldBy: 'An', toldByYou: false, kind: 'food', fact: 'An loves sour soup' }],
+  memory: [{ id: 'f1', about: 'An', toldBy: 'An', toldByYou: false, private: false, kind: 'food', fact: 'An loves sour soup' }],
   occasions: [{ key: 'noel', name: 'Noel', date: '2026-12-25', inDays: 24, who: null }],
   told: [], themes: themesFor('me', true, false), gaps: [],
 };
@@ -342,6 +342,21 @@ test('bộ câu mẫu chọn chủ đề chưa kể', () => {
   const told: ScriptExtras['told'] = [{ theme: 'tuoi-tho', times: 1, turns: 3, last: '2026-11-08' }, { theme: 'que-nha', times: 1, turns: 2, last: '2026-11-15' }];
   const sc = call.templateScript({ ...ctx('con', both), extras: { ...extras, told, themes: themesFor('con', true, false) } }, '2026-11-16');
   assert.equal(sc.questions[1].theme, 'mon-an');
+});
+test('bộ câu mẫu: kể hết mọi chủ đề rồi thì xoay vòng nhưng không chọn lại chủ đề vừa kể gần nhất', () => {
+  const kid = ['tuoi-tho', 'que-nha', 'mon-an', 'tet-cac-dip', 'ban-be', 'con-di-xa'] as const;
+  for (const newest of kid) {
+    const told: ScriptExtras['told'] = kid.map((theme) => ({ theme, times: 1, turns: 3, last: theme === newest ? '2026-11-15' : '2026-11-01' }));
+    for (const week of ['2026-11-02', '2026-11-09', '2026-11-16']) {
+      const sc = call.templateScript({ ...ctx('con', both), extras: { ...extras, told, themes: themesFor('con', true, false) } }, week);
+      assert.notEqual(sc.questions[1].theme, newest, `${newest} ${week}`);
+    }
+  }
+});
+test('sổ nhớ: điều riêng của chính người nghe mang cờ private cho AI', () => {
+  const mine = { ...extras.memory[0], id: 'f2', toldByYou: true, private: true, kind: 'worry', fact: 'Lan worries about money' };
+  const facts = call.scriptFacts({ ...ctx('me', both), extras: { ...extras, memory: [extras.memory[0], mine] } });
+  assert.deepEqual((facts.memory as any[]).map((m) => [m.id, m.private]), [['f1', false], ['f2', true]]);
 });
 // i18n-ok-end
 

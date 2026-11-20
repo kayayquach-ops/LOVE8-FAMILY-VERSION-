@@ -90,8 +90,8 @@ test('nạp dữ liệu soạn câu: tuổi, nơi ở, giờ chênh, sổ nhớ 
   assert.match(urls[0], /latitude=35\.2&longitude=129\.1&/);                                 // toạ độ làm tròn 1 số lẻ
   assert.deepEqual(x.family.map((m) => [m.name, m.place, m.hoursApart]), [['Lan', 'Hà Nội, Việt Nam', -2], ['Hùng', 'Hà Nội, Việt Nam', -2]]);
   assert.ok(x.family[0].km! > 2500 && x.family[0].km! < 3000);
-  assert.deepEqual(x.memory.map((m) => [m.id, m.about, m.toldBy, m.toldByYou]).sort(), [
-    ['an-self', 'An', 'An', true], ['food', 'An', 'Lan', false], ['tet', 'whole family', 'Hùng', false]]);
+  assert.deepEqual(x.memory.map((m) => [m.id, m.about, m.toldBy, m.toldByYou, m.private]).sort(), [
+    ['an-self', 'An', 'An', true, true], ['food', 'An', 'Lan', false, false], ['tet', 'whole family', 'Hùng', false, false]]);
   assert.deepEqual(x.occasions.map((o) => [o.key, o.inDays, o.who]), [['teachers-20-11', 0, null], ['birthday', 11, 'An']]);
   assert.deepEqual(x.told, [{ theme: 'mon-an', times: 1, turns: 3, last: '2026-11-15' }]);
   assert.ok(x.themes.includes('mon-an') && !x.themes.includes('ngay-cuoi'));

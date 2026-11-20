@@ -91,7 +91,8 @@ export function placeOfMember(m: PlaceRow, lang: Lang): { name: string | null; c
     const nearest = lang === 'vi' ? vi : lang === 'en' ? en || vi : ko || en || vi;
     const country = (lang === 'vi' ? data.c[cc] : lang === 'en' ? data.ce[cc] : data.cko[cc]) || data.ce[cc] || data.c[cc] || null;
     return { name: city?.name || (bestM <= PLACE_KM * 1000 ? nearest : null), country, lat: at.lat, lon: at.lon };
-  } catch {
+  } catch (e) {
+    console.warn('[place] không tra được nơi ở (src/places.json?):', (e as Error).message);
     return null;
   }
 }
@@ -103,26 +104,29 @@ const WEATHER_EN: ReadonlyArray<readonly [readonly number[], string]> = [
 ];
 // i18n-ok-end
 const WEATHER_TTL_MS = 3600e3;
-const weatherCache = new Map<string, { at: number; text: string }>();
+/** Lỗi (open-meteo chậm, sập, trả sai dạng) cũng nhớ, ngắn hơn: mỗi ô toạ độ chỉ phải chờ 2 giây một lần mỗi 10 phút, không phải mỗi cuộc gọi. */
+const WEATHER_FAIL_TTL_MS = 10 * 60e3;
+const weatherCache = new Map<string, { at: number; text: string | null }>();
 
 /** Thời tiết hiện tại ("5°C, cloudy") từ open-meteo, như máy khách (src/time.ts). Toạ độ làm tròn 1 số lẻ (khoảng 11 km) trước khi hỏi,
- *  nhớ 1 giờ theo toạ độ đó; chờ tối đa 2 giây; lỗi gì cũng null. */
+ *  nhớ 1 giờ theo toạ độ đó (lỗi thì nhớ null 10 phút, ghi log một lần); chờ tối đa 2 giây; lỗi gì cũng null. */
 export async function weatherAt(lat: number, lon: number, fetchFn: typeof fetch = fetch): Promise<string | null> {
   const la = Math.round(lat * 10) / 10, lo = Math.round(lon * 10) / 10;
   const key = `${la},${lo}`;
   const hit = weatherCache.get(key);
-  if (hit && Date.now() - hit.at < WEATHER_TTL_MS) return hit.text;
+  if (hit && Date.now() - hit.at < (hit.text ? WEATHER_TTL_MS : WEATHER_FAIL_TTL_MS)) return hit.text;
+  let text: string | null = null;
   try {
     const r = await fetchFn(`https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&current=temperature_2m,weather_code`, { signal: AbortSignal.timeout(2000) });
-    if (!r.ok) return null;
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const cur = (await r.json())?.current;
     const temp = Number(cur?.temperature_2m);
-    if (cur?.temperature_2m == null || !Number.isFinite(temp)) return null;
+    if (cur?.temperature_2m == null || !Number.isFinite(temp)) throw new Error('no temperature');
     const word = WEATHER_EN.find(([codes]) => codes.includes(cur.weather_code))?.[1];
-    const text = word ? `${Math.round(temp)}°C, ${word}` : `${Math.round(temp)}°C`;
-    weatherCache.set(key, { at: Date.now(), text });
-    return text;
-  } catch {
-    return null;
+    text = word ? `${Math.round(temp)}°C, ${word}` : `${Math.round(temp)}°C`;
+  } catch (e) {
+    console.warn(`[place] không lấy được thời tiết ở ${key}, 10 phút nữa mới hỏi lại:`, (e as Error).message);
   }
+  weatherCache.set(key, { at: Date.now(), text });
+  return text;
 }

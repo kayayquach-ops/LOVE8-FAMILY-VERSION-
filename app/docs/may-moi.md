@@ -155,7 +155,7 @@ Mã: `src/Call.tsx` (luồng cuộc gọi), `src/callShare.ts` (chặng của b�
 
 Mã: `server/callfacts.ts` (nạp và chọn dữ liệu), `server/place.ts` (nơi ở, giờ chênh, khoảng cách, thời tiết), `server/call.ts` (`context`, `scriptFacts`, `aiScript`, `templateScript`, `/call/start`). Test: `server/callfacts.test.ts`, `server/place.test.ts`, `server/call.test.ts`.
 
-**Nạp** (`loadScriptExtras`, gọi trong `context()` song song các câu cũ; lỗi thì ghi log `[call]` và soạn như cũ, không có các mục mới). Bốn câu SQL (`EXTRAS_SQL`) rồi ngày của nhà:
+**Nạp** (`loadScriptExtras`, gọi trong `/call/start` chỉ khi phải soạn bộ câu mới, sau bước kiểm `scriptReusable`: bộ câu dùng lại trong tuần không chờ nạp. Thời gian nạp tính vào hạn 7 giây của `START_AI_MS`, AI được phần còn lại, ít nhất 1 giây. Lỗi thì ghi log `[call]` và soạn như cũ, không có các mục mới). Bốn câu SQL (`EXTRAS_SQL`) rồi ngày của nhà:
 - Người nghe: tên, vai, ngày sinh, thành phố, vị trí, `intro` (chỉ đọc `food`, `seen` để biết hồ sơ còn trống gì; "điều chưa nói" không bao giờ đọc), nhà đã có ngày cưới trong lịch chưa.
 - Cả nhà: tên, vai, thành phố, vị trí.
 - Sổ nhớ: tối đa 300 sự thật mới nhất chưa bị thay, `visibility = 'family'` hoặc chính người nghe kể. Điều `self` của người khác không bao giờ lấy, `pickFacts` lọc lần nữa.
@@ -165,7 +165,7 @@ Mã: `server/callfacts.ts` (nạp và chọn dữ liệu), `server/place.ts` (n�
 **Đưa cho AI** (`scriptFacts`, nhãn tiếng Anh, mục trống ghi `none yet: ...`)
 - `person.age`; `person.lives_in`: `place`, `country`, `local_time`, `weather` (không có thời tiết thì không có mục `weather`; không biết ở đâu thì `none yet`); `person.profile_gaps`: `food`, `seen` khi khảo sát bỏ trống (`food` cũng không tính là trống nếu sổ nhớ đã có sự thật loại `food` về người nghe).
 - `family_members`: người khác trong nhà, `lives_in`, và chỉ khi biết cả hai nơi mới có `hours_apart` (đồng hồ người đó nhanh hơn người nghe bao nhiêu giờ, làm tròn nửa giờ) và `distance_km`.
-- `memory`: `[{ id, about, told_by, told_by_you, kind, fact }]`, `about` là tên người hoặc `whole family`, `fact` là `text_en`.
+- `memory`: `[{ id, about, told_by, told_by_you, private, kind, fact }]`, `about` là tên người hoặc `whole family`, `fact` là `text_en`, `private` là điều `self` của chính người nghe.
 - `upcoming_occasions`: `[{ name, date, in_days, who }]`. `told_themes`: `[{ theme, times, depth, last }]` (`depth` là `deep` khi lần kể sâu nhất từ 3 lượt, không thì `short`), mới nhất trước. `untold_themes`, `allowed_themes`.
 - Không có dữ liệu lớn dần (test, nạp lỗi) thì chỉ các mục cũ. `wedding_question_allowed` và chủ đề hợp lệ giờ cùng một hàm `themesOf`.
 
@@ -175,11 +175,11 @@ Mã: `server/callfacts.ts` (nạp và chọn dữ liệu), `server/place.ts` (n�
 
 **Bản đồ chủ đề** (`topicMap`): cuộc gọi v2 lấy `theme` của câu chuyện chính; cuộc gọi cũ ba câu rời chỉ tính chủ đề `ngay-cuoi`, `tuoi-tho`, `mon-an` (trùng tên chủ đề chuyện chính), chủ đề khác bỏ qua. Mỗi chủ đề: số cuộc gọi đã kể, lần kể sâu nhất (số lượt), ngày gần nhất.
 
-**Luật prompt thêm** (12 tới 16): giờ và thời tiết chỉ lấy từ `lives_in`, không có thời tiết thì không nhắc; dịp chỉ lấy từ `upcoming_occasions`, dịp có sự thật trong sổ nhớ thì câu mở được hỏi sâu (năm nay, mấy năm trước); chủ đề chọn trong `untold_themes` hoặc chủ đề mới kể `short`, ưu tiên chủ đề hợp dịp (`tet-cac-dip` gần Tết, Noel, Trung thu), không bao giờ là chủ đề của lần kể mới nhất, luật ngày cưới vẫn đứng trước; sự thật người khác kể chỉ dùng kèm ai kể ("mẹ kể là ..."), không nói như Mây tự biết; tên trong sổ nhớ viết đúng như có; `profile_gaps` có thì câu hỏi thăm được lồng một câu (bao lâu chưa gặp cả nhà, món nhớ nhất).
+**Luật prompt thêm** (12 tới 17): giờ và thời tiết chỉ lấy từ `lives_in`, không có thời tiết thì không nhắc; dịp chỉ lấy từ `upcoming_occasions`, dịp có sự thật trong sổ nhớ thì câu mở được hỏi sâu (năm nay, mấy năm trước); chủ đề chọn trong `untold_themes` hoặc chủ đề mới kể `short`, ưu tiên chủ đề hợp dịp (`tet-cac-dip` gần Tết, Noel, Trung thu), không bao giờ là chủ đề của lần kể mới nhất, luật ngày cưới vẫn đứng trước; sự thật người khác kể chỉ dùng kèm ai kể ("mẹ kể là ..."), không nói như Mây tự biết; tên trong sổ nhớ viết đúng như có; `profile_gaps` có thì câu hỏi thăm được lồng một câu (bao lâu chưa gặp cả nhà, món nhớ nhất); điều `private` chỉ được nhắc nhẹ ở câu hỏi thăm, không bao giờ làm hay nằm trong câu mở chuyện chính (câu mở thành thẻ chữ trong tập cả nhà xem nếu người kể đồng ý chia sẻ).
 - Lớp lọc: dữ liệu đối chiếu của `suspect()` có thêm tên tháng tiếng Anh của các dịp và giờ kiểu 12 giờ ("8 giờ tối" khi `local_time` là 20:00). Sổ nhớ có điều chính người nghe kể thì được nói "Mẹ từng kể".
 
-**Bộ câu mẫu** (`templateScript`): ngày cưới vẫn trước nếu được hỏi; có bản đồ chủ đề thì lấy chủ đề đầu tiên theo thứ tự ưu tiên chưa kể lần nào và câu chưa hỏi; kể hết rồi mới xoay vòng theo tuần như cũ.
+**Bộ câu mẫu** (`templateScript`): ngày cưới vẫn trước nếu được hỏi; có bản đồ chủ đề thì lấy chủ đề đầu tiên theo thứ tự ưu tiên chưa kể lần nào và câu chưa hỏi; kể hết rồi mới xoay vòng theo tuần như cũ, bỏ chủ đề có lần kể gần nhất nếu còn chủ đề khác.
 
-**Thời tiết** (`weatherAt`): open-meteo như máy khách (`current=temperature_2m,weather_code`), toạ độ làm tròn 1 số lẻ (khoảng 11 km) trước khi hỏi, nhớ 1 giờ theo toạ độ đó trong bộ nhớ máy chủ, chờ tối đa 2 giây, lỗi gì cũng bỏ. Chữ "5°C, cloudy" tiếng Anh, cùng nhóm mã như `src/time.ts` (`clear`, `few clouds`, `cloudy`, `fog`, `drizzle`, `rain`, `snow`, `storm`).
+**Thời tiết** (`weatherAt`): open-meteo như máy khách (`current=temperature_2m,weather_code`), toạ độ làm tròn 1 số lẻ (khoảng 11 km) trước khi hỏi, nhớ 1 giờ theo toạ độ đó trong bộ nhớ máy chủ, chờ tối đa 2 giây, lỗi gì cũng bỏ. Lỗi (chậm, sập, trả sai dạng) cũng nhớ, 10 phút, và chỉ ghi log `[place]` lúc nhớ lỗi: open-meteo hỏng thì mỗi ô toạ độ chỉ chờ 2 giây một lần mỗi 10 phút. Chữ "5°C, cloudy" tiếng Anh, cùng nhóm mã như `src/time.ts` (`clear`, `few clouds`, `cloudy`, `fog`, `drizzle`, `rain`, `snow`, `storm`).
 
-**Nơi ở** (`placeOfMember`): vị trí thật nếu đang chia sẻ, không thì `members.city`. Thành phố tự chọn thì gọi đúng tên ấy; vị trí thật thì tên nơi gần nhất trong `src/places.json` khi trong 60 km, xa hơn chỉ biết nước. Tên nơi và tên nước theo thứ tiếng người nghe.
+**Nơi ở** (`placeOfMember`): vị trí thật nếu đang chia sẻ, không thì `members.city`. Thành phố tự chọn thì gọi đúng tên ấy; vị trí thật thì tên nơi gần nhất trong `src/places.json` khi trong 60 km, xa hơn chỉ biết nước. Tên nơi và tên nước theo thứ tiếng người nghe. Tra lỗi (ví dụ `places.json` hỏng) thì ghi log `[place]` và coi như không biết ở đâu.
