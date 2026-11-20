@@ -435,6 +435,7 @@ textarea.field { resize: none; text-align: left; line-height: 1.5; }
 @keyframes mc-z { 0% { opacity: 0; transform: translate3d(0, 10px, 0); } 30% { opacity: .9; } 100% { opacity: 0; transform: translate3d(8px, -18px, 0); } }
 .call-cap { font-size: 17px; line-height: 1.6; color: var(--soft); margin: 18px auto 0; max-width: 340px; min-height: 54px; }
 .call-photo { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 18px; }
+.call-photo.off { display: none; }
 .call-body .call-heard { font-size: 14px; color: var(--muted); margin-top: 10px; }
 @media (prefers-reduced-motion: reduce) { .mc-eyes, .mc-antenna, .mascot.listen .mc-glow, .mascot.wave .mc-arm-r-wrap, .mascot.happy .mc-body, .mascot.sleep .mc-zz text { animation: none; } }
 /* Gọi video cả nhà */

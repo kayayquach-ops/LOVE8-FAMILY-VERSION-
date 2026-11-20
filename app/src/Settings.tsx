@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, autoTranslateOn, googlePending, setAutoTranslate, startGoogle, token } from './api';
+import { api, autoTranslateOn, googlePending, isSignedOut, setAutoTranslate, startGoogle, token } from './api';
 import { LANG_NAMES, LANGS, setLang, t, useLang, type Key } from './i18n';
 import { setThemeMode, THEME_MODES, useThemeMode } from './theme';
 import { Notify } from './Notify';
@@ -15,6 +15,29 @@ export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose
   const [sound, setSound] = useState(uiSoundsOn());
   const [autoTr, setAutoTr] = useState(autoTranslateOn());
   const google = useGoogleLink();
+
+  // Rời nhà: hỏi lại bằng thẻ dưới đáy như "xoá khỏi nhà" (Sheets.tsx), vì máy chủ xoá hẳn mình cùng ảnh, tin nhắn, cuộc gọi.
+  const [leaving, setLeaving] = useState(false);
+  const [busyLeave, setBusyLeave] = useState(false);
+  useEffect(() => {
+    if (!leaving) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busyLeave) setLeaving(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [leaving, busyLeave]);
+  async function leave() {
+    if (busyLeave) return;
+    setBusyLeave(true);
+    try {
+      await api.leave();
+    } catch (e) {
+      // Lỗi thì báo và vẫn ở trong nhà. 401: mã đã hết (người khác đã xoá mình trước), coi như đã rời.
+      if (!isSignedOut(e)) { toast((e as Error).message); setBusyLeave(false); return; }
+    }
+    // Bỏ mã rồi tải lại: không còn mã thì app mở màn đầu.
+    token.clear();
+    location.reload();
+  }
 
   return (
     <div className="sheet">
@@ -92,8 +115,19 @@ export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose
           <div className="muted" style={{ marginTop: 8 }}>{t('settings.reloadHint')}</div>
         </div>
 
-        <button className="link" style={{ marginTop: 24 }} onClick={() => { if (confirm(t('family.leaveConfirm'))) { token.clear(); location.reload(); } }}>{t('family.leave')}</button>
+        <button className="link" style={{ marginTop: 24 }} onClick={() => { tap(); setLeaving(true); }}>{t('family.leave')}</button>
       </div>
+
+      {leaving && (
+        <div className="nask" onClick={() => { if (!busyLeave) setLeaving(false); }}>
+          <div className="nask-card" role="alertdialog" aria-modal="true" aria-labelledby="leave-title" aria-describedby="leave-body" onClick={(e) => e.stopPropagation()}>
+            <h2 id="leave-title" className="display">{t('family.leave.title')}</h2>
+            <p id="leave-body">{t('family.leave.body')}</p>
+            <button className="btn" disabled={busyLeave} onClick={() => void leave()}>{t('family.leave.yes')}</button>
+            <button className="link" disabled={busyLeave} onClick={() => setLeaving(false)}>{t('family.leave.no')}</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { errorText, token } from './api';
+import { PHOTO_HEAR_MS, PHOTO_START, PHOTO_WAIT, photoMic, photoNext, type PhotoEnd, type PhotoEvent } from './callPhoto';
 import { type Drive, type MascotMode } from './Mascot';
 import { MascotAny as Mascot } from './Mascot3D';
 import { AUDIO_TYPE, fileName, record, shrinkImage, type Recording } from './media';
@@ -84,7 +85,14 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
   const count = useRef(0);
   const hearing = useRef<Promise<Heard | null> | null>(null);
   const endHear = useRef<(() => void) | null>(null);
-  const photoDone = useRef<(() => void) | null>(null);
+  // Bước xin ảnh đang chạy: nút, khung chọn ảnh và nút cúp máy báo vào đây (xem callPhoto.ts). photoIdx là câu chuyện của bước ảnh gần nhất.
+  const photoEvent = useRef<((e: PhotoEvent) => void) | null>(null);
+  const photoIdx = useRef(0);
+  // Ảnh đang thu nhỏ ở nền: lệnh kết thúc chờ ảnh vào hàng chờ trước để podcast có ảnh.
+  const photoWork = useRef<Promise<unknown>>(Promise.resolve());
+  // Câu Mây đang nói (mỗi câu một số): hush() hay câu mới đến thì câu cũ thôi, không chen tiếng hay đụng vào linh vật nữa.
+  const sayGen = useRef(0);
+  const sayCut = useRef<() => void>(() => {});
 
   const role = me.me.role;
   const lines = callLines(role, (k, v) => t(k as Key, v));
@@ -166,6 +174,9 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
    * giọng máy chỉ khi ngay từ lúc đổ chuông đã biết Gemini không dùng được. */
   async function say(text: string, alt?: string, kind?: Kind) {
     if (!live.current || !text) return;
+    const gen = ++sayGen.current;
+    const cut = new Promise<void>((r) => { sayCut.current = r; });
+    const on = () => live.current && gen === sayGen.current;
     setCaption(text);
     const d = drive.current;
     d.voice = 0;
@@ -181,23 +192,42 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       const start = () => { d.talking = true; setMode('talk'); };
       let ok = await playVoice(text, level, kind === 'fixed' ? 1500 : 4000, start, kind);
       // Chưa kịp thì dùng câu mẫu cùng giọng Gemini nếu đã sẵn, không thì chờ tiếp (hết hạn mức thì không chờ nữa).
-      if (!ok && alt && voiceReady(alt) && live.current) { setCaption(alt); ok = await playVoice(alt, level, 500, start); }
-      if (!ok && kind !== 'fixed' && !voiceCut() && live.current) ok = await playVoice(text, level, 8000, start, kind);
+      if (!ok && alt && voiceReady(alt) && on()) { setCaption(alt); ok = await playVoice(alt, level, 500, start); }
+      if (!ok && kind !== 'fixed' && !voiceCut() && on()) ok = await playVoice(text, level, 8000, start, kind);
       // Không có tiếng (hết hạn mức, câu mẫu chưa có sẵn): chuông nhẹ, chữ ở phụ đề đủ lâu để đọc, rồi đi tiếp. Tuyệt đối không chen giọng máy vào.
-      if (!ok && live.current) {
+      if (!ok && on()) {
         sfx('sparkle', true);
-        await wait(Math.min(kind === 'fixed' ? 2500 : 5000, 1200 + text.split(/\s+/).length * 350));
+        await Promise.race([wait(Math.min(kind === 'fixed' ? 2500 : 5000, 1200 + text.split(/\s+/).length * 350)), cut]);
       }
+      if (gen !== sayGen.current) return;
       d.talking = false;
     }
+    if (gen !== sayGen.current) return;
     d.voice = null;
     d.talking = false;
     setMode((m) => (m === 'talk' ? 'idle' : m));
   }
 
-  /** Bật mic và nghe đến khi người kể ngừng hẳn. Không nói gì trong 9 giây thì trả null. */
-  function hear(): Promise<Heard | null> {
+  /** Dừng ngay câu Mây đang nói, kể cả câu còn đang tải giọng hay đang hiện chữ chờ đọc (bấm nút ở bước ảnh thì không phải chờ hết câu). */
+  function hush() {
+    sayGen.current++;
+    sayCut.current();
+    stopSpeaking();
+    const d = drive.current;
+    d.talking = false;
+    d.voice = null;
+    setMode((m) => (m === 'talk' ? 'idle' : m));
+  }
+
+  /** Bật tắt mic mà không đóng luồng (đóng rồi mở lại thì iPhone có thể hỏi quyền lần nữa giữa cuộc gọi). */
+  function micOn(on: boolean) {
+    stream.current?.getAudioTracks().forEach((tr) => { tr.enabled = on; });
+  }
+
+  /** Bật mic và nghe đến khi người kể ngừng hẳn. Không nói gì trong 9 giây thì trả null. maxMs: nghe tối đa chừng này. */
+  function hear(maxMs = VAD.maxAnswer): Promise<Heard | null> {
     if (!live.current) return Promise.resolve(null);
+    micOn(true);
     setMode('listen');
     setHeard('');
     // Sau khi chọn ảnh, có cuộc gọi đến hay khoá màn hình, iPhone có thể treo AudioContext ('interrupted'): đánh thức lại trước khi nghe.
@@ -286,7 +316,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
         }
 
         if (!started) { if (elapsed > VAD.silence) void finish(false); return; }
-        if (elapsed > VAD.maxAnswer) return void finish(true);
+        if (elapsed > maxMs) return void finish(true);
         if (inSpeech) return;
         let need = VAD.endMs;
         if (speechMs < 2500) need += VAD.shortExtra;
@@ -312,8 +342,10 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     }).then((r: Saved) => { if (r === null) toast(t('call.answerFailed')); return r; });
   }
 
-  /** Báo máy chủ cuộc gọi đã xong (rút ngày vào lịch, ghép podcast). Hàng chờ chỉ gửi lệnh này sau mọi câu trả lời và ảnh của cuộc gọi. */
-  const finishCall = (s: Session): Promise<boolean> => outbox({ group: s.id, url: `/api/call/${s.id}/finish`, last: true }).then((r) => r !== null);
+  /** Báo máy chủ cuộc gọi đã xong (rút ngày vào lịch, ghép podcast). Hàng chờ chỉ gửi lệnh này sau mọi câu trả lời và ảnh của cuộc gọi.
+   * Ảnh còn đang thu nhỏ ở nền thì chờ chúng vào hàng chờ trước (tối đa 20 giây, không bao giờ kẹt lệnh kết thúc). */
+  const finishCall = (s: Session): Promise<boolean> => Promise.race([photoWork.current, wait(20_000)])
+    .then(() => outbox({ group: s.id, url: `/api/call/${s.id}/finish`, last: true })).then((r) => r !== null);
 
   /** Sau mỗi lượt kể: câu đáp, câu hỏi thêm, ngày nghe được (TurnAI). Có lời chép thì hỏi AI (quá 3 giây thôi); không có thì chờ máy chủ chép (quá 5 giây thôi).
    * Không có gì thì null: đi tiếp như cũ, không hỏi thêm. */
@@ -462,43 +494,104 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
         h = more;
       }
       if (st.photo && live.current) {
-        setPhase('photo');
-        const picked = new Promise<void>((r) => { photoDone.current = r; });
-        await say(lines.photo, undefined, 'fixed');
-        await picked;
+        const end = await askPhoto(s, n);
         if (!live.current) return;
-        setPhase('talk');
+        // Nói "để sau" hay im lặng tới hết giờ: Mây nhận lời rồi sang chuyện khác. Bấm nút thì đi tiếp luôn.
+        if (end === 'no' || end === 'timeout') await say(lines.skip, undefined, 'fixed');
       }
     }
     if (!delivered && live.current) await deliver(s);
     if (live.current) await bye(true);
   }
 
-  /** Ảnh cho câu chuyện vừa kể: chọn nhiều ảnh một lần, thu nhỏ rồi mỗi ảnh một việc trong hàng chờ (gửi lại riêng, có key chống trùng).
-   * Việc gửi ảnh vào hàng chờ trước khi cuộc gọi đi tiếp, để lệnh kết thúc luôn đi sau ảnh. */
-  async function sendPhotos(list?: FileList | null) {
-    tap();
-    stopSpeaking();
-    const done = photoDone.current;
-    photoDone.current = null;
-    const s = session;
-    const files = [...(list ?? [])].filter((f) => /^image\/(?!gif)/.test(f.type) || !f.type).slice(0, MAX_PHOTOS);
-    if (files.length && s) {
-      setPhase('talk');
-      const story = String(idx.current);
+  /** Bước xin ảnh (chặng và lối ra ở callPhoto.ts): hiện nút, Mây hỏi, rồi nghe câu trả lời.
+   * Bấm nút, nói "để sau", huỷ khung chọn ảnh hay hết giờ đều đi tiếp; nút có tác dụng ngay, kể cả khi Mây chưa nói xong. */
+  function askPhoto(s: Session, n: number): Promise<PhotoEnd> {
+    return new Promise<PhotoEnd>((resolve) => {
+      const lang = s.script.lang ?? shownLang();
+      let st = PHOTO_START;
+      let timer = 0;
+      const go = (e: PhotoEvent) => {
+        const prev = st, next = photoNext(st, e, lang);
+        if (next === prev) return;
+        st = next;
+        clearTimeout(timer);
+        if (prev.stage === 'ask' && next.stage !== 'listen') hush();
+        if (prev.stage === 'listen' && next.stage !== 'listen') { endHear.current?.(); setMode('idle'); }
+        micOn(photoMic(next));
+        const ms = PHOTO_WAIT[next.stage];
+        if (ms) timer = window.setTimeout(() => go({ type: 'timeout' }), ms);
+        if (next.end) {
+          if (photoEvent.current === go) photoEvent.current = null;
+          setPhase('talk');
+          resolve(next.end);
+        }
+      };
+      photoIdx.current = n;
+      photoEvent.current = go;
+      setPhase('photo');
+      void (async () => {
+        await say(lines.photo, undefined, 'fixed');
+        go({ type: 'asked' });
+        if (st.stage === 'listen') await wait(250);
+        if (st.stage !== 'listen') return;
+        const h = await hear(PHOTO_HEAR_MS);
+        if (st.stage !== 'listen') return;
+        if (h?.transcript) return go({ type: 'heard', text: h.transcript });
+        if (!h?.recording || h.recording.seconds < 1) return go({ type: 'heard', text: '' });
+        // Có nói mà máy không tự chép được (iPhone cài app hay vậy): nhờ máy chủ chép, nút vẫn bấm được trong lúc chờ.
+        go({ type: 'heard', text: null });
+        go({ type: 'heard', text: await hearText(s, h.recording) });
+      })().catch(() => { go({ type: 'asked' }); go({ type: 'heard', text: '' }); });
+    });
+  }
+
+  /** Chép câu trả lời ngắn ở bước ảnh qua máy chủ (không lưu gì). Quá 6 giây hay lỗi thì coi như không nghe rõ. */
+  async function hearText(s: Session, r: Recording): Promise<string> {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 6000);
+    try {
+      const body = new FormData();
+      body.set('file', r.blob, fileName(r.blob, 'answer'));
+      const res = await call<{ transcript?: string | null }>(`/api/call/${s.id}/hear`, { method: 'POST', body, signal: ctrl.signal });
+      return res.transcript ?? '';
+    } catch { return ''; } finally { clearTimeout(timer); }
+  }
+
+  /** Ảnh cho câu chuyện: thu nhỏ rồi mỗi ảnh một việc trong hàng chờ (gửi lại riêng, có key chống trùng).
+   * Chạy ở nền, cuộc gọi không chờ: ảnh nặng hay mạng chậm không làm cuộc gọi đứng. Lệnh kết thúc chờ ảnh vào hàng chờ (finishCall). */
+  function keepPhotos(s: Session, story: number, files: File[]) {
+    const queued = (async () => {
       const blobs: Blob[] = [];
       for (const f of files) blobs.push(await shrinkImage(f));
-      const jobs = blobs.map((blob) => outbox({
+      return blobs.map((blob) => outbox({
         group: s.id, url: `/api/call/${s.id}/photo`, blob, file: fileName(blob, 'photo'),
-        fields: { idx: story, key: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}` },
+        fields: { idx: String(story), key: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}` },
       }));
-      void Promise.all(jobs).then((rs) => {
-        const n = rs.filter((r) => r !== null).length;
-        toast(n ? t('call.photosSaved', { n }) : t('call.photoFailed'));
-      });
-    }
-    done?.();
+    })();
+    const prev = photoWork.current;
+    photoWork.current = Promise.all([prev, queued.catch(() => null)]);
+    void queued.then((jobs) => Promise.all(jobs)).then((rs) => {
+      const k = rs.filter((r) => r !== null).length;
+      toast(k ? t('call.photosSaved', { n: k }) : t('call.photoFailed'));
+    }).catch(() => toast(t('call.photoFailed')));
   }
+
+  /** Khung chọn ảnh trả về. Chọn muộn (bước ảnh đã hết giờ) vẫn giữ ảnh cho đúng câu chuyện đó. */
+  function pickPhotos(input: HTMLInputElement) {
+    const files = [...(input.files ?? [])].filter((f) => /^image\/(?!gif)/.test(f.type) || !f.type).slice(0, MAX_PHOTOS);
+    input.value = '';
+    if (files.length && session) keepPhotos(session, photoIdx.current, files);
+    photoEvent.current?.({ type: 'files', n: files.length });
+  }
+
+  // Huỷ khung chọn ảnh: Safari và Chrome mới báo 'cancel' (React không nối sự kiện này cho ô chọn tệp). Máy không báo thì hẹn giờ lo.
+  const photoCancel = useCallback((el: HTMLInputElement | null) => {
+    if (!el) return;
+    const f = () => photoEvent.current?.({ type: 'files', n: 0 });
+    el.addEventListener('cancel', f);
+    return () => el.removeEventListener('cancel', f);
+  }, []);
 
   async function bye(spoke: boolean) {
     if (!session && !prep.current) return;
@@ -521,12 +614,14 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     if (phase === 'ring') { snooze(); return onClose(false); }
     live.current = false;
     stopSpeaking();
-    photoDone.current?.();
+    // Đang ở bước ảnh thì lời vừa nghe chỉ là câu trả lời có hay không, không phải câu kể: không gửi (gửi sẽ đè lên lượt kể cuối của câu chuyện).
+    const inPhoto = !!photoEvent.current;
+    photoEvent.current?.({ type: 'hangup' });
     const pending = hearing.current;
     endHear.current?.();
     const h = pending ? await pending : null;
     const s = session;
-    if (s && h) void upload(s, idx.current, turnRef.current, askedRef.current, h);
+    if (s && h && !inPhoto) void upload(s, idx.current, turnRef.current, askedRef.current, h);
     cleanup();
     // Hàng chờ gửi tiếp ở nền kể cả khi đóng màn. Chỉ mở Podcast khi máy chủ nhận lệnh kết thúc ngay (chờ tối đa 1,5 giây).
     let done = false;
@@ -559,15 +654,15 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
             <Mascot drive={drive} mode={mode} />
             <p key={caption} className="call-cap fade">{caption}</p>
             {mode === 'listen' && heard && <p className="call-heard">{heard.length > 140 ? '…' + heard.slice(-140) : heard}</p>}
-            {phase === 'photo' && (
-              <div className="call-photo fade">
-                <label className="btn">
-                  <Icon name="image" size={20} /> {t('call.pickPhoto')}
-                  <input type="file" accept="image/*" multiple hidden onChange={(e) => void sendPhotos(e.target.files)} />
-                </label>
-                <button className="link" onClick={() => void sendPhotos(null)}>{t('common.later')}</button>
-              </div>
-            )}
+            {/* Ô chọn ảnh luôn nằm trong cây, chỉ ẩn đi: bước ảnh hết giờ lúc khung chọn ảnh còn mở thì ảnh chọn muộn vẫn tới được. */}
+            <div className={phase === 'photo' ? 'call-photo fade' : 'call-photo off'}>
+              <label className="btn">
+                <Icon name="image" size={20} /> {t('call.pickPhoto')}
+                <input ref={photoCancel} type="file" accept="image/*" multiple hidden
+                  onClick={() => { tap(); photoEvent.current?.({ type: 'pick' }); }} onChange={(e) => pickPhotos(e.currentTarget)} />
+              </label>
+              <button className="link" onClick={() => { tap(); photoEvent.current?.({ type: 'later' }); }}>{t('common.later')}</button>
+            </div>
             {phase === 'bye' && (sent === 'ok' || sent === 'later') && <p key={sent} className="call-note fade">{t(sent === 'ok' ? 'call.podcastSoon' : 'call.sendLater')}</p>}
           </div>
           <div className="call-foot">

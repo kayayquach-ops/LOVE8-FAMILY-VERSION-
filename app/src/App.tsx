@@ -69,7 +69,9 @@ export function App() {
   const [room, setRoom] = useState<LiveRoom>(null);
   const [facetime, setFacetime] = useState(false);
   const [callTo, setCallTo] = useState<string | null>(null);
-  const startFaceTime = (to?: string) => { setCallTo(to ?? null); setFacetime(true); };
+  // audio: gọi thoại (không camera). Nút gọi ở đầu khung chat gọi startFaceTime(id, { audio: true }).
+  const [callAudio, setCallAudio] = useState(false);
+  const startFaceTime = (to?: string | null, opts?: { audio?: boolean }) => { setCallTo(to ?? null); setCallAudio(!!opts?.audio); setFacetime(true); };
   const inCall = useRef(false);
   inCall.current = facetime;
   const [skipRoom, setSkipRoom] = useState<string | null>(null);
@@ -256,9 +258,9 @@ export function App() {
       {sheet === 'recap' && <Recap me={me} onClose={() => setSheet(null)} onCamera={() => { setSheet(null); setTab('camera'); }} />}
       {sheet === 'family' && <Family me={me} onClose={() => setSheet(null)} onChanged={load} onSettings={() => setSheet('settings')} onCallMember={(id) => { setSheet(null); startFaceTime(id); }} />}
       {sheet === 'podcast' && <Podcast me={me} start={podcastId} onClose={() => setSheet(null)} onCall={() => setCalling(true)} />}
-      {facetime && <FaceTime me={me} to={callTo} onClose={() => { setFacetime(false); setSkipRoom(room?.id ?? null); }} />}
+      {facetime && <FaceTime me={me} to={callTo} audio={callAudio} onClose={() => { setFacetime(false); setSkipRoom(room?.id ?? null); }} />}
       {!facetime && !calling && room && !room.members.includes(me.me.id) && skipRoom !== room.id && (!room.to || room.to === me.me.id) && (
-        <Incoming me={me} room={room} onAccept={() => startFaceTime()} onDecline={() => setSkipRoom(room.id)} />
+        <Incoming me={me} room={room} onAccept={() => startFaceTime(null, { audio: !!room.audio })} onDecline={() => setSkipRoom(room.id)} />
       )}
       {calling && <Call me={me} onClose={(done) => { setCalling(false); if (done) setCallDue(false); void checkCall(); if (done) { setPodcastId(null); setSheet('podcast'); } }} />}
       </Suspense>

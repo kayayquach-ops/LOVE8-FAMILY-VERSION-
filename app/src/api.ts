@@ -132,6 +132,8 @@ export const api = {
   familyName: (code: string) => call<{ name: string }>(`/api/family/${code}`),
   me: () => call<Me>('/api/me'),
   updateMe: (f: FormData) => call('/api/me', { method: 'PATCH', body: f }),
+  /** Tự rời nhà: máy chủ xoá mình cùng mọi dữ liệu của mình; người cuối cùng rời thì xoá luôn nhà. Xong thì mã máy này hết dùng. */
+  leave: () => call<{ ok: boolean }>('/api/me', { method: 'DELETE' }),
   feed: () => call<Post[]>('/api/feed'),
   post: (f: FormData) => call('/api/posts', { method: 'POST', body: f }),
   hug: () => { const f = new FormData(); f.set('kind', 'hug'); return call('/api/posts', { method: 'POST', body: f }); },

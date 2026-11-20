@@ -884,6 +884,7 @@ const limitTts = limitBy({ name: 'call-tts', per: new Limit(150, 10 * 60e3), key
 // Nhiều thành viên giả cùng một nơi: thêm trần theo IP (cả nhà dùng chung wifi vẫn dư).
 const limitTtsIp = limitBy({ name: 'call-tts-ip', per: new Limit(400, 10 * 60e3) });
 const limitPhoto = limitBy({ name: 'call-photo', per: new Limit(60, 10 * 60e3), key: byMember });
+const limitHear = limitBy({ name: 'call-hear', per: new Limit(20, 10 * 60e3), key: byMember });
 // AI soạn bộ câu mới: mỗi người 4 lần mỗi giờ (đổi ngôn ngữ, đổi tên linh vật), quá thì dùng bộ câu mẫu chứ không báo lỗi.
 const aiScripts = new Limit(4, 3600e3);
 
@@ -1109,6 +1110,20 @@ export function callRouter(upload: multer.Multer) {
     }
     if (!saved && bad) return res.status(400).json(errorBody('photo_type'));
     res.json({ ok: true, saved });
+  }));
+
+  // Bước xin ảnh: máy không tự chép được lời (iPhone cài app hay vậy) thì chép câu trả lời ngắn để biết người nghe có nói "để sau" không.
+  // Không lưu hàng nào, xoá tệp ngay sau khi chép. Chép quá 5 giây thì trả null, máy khách chờ người nghe bấm nút.
+  r.post('/call/:id/hear', limitHear, upload.single('file'), h(async (req, res) => {
+    try {
+      const { rows: [call] } = await pool.query('select script from calls where id = $1 and member_id = $2', [req.params.id, req.member.id]);
+      if (!call || !req.file) return res.status(404).json(errorBody('call_not_found'));
+      const script: CallScript = JSON.parse(call.script);
+      const text = await transcribe(req.file.path, req.member.id, 5000, langOf(script.lang ?? reqLang()));
+      res.json({ transcript: text?.slice(0, 300) ?? null });
+    } finally {
+      if (req.file) await unlink(req.file.path).catch(() => {});
+    }
   }));
 
   // Mây đã chuyển xong một lời nhắn cho người đang nghe.

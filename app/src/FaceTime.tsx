@@ -3,15 +3,34 @@ import { api } from './api';
 import { drawBooth, H, stageColor, THEMES, W, type Tile } from './booth';
 import { FH, FW, loadStripFonts, renderStrip, snap, snapInto, STRIPS, stripStage, stripTheme, tone as toneOver, type Tone } from './strip';
 import './booth.css';
-import { livePost, onLive, type LiveMsg, type LiveRoom } from './live';
+import { livePost, liveStats, onLive, reopenLive, type LiveMsg, type LiveRoom } from './live';
+import { fixDelay, fixKind, hasTurn, iceCount, ICE_SHORT, mark, MAX_FIXES, newPeerDiag, pairOf, peerSummary, type PeerDiag } from './rtcDiag';
 import type { Me } from './shared';
 import { buzz, sfx, startRing, stopRing, tap } from './sound';
 import { Avatar, Icon, toast } from './ui';
 import { t, type Key } from './i18n';
 
-type Peer = { pc: RTCPeerConnection; stream: MediaStream | null; cam: boolean; mic: boolean; state: string };
+// Mỗi cặp hai người chỉ một bên mời (mã nhỏ hơn), nên không bao giờ hai bên cùng mời nhau, không cần kiểu "perfect negotiation".
+// sid: mã phiên của một RTCPeerConnection, bên mời đặt. Mọi gói tin mang sid để bỏ gói của phiên cũ và giữ lại gói đến sớm của phiên mới.
+// g: lời mời thứ mấy trong phiên (khởi động lại ICE thì tăng); câu trả lời mang g cũ thì bỏ.
+// Gói tin qua máy chủ có thể rơi (kênh SSE của người nhận đang nối lại): bên mời gửi lại lời mời đến khi có trả lời,
+// bên trả lời báo "ready" đến khi nhận được lời mời. Rớt kết nối (đổi Wi-Fi sang 4G, iPhone xuống nền) thì sửa, có giới hạn số lần (rtcDiag.ts).
+type Peer = {
+  pc: RTCPeerConnection; stream: MediaStream | null; cam: boolean; mic: boolean; state: string;
+  sid: string; g: number; offerer: boolean;
+  sentAt: number; resends: number; answeredAt: number; // bên mời: lúc gửi lời mời gần nhất, số lần gửi lại, lúc nhận trả lời
+  downAt: number; fixes: number; fixAt: number;         // rớt từ lúc nào, đã sửa mấy lần, lần sửa gần nhất
+  d: PeerDiag;
+};
 const AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+const VIDEO = { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } };
+const RESEND_MS = 4000, MAX_RESENDS = 10; // bên mời chưa có trả lời: 4 giây gửi lại lời mời một lần
+const READY_MS = 4000, MAX_READY = 12;    // bên trả lời chưa có lời mời: 4 giây báo "ready" một lần
+const DOWN_MS = 3000;                      // ICE "disconnected" quá 3 giây thì sửa, "failed" thì sửa ngay
+const STUCK_MS = 12000;                    // có trả lời rồi mà 12 giây chưa nối được thì cũng sửa
 const nameOf = (me: Me, id: string) => (id === me.me.id ? t('facetime.me') : me.members.find((m) => m.id === id)?.name ?? t('common.someone'));
+const isUp = (p: Peer) => p.pc.connectionState === 'connected';
+const newSid = () => Math.random().toString(36).slice(2, 10);
 
 /** Không mở được camera (máy chặn, máy tính không có) thì vẫn lên hình bằng một ô chữ cái đầu tên, có micro nếu được. */
 function fakeVideo(name: string) {
@@ -38,36 +57,42 @@ function fakeVideo(name: string) {
   return stream;
 }
 
-async function getMedia(name: string): Promise<{ stream: MediaStream; fake: boolean }> {
+/** kind (ghi vào chẩn đoán): cam; fake: ô chữ cái + micro; mute: ô chữ cái, không micro; mic: gọi thoại; none: gọi thoại mà không mở được micro. */
+async function getMedia(name: string, voice: boolean): Promise<{ stream: MediaStream; kind: string }> {
   const md = navigator.mediaDevices;
+  if (voice) {
+    try { return { stream: await md.getUserMedia({ audio: AUDIO }), kind: 'mic' }; } catch { return { stream: new MediaStream(), kind: 'none' }; }
+  }
   try {
-    const s = await md.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: AUDIO });
-    return { stream: s, fake: false };
+    return { stream: await md.getUserMedia({ video: VIDEO, audio: AUDIO }), kind: 'cam' };
   } catch {}
   let audio: MediaStream | null = null;
   try { audio = await md.getUserMedia({ audio: AUDIO }); } catch {}
   const v = fakeVideo(name);
-  return { stream: new MediaStream([...v.getVideoTracks(), ...(audio?.getAudioTracks() ?? [])]), fake: true };
+  return { stream: new MediaStream([...v.getVideoTracks(), ...(audio?.getAudioTracks() ?? [])]), kind: audio ? 'fake' : 'mute' };
 }
 
-/** Gọi video cả nhà: mỗi người nối thẳng với từng người còn lại (WebRTC), máy chủ chỉ chuyển lời mời. */
-export function FaceTime({ me, to, onClose }: { me: Me; to?: string | null; onClose: () => void }) {
+/** Gọi video cả nhà (audio: gọi thoại, không camera): mỗi người nối thẳng với từng người còn lại (WebRTC), máy chủ chỉ chuyển lời mời. */
+export function FaceTime({ me, to, audio = false, onClose }: { me: Me; to?: string | null; audio?: boolean; onClose: () => void }) {
   const meId = me.me.id;
   const [, bump] = useReducer((x: number) => x + 1, 0);
   const [local, setLocal] = useState<MediaStream | null>(null);
   const [fake, setFake] = useState(false);
   const [members, setMembers] = useState<string[]>([]);
   const [mic, setMic] = useState(true);
-  const [cam, setCam] = useState(true);
+  const [cam, setCam] = useState(!audio);
   const [booth, setBooth] = useState(false);
   const [smile, setSmile] = useState(0);
   const localRef = useRef<MediaStream | null>(null);
   const peers = useRef(new Map<string, Peer>());
-  const pending = useRef(new Map<string, RTCIceCandidateInit[]>());
+  // Ứng viên ICE đến trước lời mời/trả lời của đúng phiên: giữ lại (tối đa 60 giây), áp sau khi có mô tả của người kia.
+  const pending = useRef(new Map<string, { sid?: string; c: RTCIceCandidateInit; at: number }[]>());
   const ice = useRef<RTCIceServer[]>([]);
+  const iceAt = useRef(0);
   const joined = useRef(false);
+  const joinedAt = useRef(0);
   const ended = useRef(false);
-  const state = useRef({ mic: true, cam: true });
+  const state = useRef({ mic: true, cam: !audio });
   const videos = useRef(new Map<string, HTMLVideoElement>());
   const counted = useRef(false);
   // Phòng gần nhất có mình (để vào lại đúng phòng khi máy chủ quên), phòng gần nhất nhận được, hạn giữ kết nối khi đang vào lại.
@@ -75,40 +100,83 @@ export function FaceTime({ me, to, onClose }: { me: Me; to?: string | null; onCl
   const lastRoom = useRef<LiveRoom>(null);
   const grace = useRef(0);
   const graceEnd = useRef(0);
+  // Bên trả lời: lần báo "ready" gần nhất và số lần đã báo, theo từng người.
+  const ready = useRef(new Map<string, { at: number; n: number }>());
+  // Gói tin xử lý lần lượt từng gói (trước đây chạy chen nhau: lời mời thứ hai đóng kết nối khi lời mời đầu còn đang áp dở).
+  const chain = useRef<Promise<unknown>>(Promise.resolve());
+  const reviving = useRef(false);
+  // Chẩn đoán: lúc mở màn gọi, lúc nối được người đầu tiên, thời gian lấy cấu hình ICE (-1: lỗi, chỉ còn STUN dự phòng), loại micro/camera,
+  // số lần mở kênh SSE lúc bắt đầu, số gói tin không tới được người nhận, chẩn đoán của người đã rời, đã gửi bản tóm tắt chưa.
+  const t0 = useRef(Date.now());
+  const firstUp = useRef(0);
+  const cfgMs = useRef(-1);
+  const mediaKind = useRef('');
+  const sse0 = useRef(liveStats().opens);
+  const drops = useRef(0);
+  const done = useRef<PeerDiag[]>([]);
+  const diagSent = useRef(false);
 
-  const signal = (to: string, data: unknown) => livePost('signal', { to, data }).catch(() => {});
+  // sent = 0: người nhận không còn trong phòng ở máy chủ, gói tin rơi.
+  const signal = (to: string, data: unknown) => livePost<{ sent?: number }>('signal', { to, data })
+    .then((r) => { if (to !== '*' && r?.sent === 0) drops.current++; })
+    .catch(() => { drops.current++; });
+  const note = (p: Peer, what: string) => mark(p.d, what, Date.now(), t0.current);
 
-  function close(id: string) {
+  /** keepDiag: kết nối được thay bằng kết nối mới của cùng người, chẩn đoán đi tiếp theo kết nối mới. */
+  function close(id: string, keepDiag = false) {
     const p = peers.current.get(id);
     if (!p) return;
-    p.pc.onicecandidate = p.pc.ontrack = p.pc.onconnectionstatechange = null;
+    p.pc.onicecandidate = p.pc.ontrack = p.pc.onconnectionstatechange = p.pc.oniceconnectionstatechange = null;
     p.pc.close();
     peers.current.delete(id);
+    if (!keepDiag) done.current.push(p.d);
     bump();
   }
 
-  function makePeer(id: string) {
+  /** carry: kết nối cũ của cùng người (dựng lại khi sửa), giữ số lần sửa và chẩn đoán. */
+  function makePeer(id: string, sid: string, carry?: Peer) {
+    if (peers.current.has(id)) close(id, true);
     const pc = new RTCPeerConnection({ iceServers: ice.current });
     const s = localRef.current;
     s?.getTracks().forEach((tr) => pc.addTrack(tr, s));
-    const p: Peer = { pc, stream: null, cam: true, mic: true, state: 'new' };
-    pc.onicecandidate = (e) => { if (e.candidate) void signal(id, { candidate: e.candidate.toJSON() }); };
+    const offerer = meId < id;
+    // Bên mời mà không có micro (hay camera) vẫn xin nhận tiếng (hình) của người kia, không thì lời mời thiếu hẳn phần đó.
+    if (offerer && !s?.getAudioTracks().length) pc.addTransceiver('audio', { direction: 'recvonly' });
+    if (offerer && !audio && !s?.getVideoTracks().length) pc.addTransceiver('video', { direction: 'recvonly' });
+    const p: Peer = {
+      pc, stream: null, cam: true, mic: true, state: 'new', sid, g: 0, offerer, sentAt: 0, resends: 0, answeredAt: 0,
+      downAt: 0, fixes: carry?.fixes ?? 0, fixAt: carry?.fixAt ?? 0, d: carry?.d ?? newPeerDiag(id, offerer ? 'o' : 'a', Date.now()),
+    };
+    pc.onicecandidate = (e) => { if (e.candidate) void signal(id, { candidate: e.candidate.toJSON(), sid }); };
     pc.ontrack = (e) => {
       if (e.streams[0]) p.stream = e.streams[0];
       else { p.stream ??= new MediaStream(); p.stream.addTrack(e.track); }
       bump();
     };
+    pc.oniceconnectionstatechange = () => {
+      const st = pc.iceConnectionState;
+      note(p, ICE_SHORT[st] ?? st);
+      if (st === 'connected' || st === 'completed') p.downAt = 0;
+      else if ((st === 'disconnected' || st === 'failed') && !p.downAt) p.downAt = Date.now();
+    };
     pc.onconnectionstatechange = () => {
-      p.state = pc.connectionState;
-      if (pc.connectionState === 'connected') {
+      const st = pc.connectionState;
+      p.state = st;
+      p.d.up = st === 'connected';
+      if (st === 'connected') {
+        note(p, 'up');
+        p.downAt = 0; p.fixes = 0; p.d.gaveUp = false;
+        ready.current.delete(id);
         void signal(id, { state: state.current });
         if (!counted.current) { counted.current = true; api.mission('call').catch(() => {}); }
-      }
-      if (pc.connectionState === 'failed') toast(t('facetime.failed'));
-      // Rớt hẳn thì người có mã nhỏ hơn mời lại.
-      if (pc.connectionState === 'failed' && meId < id) {
-        close(id);
-        setTimeout(() => { if (!ended.current && !peers.current.has(id)) void offer(id); }, 1500);
+        if (!firstUp.current) firstUp.current = Date.now();
+        // Lần đầu nối thông với người này: báo máy chủ (móc onCallConnected, không ghi log).
+        if (!p.d.ok) { p.d.ok = true; p.d.ttc = Date.now() - p.d.t0; void livePost('diag', { up: id, room: known.current?.id }).catch(() => {}); }
+        void readPair(p);
+        setTimeout(() => void readPair(p), 3000);
+      } else if (st === 'disconnected' || st === 'failed') {
+        if (st === 'failed') note(p, 'pcfail');
+        if (!p.downAt) p.downAt = Date.now();
       }
       bump();
     };
@@ -117,16 +185,143 @@ export function FaceTime({ me, to, onClose }: { me: Me; to?: string | null; onCl
     return p;
   }
 
-  async function flush(id: string, p: Peer) {
-    const list = pending.current.get(id) ?? [];
-    pending.current.delete(id);
-    for (const c of list) await p.pc.addIceCandidate(c).catch(() => {});
+  /** Đường nối đang dùng (host/srflx/relay) và RTT, ghi vào chẩn đoán. */
+  async function readPair(p: Peer) {
+    try {
+      const r = pairOf((await p.pc.getStats()).values());
+      if (r) { p.d.pair = r.pair; p.d.rtt = r.rtt; }
+    } catch {}
   }
 
-  async function offer(id: string) {
-    const p = makePeer(id);
-    await p.pc.setLocalDescription(await p.pc.createOffer());
-    void signal(id, { sdp: p.pc.localDescription });
+  async function flush(id: string, p: Peer) {
+    const now = Date.now();
+    const list = (pending.current.get(id) ?? []).filter((e) => now - e.at < 60_000);
+    const mine = list.filter((e) => e.sid === undefined || e.sid === p.sid);
+    pending.current.set(id, list.filter((e) => !mine.includes(e)));
+    for (const e of mine) await p.pc.addIceCandidate(e.c).catch(() => {});
+  }
+
+  /** Bên mời: lời mời mới (dựng kết nối mới), hoặc restart: khởi động lại ICE trên kết nối đang có. */
+  async function offer(id: string, restart = false) {
+    const old = peers.current.get(id);
+    const p = restart && old ? old : makePeer(id, newSid(), old);
+    const g = ++p.g;
+    const o = await p.pc.createOffer(restart ? { iceRestart: true } : undefined);
+    if (peers.current.get(id) !== p || ended.current || p.g !== g) return;
+    await p.pc.setLocalDescription(o);
+    p.resends = 0;
+    sendOffer(id, p);
+  }
+
+  // Gửi lại thì dùng mô tả hiện tại (đã kèm các ứng viên ICE gom được tới giờ), nên ứng viên rơi giữa đường cũng được bù.
+  function sendOffer(id: string, p: Peer) {
+    p.sentAt = Date.now();
+    note(p, p.resends ? 're' : 'off');
+    void signal(id, { sdp: p.pc.localDescription, sid: p.sid, g: p.g });
+  }
+
+  /** Mật khẩu TURN có hạn, và lần đầu có thể chưa lấy được TURN: cấu hình cũ quá 30 phút hay thiếu TURN thì lấy lại trước khi sửa. */
+  async function freshIce() {
+    if (Date.now() - iceAt.current < 30 * 60_000) return;
+    const cfg = await livePost<{ iceServers: RTCIceServer[] }>('config').catch(() => null);
+    if (!cfg?.iceServers?.length) return;
+    ice.current = cfg.iceServers;
+    iceAt.current = hasTurn(cfg.iceServers) ? Date.now() : 0;
+  }
+
+  /** Sửa một kết nối đang rớt. Bên mời: khởi động lại ICE hoặc dựng lại hẳn (fixKind). Bên trả lời: nhờ bên mời sửa.
+   * Hết lượt mà vẫn chưa nối được thì báo người dùng một câu và thôi (quay lại app thì được sửa lại từ đầu). */
+  async function fix(id: string, p: Peer) {
+    p.fixAt = Date.now();
+    if (p.fixes >= MAX_FIXES) {
+      if (!p.d.gaveUp) { p.d.gaveUp = true; note(p, 'giveup'); toast(t('facetime.lost')); }
+      return;
+    }
+    if (p.fixes === 0) toast(t(audio ? 'facetime.failedVoice' : 'facetime.failed'));
+    const kind = fixKind(p.fixes);
+    p.fixes++;
+    p.d.rs++;
+    if (!p.offerer) { note(p, 'rq'); return void signal(id, { restart: true, sid: p.sid }); }
+    note(p, kind === 'ice' ? 'rs' : 'new');
+    await freshIce();
+    if (peers.current.get(id) !== p || ended.current) return;
+    if (kind === 'ice') { try { p.pc.setConfiguration({ ...p.pc.getConfiguration(), iceServers: ice.current }); } catch {} }
+    await offer(id, kind === 'ice');
+  }
+
+  /** Mỗi giây: gửi lại lời mời chưa có trả lời, phát hiện kết nối treo hay rớt để sửa, bên trả lời báo "ready" khi chưa có lời mời. */
+  function tick() {
+    if (!joined.current || ended.current) return;
+    const now = Date.now();
+    for (const [id, p] of peers.current) {
+      // Đã nối lại ổn định 10 giây (kết nối không chuyển trạng thái nên chưa đặt lại) thì lần rớt sau được sửa lại từ đầu.
+      if (isUp(p) && !p.downAt && p.fixes && now - p.fixAt > 10_000) p.fixes = 0;
+      if (p.offerer && p.pc.signalingState === 'have-local-offer') {
+        if (now - p.sentAt > RESEND_MS && p.resends < MAX_RESENDS) {
+          p.resends++;
+          sendOffer(id, p);
+          // Ba lần chưa thấy trả lời: có thể kênh SSE của mình chết mà chưa biết (trả lời gửi vào kênh chết), mở kênh mới.
+          if (p.resends === 3) reopenLive();
+        } else if (p.resends >= MAX_RESENDS && now - p.sentAt > RESEND_MS && !p.d.gaveUp) { p.d.gaveUp = true; note(p, 'giveup'); toast(t('facetime.lost')); }
+      }
+      if (p.offerer && !p.downAt && !isUp(p) && p.answeredAt && p.pc.signalingState === 'stable' && now - p.answeredAt > STUCK_MS) {
+        p.downAt = now - DOWN_MS;
+        note(p, 'stuck');
+      }
+      const down = !!p.downAt && (now - p.downAt >= DOWN_MS || p.pc.iceConnectionState === 'failed' || p.pc.connectionState === 'failed');
+      if (down && !p.d.gaveUp && now - p.fixAt >= fixDelay(p.fixes) && (!p.offerer || p.pc.signalingState === 'stable')) void fix(id, p).catch(() => {});
+    }
+    // Bên trả lời: người có mã nhỏ hơn chưa mời mình (lời mời rơi, hoặc người đó chưa thấy mình vào phòng) thì báo "ready".
+    if (now - joinedAt.current < 2000) return;
+    for (const id of lastRoom.current?.members ?? []) {
+      if (id >= meId) continue;
+      const p = peers.current.get(id);
+      if (p?.pc.remoteDescription) continue;
+      const r = ready.current.get(id) ?? { at: 0, n: 0 };
+      if (now - r.at < READY_MS || r.n >= MAX_READY) continue;
+      ready.current.set(id, { at: now, n: r.n + 1 });
+      void signal(id, { ready: true, sid: p?.sid ?? '' });
+      if (r.n + 1 === 3) reopenLive();
+      if (r.n + 1 === MAX_READY) toast(t('facetime.lost'));
+    }
+  }
+
+  /** Vừa có kênh SSE mới (máy chủ gửi "hello") hoặc vừa quay lại app: gói tin lúc trước có thể đã rơi hết.
+   * Gửi lại ngay lời mời đang chờ, báo "ready" lại, kết nối đã thôi sửa thì cho sửa lại từ đầu. */
+  function retryAll() {
+    ready.current.clear();
+    for (const p of peers.current.values()) {
+      if (p.offerer && p.pc.signalingState === 'have-local-offer') { p.resends = 0; p.sentAt = 0; }
+      if (p.d.gaveUp && !isUp(p)) { p.d.gaveUp = false; p.fixes = 0; p.fixAt = 0; }
+    }
+  }
+
+  /** iPhone ra khỏi nền, hay app khác vừa dùng camera: track của mình đã "ended", người kia thấy hình đứng và mất tiếng
+   * (Camera.tsx cũng ghi: quay lại từ nền thì luồng cũ thường đã chết). Xin lại micro/camera, thay track cho mọi kết nối, không phải mời lại. */
+  async function revive() {
+    const s = localRef.current;
+    if (!s || ended.current || reviving.current) return;
+    const dead = s.getTracks().filter((tr) => tr.readyState === 'ended');
+    if (!dead.length) return;
+    reviving.current = true;
+    try {
+      const kinds = new Set(dead.map((tr) => tr.kind));
+      const fresh = await navigator.mediaDevices.getUserMedia({ audio: kinds.has('audio') ? AUDIO : false, video: kinds.has('video') ? VIDEO : false });
+      if (ended.current) return fresh.getTracks().forEach((tr) => tr.stop());
+      for (const tr of fresh.getTracks()) {
+        const old = dead.find((x) => x.kind === tr.kind);
+        tr.enabled = tr.kind === 'audio' ? state.current.mic : state.current.cam;
+        if (old) s.removeTrack(old);
+        s.addTrack(tr);
+        for (const p of peers.current.values()) {
+          const snd = p.pc.getSenders().find((x) => x.track === old) ?? p.pc.getSenders().find((x) => x.track?.kind === tr.kind);
+          if (snd) void snd.replaceTrack(tr).catch(() => {});
+        }
+      }
+      const next = new MediaStream(s.getTracks());
+      localRef.current = next;
+      setLocal(next);
+    } catch {} finally { reviving.current = false; }
   }
 
   /** Vào phòng; về tới nơi mà mình đã cúp máy (bấm cúp đúng lúc đang vào) thì rời ngay, không để lại phòng ma đổ chuông cả nhà. */
@@ -136,14 +331,15 @@ export function FaceTime({ me, to, onClose }: { me: Me; to?: string | null; onCl
     return r;
   }
 
-  /** Máy chủ quên phòng (khởi động lại khi deploy) hoặc đã cho mình ra: vào lại đúng phòng cũ (cùng mã phòng, người gọi, người được gọi riêng)
-   * với cờ rejoin để máy chủ không đổ chuông cả nhà. 15 giây đầu giữ các kết nối đang chạy tốt trong lúc người khác lần lượt vào lại. */
+  /** Máy chủ quên phòng (khởi động lại khi deploy) hoặc đã cho mình ra: vào lại đúng phòng cũ (cùng mã phòng, người gọi, người được gọi riêng,
+   * gọi thoại hay video) với cờ rejoin để máy chủ không đổ chuông cả nhà. 15 giây đầu giữ các kết nối đang chạy tốt trong lúc người khác lần lượt vào lại. */
   function rejoin() {
     const old = known.current;
-    void enter(old ? { rejoin: true, id: old.id, by: old.by, to: old.to ?? null, started: old.started } : { rejoin: true, ...(to ? { to } : {}) }).catch(() => {});
+    void enter(old
+      ? { rejoin: true, id: old.id, by: old.by, to: old.to ?? null, started: old.started, audio: old.audio ?? audio }
+      : { rejoin: true, ...(to ? { to } : {}), ...(audio ? { audio: true } : {}) }).catch(() => {});
   }
 
-  // Mỗi cặp hai người chỉ một bên mời (mã nhỏ hơn), nên không bao giờ hai bên cùng mời nhau.
   function sync(room: LiveRoom) {
     lastRoom.current = room;
     const ids = room?.members ?? [];
@@ -157,7 +353,9 @@ export function FaceTime({ me, to, onClose }: { me: Me; to?: string | null; onCl
     const keep = Date.now() < grace.current;
     for (const id of [...peers.current.keys()]) {
       if (ids.includes(id) || (keep && peers.current.get(id)?.state === 'connected')) continue;
-      close(id); pending.current.delete(id);
+      const p = peers.current.get(id);
+      if (p) p.d.bye = true;
+      close(id); pending.current.delete(id); ready.current.delete(id);
     }
     setMembers(keep ? [...new Set([...ids, ...peers.current.keys()])] : ids);
     if (!joined.current || ended.current) return;
@@ -167,67 +365,137 @@ export function FaceTime({ me, to, onClose }: { me: Me; to?: string | null; onCl
 
   async function handle(m: LiveMsg) {
     if (ended.current) return;
+    if (m.type === 'hello' && joined.current) retryAll();
     if (m.type === 'hello' || m.type === 'room') return sync(m.room);
     if (m.type === 'declined') return toast(t('facetime.declined', { name: nameOf(me, m.from) }));
     if (m.type !== 'signal' || !m.data) return;
     const { from, data } = m;
+    const p0 = peers.current.get(from);
     try {
       if (data.sdp?.type === 'offer') {
         if (!localRef.current) return;
-        close(from);
-        const p = makePeer(from);
+        // Cùng phiên: gửi lại hoặc khởi động lại ICE, áp lên kết nối đang có. Phiên khác: bên mời đã dựng lại, dựng lại theo.
+        // Không có sid: máy còn chạy bản cũ (bản cũ lần nào cũng dựng kết nối mới), cũng dựng lại.
+        const sid = typeof data.sid === 'string' ? data.sid : '';
+        const p = p0 && sid && p0.sid === sid ? p0 : makePeer(from, sid, p0);
+        p.d.remote = true;
+        note(p, 'off');
         await p.pc.setRemoteDescription(data.sdp);
         await flush(from, p);
         await p.pc.setLocalDescription(await p.pc.createAnswer());
-        void signal(from, { sdp: p.pc.localDescription });
+        void signal(from, { sdp: p.pc.localDescription, sid, g: data.g });
       } else if (data.sdp?.type === 'answer') {
-        const p = peers.current.get(from);
-        if (p?.pc.signalingState === 'have-local-offer') { await p.pc.setRemoteDescription(data.sdp); await flush(from, p); }
+        if (!p0 || p0.pc.signalingState !== 'have-local-offer') return;
+        if ((data.sid !== undefined && data.sid !== p0.sid) || (data.g !== undefined && data.g !== p0.g)) return;
+        await p0.pc.setRemoteDescription(data.sdp);
+        p0.answeredAt = Date.now();
+        p0.d.remote = true;
+        note(p0, 'ans');
+        await flush(from, p0);
       } else if (data.candidate) {
-        const p = peers.current.get(from);
-        if (p?.pc.remoteDescription) await p.pc.addIceCandidate(data.candidate).catch(() => {});
-        else pending.current.set(from, [...(pending.current.get(from) ?? []), data.candidate]);
+        const sid: string | undefined = typeof data.sid === 'string' ? data.sid : undefined;
+        if (p0?.pc.remoteDescription && (sid === undefined || sid === p0.sid)) await p0.pc.addIceCandidate(data.candidate).catch(() => {});
+        else pending.current.set(from, [...(pending.current.get(from) ?? []).filter((e) => Date.now() - e.at < 60_000), { sid, c: data.candidate, at: Date.now() }]);
+      } else if (data.ready) {
+        // Người kia đã vào mà chưa có lời mời của mình: mời ngay, gửi lại lời mời đang chờ, hoặc (người kia đã mất phiên) mời lại từ đầu.
+        if (meId > from) return;
+        if (!p0) return void offer(from).catch(() => {});
+        if (p0.pc.signalingState === 'have-local-offer') { if (Date.now() - p0.sentAt > 2000) { p0.resends++; sendOffer(from, p0); } }
+        else if (data.sid !== p0.sid && !isUp(p0) && Date.now() - p0.sentAt > 5000) void offer(from).catch(() => {});
+      } else if (data.restart) {
+        // Bên trả lời thấy rớt: bên mời sửa (theo cùng lịch chờ, không sửa dồn).
+        if (p0?.offerer && (data.sid === undefined || data.sid === p0.sid) && p0.pc.signalingState === 'stable' && !p0.d.gaveUp
+          && Date.now() - p0.fixAt >= Math.max(2500, fixDelay(p0.fixes))) void fix(from, p0).catch(() => {});
       } else if (data.state) {
-        const p = peers.current.get(from);
-        if (p) { p.cam = !!data.state.cam; p.mic = !!data.state.mic; bump(); }
+        if (p0) { p0.cam = !!data.state.cam; p0.mic = !!data.state.mic; bump(); }
       } else if (data.smile) {
         setSmile(Date.now());
       }
     } catch (e) { console.warn('rtc', e); }
   }
 
+  /** Một bản tóm tắt mỗi cuộc gọi (gác máy, đóng màn, đóng trang); máy chủ ghi đúng một dòng log "[facetime] diag". */
+  function sendDiag(end: string) {
+    if (diagSent.current || !mediaKind.current) return;
+    diagSent.current = true;
+    const now = Date.now();
+    const list = [...done.current, ...[...peers.current.values()].map((p) => p.d)];
+    void livePost('diag', {
+      v: 1, room: known.current?.id ?? '', audio, turn: hasTurn(ice.current), ice: iceCount(ice.current), cfg: cfgMs.current, media: mediaKind.current,
+      dur: now - t0.current, wait: firstUp.current ? firstUp.current - t0.current : -1, end, sse: liveStats().opens - sse0.current, drop: drops.current,
+      peers: list.map(peerSummary),
+    }, { keepalive: true }).catch(() => {});
+  }
+
   const handleRef = useRef(handle);
   handleRef.current = handle;
+  const tickRef = useRef(tick);
+  tickRef.current = tick;
+  const reviveRef = useRef(revive);
+  reviveRef.current = revive;
+  const retryRef = useRef(retryAll);
+  retryRef.current = retryAll;
 
   useEffect(() => {
     let alive = true;
-    const off = onLive((m) => { void handleRef.current(m); });
+    // Gói nào treo quá 8 giây (trình duyệt không trả lời) thì bỏ qua để các gói sau không bị chặn.
+    const off = onLive((m) => { chain.current = chain.current.then(() => Promise.race([handleRef.current(m), sleep(8000)])).catch((e) => console.warn('rtc', e)); });
+    const iv = setInterval(() => tickRef.current(), 1000);
+    const onHide = () => sendDiag('pagehide');
+    window.addEventListener('pagehide', onHide);
+    // Quay lại app: lấy lại micro/camera nếu đã chết; kết nối đã thôi sửa thì cho sửa lại từ đầu, bên trả lời báo "ready" lại.
+    const onVis = () => {
+      if (document.hidden || ended.current) return;
+      void reviveRef.current();
+      retryRef.current();
+      tickRef.current();
+    };
+    document.addEventListener('visibilitychange', onVis);
     (async () => {
+      const c0 = Date.now();
       const [cfg, media] = await Promise.all([
-        livePost<{ iceServers: RTCIceServer[] }>('config').catch(() => ({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })),
-        getMedia(me.me.name),
+        livePost<{ iceServers: RTCIceServer[] }>('config').then((c) => { cfgMs.current = Date.now() - c0; return c; })
+          .catch(() => ({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] as RTCIceServer[] })),
+        getMedia(me.me.name, audio),
       ]);
       if (!alive) { media.stream.getTracks().forEach((tr) => tr.stop()); return; }
       ice.current = cfg.iceServers;
+      iceAt.current = hasTurn(cfg.iceServers) ? Date.now() : 0;
+      mediaKind.current = media.kind;
       localRef.current = media.stream;
       setLocal(media.stream);
-      setFake(media.fake);
-      if (media.fake) toast(media.stream.getAudioTracks().length ? t('facetime.noCam') : t('facetime.noCamMic'));
-      const r = await enter(to ? { to } : {});
+      setFake(media.kind === 'fake' || media.kind === 'mute');
+      if (media.kind === 'fake') toast(t('facetime.noCam'));
+      else if (media.kind === 'mute') toast(t('facetime.noCamMic'));
+      else if (media.kind === 'none') toast(t('facetime.noMic'));
+      const r = await enter({ ...(to ? { to } : {}), ...(audio ? { audio: true } : {}) });
       if (!r) return;
       joined.current = true;
+      joinedAt.current = Date.now();
       sync(r.room);
     })().catch((e) => toast((e as Error).message));
-    return () => { alive = false; off(); clearTimeout(graceEnd.current); hangUp(true); };
+    return () => {
+      alive = false; off(); clearInterval(iv); clearTimeout(graceEnd.current);
+      window.removeEventListener('pagehide', onHide); document.removeEventListener('visibilitychange', onVis);
+      hangUp(true, 'unmount');
+    };
   }, []);
+
+  // Track của mình chết khi đang mở app (app khác lấy micro/camera): lấy lại ngay.
+  useEffect(() => {
+    const on = () => { if (!document.hidden) void reviveRef.current(); };
+    const list = local?.getTracks() ?? [];
+    list.forEach((tr) => tr.addEventListener('ended', on));
+    return () => list.forEach((tr) => tr.removeEventListener('ended', on));
+  }, [local]);
 
   // Còn một mình thì nghe tiếng chờ nhẹ.
   const alone = !members.filter((id) => id !== meId).length;
   const target = to ? me.members.find((m) => m.id === to) : null;
-  // Gọi riêng một người mà 45 giây không ai nghe thì tự dừng.
+  // Gọi riêng một người mà 60 giây không ai nghe thì tự dừng.
   useEffect(() => {
     if (!to || !alone || !local) return;
-    const id = setTimeout(() => { toast(t('facetime.noAnswer', { name: target?.name ?? '' })); hangUp(); }, 60000);
+    const id = setTimeout(() => { toast(t('facetime.noAnswer', { name: target?.name ?? '' })); hangUp(false, 'noanswer'); }, 60000);
     return () => clearTimeout(id);
   }, [to, alone, !!local]);
   useEffect(() => {
@@ -236,10 +504,11 @@ export function FaceTime({ me, to, onClose }: { me: Me; to?: string | null; onCl
     return () => stopRing();
   }, [alone, !!local]);
 
-  function hangUp(silent = false) {
+  function hangUp(silent = false, why = 'hangup') {
     if (ended.current) return;
+    sendDiag(why);
     ended.current = true;
-    for (const id of [...peers.current.keys()]) close(id);
+    for (const id of [...peers.current.keys()]) close(id, true);
     localRef.current?.getTracks().forEach((tr) => tr.stop());
     localRef.current = null;
     if (joined.current) void livePost('leave').catch(() => {});
@@ -257,6 +526,27 @@ export function FaceTime({ me, to, onClose }: { me: Me; to?: string | null; onCl
   }
 
   const others = members.filter((id) => id !== meId);
+  const micBtn = <button className={`ft-btn ${mic ? '' : 'off'}`} onClick={() => toggle('mic')} aria-label={mic ? t('facetime.micOff') : t('facetime.micOn')}><Icon name={mic ? 'mic' : 'micOff'} /></button>;
+  const endBtn = <button className="ft-btn end" onClick={() => hangUp()} aria-label={t('facetime.hangUp')}><Icon name="phone" /></button>;
+
+  // Gọi thoại: ảnh và tên người kia, dòng trạng thái (đổ chuông, đang nối, thời gian gọi); tiếng phát qua thẻ audio ẩn.
+  if (audio) {
+    const lead = others[0] ?? to ?? (known.current && known.current.by !== meId ? known.current.by : null);
+    const who = me.members.find((m) => m.id === lead);
+    const up = others.some((id) => peers.current.get(id)?.state === 'connected');
+    return (
+      <div className="sheet call ft">
+        <div className="call-ring fade" style={{ paddingTop: '14vh', paddingBottom: 0 }}>
+          <div className="call-orb">{!up && <><i /><i /></>}<b><Avatar m={who} size={96} /></b></div>
+          <div className="call-who">{others.length ? others.map((id) => nameOf(me, id)).join(', ') : who?.name ?? me.family.name}</div>
+          <div className="call-sub">{up && firstUp.current ? <Clock since={firstUp.current} /> : alone ? t('facetime.ringing') : t('facetime.joining')}</div>
+        </div>
+        {others.map((id) => { const s = peers.current.get(id)?.stream; return s ? <Sound key={id} stream={s} /> : null; })}
+        <div className="ft-bar">{micBtn}{endBtn}</div>
+      </div>
+    );
+  }
+
   const tiles = [meId, ...others];
   const n = tiles.length;
   const cols = n <= 2 ? 1 : n <= 6 ? 2 : 3;
@@ -302,10 +592,10 @@ export function FaceTime({ me, to, onClose }: { me: Me; to?: string | null; onCl
       {!!smile && <Countdown key={smile} onDone={() => setSmile(0)} />}
 
       <div className="ft-bar">
-        <button className={`ft-btn ${mic ? '' : 'off'}`} onClick={() => toggle('mic')} aria-label={mic ? t('facetime.micOff') : t('facetime.micOn')}><Icon name={mic ? 'mic' : 'micOff'} /></button>
+        {micBtn}
         <button className={`ft-btn ${cam ? '' : 'off'}`} onClick={() => toggle('cam')} aria-label={cam ? t('facetime.camOff') : t('facetime.camOn')}><Icon name={cam ? 'video' : 'videoOff'} /></button>
         <button className="ft-btn" onClick={() => { tap(); setBooth(true); }} aria-label={t('facetime.booth')}><Icon name="booth" /></button>
-        <button className="ft-btn end" onClick={() => hangUp()} aria-label={t('facetime.hangUp')}><Icon name="phone" /></button>
+        {endBtn}
       </div>
 
       {booth && <Booth me={me} tiles={boothTiles} onShoot={() => void signal('*', { smile: true })} onClose={() => setBooth(false)} />}
@@ -323,6 +613,26 @@ function Video({ stream, muted, mirror, hidden, el }: { stream: MediaStream; mut
   }, [stream]);
   useEffect(() => { el(ref.current); return () => el(null); }, []);
   return <video ref={ref} className={`ft-video ${mirror ? 'mirror' : ''}`} style={hidden ? { opacity: 0 } : undefined} autoPlay playsInline muted={muted} />;
+}
+
+/** Gọi thoại: tiếng của người kia phát qua một thẻ audio ẩn. */
+function Sound({ stream }: { stream: MediaStream }) {
+  const ref = useRef<HTMLAudioElement>(null);
+  useEffect(() => {
+    const a = ref.current;
+    if (!a) return;
+    if (a.srcObject !== stream) a.srcObject = stream;
+    void a.play().catch(() => {});
+  }, [stream]);
+  return <audio ref={ref} autoPlay />;
+}
+
+/** Thời gian đã gọi, phút:giây. */
+function Clock({ since }: { since: number }) {
+  const [, tick] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => { const id = setInterval(tick, 1000); return () => clearInterval(id); }, []);
+  const s = Math.max(0, Math.floor((Date.now() - since) / 1000));
+  return <>{`${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`}</>;
 }
 
 function Countdown({ onDone }: { onDone: () => void }) {

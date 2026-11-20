@@ -1,4 +1,4 @@
-// Kiểm thử xoá một người khỏi nhà (server/members.ts). Không cần Postgres: bảng và khoá ngoại đọc thẳng từ các câu
+// Kiểm thử xoá một người khỏi nhà và tự rời nhà (server/members.ts). Không cần Postgres: bảng và khoá ngoại đọc thẳng từ các câu
 // create table / add column trong server/*.ts, rồi dựng một DB giả trong bộ nhớ chạy đúng các câu SQL members.ts gửi
 // (có giao dịch, kiểm khoá ngoại như Postgres, cascade). Cách làm theo server/shot.test.ts (DB giả, không gọi gì thật).
 // Chạy: node --import tsx --test server/members.test.ts
@@ -17,6 +17,7 @@ mkdirSync(MEDIA, { recursive: true });
 process.env.MEDIA_DIR = MEDIA;
 
 const M = await import('./members.ts');
+const J = await import('./join.ts');
 const { langMiddleware } = await import('./i18n.ts');
 const express = (await import('express')).default;
 
@@ -128,6 +129,29 @@ test('mọi bảng, cột trong PLAN có thật trong lược đồ', () => {
   for (const p of M.PICKS) for (const c of [p.col, ...p.any.map((x) => x.col)]) assert.ok(schema.get(p.table)?.has(c), `${p.table}.${c}`);
 });
 
+test('người cuối rời nhà: FAMILY_PLAN phủ mọi bảng có family_id và mọi khoá ngoại tới families, nhà xoá sau cùng', () => {
+  const plan = M.FAMILY_PLAN;
+  for (const s of plan) {
+    const cols = schema.get(s.table);
+    assert.ok(cols, `bảng ${s.table}`);
+    for (const c of s.any) assert.ok(cols.has(c.col), `${s.table}.${c.col}`);
+    assert.equal(s.op, 'delete', `${s.table}: chỉ xoá`);
+    assert.ok(s.why.length > 5);
+  }
+  const byFamily = new Set(plan.filter((s) => s.any.some((c) => c.col === 'family_id' && c.in === 'family')).map((s) => s.table));
+  const missing = [...schema].filter(([t, cols]) => cols.has('family_id') && !byFamily.has(t)).map(([t]) => t);
+  assert.deepEqual(missing, [], `bảng có family_id chưa có trong FAMILY_PLAN của server/members.ts: ${missing.join(', ')}`);
+  for (const f of fks.filter((x) => x.parent === 'families')) assert.ok(byFamily.has(f.table), `khoá ngoại ${f.table}.${f.col} tới families`);
+  for (const t of ['join_requests', 'recaps', 'podcasts', 'events', 'shot_runs', 'message_translations']) assert.ok(byFamily.has(t), t);
+  assert.deepEqual(plan.at(-1), { table: 'families', op: 'delete', any: [{ col: 'id', in: 'family' }], why: plan.at(-1)!.why });
+  assert.equal(plan.at(-2)!.table, 'members');
+  // Bảng con (khoá ngoại không cascade) phải xoá trước bảng cha.
+  const at = (t: string) => plan.findIndex((s) => s.table === t);
+  for (const f of fks.filter((x) => !x.cascade && at(x.table) >= 0 && at(x.parent) >= 0)) {
+    assert.ok(at(f.table) < at(f.parent), `${f.table} phải xoá trước ${f.parent}`);
+  }
+});
+
 // ---------- DB giả ----------
 
 type Row = Record<string, any>;
@@ -160,6 +184,8 @@ class FakeDb {
   }
   dump() { return JSON.parse(JSON.stringify(this.t)) as Record<string, Row[]>; }
   connect = async () => { this.connects++; return { query: (s: string, a?: any[]) => this.query(s, a), release: () => { this.released++; } }; };
+  /** Sắp hàng theo created_at rồi id, như "order by created_at, id". */
+  private byAge = (rows: Row[]) => [...rows].sort((a, b) => String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
   /** Mọi khoá ngoại đều đúng (không còn hàng trỏ tới hàng đã mất). */
   check() {
@@ -214,6 +240,17 @@ class FakeDb {
     if (sql === 'rollback') { if (this.snap) this.t = JSON.parse(this.snap); this.snap = null; return res([]); }
     if (sql === M.LOCK_SQL) {
       return res(this.t.members.filter((r) => args[0].includes(r.id) && r.family_id === args[1]).map((r) => ({ id: r.id })).sort((a, b) => (a.id < b.id ? -1 : 1)));
+    }
+    if (sql === M.FAMILY_LOCK_SQL) return res(this.t.families.filter((r) => r.id === args[0]).map((r) => ({ id: r.id })));
+    if (sql === M.ANYONE_SQL) return res(this.t.members.filter((r) => r.family_id === args[0]).slice(0, 1).map((r) => ({ id: r.id })));
+    // Các câu của join.ts mà auth (memberAuth) và phần người duyệt dùng. Lời xin trong kiểm thử luôn còn hạn.
+    if (sql === J.SQL.touch) return res(this.t.members.filter((r) => r.token === args[0]).map((r) => ({ id: r.id, family_id: r.family_id, lang: r.lang ?? null })));
+    if (sql === J.SQL.byToken) {
+      return res(this.t.join_requests.filter((r) => r.token === args[0]).map((r) => ({ family_id: r.family_id, family_name: this.t.families.find((f) => f.id === r.family_id)?.name })));
+    }
+    if (sql === J.SQL.approver) return res(this.byAge(this.t.members.filter((r) => r.family_id === args[0])).slice(0, 1).map((r) => ({ id: r.id, name: r.name })));
+    if (sql === J.SQL.list) {
+      return res(this.byAge(this.t.join_requests.filter((r) => r.family_id === args[0])).map(({ id, name, role, city, created_at }) => ({ id, name, role, city, created_at })));
     }
     let m = /^select "(\w+)" from "(\w+)" where \((.*)\)$/.exec(sql);
     if (m) {
@@ -372,6 +409,22 @@ function seed() {
 }
 const rowsOf = (db: FakeDb, fam: string) => Object.fromEntries(Object.entries(db.t).map(([k, rows]) => [k, rows.filter((r) => r.family_id === fam)]));
 
+/** Thêm đồ gắn với cả nhà, không thuộc riêng ai: lời xin vào nhà, video tuần, podcast chủ đề, ngày lịch cũ (không có created_by),
+ *  sổ ghép ảnh, bản dịch tin nhắn, dấu đã nhắc lịch. Người cuối rời nhà thì những thứ này phải đi theo nhà. */
+function homeExtras(db: FakeDb) {
+  const ask = (id: string, fam: string) => db.add('join_requests', { id, family_id: fam, token: `tok-${id}`, name: id, role: 'con', city: null, created_at: '2026-11-19T00:00:00.000Z' });
+  ask('jr-a', A); ask('jr-b', B);
+  db.add('recaps', { family_id: B, week: '2026-11-09', status: 'ready', media: '/media/recaps/r-b.mp4', cover: '/media/recaps/r-b.jpg' });
+  db.add('podcasts', { id: 'pod-topic-b', family_id: B, key: 'topic:gia-dinh', kind: 'topic', member_id: null, topic: 'gia-dinh', title: 't', status: 'ready', media: '/media/podcasts/pod-topic-b.m4a' });
+  db.add('events', { id: 'e-old-b', family_id: B, member_id: null, kind: 'memory', title: 'e', day: 1, month: 1, created_by: null, photo: '/media/e-old-b.jpg' });
+  db.add('shot_runs', { shot_id: 's-b', family_id: B, kst_day: '2026-11-18' });
+  db.add('message_translations', { message_id: 'm-b', lang: 'en', text: 'ok', family_id: B, kst_day: '2026-11-18' });
+  db.add('push_subs', { endpoint: 'ep-b1', member_id: b1, family_id: B, p256dh: 'k', auth: 'a' });
+  for (const key of [`cal:${B}:e-old-b:2026-01-01:0`, `cal:${A}:e-a3:2026-01-01:0`]) db.add('push_sent', { key });
+  db.check();
+  return db;
+}
+
 // ---------- Xoá trong DB ----------
 
 test('xoá x: hết mọi hàng của x, khoá ngoại vẫn đúng, không nhờ cascade, nhà B không đổi', async () => {
@@ -526,6 +579,129 @@ test('DELETE /api/members/:id: 400 tự xoá, 404 nhà khác hay không có (gi�
     assert.deepEqual(await del(a3, x, A), { status: 401, body: { code: 'not_signed_in', error: vi['error.not_signed_in'], message: vi['error.not_signed_in'] } });
     assert.ok(db.t.members.some((m) => m.id === a3));
     db.check();
+  } finally {
+    server.close();
+  }
+});
+
+// ---------- Tự rời nhà ----------
+
+test('tự rời nhà: xoá đúng những gì người khác xoá giùm, nhà còn người thì giữ nhà và lời xin vào nhà', async () => {
+  const byOther = homeExtras(seed());
+  const removed = await M.removeMember(byOther.connect, A, a1, x);
+  const db = homeExtras(seed());
+  const out = await M.leaveFamily(db.connect, A, x);
+  assert.equal(out.status, 'ok');
+  assert.equal(out.status === 'ok' && out.last, false);
+  assert.deepEqual(db.dump(), byOther.dump(), 'cùng một PLAN: kết quả y hệt xoá giùm');
+  assert.deepEqual(out.status === 'ok' && out.files.sort(), removed.status === 'ok' && removed.files.sort());
+  db.check();
+  assert.deepEqual(db.cascaded, []);
+  assert.ok(!db.t.members.some((m) => m.id === x));
+  assert.equal(db.t.families.length, 2, 'nhà A còn người nên còn nhà');
+  assert.deepEqual(db.t.join_requests.map((r) => r.id).sort(), ['jr-a', 'jr-b']);
+  assert.ok(db.log.includes(M.FAMILY_LOCK_SQL), 'khoá nhà trước khi xem mình có phải người cuối');
+  assert.equal(db.connects, db.released);
+  // Đã rời rồi, hay mã không thuộc nhà đó: gone, không đụng gì.
+  const before = db.dump();
+  assert.deepEqual(await M.leaveFamily(db.connect, A, x), { status: 'gone' });
+  assert.deepEqual(await M.leaveFamily(db.connect, B, a1), { status: 'gone' });
+  assert.deepEqual(db.dump(), before);
+  assert.equal(db.connects, db.released);
+  // Đường xoá người khác vẫn không cho tự xoá mình.
+  assert.deepEqual(await M.removeMember(db.connect, A, a3, a3), { status: 'self' });
+});
+
+test('người cuối cùng rời: xoá luôn nhà, lời xin vào nhà và đồ chung; lỗi giữa chừng thì không mất gì; nhà khác không đổi', async () => {
+  const db = homeExtras(seed());
+  const famA = JSON.stringify(rowsOf(db, A));
+  const first = await M.leaveFamily(db.connect, B, b2);
+  assert.equal(first.status === 'ok' && first.last, false, 'b1 còn ở nhà');
+  assert.equal(db.t.families.length, 2);
+
+  // Lỗi ở bước cuối (xoá nhà): cả giao dịch quay lại, b1 vẫn còn nguyên.
+  const before = db.dump();
+  db.failOn = 'families';
+  await assert.rejects(M.leaveFamily(db.connect, B, b1), /lỗi giả ở families/);
+  assert.deepEqual(db.dump(), before);
+  db.failOn = null;
+
+  const out = await M.leaveFamily(db.connect, B, b1);
+  assert.equal(out.status, 'ok');
+  assert.equal(out.status === 'ok' && out.last, true);
+  db.check();
+  assert.deepEqual(db.cascaded, [], 'không nhờ cascade');
+  for (const [table, rows] of Object.entries(db.t)) assert.ok(!rows.some((r) => r.family_id === B), `${table} còn hàng của nhà B`);
+  assert.deepEqual(db.t.families.map((f) => f.id), [A]);
+  assert.deepEqual(db.t.join_requests.map((r) => r.id), ['jr-a'], 'lời xin vào nhà B mất theo nhà');
+  assert.deepEqual(db.t.push_sent.filter((r) => r.key.startsWith(`cal:${B}:`)), []);
+  assert.ok(db.t.push_sent.some((r) => r.key === `cal:${A}:e-a3:2026-01-01:0`), 'dấu nhắc của nhà A giữ');
+  assert.equal(JSON.stringify(rowsOf(db, A)), famA, 'nhà A không đổi');
+  assert.equal(db.t.app_settings.length, 1);
+  const files = out.status === 'ok' ? out.files : [];
+  for (const f of ['recaps/r-b.mp4', 'recaps/r-b.jpg', 'podcasts/pod-topic-b.m4a', 'e-old-b.jpg', 'b1p.jpg', 'sb-b1.jpg']) assert.ok(files.includes(f), `gom tệp ${f}`);
+  assert.equal(db.connects, db.released);
+  // Mã nhà không còn: gõ lại mã thì không thấy nhà.
+  assert.equal(db.t.families.some((f) => f.code === '2222222'), false);
+});
+
+test('người duyệt rời nhà: người vào sớm kế tiếp thành người duyệt và thấy lời xin', async () => {
+  const db = homeExtras(seed());
+  const age: Record<string, string> = { [a1]: '2026-11-01T00:00:00.000Z', [x]: '2026-11-02T00:00:00.000Z', [a3]: '2026-11-03T00:00:00.000Z' };
+  for (const m of db.t.members) if (age[m.id]) m.created_at = age[m.id];
+  assert.equal((await J.approverOf(db, A))?.id, a1);
+  assert.equal((await M.leaveFamily(db.connect, A, a1)).status, 'ok');
+  assert.equal((await J.approverOf(db, A))?.id, x, 'x vào sau a1, trước a3');
+  const view = await J.joinView(db, A, x);
+  assert.equal(view.approverId, x);
+  assert.deepEqual('requests' in view ? view.requests.map((r) => r.id) : null, ['jr-a'], 'người duyệt mới thấy lời xin còn chờ');
+  assert.deepEqual(await J.joinView(db, A, a3), { approverId: x, waiting: 1 });
+  // x cũng rời: tới lượt a3.
+  await M.leaveFamily(db.connect, A, x);
+  assert.equal((await J.approverOf(db, A))?.id, a3);
+  db.check();
+});
+
+test('DELETE /api/me: cần mã thành viên (gắn sau auth), mã lời xin không rời được, xong thì mã cũ hết dùng, người cuối rời thì mất nhà', async () => {
+  // index.ts gắn membersRouter sau auth.
+  const index = readFileSync(path.join(here, 'index.ts'), 'utf8');
+  const authAt = index.indexOf("app.use('/api', auth");
+  assert.ok(authAt > 0 && authAt < index.indexOf('membersRouter()'), 'membersRouter phải gắn sau auth trong server/index.ts');
+
+  const db = homeExtras(seed());
+  const app = express();
+  app.use(langMiddleware);
+  app.use('/api', J.memberAuth(db) as any);
+  app.use('/api', M.membersRouter({ connect: db.connect, db, mediaDir: MEDIA }));
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const leave = async (tok?: string) => {
+    const r = await fetch(`${base}/api/me`, { method: 'DELETE', headers: { 'x-lang': 'vi', ...(tok ? { authorization: `Bearer ${tok}` } : {}) } });
+    return { status: r.status, body: await r.json() };
+  };
+  const out401 = { status: 401, body: { code: 'not_signed_in', error: vi['error.not_signed_in'], message: vi['error.not_signed_in'] } };
+  try {
+    const before = db.dump();
+    assert.deepEqual(await leave(), out401, 'không mã');
+    assert.deepEqual(await leave('tok-khong-co'), out401, 'mã lạ');
+    const pending = await leave('tok-jr-a');
+    assert.equal(pending.status, 403, 'mã của lời xin chưa duyệt');
+    assert.equal(pending.body.code, 'join_pending');
+    assert.deepEqual(db.dump(), before, 'chưa xoá gì');
+    assert.equal(db.connects, 0, 'chưa qua auth thì không mở giao dịch');
+
+    assert.deepEqual(await leave(`tok-${x}`), { status: 200, body: { ok: true } });
+    assert.ok(!db.t.members.some((m) => m.id === x));
+    assert.deepEqual(await leave(`tok-${x}`), out401, 'mã của người đã rời không còn dùng được');
+    assert.equal(db.t.families.length, 2);
+
+    assert.deepEqual(await leave(`tok-${b2}`), { status: 200, body: { ok: true } });
+    assert.deepEqual(await leave(`tok-${b1}`), { status: 200, body: { ok: true } });
+    assert.deepEqual(db.t.families.map((f) => f.id), [A], 'người cuối nhà B rời: nhà B mất');
+    assert.deepEqual(await leave('tok-jr-b'), out401, 'lời xin vào nhà B mất theo nhà');
+    db.check();
+    assert.equal(db.connects, db.released);
   } finally {
     server.close();
   }

@@ -1,6 +1,8 @@
 // Xoá một người khỏi nhà cùng mọi thứ của người đó: DELETE /api/members/:id (gắn sau auth).
-// Ai trong nhà cũng xoá được người khác cùng nhà (người tạo nhà cũng có thể là tài khoản thử), không tự xoá mình được.
+// Ai trong nhà cũng xoá được người khác cùng nhà (người tạo nhà cũng có thể là tài khoản thử), không tự xoá mình được ở đường này.
 // Mã không thuộc nhà mình (kể cả người ở nhà khác) luôn trả 404, không lộ là có hay không.
+// Tự rời nhà: DELETE /api/me, xoá chính mình theo cùng PLAN. Người cuối cùng rời thì xoá luôn nhà theo FAMILY_PLAN
+// (lời xin vào nhà, video tuần, podcast chủ đề, lịch...), không để lại nhà trống. Người duyệt rời thì join.ts tự lấy người vào sớm kế tiếp.
 //
 // Làm trong một giao dịch, theo bảng PLAN bên dưới (thứ tự đã tính cho khoá ngoại, không tắt kiểm tra khoá ngoại).
 // Đồ chung giữ lại: ảnh chụp chung người khác tạo (chỉ bỏ phần ảnh của người này), bài người khác đăng từ ảnh chụp chung
@@ -24,7 +26,8 @@ export type Client = Db & { release: () => void };
 /** Các tập mã dùng làm điều kiện: thu thập trong giao dịch trước khi xoá (xoá rồi thì không tra lại được). */
 export type SetName =
   | 'member' | 'posts' | 'postMedia' | 'calls' | 'shots' | 'messages' | 'answers'
-  | 'podKeys' | 'storyKeys' | 'wordKeys' | 'pushKeys';
+  | 'podKeys' | 'storyKeys' | 'wordKeys' | 'pushKeys'
+  | 'family' | 'famKeys';
 type Sets = Record<SetName, string[]>;
 
 /** Một điều kiện: cột nằm trong tập (=), hoặc khớp một mẫu trong tập (like). Các điều kiện của một bước nối bằng "or". */
@@ -108,6 +111,31 @@ export const PLAN: Step[] = [
   { table: 'members', op: 'delete', any: [{ col: 'id', in: 'member' }], family: true,
     why: 'chính người này (mã máy mất theo, máy đó nhận 401)' },
 ];
+
+/** Người cuối cùng rời nhà: sau PLAN của người đó, xoá mọi thứ còn gắn với nhà rồi xoá chính nhà. Chạy đúng thứ tự này.
+ *  Phủ mọi bảng có cột family_id (server/members.test.ts đọc lược đồ và báo thiếu). Phần lớn bảng lúc này đã trống
+ *  (hàng nào cũng có người tạo, PLAN đã xoá); vẫn xoá theo family_id cho chắc, con trước cha như PLAN. */
+export const FAMILY_PLAN: Step[] = [
+  { table: 'podcasts', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'tập podcast theo chủ đề (không thuộc riêng ai)' },
+  { table: 'recaps', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'video tuần của nhà' },
+  { table: 'events', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'ngày trong lịch còn lại (hàng cũ không có created_by)' },
+  { table: 'shot_runs', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'sổ đếm hạn mức ghép ảnh của nhà' },
+  { table: 'message_translations', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'bản dịch tin nhắn của nhà' },
+  { table: 'join_requests', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'lời xin vào nhà còn chờ: nhà không còn ai duyệt' },
+  { table: 'push_sent', op: 'delete', any: [{ col: 'key', in: 'famKeys', like: true }], why: 'dấu đã nhắc lịch của nhà (cal:<nhà>:)' },
+  { table: 'relays', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'lời nhắn qua Mây còn sót' },
+  { table: 'call_answers', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'câu trả lời cuộc gọi còn sót' },
+  { table: 'vault', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'ảnh câu chuyện còn sót' },
+  { table: 'missions_done', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'nhiệm vụ tuần còn sót' },
+  { table: 'letters', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'thư còn sót' },
+  { table: 'push_subs', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'máy nhận thông báo còn sót' },
+  { table: 'shots', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'lượt chụp chung còn sót (phần ảnh xoá theo cascade)' },
+  { table: 'posts', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'bài còn sót (cảm xúc, trả lời xoá theo cascade)' },
+  { table: 'messages', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'tin nhắn còn sót' },
+  { table: 'calls', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'cuộc gọi tuần còn sót' },
+  { table: 'members', op: 'delete', any: [{ col: 'family_id', in: 'family' }], why: 'không còn ai (vừa kiểm trong cùng giao dịch)' },
+  { table: 'families', op: 'delete', any: [{ col: 'id', in: 'family' }], why: 'chính ngôi nhà (mã nhà mất theo, gõ lại thì không thấy nhà)' },
+];
 // i18n-ok-end
 
 const q = (id: string) => `"${id.replace(/"/g, '""')}"`;
@@ -130,6 +158,11 @@ export function stepSql(s: Step, sets: Sets, familyId: string) {
 }
 
 export const LOCK_SQL = 'select id from members where id = any($1::text[]) and family_id = $2 order by id for update';
+/** Khoá nhà khi có người tự rời: hai người cuối cùng rời cùng lúc thì một người chờ, xong thấy mình là người cuối và xoá luôn nhà.
+ *  no key update: người khác trong nhà vẫn đăng bài, nhắn tin bình thường (khoá ngoại tới families chỉ cần key share). */
+export const FAMILY_LOCK_SQL = 'select id from families where id = $1 for no key update';
+/** Nhà còn ai không (chạy sau khi đã xoá người rời, trong cùng giao dịch). */
+export const ANYONE_SQL = 'select id from members where family_id = $1 limit 1';
 
 /** Đường dẫn /media/... trong một hàng (mọi cột, kể cả jsonb như letters.items): tên tệp tương đối trong MEDIA_DIR, bỏ ?v=. */
 export function mediaPaths(row: unknown): string[] {
@@ -141,6 +174,37 @@ export function mediaPaths(row: unknown): string[] {
 export type Removed =
   | { status: 'ok'; files: string[]; counts: Record<string, number> }
   | { status: 'self' | 'not_found' | 'gone' };
+
+/** Chạy từng bước của một kế hoạch, gom đường dẫn tệp media từ hàng đã xoá và đếm số hàng. */
+async function runPlan(c: Db, plan: Step[], sets: Sets, familyId: string, files: Set<string>, counts: Record<string, number>) {
+  for (const s of plan) {
+    const { sql, args } = stepSql(s, sets, familyId);
+    const r = await c.query(sql, args);
+    const k = `${s.table}${s.op === 'null' ? `.${s.set}=null` : ''}`;
+    if (r.rowCount) counts[k] = (counts[k] ?? 0) + r.rowCount;
+    if (s.op === 'delete') for (const row of r.rows) for (const f of mediaPaths(row)) files.add(f);
+  }
+}
+
+/** Xoá người targetId theo PLAN, trong giao dịch đang mở (hàng của người đó đã khoá). Chưa đụng tệp media. */
+async function wipeMember(c: Db, familyId: string, targetId: string) {
+  const sets = { member: [targetId] } as Sets;
+  for (const p of PICKS) {
+    const args: unknown[] = [];
+    const { rows: got } = await c.query(`select ${q(p.col)} from ${q(p.table)} where (${where(p.any, sets, args)})`, args);
+    sets[p.name] = got.map((r) => r[p.col]).filter((v): v is string => typeof v === 'string');
+  }
+  sets.podKeys = [`first:${targetId}`, ...sets.calls.map((id) => `call:${id}`)];
+  sets.storyKeys = sets.calls.map((id) => `story:${likeEsc(id)}:%`);
+  // Khoá mốc từ ở voiceedit.ts: ans:<mã câu trả lời>, post:<tên tệp> (tin giọng nói lời thương đầu tiên).
+  sets.wordKeys = [...sets.answers.map((id) => `ans:${id}`), ...sets.postMedia.map((m) => `post:${path.basename(m.split('?')[0])}`)];
+  sets.pushKeys = [`weekly:${likeEsc(targetId)}:%`, `cal:${likeEsc(familyId)}:dob-${likeEsc(targetId)}:%`];
+
+  const files = new Set<string>();
+  const counts: Record<string, number> = {};
+  await runPlan(c, PLAN, sets, familyId, files, counts);
+  return { files, counts };
+}
 
 /** Xoá người targetId khỏi nhà familyId theo PLAN, một giao dịch. callerId là người bấm. Chưa đụng tệp media. */
 export async function removeMember(connect: () => Promise<Client>, familyId: string, callerId: string, targetId: string): Promise<Removed> {
@@ -156,28 +220,43 @@ export async function removeMember(connect: () => Promise<Client>, familyId: str
       await c.query('rollback');
       return { status: found.has(callerId) ? 'not_found' : 'gone' };
     }
-    const sets = { member: [targetId] } as Sets;
-    for (const p of PICKS) {
-      const args: unknown[] = [];
-      const { rows: got } = await c.query(`select ${q(p.col)} from ${q(p.table)} where (${where(p.any, sets, args)})`, args);
-      sets[p.name] = got.map((r) => r[p.col]).filter((v): v is string => typeof v === 'string');
-    }
-    sets.podKeys = [`first:${targetId}`, ...sets.calls.map((id) => `call:${id}`)];
-    sets.storyKeys = sets.calls.map((id) => `story:${likeEsc(id)}:%`);
-    // Khoá mốc từ ở voiceedit.ts: ans:<mã câu trả lời>, post:<tên tệp> (tin giọng nói lời thương đầu tiên).
-    sets.wordKeys = [...sets.answers.map((id) => `ans:${id}`), ...sets.postMedia.map((m) => `post:${path.basename(m.split('?')[0])}`)];
-    sets.pushKeys = [`weekly:${likeEsc(targetId)}:%`, `cal:${likeEsc(familyId)}:dob-${likeEsc(targetId)}:%`];
-
-    const files = new Set<string>();
-    const counts: Record<string, number> = {};
-    for (const s of PLAN) {
-      const { sql, args } = stepSql(s, sets, familyId);
-      const r = await c.query(sql, args);
-      if (r.rowCount) counts[`${s.table}${s.op === 'null' ? `.${s.set}=null` : ''}`] = r.rowCount;
-      if (s.op === 'delete') for (const row of r.rows) for (const f of mediaPaths(row)) files.add(f);
-    }
+    const { files, counts } = await wipeMember(c, familyId, targetId);
     await c.query('commit');
     return { status: 'ok', files: [...files], counts };
+  } catch (e) {
+    await c.query('rollback').catch(() => {});
+    throw e;
+  } finally {
+    c.release();
+  }
+}
+
+export type Left =
+  | { status: 'ok'; files: string[]; counts: Record<string, number>; last: boolean }
+  | { status: 'gone' };
+
+/** memberId tự rời nhà familyId: xoá chính mình theo PLAN; là người cuối thì xoá luôn nhà theo FAMILY_PLAN. Một giao dịch.
+ *  Đã không còn trong nhà (bị người khác xoá trước) thì gone. Chưa đụng tệp media. */
+export async function leaveFamily(connect: () => Promise<Client>, familyId: string, memberId: string): Promise<Left> {
+  const c = await connect();
+  try {
+    await c.query('begin');
+    // Khoá nhà trước rồi mới khoá người, luôn theo thứ tự này.
+    await c.query(FAMILY_LOCK_SQL, [familyId]);
+    const { rows } = await c.query(LOCK_SQL, [[memberId], familyId]);
+    if (!rows.length) {
+      await c.query('rollback');
+      return { status: 'gone' };
+    }
+    const { files, counts } = await wipeMember(c, familyId, memberId);
+    const { rows: left } = await c.query(ANYONE_SQL, [familyId]);
+    const last = !left.length;
+    if (last) {
+      const sets = { family: [familyId], famKeys: [`cal:${likeEsc(familyId)}:%`] } as Sets;
+      await runPlan(c, FAMILY_PLAN, sets, familyId, files, counts);
+    }
+    await c.query('commit');
+    return { status: 'ok', files: [...files], counts, last };
   } catch (e) {
     await c.query('rollback').catch(() => {});
     throw e;
@@ -248,6 +327,20 @@ export function membersRouter(deps: Deps = defaults) {
     res.json({ ok: true });
     void sweepMedia(deps.db, deps.mediaDir, out.files)
       .then((gone) => { if (gone.length) console.log(`[members] đã xoá ${gone.length}/${out.files.length} tệp media của ${id.slice(0, 8)}`); })
+      .catch((e) => console.error('[members] dọn tệp media lỗi:', e));
+  }));
+  // Tự rời nhà (nút "rời nhà" ở Cài đặt). Xong thì mã của máy này mất theo, máy bỏ mã và về màn đầu.
+  // Đã bị người khác xoá trước thì 401 như mọi đường khác khi mã không còn.
+  r.delete('/me', h(async (req, res) => {
+    const me = req.member as { id: string; family_id: string };
+    const out = await leaveFamily(deps.connect, me.family_id, me.id);
+    if (out.status !== 'ok') return res.status(401).json(errorBody('not_signed_in'));
+    console.log(`[members] ${me.id.slice(0, 8)} tự rời nhà ${me.family_id.slice(0, 8)}${out.last ? ' (người cuối, xoá luôn nhà)' : ''}:`, out.counts);
+    closeChatStreams(me.family_id, me.id);
+    closeLive(me.family_id, me.id);
+    res.json({ ok: true });
+    void sweepMedia(deps.db, deps.mediaDir, out.files)
+      .then((gone) => { if (gone.length) console.log(`[members] đã xoá ${gone.length}/${out.files.length} tệp media của ${me.id.slice(0, 8)}`); })
       .catch((e) => console.error('[members] dọn tệp media lỗi:', e));
   }));
   return r;

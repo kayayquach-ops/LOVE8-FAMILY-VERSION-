@@ -163,3 +163,13 @@ Người dùng trả lời từng mục trong danh sách việc còn lại:
 - **Giá gói gia đình** (chốt 18/11, đơn vị VND): 1 tháng 99.000đ, 6 tháng 499.000đ (rẻ hơn khoảng 16%), 1 năm 899.000đ (rẻ hơn khoảng 24%). Quy ra khoảng 5.400 won một tháng (tỉ giá khoảng 18,5 đồng một won, kiểm lại trước khi pitch). Chưa có thanh toán thật.
 - **Không làm lúc này**: nói chuyện với Mây thời gian thực (Gemini Live), đề nghị để sau buổi pitch vì phải thay bộ máy cuộc gọi.
 - Chưa kiểm: SQL mới trên Postgres thật (join, dịch), đăng nhập Google thật, giao diện dịch trên iPhone.
+
+### 20/11: đang làm (chưa commit, chưa deploy)
+Người dùng và bạn trong đội (Đạt) báo lỗi và xin thêm tính năng; chia cho các agent chạy song song:
+- Sửa "rời nhà" chỉ đăng xuất ở máy nên vào lại thành 2 người (rời nhà thật trên máy chủ, người cuối rời thì xoá nhà).
+- Sửa cuộc gọi Mây đứng ở màn xin ảnh (bấm nút và trả lời giọng đều không ăn, app lag).
+- Gọi video hay không nối được: rà WebRTC, ghi chẩn đoán mỗi cuộc gọi (`[facetime] diag`), thêm gọi thoại không hình, hook `onCallConnected`.
+- Vị trí thật của từng người (tự bật, chỉ khi mở app, cập nhật trực tiếp cho cả nhà, chỉ lưu vị trí mới nhất). Ra mắt chính thức ở Hàn có thể cần đăng ký theo 위치정보법.
+- Nhiệm vụ tuần tự tích khi làm xong (không tích tay); giấy gấp sao bỏ giá từng món, tất cả gói vào thuê bao (chưa có thanh toán).
+- Chat: nhắn riêng từng người (`messages.to_id`), nút gọi thoại và gọi video trong chat.
+- Thấy thêm: viên tên trên ảnh tuần ở trang chủ chế độ tối chữ gần như không đọc được (chưa sửa, chưa được bảo).

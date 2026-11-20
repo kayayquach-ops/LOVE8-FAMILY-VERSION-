@@ -26,6 +26,7 @@ export function unlockSpeech() {
 
 export function stopSpeaking() {
   if (canSpeak()) speechSynthesis.cancel();
+  epoch++;
   stopVoice();
 }
 
@@ -34,6 +35,8 @@ export function stopSpeaking() {
 let ctx: AudioContext | null = null;
 let out: AnalyserNode | null = null;
 let playing: { src: AudioBufferSourceNode; done: () => void } | null = null;
+// Tăng mỗi lần dừng hoặc xin phát câu mới: câu còn đang tải mà đã bị dừng (bấm nút) hay đã có câu mới thì thôi, không phát chen vào sau.
+let epoch = 0;
 let off = false; // máy chủ báo chưa có giọng hoặc hết hạn mức ngay từ đầu: không xin nữa trong cuộc gọi này
 let coolUntil = 0; // nhà cung cấp bị chặn tạm: tới lúc này mới xin giọng mới
 let cut = false; // hết hạn mức giữa cuộc gọi: câu nào chưa có sẵn thì chỉ hiện chữ, không đổi giọng
@@ -147,15 +150,17 @@ function stopVoice() {
   if (p) { try { p.src.stop(); } catch {} p.done(); }
 }
 
-/** Phát câu bằng giọng Gemini. Quá ms chưa có âm thanh thì trả false (nơi gọi chờ thêm, không đổi sang giọng máy giữa chừng). level nhận âm lượng thật 0..1. */
+/** Phát câu bằng giọng Gemini. Quá ms chưa có âm thanh thì trả false (nơi gọi chờ thêm, không đổi sang giọng máy giữa chừng). level nhận âm lượng thật 0..1.
+ * Đang tải mà bị stopSpeaking() hay có câu mới xin phát thì cũng trả false, không phát nữa. */
 export async function playVoice(text: string, level: (v: number) => void, ms = 4000, onStart?: () => void, kind?: Kind): Promise<boolean> {
   if (!ctx || !out || off) return false;
+  const my = ++epoch;
   const b = await bufferOf(text, ms, kind);
-  if (!b || !ctx || !out) return false;
+  if (my !== epoch || !b || !ctx || !out) return false;
   stopVoice();
   // iPhone có thể treo resume() khi âm thanh đang bị hệ thống chiếm ('interrupted'): chờ tối đa 1 giây, phần hẹn giờ bảo vệ bên dưới lo tiếp.
   if (ctx.state !== 'running') { try { await Promise.race([ctx.resume(), new Promise((r) => setTimeout(r, 1000))]); } catch {} }
-  if (!ctx || !out) return false;
+  if (my !== epoch || !ctx || !out) return false;
   const ac = ctx, an = out;
   return new Promise<boolean>((resolve) => {
     const src = ac.createBufferSource();

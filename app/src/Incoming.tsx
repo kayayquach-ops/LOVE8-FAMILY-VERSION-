@@ -6,10 +6,11 @@ import { Avatar, Icon } from './ui';
 import { t } from './i18n';
 
 // Chuông gọi video tách riêng khỏi màn gọi, để màn gọi (nặng) chỉ tải khi cần.
-/** Chuông gọi video đến: ai đó trong nhà vừa gọi, hoặc cả nhà đang gọi dở. */
+/** Chuông gọi đến: ai đó trong nhà vừa gọi (video hoặc gọi thoại, room.audio), hoặc cả nhà đang gọi dở. */
 export function Incoming({ me, room, onAccept, onDecline }: { me: Me; room: NonNullable<LiveRoom>; onAccept: () => void; onDecline: (missed: boolean) => void }) {
   const caller = me.members.find((m) => m.id === room.by) ?? me.members.find((m) => room.members.includes(m.id));
   const others = room.members.filter((id) => id !== me.me.id);
+  const voice = !!room.audio;
   useEffect(() => {
     startRing('in');
     const miss = setTimeout(() => onDecline(true), 45000);
@@ -20,11 +21,11 @@ export function Incoming({ me, room, onAccept, onDecline }: { me: Me; room: NonN
       <div className="call-ring fade">
         <div className="call-orb"><i /><i /><b><Avatar m={caller} size={96} /></b></div>
         <div className="call-who">{t('incoming.calling', { name: caller?.name ?? t('onboarding.home.default') })}</div>
-        <div className="call-sub">{room.to === me.me.id ? t('incoming.you') : others.length > 1 ? t('incoming.talking', { n: others.length }) : t('incoming.family')}</div>
+        <div className="call-sub">{room.to === me.me.id ? t(voice ? 'incoming.voiceYou' : 'incoming.you') : others.length > 1 ? t('incoming.talking', { n: others.length }) : t(voice ? 'incoming.voiceFamily' : 'incoming.family')}</div>
         <div style={{ flex: 1 }} />
         <div className="call-actions">
           <button className="call-btn later" onClick={() => { tap(); void livePost('decline').catch(() => {}); onDecline(false); }}><Icon name="close" size={26} /><span>{t('common.later')}</span></button>
-          <button className="call-btn pick" onClick={() => { tap(); onAccept(); }}><Icon name="video" size={26} /><span>{t('common.listen')}</span></button>
+          <button className="call-btn pick" onClick={() => { tap(); onAccept(); }}><Icon name={voice ? 'phone' : 'video'} size={26} /><span>{t('common.listen')}</span></button>
         </div>
       </div>
     </div>
