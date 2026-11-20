@@ -79,6 +79,21 @@ test('hỏi thăm: không hỏi thêm, câu đáp nối câu mở chuyện chín
   assert.equal(long?.joined, false);
 });
 
+test('đọc trước câu nói: câu đáp gộp câu mở chuyện chính là câu bắt buộc, câu đáp đơn vẫn là câu phụ', async () => {
+  const checkin = { ...Q('Dạo này Mẹ thế nào ạ?', 'none', 'hoi-tham'), part: 'checkin' as const };
+  const next = 'Mẹ kể con nghe về một bữa cơm nhà mình mà Mẹ nhớ nhất nhé.';
+  const seen: Array<{ text: string; optional?: boolean }> = [];
+  const speak: Parameters<typeof call.turnReply>[3] = (text, _who, o) => { seen.push({ text, optional: o?.optional }); return null; };
+  handler = gemini({ reaction: 'Mẹ vẫn khoẻ là con vui rồi ạ.', follow_up: '', day: 0, month: 0, year: 0, real_story: false });
+  const ai = await call.turnReply({ ...base, q: checkin, story: [{ asked: checkin.text, answer: 'Mẹ vẫn khoẻ' }], next }, 'm-me', 'gemini', speak);
+  assert.equal(ai?.joined, true);
+  assert.deepEqual(seen, [{ text: `Mẹ vẫn khoẻ là con vui rồi ạ. ${next}`, optional: false }]);
+  seen.length = 0;
+  handler = gemini({ reaction: 'Nghe vui quá ạ.', follow_up: '', day: 0, month: 0, year: 0, real_story: false });
+  await call.turnReply(base, 'm-me', 'gemini', speak);
+  assert.deepEqual(seen, [{ text: 'Nghe vui quá ạ.', optional: true }]);
+});
+
 test('hỏi ngày: câu có event mà AI không hỏi ngày thì dùng câu hỏi ngày mẫu', async () => {
   const wedding = { ...base, q: Q('Bố với Mẹ cưới nhau ngày nào?', 'wedding', 'ngay-cuoi'), story: [{ asked: 'Bố với Mẹ cưới nhau ngày nào?', answer: 'Hồi đó cưới ở quê, đông vui lắm' }] };
   handler = gemini({ reaction: 'Cưới ở quê đông vui quá ạ.', follow_up: 'Hôm đó ai hát ạ?', day: 0, month: 0, year: 0, real_story: true });
@@ -253,6 +268,18 @@ test('AI soạn v2: dùng câu hỏi thăm và câu mở của AI; chủ đề s
   assert.notEqual(kid.questions[1].theme, 'ngay-cuoi');
   handler = gemini({ greeting: 'Mẹ ơi.', checkin: 'Dạo này Mẹ thế nào ạ?', story: { text: 'Mẹ kể con nghe về bác Minh nhé.', theme: 'que-nha', photo: false, event: 'none' } });
   assert.doesNotMatch((await call.aiScript(ctx('me', both), '2026-11-09'))!.questions[1].text, /Minh/);
+});
+
+test('AI soạn v2: chủ đề ngày cưới luôn hỏi ngày cưới, chủ đề khác không bao giờ mang loại ngày cưới', async () => {
+  handler = gemini({ greeting: 'Mẹ ơi.', checkin: 'Dạo này Mẹ thế nào ạ?', story: { text: 'Mẹ kể con nghe về ngày cưới của Mẹ nhé.', theme: 'ngay-cuoi', photo: true, event: 'none' } });
+  const wed = (await call.aiScript(ctx('me', both), '2026-11-09'))!.questions[1];
+  assert.equal(wed.text, 'Mẹ kể con nghe về ngày cưới của Mẹ nhé.');
+  assert.equal(wed.event, 'wedding');
+  handler = gemini({ greeting: 'Mẹ ơi.', checkin: 'Dạo này Mẹ thế nào ạ?', story: { text: 'Mẹ kể con nghe về một món Mẹ nấu mà cả nhà thích nhất nhé.', theme: 'mon-an', photo: false, event: 'wedding' } });
+  const food = (await call.aiScript(ctx('me', both), '2026-11-09'))!.questions[1];
+  assert.equal(food.text, 'Mẹ kể con nghe về một món Mẹ nấu mà cả nhà thích nhất nhé.');
+  assert.equal(food.theme, 'mon-an');
+  assert.equal(food.event, 'none');
 });
 
 test('kịch bản soạn trước bản mới (không có v: 2) thì soạn lại, không phát lại kiểu ba câu', () => {

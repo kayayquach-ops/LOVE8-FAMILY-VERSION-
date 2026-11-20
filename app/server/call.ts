@@ -178,8 +178,11 @@ const lastWord = (name: string) => name.trim().split(/\s+/).pop() || name;
 
 /** Bộ câu v2: câu hỏi thăm (đáp ngắn cũng được, không thành tập) và câu mở chuyện chính. */
 const checkinQ = (text: string): CallQuestion => ({ text, topic: 'hoi-tham', photo: false, event: 'none', part: 'checkin' });
+/** Loại ngày đi đôi với chủ đề: chuyện ngày cưới luôn hỏi ngày cưới (để ghi lịch), chủ đề khác không bao giờ mang loại ngày cưới. */
+const eventFor = (theme: string, event: CallQuestion['event']): CallQuestion['event'] =>
+  theme === 'ngay-cuoi' ? 'wedding' : event === 'wedding' ? 'none' : event;
 const storyQ = (text: string, theme: StoryTheme, photo = false, event: CallQuestion['event'] = 'none'): CallQuestion =>
-  ({ text, topic: THEME_TOPIC[theme], photo, event, part: 'story', theme });
+  ({ text, topic: THEME_TOPIC[theme], photo, event: eventFor(theme, event), part: 'story', theme });
 /** Câu tạm biệt cố định theo vai (giọng nằm sẵn trong kho), không hứa "cả nhà cùng nghe" vì chuyện có thể được giữ riêng. */
 const byeOf = (c: Ctx) => callLines(c.member.role, (k, v) => tServer(c.lang, k, v)).bye;
 /** Đủ bố lẫn mẹ trong nhà, lịch đã có ngày cưới chưa (luật hỏi ngày cưới). */
@@ -228,7 +231,7 @@ export function templateScript(c: Ctx, week: string): CallScript {
   const { hasPair, hasWedding } = pairOf(c);
   const allowed = themesFor(role, hasPair, hasWedding);
   const pool = TEMPLATE_THEMES[who].filter((t) => allowed.includes(t)).map((theme) =>
-    storyQ(tServer(c.lang, `callScript.template.${who}.story.${theme}`, vars), theme, theme === 'ngay-cuoi', theme === 'ngay-cuoi' ? 'wedding' : 'none'));
+    storyQ(tServer(c.lang, `callScript.template.${who}.story.${theme}`, vars), theme, theme === 'ngay-cuoi'));
   const fresh = pool.filter((x) => !c.asked.includes(x.text));
   const list = fresh.length ? fresh : pool;
   // Chuyện ngày cưới luôn hỏi trước nếu được hỏi; còn lại xoay vòng theo tuần.
@@ -388,7 +391,7 @@ export async function aiScript(c: Ctx, week: string, timeoutMs?: number): Promis
   // Câu mở chuyện chính: đúng chủ đề cho vai, chỉ hỏi ngày cưới khi được hỏi, chưa từng hỏi; không thì chuyện của bộ câu mẫu.
   const s = r.story;
   const text = ok(s?.text), theme = s?.theme;
-  const event = EVENT_HINTS.includes(s?.event) ? s.event : 'none';
+  const event = eventFor(String(theme), EVENT_HINTS.includes(s?.event) ? s.event : 'none');
   const { hasPair, hasWedding } = pairOf(c);
   const fits = !!text && isTheme(theme) && themesFor(c.member.role, hasPair, hasWedding).includes(theme)
     && (event !== 'wedding' || facts.wedding_question_allowed) && !c.asked.includes(text);
@@ -939,9 +942,10 @@ async function turnInput(call: { id: string; member_id: string; family_id: strin
 }
 
 /** AI sau một lượt kể, rồi đọc sẵn đúng câu Mây sẽ nói bằng nhà cung cấp máy khách đã chốt (câu có hỏi thêm thì không coi là câu phụ). */
-async function turnReply(input: TurnInput, memberId: string, provider: Provider | null): Promise<TurnAI | null> {
+export async function turnReply(input: TurnInput, memberId: string, provider: Provider | null, speak: typeof speech = speech): Promise<TurnAI | null> {
   const ai = await turnAI(input);
-  if (ai?.say && provider) void speech(ai.say, memberId, { optional: !ai.follow, provider });
+  // Câu có hỏi thêm, hay câu hỏi thăm đã gộp câu mở chuyện chính, là câu hỏi của cuộc gọi: không coi là câu phụ (câu phụ bị bỏ khi ngân sách còn ít).
+  if (ai?.say && provider) void speak(ai.say, memberId, { optional: !ai.follow && !ai.joined, provider });
   return ai;
 }
 

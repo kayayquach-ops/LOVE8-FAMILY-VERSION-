@@ -100,6 +100,8 @@ Mã: `src/shared.ts` (chủ đề, kiểu bộ câu), `server/call.ts` (soạn c
 
 **Chủ đề theo vai** (`themesFor`): bố mẹ được mọi chủ đề, ngày cưới chỉ khi nhà có đủ bố lẫn mẹ và lịch chưa có ngày cưới. Con không có ngày cưới, ngày con chào đời, dặn con cháu.
 
+**Loại ngày đi đôi với chủ đề** (`eventFor`, áp ở mọi chỗ dựng câu mở): chủ đề `ngay-cuoi` luôn mang `event 'wedding'` (để hỏi và ghi ngày cưới vào lịch), chủ đề khác không bao giờ mang `wedding` (AI ghi `wedding` cho chủ đề khác thì đổi thành `none`).
+
 **Ba cách soạn**
 - `firstScript` (cuộc gọi đầu): chào, hỏi thăm `callScript.first.<vai>.q1`, chuyện bữa cơm nhớ nhất (`mon-an`), `trial: true`, 2 lượt hỏi thêm, không hỏi lời nhắn.
 - `templateScript`: hỏi thăm `callScript.template.<vai>.checkin`. Chuyện chính từ câu mẫu `callScript.template.<vai>.story.<chủ đề>`: ngày cưới trước nếu được hỏi, không thì các chủ đề chưa hỏi, xoay vòng theo tuần (hỏi hết rồi thì xoay lại từ đầu).
@@ -110,7 +112,7 @@ Mã: `src/shared.ts` (chủ đề, kiểu bộ câu), `server/call.ts` (soạn c
 
 **Hỏi thêm** (`turnAI`)
 - Câu hỏi thêm đi theo các ý của một câu chuyện: bối cảnh (dịp gì, ở đâu, khi nào), ai có mặt, chuyện gì xảy ra, cảm xúc lúc đó, giờ nghĩ lại muốn nói gì. Ý nào đã kể thì bỏ qua. Kể đủ hoặc người kể nói thôi, hết rồi, vậy thôi thì không hỏi nữa. Luật hỏi ngày giữ nguyên.
-- Lượt hỏi thăm: không hỏi thêm; câu đáp nối luôn câu mở chuyện chính thành một câu nói (`joined: true`) nếu cả câu vừa `TTS_MAX`, đỡ một câu giọng mới. Quá dài thì chỉ câu đáp (`joined: false`).
+- Lượt hỏi thăm: không hỏi thêm; câu đáp nối luôn câu mở chuyện chính thành một câu nói (`joined: true`) nếu cả câu vừa `TTS_MAX`, đỡ một câu giọng mới. Quá dài thì chỉ câu đáp (`joined: false`). Câu gộp này là câu hỏi chính của cuộc gọi nên máy chủ đọc trước bằng giọng bắt buộc (`optional: false`, như câu có hỏi thêm); chỉ câu đáp đơn mới là câu phụ, bị bỏ khi ngân sách giọng ngày còn dưới 30%.
 - Trần lấy từ `script.follow` (bản cũ không có thì 4). Máy chủ không còn đọc `follows` máy khách gửi.
 
 **Chia sẻ**: cuộc gọi mới ghi `calls.shared = false`. `POST /api/call/:id/share` (không có thân, gửi lại được) bật `shared = true` cho cuộc gọi của chính người gọi; không thấy cuộc gọi thì 404 `call_not_found`. Cuộc gọi cũ vẫn là đã chia sẻ.
