@@ -59,7 +59,7 @@ const placeOf = (m: Member) => {
 };
 const lower = (s: string) => (shownLang() === 'ko' ? s : s.toLocaleLowerCase(locale()));
 
-export function Home({ me, callDue, onCall, onChanged, onOpen }: { me: Me; callDue: boolean; onCall: () => void; onChanged: () => void; onOpen: (s: Screen, arg?: string) => void }) {
+export function Home({ me, callDue, callTrial, onCall, onChanged, onOpen }: { me: Me; callDue: boolean; callTrial: boolean; onCall: () => void; onChanged: () => void; onOpen: (s: Screen, arg?: string) => void }) {
   // Đổi qua lại Camera và Nhà là dựng lại màn này: hiện ngay bản lần trước, phần dưới không trống rồi mới hiện.
   const [data, setData] = useState<HomeData | null>(() => cached<HomeData>('home'));
   const [later, setLater] = useState(false);
@@ -158,7 +158,7 @@ export function Home({ me, callDue, onCall, onChanged, onOpen }: { me: Me; callD
       {/* Có người xin vào nhà: chỉ người lập nhà thấy, nằm trên cùng vì người kia đang chờ. */}
       <JoinAsks me={me} onChanged={onChanged} />
 
-      {invite && <CallCard role={me.me.role} onAnswer={onCall} onLater={() => { snooze(); setLater(true); }} />}
+      {invite && <CallCard role={me.me.role} trial={callTrial} onAnswer={onCall} onLater={() => { snooze(); setLater(true); }} />}
 
       {/* Nhà mới chỉ có mình: mời người thân là việc đầu tiên, nằm đúng chỗ của danh sách cả nhà. */}
       {alone ? (

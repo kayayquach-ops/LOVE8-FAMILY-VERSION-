@@ -237,6 +237,8 @@
   "call.card.me": "{mascot}가 엄마께 잠깐 여쭤보고 싶어요",
   "call.card.con": "{mascot}가 잠깐 이야기 나누고 싶어요",
   "call.card.len": "5분 정도",
+  "call.card.trial": "{mascot}가 인사하고 싶어요",
+  "call.card.trialLen": "3분 정도",
   "call.card.pick": "받기",
   "call.card.later": "나중에",
 

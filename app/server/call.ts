@@ -5,7 +5,7 @@ import express from 'express';
 import type multer from 'multer';
 import { createHash, randomUUID } from 'node:crypto';
 import type pg from 'pg';
-import { CALL_ROLES, DEFAULT_MASCOT_NAME, EVENT_HINTS, MAX_STORY_FOLLOW, STORY_THEMES, THEME_TOPIC, TRIAL_FOLLOW, callLines, isTheme, relayNone, themesFor, type CallQuestion, type CallRelay, type CallScript, type StoryTheme, type TurnAI } from '../src/shared.ts';
+import { CALL_ROLES, DEFAULT_MASCOT_NAME, EVENT_HINTS, MAX_STORY_FOLLOW, STORY_THEMES, THEME_TOPIC, TRIAL_AFTER_MIN, TRIAL_FOLLOW, callLines, isTheme, relayNone, themesFor, type CallQuestion, type CallRelay, type CallScript, type StoryTheme, type TurnAI } from '../src/shared.ts';
 import { errorBody, langOf, LANGS, reqLang, tReq, tServer, type Lang } from './i18n.ts';
 import { askJSON, askQuick, useGemini } from './ai.ts';
 import { pushRelays } from './push.ts';
@@ -105,6 +105,13 @@ export async function warmFixedVoices(gapMs?: number) {
 
 // Từ 9 giờ sáng thứ Bảy đến hết Chủ nhật (giờ Việt Nam), ai chưa gọi tuần này thì app đổ chuông.
 const CALL_FROM = { weekday: 5, hour: 9 }; // 0 = thứ Hai
+
+/** Thẻ mời: người chưa gọi xong lần nào (kể cả đã gọi thử) thì được mời gọi thử sau TRIAL_AFTER_MIN phút, mọi ngày;
+ *  người đã gọi thì chỉ mời trong khung cuối tuần và chưa có cuộc gọi thật nào xong tuần này (cuộc gọi thử không chiếm lượt tuần). */
+export function dueState(p: { minutesSinceJoin: number; hadDone: boolean; doneThisWeek: boolean; callTime: boolean }): { due: boolean; trial: boolean } {
+  if (!p.hadDone) return { due: p.minutesSinceJoin >= TRIAL_AFTER_MIN, trial: true };
+  return { due: p.callTime && !p.doneThisWeek, trial: false };
+}
 
 function callTime() {
   const vn = new Date(Date.now() + 7 * 3600e3);
@@ -314,7 +321,7 @@ function named(prompt: string, name: string) {
   return prompt.replace('writes its own name only as Mây in Latin letters, never in Hangul', `writes its own name exactly as ${name}`).split('Mây').join(name);
 }
 
-function scriptSystem(lang: Lang, name = DEFAULT_MASCOT_NAME) {
+function scriptSystem(lang: Lang, name = DEFAULT_MASCOT_NAME, trial = false) {
   const ex = EXAMPLES[lang];
   return named(`You write the script for a short voice call inside Sweet Home, a family app for families whose child lives far from home. The caller is Mây, the app's little mascot. The phone reads every line aloud, and the person answers by speaking.
 
@@ -341,7 +348,9 @@ HARD RULES, never break them:
 10. Earlier answers come from past calls. Refer to them only as being from an earlier call (last time) and never with today, now or any present-tense time. If previous_calls says none yet, never refer to any earlier call at all. Never put a time on an earlier answer (no last week, no 지난주). Never assume whether a child is a son or a daughter unless the intro says so. Never invent relatives (grandchildren, siblings, cousins, anyone's children) unless listed in family_members.
 11. The intro field "unsaid" is private: it may guide your tone, but never quote it or hint at its content.
 
-The greeting is one or two short sentences and mentions nothing outside the input.
+The greeting is one or two short sentences and mentions nothing outside the input.${trial ? `
+
+TRIAL CALL. The input field trial is true: this is the person's very first call, a short getting-to-know-you chat. The story is one easy, warm, everyday story or a favorite memory, taken from the intro answers or from where they live, never anything heavy. Keep it light and inviting.` : ''}
 
 Reply in ${LANG_NAME[lang]}. The greeting, checkin and story text must be written in ${LANG_NAME[lang]} only.`, name);
 }
@@ -370,13 +379,14 @@ const MONTH_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July'
 /** Trả lời của AI theo SCRIPT_SCHEMA (lời tạm biệt là câu cố định nên AI không viết). */
 type ScriptRaw = { greeting: string; checkin: string; story: { text: string; theme: string; photo: boolean; event: CallQuestion['event'] } };
 
-export async function aiScript(c: Ctx, week: string, timeoutMs?: number): Promise<CallScript | null> {
+export async function aiScript(c: Ctx, week: string, timeoutMs?: number, opts: { trial?: boolean } = {}): Promise<CallScript | null> {
+  const trial = !!opts.trial;
   const facts = scriptFacts(c);
   // Tên tháng tiếng Anh của các ngày có trong lịch cũng tính là dữ liệu thật ("your birthday in March").
   // Mã vai (bo, me, con) không phải tên: bỏ khỏi dữ liệu đối chiếu để câu "Hi Bo" bị chặn.
   const hay = JSON.stringify(facts).replace(/"role":"(bo|me|con)"/g, '') + ' ' + c.events.map((e) => MONTH_EN[e.month - 1] ?? '').join(' ') + ' ' + (c.mascot ?? '');
   const allow: Allow = { prevCall: c.doneCalls.length > 0, ownStory: c.stories.length > 0, photos: c.photoCount > 0 };
-  const r = await askJSON<ScriptRaw>(scriptSystem(c.lang, c.mascot), JSON.stringify(facts, null, 1), SCRIPT_SCHEMA, undefined, timeoutMs);
+  const r = await askJSON<ScriptRaw>(scriptSystem(c.lang, c.mascot, trial), JSON.stringify(trial ? { ...facts, trial: true } : facts, null, 1), SCRIPT_SCHEMA, undefined, timeoutMs);
   if (!r) return null;
   const tpl = templateScript(c, week);
   // Câu AI viết: làm sạch rồi qua lớp chống bịa; không ổn thì null (dùng câu mẫu).
@@ -396,7 +406,7 @@ export async function aiScript(c: Ctx, week: string, timeoutMs?: number): Promis
   const fits = !!text && isTheme(theme) && themesFor(c.member.role, hasPair, hasWedding).includes(theme)
     && (event !== 'wedding' || facts.wedding_question_allowed) && !c.asked.includes(text);
   const story = fits ? storyQ(text, theme, !!s.photo, event) : tpl.questions[1];
-  const relay = relayQuestion(c);
+  const relay = trial ? null : relayQuestion(c);
   return {
     greeting: ok(r.greeting) ?? tpl.greeting,
     questions: [checkin ? checkinQ(checkin) : tpl.questions[0], story, ...(relay ? [relay] : [])],
@@ -404,7 +414,8 @@ export async function aiScript(c: Ctx, week: string, timeoutMs?: number): Promis
     source: 'ai',
     lang: c.lang,
     mascot: c.mascot ?? DEFAULT_MASCOT_NAME,
-    v: 2, follow: MAX_STORY_FOLLOW,
+    v: 2, follow: trial ? TRIAL_FOLLOW : MAX_STORY_FOLLOW,
+    ...(trial ? { trial: true } : {}),
   };
 }
 
@@ -976,12 +987,15 @@ export function callRouter(upload: multer.Multer) {
   const r = express.Router();
   const media = (f?: Express.Multer.File) => (f ? `/media/${f.filename}` : null);
 
-  // Thành viên mới (dưới 24 giờ) không bị nhắc gì. Sau đó: cuộc gọi đầu tiên được mời ngay, các tuần sau chỉ trong khung cuối tuần.
+  // Thẻ mời gọi: người mới được mời gọi thử sau TRIAL_AFTER_MIN phút; sau đó mỗi tuần một lần trong khung cuối tuần.
   r.get('/call/due', h(async (req, res) => {
-    const { rows } = await pool.query(`select 1 from calls where member_id = $1 and week = $2 and status = 'done' limit 1`, [req.member.id, weekKey()]);
-    const { rows: [m] } = await pool.query(`select extract(epoch from now() - created_at) / 3600 as hours, exists(select 1 from calls where member_id = $1 and status = 'done') as had from members where id = $1`, [req.member.id]);
-    const grown = Number(m?.hours ?? 0) >= 24;
-    res.json({ due: grown && !rows.length && (callTime() || !m?.had), done: !!rows.length });
+    const { rows: [m] } = await pool.query(
+      `select extract(epoch from now() - created_at) / 60 as minutes,
+        exists(select 1 from calls where member_id = $1 and status = 'done') as had,
+        exists(select 1 from calls where member_id = $1 and week = $2 and status = 'done' and not trial) as week_done
+       from members where id = $1`, [req.member.id, weekKey()]);
+    const { due, trial } = dueState({ minutesSinceJoin: Number(m?.minutes ?? 0), hadDone: !!m?.had, doneThisWeek: !!m?.week_done, callTime: callTime() });
+    res.json({ due, done: !!m?.week_done, trial });
   }));
 
   // Nhấc máy: lấy bộ câu hỏi của tuần (soạn một lần, gọi lại thì dùng tiếp).
@@ -995,10 +1009,12 @@ export function callRouter(upload: multer.Multer) {
     const relays = await pendingRelays(mid);
     if (scriptReusable(old, c, first)) return res.json({ id: rows[0].id, script: old, relays });
     // Người dùng đã bấm Nghe máy và đang chờ: AI soạn quá 7 giây thì dùng bộ câu mẫu, không để màn hình im lặng.
-    const script = first ? firstScript(c) : (aiScripts.take(mid) ? await aiScript(c, week, START_AI_MS) : null) ?? templateScript(c, week);
+    const script = first
+      ? (aiScripts.take(mid) ? await aiScript(c, week, START_AI_MS, { trial: true }) : null) ?? firstScript(c)
+      : (aiScripts.take(mid) ? await aiScript(c, week, START_AI_MS) : null) ?? templateScript(c, week);
     const id = randomUUID();
     // Cuộc gọi mới chưa đồng ý chia sẻ: bước xin phép cuối chuyện chính (POST /call/:id/share) mới bật shared.
-    await pool.query('insert into calls (id, family_id, member_id, week, script, shared) values ($1,$2,$3,$4,$5,false)', [id, fid, mid, week, JSON.stringify(script)]);
+    await pool.query('insert into calls (id, family_id, member_id, week, script, shared, trial) values ($1,$2,$3,$4,$5,false,$6)', [id, fid, mid, week, JSON.stringify(script), first]);
     res.json({ id, script, relays });
     // Giọng đọc do máy khách xin khi cần (lời chào + câu đầu một lần, mỗi câu sau xin trước một câu), máy chủ không tự đọc trước.
   }));

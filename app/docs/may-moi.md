@@ -142,3 +142,11 @@ Mã: `src/Call.tsx` (luồng cuộc gọi), `src/callShare.ts` (chặng của b�
 - Nhà một người thì không hỏi, cuộc gọi giữ `shared = false`.
 
 **Số câu giọng dự kiến** (chi tiết ở `docs/tts-budget.md`): chào + hỏi thăm 1, câu đáp hỏi thăm gộp câu mở 1, mỗi câu hỏi thêm 1 (0 tới 4, câu nhắc ngày đi chung), câu đáp cuối 1 (chỉ khi ngân sách ngày còn trên 30%, không thì câu cố định). Còn lại là câu cố định trong kho. Tổng 2 tới 7 câu, thường khoảng 6; cuộc gọi thử 2 tới 5. 70 câu mỗi ngày đủ khoảng 10 cuộc gọi đủ giọng (11 nếu toàn cuộc gọi 6 câu), sau đó hiện chữ kèm chuông nhẹ. Kiểu cũ tới 11 câu một cuộc gọi. Bốn câu cố định mới tốn 12 câu giọng mỗi thứ tiếng một lần (4 câu x 3 vai), `warmFixedVoices` nạp sẵn.
+
+## Cuộc gọi thử
+
+- Thẻ mời: `GET /api/call/due` trả `{ due, done, trial }`. `dueState` (`server/call.ts`): chưa có cuộc gọi nào xong (`hadDone` false) thì `trial: true` và `due` khi đã quá `TRIAL_AFTER_MIN` = 10 phút kể từ `members.created_at` (tạo nhà hoặc được duyệt vào), mọi ngày kể cả thứ Bảy. Đã gọi xong thì `trial: false`, `due` chỉ khi đang khung cuối tuần và tuần này chưa có cuộc gọi thật xong. Luật 24 giờ cũ đã bỏ.
+- Cuộc gọi thử không chiếm lượt tuần: `done` và `doneThisWeek` chỉ đếm cuộc gọi `status = 'done' and not trial`; `weeklyTick` (`server/push.ts`) cũng vậy. Người mới chỉ gọi thử vẫn thấy thẻ ngày thứ Bảy.
+- `POST /api/call/start`: người chưa có cuộc gọi xong thì soạn `aiScript(c, week, START_AI_MS, { trial: true })` (đầu vào AI có `trial: true`, prompt dặn một chuyện dễ, ấm, lấy từ câu trả lời giới thiệu hoặc nơi ở; không có câu lời nhắn; `follow = TRIAL_FOLLOW` = 2; `trial: true`). AI lỗi, quá hạn hay hết lượt soạn thì `firstScript`. Dòng `calls` ghi `trial = true`.
+- Máy khách: `App.tsx` giữ `callTrial` từ `/api/call/due`, `Home` truyền `trial` cho `CallCard`; thẻ hiện `call.card.trial` và `call.card.trialLen` (khoảng 3 phút).
+- Test: `server/call.test.ts` (`dueState`, `aiScript` với `trial`).

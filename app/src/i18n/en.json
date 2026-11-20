@@ -240,6 +240,8 @@
   "call.card.me": "{mascot} has a few questions for mom",
   "call.card.con": "{mascot} has a few questions for you",
   "call.card.len": "about 5 minutes",
+  "call.card.trial": "{mascot} wants to say hi",
+  "call.card.trialLen": "about 3 minutes",
   "call.card.pick": "answer",
   "call.card.later": "later",
 

@@ -317,3 +317,24 @@ test('người nhận mặc định', () => {
   assert.deepEqual(call.defaultRecipients('con', [{ id: 'c2', name: 'Bình', role: 'con', lang: null }]).map((m) => m.id), ['c2']);
 });
 // i18n-ok-end
+
+test('thẻ gọi: người chưa gọi lần nào thấy thẻ cuộc gọi thử sau 10 phút (kể cả thứ Bảy); cuộc gọi thử không chiếm lượt tuần', () => {
+  const d = (o: object) => call.dueState({ minutesSinceJoin: 0, hadDone: false, doneThisWeek: false, callTime: false, ...o });
+  assert.deepEqual(d({ minutesSinceJoin: 9 }), { due: false, trial: true });
+  assert.deepEqual(d({ minutesSinceJoin: 10 }), { due: true, trial: true });
+  assert.deepEqual(d({ minutesSinceJoin: 3, callTime: true }), { due: false, trial: true });
+  assert.deepEqual(d({ hadDone: true, callTime: true }), { due: true, trial: false });   // chỉ mới gọi thử: thẻ thứ Bảy vẫn hiện
+  assert.deepEqual(d({ hadDone: true, callTime: true, doneThisWeek: true }), { due: false, trial: false });
+  assert.deepEqual(d({ hadDone: true }), { due: false, trial: false });
+});
+test('cuộc gọi thử do AI soạn: chuyện dễ, 2 câu bồi, không hỏi lời nhắn; AI lỗi thì bộ câu soạn sẵn', async () => {
+  const first = { ...ctx('me', both), doneCalls: [] };
+  handler = gemini({ greeting: 'Mẹ ơi, con là Mây đây ạ.', checkin: 'Hôm nay Mẹ thế nào ạ?',
+    story: { text: 'Mẹ kể con nghe về món Mẹ nấu ngon nhất nhé.', theme: 'mon-an', photo: false, event: 'none' } });
+  const sc = (await call.aiScript(first, '2026-11-16', undefined, { trial: true }))!;
+  assert.equal(lastInput().trial, true);
+  assert.equal(sc.trial, true); assert.equal(sc.follow, 2);
+  assert.equal(sc.questions.some((q) => q.topic === 'loi-nhan'), false);
+  handler = async () => new Response('{}', { status: 500 });
+  assert.equal(await call.aiScript(first, '2026-11-16', undefined, { trial: true }), null); // nơi gọi dùng firstScript
+});

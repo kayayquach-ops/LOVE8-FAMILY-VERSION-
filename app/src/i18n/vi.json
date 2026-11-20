@@ -237,6 +237,8 @@
   "call.card.me": "{mascot} muốn hỏi chuyện mẹ một chút",
   "call.card.con": "{mascot} muốn hỏi chuyện bạn một chút",
   "call.card.len": "khoảng 5 phút",
+  "call.card.trial": "{mascot} muốn chào bạn",
+  "call.card.trialLen": "khoảng 3 phút",
   "call.card.pick": "nghe máy",
   "call.card.later": "để sau",
 

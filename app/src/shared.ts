@@ -121,6 +121,8 @@ export const CALL_ROLES = ['bo', 'me', 'con'] as const;
 /** Mây hỏi thêm: chuyện chính tối đa 4 lượt (turn 1..4), không còn trần riêng cho cả cuộc gọi. Cuộc gọi thử tối đa 2 lượt. */
 export const MAX_STORY_FOLLOW = 4;
 export const TRIAL_FOLLOW = 2;
+/** Số phút sau khi vào nhà (members.created_at: tạo nhà hoặc được duyệt vào) thì thẻ cuộc gọi thử mới hiện. */
+export const TRIAL_AFTER_MIN = 10;
 
 /** Kết quả AI sau mỗi lượt kể (POST /call/:id/reply, hoặc /answer khi máy chủ tự chép lời). */
 export type TurnAI = {

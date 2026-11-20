@@ -68,6 +68,7 @@ export function App() {
   const [calling, setCalling] = useState(false);
   // Đến lịch gọi thì chỉ hiện thẻ mời trên Trang chủ; màn đổ chuông chỉ mở khi người dùng bấm Nghe máy.
   const [callDue, setCallDue] = useState(false);
+  const [callTrial, setCallTrial] = useState(false);
   // Gọi video cả nhà: phòng đang mở, mình có đang trong cuộc gọi không, cuộc nào mình đã từ chối hoặc vừa rời.
   const [room, setRoom] = useState<LiveRoom>(null);
   const [facetime, setFacetime] = useState(false);
@@ -85,7 +86,7 @@ export function App() {
 
   const loadUnread = () => fetch('/api/chat/unread', { headers: { authorization: `Bearer ${token.get()}` } }).then((r) => r.json()).then((d) => setChatUnread(d.n ?? 0)).catch(() => {});
   const checkCall = () => fetch('/api/call/due', { headers: { authorization: `Bearer ${token.get()}` } }).then((r) => r.json())
-    .then((d) => setCallDue(!!d.due)).catch(() => {});
+    .then((d) => { setCallDue(!!d.due); setCallTrial(!!d.trial); }).catch(() => {});
   // Bản mới giống hệt bản đang có thì giữ nguyên đối tượng cũ: không vẽ lại cả app mỗi lần hỏi máy chủ (30 giây một lần).
   const meJson = useRef(me ? JSON.stringify(me) : '');
   const loadMe = () => api.me().then((m) => {
@@ -245,7 +246,7 @@ export function App() {
   else body = (
     <>
       {tab === 'home'
-        ? <Home me={me} callDue={callDue && !calling} onCall={() => setCalling(true)} onChanged={() => void loadMe().catch(() => {})} onOpen={(s, arg) => { if (s === 'camera') return setTab('camera'); if (s === 'podcast') setPodcastId(arg ?? null); if (s === 'feed') setFeedPost(arg ?? null); setSheet(s); }} />
+        ? <Home me={me} callDue={callDue && !calling} callTrial={callTrial} onCall={() => setCalling(true)} onChanged={() => void loadMe().catch(() => {})} onOpen={(s, arg) => { if (s === 'camera') return setTab('camera'); if (s === 'podcast') setPodcastId(arg ?? null); if (s === 'feed') setFeedPost(arg ?? null); setSheet(s); }} />
         : tab === 'may'
         ? <MayTab me={me} callDue={callDue && !calling} onCall={() => setCalling(true)} onPodcast={() => { setPodcastId(null); setSheet('podcast'); }} onCustomize={() => setSheet('mascot')} />
         : <Camera me={me} active={!sheet && !facetime && !calling} onOpen={(s) => { if (s === 'feed') setFeedPost(null); setSheet(s); }} onSent={load}
