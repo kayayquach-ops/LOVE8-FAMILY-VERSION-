@@ -3,6 +3,7 @@ import { api, autoTranslateOn, googlePending, setAutoTranslate, startGoogle, tok
 import { LANG_NAMES, LANGS, setLang, t, useLang, type Key } from './i18n';
 import { setThemeMode, THEME_MODES, useThemeMode } from './theme';
 import { Notify } from './Notify';
+import { LocationShare } from './LocationShare';
 import { GoogleMark } from './Onboarding';
 import { mascotNameOf, type Me } from './shared';
 import { setUiSounds, tap, uiSoundsOn } from './sound';
@@ -51,6 +52,8 @@ export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose
         </div>
 
         <Notify />
+
+        <LocationShare />
 
         <div className="h2">{t('settings.sound')}</div>
         <div className="panel">

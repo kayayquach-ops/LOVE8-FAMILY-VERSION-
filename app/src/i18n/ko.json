@@ -316,6 +316,17 @@
   "home.letters": "우리 집 편지",
   "home.letters.write": "편지 쓰기",
 
+  "loc.title": "위치",
+  "loc.switch": "가족에게 내 위치 공유",
+  "loc.ask.title": "가족에게 내 위치를 알려 줄까요?",
+  "loc.ask.body": "앱을 열어 둔 동안 가족이 내가 있는 곳과 그곳의 시간, 날씨를 볼 수 있어요. 가족만 볼 수 있고 언제든 끌 수 있어요.",
+  "loc.ask.yes": "위치 공유하기",
+  "loc.on": "가족에게 위치를 공유했어요",
+  "loc.denied": "위치 접근이 꺼져 있어요. 휴대폰 설정에서 허용해 주세요",
+  "loc.unsupported": "이 기기에서는 위치를 공유할 수 없어요",
+  "loc.near": "{place} 근처",
+  "loc.map": "지도에서 {place} 보기",
+
   "chat.videoCall": "영상 통화",
   "chat.empty": "아직 메시지가 없어요. 가족에게 한마디 남겨 봐요.",
   "chat.viewPhoto": "사진 보기",

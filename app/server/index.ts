@@ -25,6 +25,7 @@ import { Limit, limitBy } from './limit.ts';
 import { migrateShot, shotPartsFor, shotRouter } from './shot.ts';
 import { membersRouter } from './members.ts';
 import { joinPublicRouter, joinRouter, joinView, memberAuth, memberFields, migrateJoin } from './join.ts';
+import { locationRouter, memberLoc, migrateLocation } from './location.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -79,7 +80,8 @@ const h = (fn: (req: Req, res: express.Response) => Promise<unknown>) => (req: R
 const auth = memberAuth(pool);
 
 function memberRow(r: any): Member {
-  return { id: r.id, name: r.name, role: r.role, avatar: r.avatar, city: r.city, phone: r.phone, lastSeen: r.last_seen };
+  // Vị trí (server/location.ts): chỉ người đang chia sẻ mới có trường loc.
+  return { id: r.id, name: r.name, role: r.role, avatar: r.avatar, city: r.city, phone: r.phone, lastSeen: r.last_seen, ...memberLoc(r) };
 }
 
 async function newCode() {
@@ -166,6 +168,7 @@ app.use('/api', liveRouter);
 app.use('/api', pushRouter);
 app.use('/api', googleRouter);
 app.use('/api', membersRouter());
+app.use('/api', locationRouter());
 app.use('/api', joinRouter(joinDeps));
 
 app.get('/api/me', h(async (req, res) => {
@@ -182,7 +185,8 @@ app.get('/api/me', h(async (req, res) => {
   const members = ms.rows.map(memberRow);
   const { mascot_name, mascot_shape, ...fam } = f.rows[0];
   const family = { ...fam, mascotName: mascot_name || DEFAULT_MASCOT_NAME, mascotShape: isMascotShape(mascot_shape) ? mascot_shape : 'cloud' };
-  res.json({ family, me: members.find((x) => x.id === m.id), members, unseen: unseen.rows[0].n, ...join });
+  const locShare = ms.rows.some((x) => x.id === m.id && x.loc_share === true);
+  res.json({ family, me: members.find((x) => x.id === m.id), members, unseen: unseen.rows[0].n, locShare, ...join });
 }));
 
 // Linh vật của nhà: ai trong nhà cũng đổi được tên (1-20 ký tự) và hình. Gửi trường nào thì đổi trường đó.
@@ -406,6 +410,7 @@ await migratePodcast(pool);
 void refreshFirstVoicePodcasts().catch((e) => console.error('[podcast]', e));
 await migratePush(pool);
 await migrateShot(pool);
+await migrateLocation(pool);
 startRecapScheduler(pool);
 startPushScheduler();
 app.listen(port, () => console.log(`Homeletter chạy ở cổng ${port}`));

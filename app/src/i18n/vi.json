@@ -316,6 +316,17 @@
   "home.letters": "thư nhà mình",
   "home.letters.write": "viết một lá thư",
 
+  "loc.title": "Vị trí",
+  "loc.switch": "Chia sẻ vị trí với cả nhà",
+  "loc.ask.title": "Cho cả nhà biết bạn đang ở đâu?",
+  "loc.ask.body": "Lúc bạn mở app, cả nhà thấy bạn ở đâu, giờ và thời tiết bên đó. Chỉ người trong nhà thấy. Tắt lúc nào cũng được.",
+  "loc.ask.yes": "Chia sẻ vị trí",
+  "loc.on": "Đã chia sẻ vị trí với cả nhà",
+  "loc.denied": "Máy chưa cho xem vị trí. Mở Cài đặt của máy để cho phép nhé",
+  "loc.unsupported": "Máy này chưa xem được vị trí",
+  "loc.near": "gần {place}",
+  "loc.map": "Xem {place} trên bản đồ",
+
   "chat.videoCall": "Gọi video",
   "chat.empty": "Chưa có tin nào. Nhắn một câu cho cả nhà nhé.",
   "chat.viewPhoto": "Xem ảnh",

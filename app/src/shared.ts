@@ -3,7 +3,10 @@
 export type Role = 'bo' | 'me' | 'con';
 export type Kind = 'photo' | 'video' | 'voice' | 'hug';
 
-export type Member = { id: string; name: string; role: Role; avatar?: string | null; city?: string | null; phone?: string | null; lastSeen: string };
+export type Member = { id: string; name: string; role: Role; avatar?: string | null; city?: string | null; phone?: string | null; lastSeen: string; loc?: MemberLoc };
+/** Vị trí đang chia sẻ của một người (server/location.ts): chỉ có khi người đó tự bật chia sẻ và đã gửi vị trí.
+ *  lat, lon làm tròn 4 số lẻ (khoảng 11 m). place: tên nơi gần nhất theo ba thứ tiếng, near là "gần {nơi}". tz: múi giờ nơi đó. */
+export type MemberLoc = { lat: number; lon: number; at: string; tz: string; place: { vi: string; en: string; ko: string; near: boolean } };
 export type Family = { id: string; name: string; code: string; mascotName?: string | null; mascotShape?: string | null };
 
 // Linh vật của mỗi nhà: tên tự đặt (mặc định Mây) và một trong các hình có sẵn. cloud là bản gốc.
@@ -41,7 +44,9 @@ export type Post = {
 /** Lời xin vào nhà đang chờ (server/join.ts): chỉ người duyệt nhận được danh sách này. */
 export type JoinRequest = { id: string; name: string; role: Role; city: string | null; createdAt: string };
 /** approverId: người duyệt người mới (người vào nhà sớm nhất còn ở nhà). requests: chỉ người duyệt có; waiting: người khác chỉ biết số người đang chờ. */
-export type Me = { family: Family; me: Member; members: Member[]; unseen: number; approverId?: string | null; requests?: JoinRequest[]; waiting?: number };
+export type Me = { family: Family; me: Member; members: Member[]; unseen: number; approverId?: string | null; requests?: JoinRequest[]; waiting?: number;
+  /** Mình có đang bật chia sẻ vị trí với cả nhà không (chỉ người gọi /api/me biết của chính mình). */
+  locShare?: boolean };
 
 export type Week = {
   week: string;

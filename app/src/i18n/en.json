@@ -324,6 +324,17 @@
   "home.letters": "family letters",
   "home.letters.write": "write a letter",
 
+  "loc.title": "Location",
+  "loc.switch": "Share my location with family",
+  "loc.ask.title": "Let your family see where you are?",
+  "loc.ask.body": "While the app is open, your family sees where you are, plus the time and weather there. Only your family can see it. Turn it off anytime.",
+  "loc.ask.yes": "Share location",
+  "loc.on": "Location shared with your family",
+  "loc.denied": "Location access is off. Allow it in your phone's Settings",
+  "loc.unsupported": "This device can't share location",
+  "loc.near": "near {place}",
+  "loc.map": "Open {place} in Maps",
+
   "chat.videoCall": "Video call",
   "chat.empty": "No messages yet. Say something to everyone.",
   "chat.viewPhoto": "View photo",

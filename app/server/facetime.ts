@@ -23,7 +23,7 @@ function send(memberId: string, msg: unknown) {
   for (const res of c.set) res.write(data);
 }
 
-function toFamily(fid: string, msg: unknown) {
+export function toFamily(fid: string, msg: unknown) {
   for (const [mid, c] of conns) if (c.fid === fid) send(mid, msg);
 }
 
