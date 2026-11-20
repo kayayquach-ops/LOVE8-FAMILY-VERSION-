@@ -27,7 +27,8 @@ export async function migrateLocation(db: Db = pool) {
 }
 
 let places: PlacesData | null = null;
-const placesData = () => (places ??= JSON.parse(readFileSync(new URL('../src/places.json', import.meta.url), 'utf8')) as PlacesData);
+/** src/places.json, đọc một lần. server/place.ts dùng chung để tra múi giờ. */
+export const placesData = () => (places ??= JSON.parse(readFileSync(new URL('../src/places.json', import.meta.url), 'utf8')) as PlacesData);
 
 /** Làm tròn 4 số lẻ: khoảng 11 m, đủ để mở bản đồ đúng chỗ. */
 export const round4 = (x: number) => Math.round(x * 1e4) / 1e4;

@@ -1,6 +1,6 @@
 // Cuộc gọi hằng tuần ngay trong app: Mây của Sweet Home hỏi, người nghe kể bằng giọng nói.
 // Claude soạn câu hỏi riêng cho từng người; không có khoá thì dùng bộ câu soạn sẵn từ members.intro.
-// Gọi xong: rút ngày tháng quan trọng vào lịch, ảnh xưa vào kho, rồi ghép podcast.
+// Gọi xong: rút ngày tháng quan trọng vào lịch, ảnh xưa vào kho, sổ nhớ và tín hiệu của Mây (memory.ts), rồi ghép podcast.
 import express from 'express';
 import type multer from 'multer';
 import { createHash, randomUUID } from 'node:crypto';
@@ -13,6 +13,7 @@ import { parseDate, suspect, type Allow } from './guard.ts';
 import { mascotName, pool } from './db.ts';
 import { weekKey } from './recap.ts';
 import { buildPodcastsForCall, rebuildCallSoon } from './podcast.ts';
+import { extractCall, extractSoon } from './memory.ts';
 import { cachedSpeech, defaultProvider, gateOf, hasVoice, initTtsBudget, pickProvider, providerOn, speech, transcribe, ttsStatus, TTS_MAX, type Provider } from './voice.ts';
 import path from 'node:path';
 import { open, rename, unlink } from 'node:fs/promises';
@@ -863,6 +864,8 @@ async function afterCall(callId: string) {
   // Lời nhắn khó nói: báo cho người nhận trước (nhanh), rồi mới tới lịch và podcast.
   try { await pushRelays(callId); } catch (e) { console.error('[call] lỗi báo lời nhắn:', (e as Error).message); }
   try { await saveDates(callId); } catch (e) { console.error('[call] lỗi rút ngày:', (e as Error).message); }
+  // Sổ nhớ và tín hiệu Mây nối người (server/memory.ts).
+  try { await extractCall(callId, { signals: true }); } catch (e) { console.error('[memory] lỗi rút sổ nhớ:', (e as Error).message); }
   try { await buildPodcastsForCall(callId); } catch (e) { console.error('[call] lỗi podcast:', (e as Error).message); }
 }
 
@@ -1028,8 +1031,8 @@ export function callRouter(upload: multer.Multer) {
     }
     res.json({ ok: true, transcript, reply, ai });
     if (relay) void saveRelays(call, { question: asked, transcript, media: file }).catch((e) => console.error('[call] lỗi lưu lời nhắn:', (e as Error).message));
-    // Câu trả lời tới sau khi cuộc gọi đã chốt (máy khách gửi lại): dựng lại tập của cuộc gọi cho đủ câu.
-    else if (call.status === 'done') rebuildCallSoon(call.id);
+    // Câu trả lời tới sau khi cuộc gọi đã chốt (máy khách gửi lại): dựng lại tập và rút lại sổ nhớ của cuộc gọi cho đủ câu.
+    else if (call.status === 'done') { rebuildCallSoon(call.id); extractSoon(call.id); }
   }));
 
   // Nghe xong một lượt: một lần gọi AI trả câu đáp, câu hỏi thêm (nếu cần), ngày nghe được, có chuyện để xin ảnh không (TurnAI).

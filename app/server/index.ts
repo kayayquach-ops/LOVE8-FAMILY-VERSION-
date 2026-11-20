@@ -29,7 +29,7 @@ import { migrateShot, shotPartsFor, shotRouter } from './shot.ts';
 import { membersRouter } from './members.ts';
 import { joinPublicRouter, joinRouter, joinView, memberAuth, memberFields, migrateJoin } from './join.ts';
 import { locationRouter, memberLoc, migrateLocation } from './location.ts';
-import { migrateMemory } from './memory.ts';
+import { migrateMemory, startMemoryBackfill } from './memory.ts';
 import { migrateMay } from './may.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
@@ -402,4 +402,5 @@ await migrateShot(pool);
 await migrateLocation(pool);
 startRecapScheduler(pool);
 startPushScheduler();
+startMemoryBackfill();
 app.listen(port, () => console.log(`Homeletter chạy ở cổng ${port}`));
