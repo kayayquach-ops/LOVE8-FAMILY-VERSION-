@@ -1,5 +1,5 @@
 // Cài đặt của Mây: công tắc "Mây nhắc mình liên lạc" và danh sách "Mây nhớ gì về mình" (xoá được từng dòng).
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from './api';
 import { t } from './i18n';
 import { mascotNameOf, type Me } from './shared';
@@ -14,13 +14,16 @@ export function MaySettings({ me }: { me: Me }) {
   const [open, setOpen] = useState(false);
   const [facts, setFacts] = useState<Fact[] | null>(null);
 
-  useEffect(() => { api.maySettings().then((s) => setNudges(s.nudges)).catch(() => {}); }, []);
+  // Giá trị máy chủ đang giữ (lần đọc hay lần lưu được gần nhất): lưu lỗi thì công tắc về đúng giá trị ấy, không về giá trị tạm
+  // của lần bấm trước (bấm nhanh hai lần mà cả hai lỗi thì công tắc vẫn khớp máy chủ).
+  const saved = useRef(true);
+  useEffect(() => { api.maySettings().then((s) => { saved.current = s.nudges; setNudges(s.nudges); }).catch(() => {}); }, []);
 
   const flip = () => {
     tap();
     const v = !nudges;
     setNudges(v);
-    api.setMaySettings(v).catch((e) => { setNudges(!v); toast((e as Error).message); });
+    api.setMaySettings(v).then(() => { saved.current = v; }).catch((e) => { setNudges(saved.current); toast((e as Error).message); });
   };
   const toggleList = () => {
     tap();

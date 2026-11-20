@@ -157,6 +157,27 @@ test('nạp sẵn rải rác: bỏ câu đã có, dừng khi ngân sách còn d�
   assert.ok(Date.now() - t0 < 10_000);
 });
 
+test('câu cố định chưa có trong kho (nạp sẵn hụt): xin là đọc ngay một lần như câu bắt buộc, lần sau lấy từ kho; câu khác gửi kèm fixed vẫn chỉ lấy từ kho', async () => {
+  const call = await import('./call.ts');
+  const { callLines } = await import('../src/shared.ts');
+  const { tServer } = await import('./i18n.ts');
+  voice.gate.used = 0; voice.gate.until = 0; voice.gate.why = null;
+  const m = fakeFetch();
+  voice._setFetch(m.f);
+  const text = call.fixedLines(['vi']).find((t) => !voice.cachedSpeech(t, 'gemini'));
+  assert.ok(text, 'mọi câu cố định đã có trong kho');
+  const first = await call.ttsFor({ text, kind: 'fixed', provider: 'gemini' }, 'u-fixed');
+  assert.ok(first.url, JSON.stringify(first));
+  assert.equal(m.count(), 1);
+  const again = await call.ttsFor({ text, kind: 'fixed', provider: 'gemini' }, 'u-fixed');
+  assert.equal(again.url, first.url);
+  assert.equal(m.count(), 1);
+  // Câu "ack" không nằm trong bộ câu nạp sẵn (chỉ dùng nếu tình cờ đã có trong kho): vẫn không đọc.
+  const ack = callLines('me', (k, v) => tServer('vi', k, v)).ack;
+  assert.deepEqual(await call.ttsFor({ text: ack, kind: 'fixed', provider: 'gemini' }, 'u-fixed'), { url: null, reason: 'skip' });
+  assert.equal(m.count(), 1);
+});
+
 // ---------- OpenAI làm giọng chính, Gemini dự phòng ----------
 
 const mp3 = Buffer.alloc(2000, 1);

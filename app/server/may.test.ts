@@ -118,13 +118,35 @@ test('chữ lời nhắc: lời của Mây, không trích chuyện riêng, gọi
   assert.doesNotMatch(M.nudgeText('miss', 'vi', lan, an, 'Mây').body, /[—–]/);
   // Thêm: bố mẹ nhắc con thì viết hoa chữ đầu; nhà đặt tên linh vật khác thì dùng tên ấy; tiếng Hàn gọi tên kèm 님, gọi vai thì không.
   assert.equal(M.nudgeText('good_news', 'vi', lan, an, 'Mây').body, 'Mẹ có tin vui muốn khoe với cả nhà đấy, hỏi mẹ xem nào.');
-  assert.deepEqual(M.nudgeText('miss', 'vi', binh, lan, 'Bông'), { title: 'Bông', body: 'Lan ơi, Bình vừa kể với Bông là nhớ Lan lắm. Gọi cho Bình một chút nhé.' });
+  assert.deepEqual(M.nudgeText('miss', 'vi', binh, lan, 'Bông'), { title: 'Bông', body: 'Mẹ ơi, Bình vừa kể với Bông là nhớ mẹ lắm. Gọi cho Bình một chút nhé.' });
   assert.match(M.nudgeText('miss', 'ko', binh, lan, 'Mây').body, /Bình님/);
   assert.doesNotMatch(M.nudgeText('miss', 'ko', lan, an, 'Mây').body, /Lan|엄마님/);
   for (const k of ['miss', 'want_contact', 'low', 'good_news', 'upcoming'] as const) for (const l of ['vi', 'en', 'ko'] as const) {
     const t = M.nudgeText(k, l, lan, an, 'Mây');
     assert.doesNotMatch(t.body, /[{}—–]|nudge\./, `${k} ${l}`);
   }
+});
+
+test('chữ lời nhắc: con nhắc bố mẹ thì gọi bố mẹ theo vai, không bao giờ gọi tên bố mẹ; vợ chồng, anh em vẫn gọi tên', () => {
+  const lan = { id: 'lan', name: 'Lan', role: 'me' }, hung = { id: 'hung', name: 'Hùng', role: 'bo' };
+  const an = { id: 'an', name: 'An', role: 'con' }, binh = { id: 'binh', name: 'Bình', role: 'con' };
+  assert.equal(M.nudgeText('miss', 'vi', an, lan, 'Mây').body, 'Mẹ ơi, An vừa kể với Mây là nhớ mẹ lắm. Gọi cho An một chút nhé.');
+  assert.equal(M.nudgeText('low', 'vi', an, hung, 'Mây').body, 'Dạo này An hơi mệt, bố hỏi thăm An nhé.');
+  assert.equal(M.nudgeText('upcoming', 'vi', an, lan, 'Mây').body, 'Mai An có việc quan trọng, mẹ gửi An một lời chúc nhé.');
+  assert.equal(M.nudgeText('miss', 'en', an, lan, 'Mây').body, 'Mom, An was just telling Mây about missing you. Give An a quick call.');
+  assert.equal(M.nudgeText('low', 'en', an, hung, 'Mây').body, 'An has been a little tired lately. Dad, check in on An.');
+  assert.equal(M.nudgeText('miss', 'ko', an, lan, 'Mây').body, '엄마, An님께서 Mây에게 엄마 많이 보고 싶다고 하셨어요. An님께 잠깐 전화해 보세요.');
+  assert.equal(M.nudgeText('low', 'ko', an, hung, 'Mây').body, '요즘 An님께서 조금 지치셨대요. 아빠, An님께 안부 전화 한번 해 주세요.');
+  // Bố mẹ nhắc con: tên con tiếng Hàn kèm 님 như trước.
+  assert.equal(M.nudgeText('miss', 'ko', lan, an, 'Mây').body, 'An님, 엄마께서 Mây에게 An님 많이 보고 싶다고 하셨어요. 엄마께 잠깐 전화해 보세요.');
+  assert.equal(M.storyNoticeText('vi', an, lan).body, 'An vừa kể cho mẹ nghe một chuyện, nghe nhé.');
+  assert.equal(M.storyNoticeText('ko', an, lan).body, 'An님께서 엄마께 이야기를 하나 들려주셨어요. 한번 들어 보세요.');
+  for (const k of ['miss', 'want_contact', 'low', 'good_news', 'upcoming'] as const) for (const l of ['vi', 'en', 'ko'] as const) {
+    for (const to of [lan, hung]) assert.doesNotMatch(M.nudgeText(k, l, an, to, 'Mây').body, /Lan|Hùng|[{}—–]|nudge\.|엄마님|아빠님/, `${k} ${l} ${to.id}`);
+  }
+  assert.equal(M.nudgeText('miss', 'vi', hung, lan, 'Mây').body, 'Lan ơi, Hùng vừa kể với Mây là nhớ Lan lắm. Gọi cho Hùng một chút nhé.');
+  assert.equal(M.nudgeText('miss', 'vi', binh, an, 'Mây').body, 'An ơi, Bình vừa kể với Mây là nhớ An lắm. Gọi cho Bình một chút nhé.');
+  assert.equal(M.nudgeText('miss', 'ko', hung, lan, 'Mây').body, 'Lan님, Hùng님께서 Mây에게 Lan님 많이 보고 싶다고 하셨어요. Hùng님께 잠깐 전화해 보세요.');
 });
 
 // DB giả cho phần gửi: đúng từng câu trong MAY_SQL, điều kiện viết lại bằng JS (kể cả điều kiện "chưa gửi, chưa bỏ" của câu giành tín hiệu).

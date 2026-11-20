@@ -427,7 +427,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     await ttsReady();
     machine.current = false;
     if (!live.current) return;
-    // Câu đáp mẫu chọn trước. Câu cố định chỉ lấy từ kho (không tốn hạn mức).
+    // Câu đáp mẫu chọn trước. Câu cố định lấy từ kho (kho chưa có thì máy chủ đọc một lần rồi giữ mãi).
     const fallback = { short: pickOne(lines.short), long: pickOne(lines.long) };
     if (!machine.current) [fallback.short, fallback.long, lines.ack, lines.slow, lines.busy].forEach((x) => warmVoice(x, 'fixed'));
 
@@ -511,7 +511,11 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
         // Lệnh chia sẻ vào hàng chờ trước lệnh kết thúc (cùng nhóm, lệnh kết thúc đi sau cùng): máy chủ bật chia sẻ trước khi dựng tập, rút sổ nhớ.
         void outbox({ group: s.id, url: `/api/call/${s.id}/share` });
         await say(lines.shareYes, undefined, 'fixed');
-      } else await say(lines.shareNo, undefined, 'fixed');
+      } else {
+        // Giữ riêng: gỡ lời đồng ý của lần thử trước nếu có (tải lại giữa cuộc gọi), cũng trong hàng chờ trước lệnh kết thúc.
+        void outbox({ group: s.id, url: `/api/call/${s.id}/keep` });
+        await say(lines.shareNo, undefined, 'fixed');
+      }
     }
 
     // Lời nhắn khó nói: chuyển lời người khác nhắn trước, rồi mới hỏi. Không có câu lời nhắn thì vẫn chuyển lời nhắn trước khi chào.

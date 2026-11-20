@@ -5,7 +5,7 @@ import express from 'express';
 import type multer from 'multer';
 import { createHash, randomUUID } from 'node:crypto';
 import type pg from 'pg';
-import { CALL_ROLES, DEFAULT_MASCOT_NAME, EVENT_HINTS, MAX_STORY_FOLLOW, STORY_THEMES, THEME_TOPIC, TRIAL_AFTER_MIN, TRIAL_FOLLOW, callLines, isTheme, relayNone, themesFor, type CallQuestion, type CallRelay, type CallScript, type StoryTheme, type TurnAI } from '../src/shared.ts';
+import { CALL_ROLES, DEFAULT_MASCOT_NAME, EVENT_HINTS, MAX_STORY_FOLLOW, NO_EPISODE_TOPICS, STORY_THEMES, THEME_TOPIC, TRIAL_AFTER_MIN, TRIAL_FOLLOW, callLines, isTheme, relayNone, themesFor, type CallQuestion, type CallRelay, type CallScript, type StoryTheme, type TurnAI } from '../src/shared.ts';
 import { errorBody, langOf, LANGS, reqLang, tReq, tServer, type Lang } from './i18n.ts';
 import { askJSON, askQuick, useGemini } from './ai.ts';
 import { pushRelays } from './push.ts';
@@ -71,13 +71,14 @@ export async function migrateCall(p: pg.Pool) {
   setTimeout(() => void warmFixedVoices(), 15_000);
 }
 
-/** Các câu cố định cần có giọng sẵn: mỗi (vai, ngôn ngữ) 15 câu. Câu "ack" không nạp (chỉ dùng nếu tình cờ đã có trong kho); câu "relayIntro" chỉ dùng khi có lời nhắn nên đọc lúc cần rồi nằm trong kho. */
+/** Các câu cố định cần có giọng sẵn: mỗi (vai, ngôn ngữ) 14 câu. Câu "ack" không nạp (chỉ dùng nếu tình cờ đã có trong kho); câu "relayIntro" chỉ dùng khi có lời nhắn nên đọc lúc cần rồi nằm trong kho.
+ *  Câu "skip" (đổi chuyện) không còn nói ở đâu nên không nạp. Nạp sẵn hụt thì /call/tts đọc câu cố định lúc xin (ttsFor). */
 export function fixedLines(langs: readonly Lang[] = LANGS) {
   const out = new Set<string>();
   for (const lang of langs) {
     for (const role of CALL_ROLES) {
       const L = callLines(role, (k, v) => tServer(lang, k, v));
-      for (const text of [L.slow, L.busy, L.skip, L.photo, ...L.short, ...L.long, L.relay, L.relayOk, L.share, L.shareYes, L.shareNo, L.bye]) out.add(text);
+      for (const text of [L.slow, L.busy, L.photo, ...L.short, ...L.long, L.relay, L.relayOk, L.share, L.shareYes, L.shareNo, L.bye]) out.add(text);
     }
   }
   return [...out];
@@ -434,7 +435,8 @@ export async function aiScript(c: Ctx, week: string, timeoutMs?: number, opts: {
   const allow: Allow = { prevCall: c.doneCalls.length > 0, ownStory: c.stories.length > 0 || !!x?.memory.some((m) => m.toldByYou), photos: c.photoCount > 0 };
   const r = await askJSON<ScriptRaw>(scriptSystem(c.lang, c.mascot, trial), JSON.stringify(trial ? { ...facts, trial: true } : facts, null, 1), SCRIPT_SCHEMA, undefined, timeoutMs);
   if (!r) return null;
-  const tpl = templateScript(c, week);
+  // Câu mẫu thay câu AI hỏng: cuộc gọi thử lấy từ bộ câu thử (chuyện dễ), không lấy bộ câu tuần (có thể là ngày cưới).
+  const tpl = trial ? firstScript(c) : templateScript(c, week);
   // Câu AI viết: làm sạch rồi qua lớp chống bịa; không ổn thì null (dùng câu mẫu).
   const ok = (raw: unknown) => {
     const text = String(raw || '').replace(/\s*[—–]\s*/g, ', ').replace(/["“”]/g, '').trim();
@@ -886,29 +888,42 @@ export function regexDates(answers: Array<{ transcript: string | null; event: st
   return out;
 }
 
+type Db = { query: (sql: string, args?: any[]) => Promise<{ rows: any[]; rowCount?: number | null }> };
+
+/** Câu SQL của bước rút ngày vào lịch (saveDates), xuất ra để DB giả trong test khớp đúng từng câu. */
+export const DATES_SQL = {
+  call: 'select * from calls where id = $1',
+  answers: 'select idx, turn, question, transcript from call_answers where call_id = $1 and topic <> all($2::text[]) order by idx, turn',
+  events: 'select kind, title, day, month, year from events where family_id = $1',
+  member: 'select name, role, lang from members where id = $1',
+  langs: 'select lang from members where family_id = $1',
+  insert: `insert into events (id, family_id, member_id, kind, title, day, month, year, lunar, note, created_by)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,false,$9,$10)`,
+};
+
 /** Thứ tiếng của nhà: thứ tiếng nhiều người dùng nhất trong nhà (chưa chọn là tiếng Việt); hoà thì theo người kể. */
-async function homeLang(fid: string, speaker: Lang): Promise<Lang> {
-  const { rows } = await pool.query('select lang from members where family_id = $1', [fid]);
+async function homeLang(fid: string, speaker: Lang, db: Db): Promise<Lang> {
+  const { rows } = await db.query(DATES_SQL.langs, [fid]);
   const n: Record<Lang, number> = { vi: 0, en: 0, ko: 0 };
   for (const r of rows) n[langOf(r.lang)]++;
   const top = Math.max(...Object.values(n));
   return n[speaker] === top ? speaker : LANGS.find((l) => n[l] === top) ?? speaker;
 }
 
-async function saveDates(callId: string) {
-  const { rows: [call] } = await pool.query('select * from calls where id = $1', [callId]);
+export async function saveDates(callId: string, db: Db = pool) {
+  const { rows: [call] } = await db.query(DATES_SQL.call, [callId]);
   if (!call) return;
   const script: CallScript = JSON.parse(call.script);
-  // Đọc cả các lượt hỏi thêm (ngày thường nằm ở câu trả lời cho "hôm đó là ngày nào"). Lời nhắn khó nói không bao giờ vào lịch chung.
-  const { rows: answers } = await pool.query(
-    `select idx, turn, question, transcript from call_answers where call_id = $1 and topic <> 'loi-nhan' order by idx, turn`, [callId]);
+  // Đọc cả các lượt hỏi thêm (ngày thường nằm ở câu trả lời cho "hôm đó là ngày nào"). Lời nhắn khó nói và câu hỏi thăm
+  // (NO_EPISODE_TOPICS) không bao giờ vào lịch chung.
+  const { rows: answers } = await db.query(DATES_SQL.answers, [callId, [...NO_EPISODE_TOPICS]]);
   const said = answers.filter((a) => (a.transcript ?? '').trim());
   if (!said.length) return;
-  const { rows: existing } = await pool.query('select kind, title, day, month, year from events where family_id = $1', [call.family_id]);
-  const { rows: [who] } = await pool.query('select name, role, lang from members where id = $1', [call.member_id]);
+  const { rows: existing } = await db.query(DATES_SQL.events, [call.family_id]);
+  const { rows: [who] } = await db.query(DATES_SQL.member, [call.member_id]);
   // Người kể nói thứ tiếng của bộ câu hỏi; tên ngày và ghi chú theo thứ tiếng của nhà (cả nhà cùng xem lịch).
   const speak = langOf(script.lang ?? who?.lang);
-  const home = await homeLang(call.family_id, speak);
+  const home = await homeLang(call.family_id, speak, db);
 
   let found: Found[] | null = null;
   const ai = await askJSON<{ events: Found[] }>(datesSystem(speak, home), JSON.stringify({
@@ -918,21 +933,32 @@ async function saveDates(callId: string) {
   if (ai?.events) found = ai.events;
   else found = regexDates(said.map((a) => ({ transcript: a.transcript, event: script.questions[a.idx]?.event ?? 'none' })), speak, home);
 
+  // Chuyện chưa đồng ý chia sẻ (calls.shared đã chốt lúc này: /finish đi sau /share, /keep trong cùng hàng chờ): lịch chung chỉ nhận
+  // ngày, tên theo loại và ghi chú soạn sẵn, không có chữ AI viết từ chuyện; ngày đáng nhớ và ngày khác thì bỏ hẳn.
+  const priv = !call.shared;
   for (const e of found) {
+    const kind = ['birthday', 'wedding', 'anniversary', 'memory', 'other'].includes(e.kind) ? e.kind : 'other';
+    if (priv && (kind === 'memory' || kind === 'other')) continue;
     const day = Math.round(e.day), month = Math.round(e.month);
     const year = e.year && e.year >= 1900 && e.year <= new Date().getFullYear() ? Math.round(e.year) : null;
     if (!(day >= 1 && day <= 31 && month >= 1 && month <= 12)) continue;
     if (existing.some((x) => x.day === day && x.month === month && (x.kind === e.kind || x.title === e.title))) continue;
-    const title = String(e.title || KIND_TITLE(e.kind, home) || tServer(home, 'callEvent.memory')).replace(/\s*[—–]\s*/g, ', ').slice(0, 80);
-    await pool.query(
-      `insert into events (id, family_id, member_id, kind, title, day, month, year, lunar, note, created_by)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,false,$9,$10)`,
-      [randomUUID(), call.family_id, call.member_id, ['birthday', 'wedding', 'anniversary', 'memory', 'other'].includes(e.kind) ? e.kind : 'other',
-        title, day, month, year, e.note ? String(e.note).slice(0, 500) : tServer(home, 'callEvent.note', { name: who?.name ?? '' }).trim(), call.member_id],
+    const title = priv ? KIND_TITLE(kind, home) ?? tServer(home, 'callEvent.memory')
+      : String(e.title || KIND_TITLE(e.kind, home) || tServer(home, 'callEvent.memory')).replace(/\s*[—–]\s*/g, ', ').slice(0, 80);
+    await db.query(DATES_SQL.insert,
+      [randomUUID(), call.family_id, call.member_id, kind,
+        title, day, month, year, !priv && e.note ? String(e.note).slice(0, 500) : tServer(home, 'callEvent.note', { name: who?.name ?? '' }).trim(), call.member_id],
     );
     existing.push({ kind: e.kind, title, day, month, year });
     console.log(`[call] thêm vào lịch: ${title} ${day}/${month}${year ? '/' + year : ''}`);
   }
+}
+
+/** Người kể chọn giữ riêng (hay hết giờ) khi cuộc gọi chưa chốt: gỡ lời đồng ý của lần thử trước (tải lại giữa cuộc gọi rồi gọi tiếp
+ *  cùng cuộc gọi). Cuộc gọi đã chốt thì không đổi gì: từ đó chỉ nút chia sẻ mới chia sẻ được. */
+export const KEEP_SQL = `update calls set shared = false where id = $1 and member_id = $2 and status = 'ready'`;
+export async function keepCall(callId: string, memberId: string, db: Db = pool): Promise<boolean> {
+  return ((await db.query(KEEP_SQL, [callId, memberId])).rowCount ?? 0) > 0;
 }
 
 async function afterCall(callId: string) {
@@ -1021,6 +1047,33 @@ export function imageKind(b: Uint8Array): 'jpg' | 'png' | 'webp' | null {
 async function sniff(file: string) {
   const fh = await open(file, 'r');
   try { const { buffer, bytesRead } = await fh.read(Buffer.alloc(16), 0, 16, 0); return imageKind(buffer.subarray(0, bytesRead)); } finally { await fh.close(); }
+}
+
+// Bộ câu cố định (fixedLines, mọi thứ tiếng), gọn khoảng trắng như chữ máy khách gửi; tính một lần khi cần.
+let fixedSet: Set<string> | null = null;
+const isFixedLine = (text: string) => (fixedSet ??= new Set(fixedLines().map((s) => s.replace(/\s+/g, ' ').trim()))).has(text);
+
+/** Giọng cho một câu (POST /call/tts). provider: nhà cung cấp đã chốt lúc nhấc máy, dùng đúng nhà đó và không tự đổi giữa chừng.
+ *  kind 'fixed': lấy từ kho; câu cố định (fixedLines) chưa có thì đọc ngay một lần như câu bắt buộc rồi nằm trong kho mãi,
+ *  chữ khác gửi kèm 'fixed' (ack) thì chỉ lấy từ kho. kind 'reply': câu đáp theo nội dung, chỉ đọc khi còn dư ngân sách. */
+export async function ttsFor(body: { text?: unknown; kind?: unknown; provider?: unknown }, who: string): Promise<{ url: string | null; reason?: string; off?: boolean }> {
+  const text = String(body.text || '').replace(/\s+/g, ' ').trim();
+  if (!text || text.length > TTS_MAX) return { url: null, reason: 'fail' };
+  const kind = body.kind === 'fixed' || body.kind === 'reply' ? body.kind : undefined;
+  const asked = body.provider;
+  const picked = pickProvider();
+  const provider: Provider = asked === 'openai' || asked === 'gemini' ? asked : picked === 'device' ? defaultProvider() : picked;
+  const hit = cachedSpeech(text, provider);
+  if (hit) return { url: hit };
+  // Nạp sẵn lúc khởi động hụt (ngân sách ngày đã dưới 30%, một lần đọc lỗi): câu cố định đọc ngay ở đây, không thì chỉ còn chữ và chuông.
+  if (kind === 'fixed' && !isFixedLine(text)) return { url: null, reason: 'skip' };
+  if (!providerOn(provider)) return { url: null, off: true, reason: 'nokey' };
+  const gate = gateOf(provider);
+  const why = gate.blocked(kind === 'reply');
+  if (why) return { url: null, reason: kind === 'reply' && why === 'budget' && !gate.blocked() ? 'skip' : why };
+  const p = speech(text, who, { optional: kind === 'reply', provider });
+  const url = p ? await p : null;
+  return url ? { url } : { url: null, reason: gate.blocked() ?? 'fail' };
 }
 
 /** Lời nhắn người khác gửi cho người này, chưa chuyển (Mây nói ở cuối cuộc gọi). Chỉ lời nhắn của cuộc gọi đã xong. */
@@ -1151,27 +1204,8 @@ export function callRouter(upload: multer.Multer) {
     res.json({ ok: s.ok, provider: s.provider, reason: s.reason, ...(req.member ? { used: s.used, limit: s.limit } : {}) });
   }));
 
-  // Giọng đọc của Mây: trả về đường dẫn file âm thanh. url null thì kèm reason (budget, cooldown, nokey, skip, fail) để máy hiện chữ.
-  // provider: nhà cung cấp đã chốt lúc nhấc máy, máy chủ dùng đúng nhà đó và không tự đổi giữa chừng.
-  // kind 'fixed': chỉ lấy từ kho, không bao giờ gọi nhà cung cấp. kind 'reply': câu đáp theo nội dung, chỉ đọc khi còn dư ngân sách.
-  r.post('/call/tts', limitTts, limitTtsIp, h(async (req, res) => {
-    const text = String(req.body.text || '').replace(/\s+/g, ' ').trim();
-    if (!text || text.length > TTS_MAX) return res.json({ url: null, reason: 'fail' });
-    const kind = req.body.kind === 'fixed' || req.body.kind === 'reply' ? req.body.kind : undefined;
-    const asked = req.body.provider;
-    const picked = pickProvider();
-    const provider: Provider = asked === 'openai' || asked === 'gemini' ? asked : picked === 'device' ? defaultProvider() : picked;
-    const hit = cachedSpeech(text, provider);
-    if (hit) return res.json({ url: hit });
-    if (kind === 'fixed') return res.json({ url: null, reason: 'skip' });
-    if (!providerOn(provider)) return res.json({ url: null, off: true, reason: 'nokey' });
-    const gate = gateOf(provider);
-    const why = gate.blocked(kind === 'reply');
-    if (why) return res.json({ url: null, reason: kind === 'reply' && why === 'budget' && !gate.blocked() ? 'skip' : why });
-    const p = speech(text, req.member.id, { optional: kind === 'reply', provider });
-    const url = p ? await p : null;
-    res.json(url ? { url } : { url: null, reason: gate.blocked() ?? 'fail' });
-  }));
+  // Giọng đọc của Mây (ttsFor): trả về đường dẫn file âm thanh. url null thì kèm reason (budget, cooldown, nokey, skip, fail) để máy hiện chữ.
+  r.post('/call/tts', limitTts, limitTtsIp, h(async (req, res) => res.json(await ttsFor(req.body, req.member.id))));
 
   // Ảnh cho một câu chuyện (idx): mỗi ảnh một hàng vault có story = idx. Máy khách gửi từng ảnh một (hàng chờ thử lại riêng từng ảnh),
   // kèm key để gửi lại không thành hai hàng. Chỉ nhận JPEG, PNG, WebP thật (đọc byte đầu tệp, không tin đuôi hay kiểu máy khách báo).
@@ -1227,6 +1261,12 @@ export function callRouter(upload: multer.Multer) {
   // Qua shareCall: lời đồng ý tới sau khi tập đã dựng thì tập, sự thật vẫn sang cả nhà và người được nhắc vẫn được báo.
   r.post('/call/:id/share', h(async (req, res) => {
     if (!(await shareCall(String(req.params.id), req.member.id))) return res.status(404).json(errorBody('call_not_found'));
+    res.json({ ok: true });
+  }));
+
+  // Người kể giữ riêng (nói không, bấm Giữ riêng hay hết giờ): cuộc gọi chưa chốt thì gỡ lời đồng ý trước đó (keepCall). Gửi lại được, luôn ok.
+  r.post('/call/:id/keep', h(async (req, res) => {
+    await keepCall(String(req.params.id), req.member.id);
     res.json({ ok: true });
   }));
 

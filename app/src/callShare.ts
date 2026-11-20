@@ -45,7 +45,7 @@ const SHARE_NO: Record<Lang, RegExp> = {
   ko: /(아니|싫어|안 ?돼|나중에)/,
 };
 const SHARE_YES: Record<Lang, RegExp> = {
-  vi: /(^|\s)(được|ừ|ok|okay|vâng|đồng ý|có chứ)(\s|$)/,
+  vi: /(^|\s)(được|ừ|ừm|ờ|dạ|có|ok|okay|vâng|đồng ý|có chứ)(\s|$)/,
   en: /(^|\s)(yes|yeah|sure|ok|okay|go ahead)(\s|$)/,
   ko: /(^|\s)네(\s|$)|좋아요|그래요|돼요/,
 };

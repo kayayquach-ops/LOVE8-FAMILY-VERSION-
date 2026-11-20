@@ -261,24 +261,25 @@ export function pickSends(pending: Pending[], history: Map<string, Date[]>, now:
   return { send: [...best.values(), ...stories], drop };
 }
 
-/** Người kể được gọi thế nào trong lời của Mây: bố mẹ nói với con thì theo vai (mẹ, bố), còn lại theo tên (tiếng Hàn kèm 님 qua khoá nudge.by_name). */
-function callName(lang: Lang, from: Kin, to: Kin): string {
-  const parent = (from.role === 'bo' || from.role === 'me') && to.role === 'con';
-  return parent ? tServer(lang, `nudge.call.${from.role}`) : tServer(lang, 'nudge.by_name', { name: from.name });
+/** Một người (who) được gọi thế nào trong lời Mây nói về hay nói với người kia (other): bố mẹ đi với con thì theo vai (mẹ, bố),
+ *  còn lại theo tên (tiếng Hàn kèm 님 qua khoá nudge.by_name). Dùng cho cả người kể lẫn người nhận: con không bao giờ gọi tên bố mẹ. */
+function callName(lang: Lang, who: Kin, other: Kin): string {
+  const parent = (who.role === 'bo' || who.role === 'me') && other.role === 'con';
+  return parent ? tServer(lang, `nudge.call.${who.role}`) : tServer(lang, 'nudge.by_name', { name: who.name });
 }
 const capFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Chữ lời nhắc: tiêu đề là tên linh vật, thân là câu mẫu nudge.<loại> điền tên (người kể gọi như callName).
+/** Chữ lời nhắc: tiêu đề là tên linh vật, thân là câu mẫu nudge.<loại> điền người kể và người nhận (gọi như callName).
  *  Không bao giờ có câu gốc của tín hiệu. Viết hoa chữ đầu. */
 export function nudgeText(kind: SignalKind, lang: Lang, from: Kin, to: Kin, mascot: string): { title: string; body: string } {
-  const body = tServer(lang, `nudge.${kind}`, { from: callName(lang, from, to), to: to.name, mascot });
+  const body = tServer(lang, `nudge.${kind}`, { from: callName(lang, from, to), to: callName(lang, to, from), mascot });
   return { title: tServer(lang, 'nudge.title', { mascot }), body: capFirst(body) };
 }
 
-/** Chữ tin chuyện mới: câu mẫu nudge.story.* điền người kể (gọi như callName) và tên người nhận. Không bao giờ có lời kể. Viết hoa chữ đầu. */
+/** Chữ tin chuyện mới: câu mẫu nudge.story.* điền người kể và người nhận (gọi như callName). Không bao giờ có lời kể. Viết hoa chữ đầu. */
 export function storyNoticeText(lang: Lang, from: Kin, to: Kin): { title: string; body: string } {
   const who = callName(lang, from, to);
-  return { title: capFirst(tServer(lang, 'nudge.story.title', { from: who })), body: capFirst(tServer(lang, 'nudge.story.body', { from: who, to: to.name })) };
+  return { title: capFirst(tServer(lang, 'nudge.story.title', { from: who })), body: capFirst(tServer(lang, 'nudge.story.body', { from: who, to: callName(lang, to, from) })) };
 }
 
 /** Lời nhắc nào có tin nhắn riêng giữa hai người (chiều nào cũng được) trong CONTACT_H giờ sau lúc gửi: lúc của tin sớm nhất. */

@@ -211,7 +211,7 @@ export async function extractMemory(p: ExtractInput, ask: typeof askJSON = askJS
 export const MEM_SQL = {
   call: 'select id, family_id, member_id, status, shared, script, done_at from calls where id = $1',
   members: 'select id, name, role, lang, city, loc_share, loc_lat, loc_lon, loc_at, may_nudge from members where family_id = $1 order by created_at',
-  answers: `select id, question, transcript from call_answers where call_id = $1 and topic <> 'loi-nhan' and coalesce(transcript, '') <> '' order by idx, turn`,
+  answers: `select id, question, transcript, topic from call_answers where call_id = $1 and topic <> 'loi-nhan' and coalesce(transcript, '') <> '' order by idx, turn`,
   // Sự thật người kể đã kể, hoặc người khác kể về người kể mà cả nhà được biết; chưa bị thay (hoặc bị chính cuộc gọi này thay ở lần rút trước).
   known: `select id, kind, text_en from memory_facts where family_id = $1 and (source_id = $2 or (about_id = $2 and visibility = 'family'))
      and call_id is distinct from $3 and (replacement_id is null or replacement_id in (select id from memory_facts where call_id = $3))
@@ -221,9 +221,10 @@ export const MEM_SQL = {
   insert: `insert into memory_facts (id, family_id, about_id, source_id, kind, text, text_en, details, call_id, answer_id, visibility)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
   replace: 'update memory_facts set replacement_id = $2 where id = $1',
-  // Người kể chia sẻ chuyện sau: sự thật riêng của cuộc gọi sang cả nhà, trừ sức khoẻ, lo lắng và điều AI đánh dấu nhạy cảm.
+  // Người kể chia sẻ chuyện sau: sự thật riêng của cuộc gọi sang cả nhà, trừ sức khoẻ, lo lắng, điều AI đánh dấu nhạy cảm
+  // và điều rút từ câu hỏi thăm (lời đồng ý chỉ là cho câu chuyện chính).
   share: `update memory_facts set visibility = 'family' where call_id = $1 and visibility = 'self'
-     and kind not in ('health', 'worry') and coalesce(details->>'sensitive', '') <> 'true'`,
+     and kind not in ('health', 'worry') and coalesce(details->>'sensitive', '') <> 'true' and coalesce(details->>'checkin', '') <> 'true'`,
   done: 'update calls set memory_at = now() where id = $1',
   failed: 'update calls set memory_tries = memory_tries + 1 where id = $1',
   // Điều Mây nhớ về chính mình: do mình kể (mọi chế độ) hoặc người khác kể cho cả nhà; điều riêng người khác kể thì không.
@@ -273,8 +274,10 @@ export async function extractCall(callId: string, opts: { signals: boolean }, de
     for (const f of got.facts) {
       if (f === 'same') continue;
       const id = randomUUID();
-      const details = JSON.stringify({ evidence: f.evidence, sensitive: f.sensitive, occasion: f.occasion, lang: input.lang });
-      await db.query(MEM_SQL.insert, [id, call.family_id, f.aboutId, speaker.id, f.kind, f.text, f.textEn, details, callId, f.answerId, visibilityOf(f.kind, f.sensitive, call.shared)]);
+      // Câu gốc nằm ở câu hỏi thăm: luôn riêng, vì lời đồng ý chia sẻ chỉ hỏi cho câu chuyện chính.
+      const checkin = answers.find((a) => a.id === f.answerId)?.topic === 'hoi-tham';
+      const details = JSON.stringify({ evidence: f.evidence, sensitive: f.sensitive, occasion: f.occasion, lang: input.lang, checkin });
+      await db.query(MEM_SQL.insert, [id, call.family_id, f.aboutId, speaker.id, f.kind, f.text, f.textEn, details, callId, f.answerId, checkin ? 'self' : visibilityOf(f.kind, f.sensitive, call.shared)]);
       if (f.replaces) await db.query(MEM_SQL.replace, [f.replaces, id]);
     }
     await db.query(MEM_SQL.done, [callId]);

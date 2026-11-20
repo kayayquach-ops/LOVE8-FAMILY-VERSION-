@@ -30,6 +30,11 @@ test('có lời từ chối rõ thì câu "không sao", "no problem" mất tác 
   for (const s of ["I don't mind", "sure, I don't mind"]) assert.equal(shareAnswer(s, 'en'), 'yes', s);
 });
 
+test('đáp kiểu nói thường "có", "dạ", "ừm", "ờ" là đồng ý; có lời từ chối thì vẫn giữ riêng', () => {
+  for (const s of ['có', 'Dạ', 'dạ.', 'ừm', 'ờ', 'dạ được', 'có chứ', 'Dạ có', 'ừm được']) assert.equal(shareAnswer(s, 'vi'), 'yes', s);
+  for (const s of ['dạ không', 'không ạ', 'có… thôi đừng', 'dạ thôi', 'ờ để sau', 'dạ con giữ riêng', 'có, mà đừng chia sẻ nhé']) assert.equal(shareAnswer(s, 'vi'), 'no', s);
+});
+
 test('chặng: hỏi, nghe, đồng ý hay giữ riêng; chưa rõ thì chờ nút; hết giờ chờ nút là giữ riêng; cúp máy là giữ riêng', () => {
   const run = (es: ShareEvent[], from = SHARE_START) => es.reduce((s, e) => shareNext(s, e, 'vi'), from);
   assert.deepEqual(run([{ type: 'asked' }]), { stage: 'listen', end: null });

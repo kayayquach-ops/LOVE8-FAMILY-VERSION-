@@ -384,3 +384,113 @@ test('cuộc gọi thử do AI soạn: chuyện dễ, 2 câu bồi, không hỏi
   handler = async () => new Response('{}', { status: 500 });
   assert.equal(await call.aiScript(first, '2026-11-16', undefined, { trial: true }), null); // nơi gọi dùng firstScript
 });
+
+// ---------- Rút ngày vào lịch chung (DB giả theo từng câu trong DATES_SQL) ----------
+// i18n-ok-begin: dữ liệu kiểm thử
+/** Cuộc gọi của Lan (me): hỏi thăm có một ngày khám bệnh (chuyện riêng), chuyện chính có ngày cưới, lời nhắn khó nói. */
+function datesDb(shared: boolean) {
+  const S = call.DATES_SQL;
+  const script = { lang: 'vi', v: 2, questions: [
+    { text: 'Dạo này Mẹ thế nào ạ?', topic: 'hoi-tham', photo: false, event: 'none', part: 'checkin' },
+    { text: 'Mẹ kể con nghe về ngày cưới nhé.', topic: 'ngay-cuoi', photo: true, event: 'wedding', part: 'story', theme: 'ngay-cuoi' },
+    { text: 'Có điều gì Mẹ muốn nhắn không ạ?', topic: 'loi-nhan', photo: false, event: 'none' },
+  ] };
+  const answers = [
+    { idx: 0, turn: 0, topic: 'hoi-tham', question: script.questions[0].text, transcript: 'Mẹ hơi mệt, ngày 5 tháng 6 mẹ đi khám tim' },
+    { idx: 1, turn: 0, topic: 'ngay-cuoi', question: script.questions[1].text, transcript: 'Bố mẹ cưới ngày 12 tháng 3 năm 1995 ở quê, bà ngoại sinh nhật ngày 2 tháng 9' },
+    { idx: 2, turn: 0, topic: 'loi-nhan', question: script.questions[2].text, transcript: 'lời nhắn riêng cho An' },
+  ];
+  const inserted: Array<{ kind: string; title: string; day: number; month: number; year: number | null; note: string }> = [];
+  let excluded: string[] = [];
+  const db = {
+    async query(q: string, v: any[] = []) {
+      switch (q) {
+        case S.call: return { rows: [{ id: 'c1', family_id: 'F', member_id: 'm-me', script: JSON.stringify(script), shared }] };
+        // Chủ đề bị loại là danh sách máy chủ gửi kèm ($2).
+        case S.answers: excluded = Array.isArray(v[1]) ? v[1] : []; return { rows: answers.filter((a) => !excluded.includes(a.topic)).map(({ topic: _t, ...a }) => a) };
+        case S.events: return { rows: [] };
+        case S.member: return { rows: [{ name: 'Lan', role: 'me', lang: 'vi' }] };
+        case S.langs: return { rows: [{ lang: 'vi' }, { lang: 'vi' }] };
+        case S.insert: {
+          const [, , , kind, title, day, month, year, note] = v;
+          inserted.push({ kind, title, day, month, year, note });
+          return { rows: [], rowCount: 1 };
+        }
+      }
+      throw new Error(`DB giả chưa biết câu này: ${q}`);
+    },
+  };
+  return { db, inserted, excluded: () => excluded };
+}
+/** AI rút được bốn ngày, tên và ghi chú AI viết từ chuyện. */
+const aiDates = { events: [
+  { kind: 'wedding', title: 'Ngày cưới của Lan và Hùng ở quê', day: 12, month: 3, year: 1995, note: 'Lan kể hôm cưới ở quê đông vui' },
+  { kind: 'birthday', title: 'Sinh nhật bà ngoại', day: 2, month: 9, year: null, note: 'Bà ngoại sinh nhật ngày 2 tháng 9' },
+  { kind: 'memory', title: 'Ngày Lan đi khám tim', day: 5, month: 6, year: null, note: 'Lan hơi mệt nên đi khám tim' },
+  { kind: 'other', title: 'Một ngày ở quê', day: 1, month: 1, year: null, note: 'Ở quê' },
+] };
+
+test('lịch chung: chuyện chưa chia sẻ chỉ ghi tên và ghi chú soạn sẵn, bỏ ngày đáng nhớ và ngày khác', async () => {
+  const f = datesDb(false);
+  handler = gemini(aiDates);
+  await call.saveDates('c1', f.db);
+  const note = tServer('vi', 'callEvent.note', { name: 'Lan' });
+  assert.deepEqual(f.inserted, [
+    { kind: 'wedding', title: tServer('vi', 'callEvent.wedding'), day: 12, month: 3, year: 1995, note },
+    { kind: 'birthday', title: tServer('vi', 'callEvent.birthday'), day: 2, month: 9, year: null, note },
+  ]);
+  assert.doesNotMatch(JSON.stringify(f.inserted), /quê|khám|tim|bà ngoại/i);
+});
+
+test('lịch chung: chuyện đã chia sẻ giữ tên và ghi chú AI viết, kể cả ngày đáng nhớ', async () => {
+  const f = datesDb(true);
+  handler = gemini(aiDates);
+  await call.saveDates('c1', f.db);
+  assert.deepEqual(f.inserted.map((e) => [e.kind, e.title, e.note]), aiDates.events.map((e) => [e.kind, e.title, e.note]));
+});
+
+test('lịch chung: câu hỏi thăm và lời nhắn khó nói không bao giờ đưa cho AI rút ngày', async () => {
+  const f = datesDb(true);
+  handler = gemini({ events: [] });
+  await call.saveDates('c1', f.db);
+  assert.ok(f.excluded().includes('hoi-tham') && f.excluded().includes('loi-nhan'), String(f.excluded()));
+  assert.deepEqual(lastInput().call.map((a: any) => a.question), ['Mẹ kể con nghe về ngày cưới nhé.']);
+  assert.doesNotMatch(JSON.stringify(lastInput()), /khám tim|lời nhắn riêng/);
+});
+// i18n-ok-end
+
+// i18n-ok-begin: dữ liệu kiểm thử
+test('cuộc gọi thử: câu mở AI hỏng thì dùng chuyện của bộ câu thử, không rơi về bộ câu tuần (ngày cưới)', async () => {
+  const first = { ...ctx('me', both), doneCalls: [] };
+  handler = gemini({ greeting: 'Mẹ ơi, con là Mây đây ạ.', checkin: 'Hôm nay Mẹ thế nào ạ?',
+    story: { text: 'Mẹ kể con nghe về bác Minh nhé.', theme: 'que-nha', photo: false, event: 'none' } });
+  const sc = (await call.aiScript(first, '2026-11-16', undefined, { trial: true }))!;
+  assert.equal(sc.trial, true); assert.equal(sc.follow, 2);
+  assert.notEqual(sc.questions[1].theme, 'ngay-cuoi');
+  assert.deepEqual(sc.questions[1], call.firstScript(first).questions[1]);
+  assert.equal(sc.questions.some((q) => q.topic === 'loi-nhan'), false);
+});
+// i18n-ok-end
+
+test('giữ riêng: gỡ lời đồng ý của lần thử trước khi cuộc gọi chưa chốt; đã chốt hay cuộc gọi người khác thì không đổi gì', async () => {
+  const calls: Record<string, { member_id: string; status: string; shared: boolean }> = {
+    c1: { member_id: 'm-me', status: 'ready', shared: true },   // lần trước đã đồng ý, tải lại rồi gọi tiếp cùng cuộc gọi
+    c2: { member_id: 'm-me', status: 'done', shared: true },
+  };
+  const db = {
+    async query(q: string, v: any[] = []) {
+      if (q !== call.KEEP_SQL) throw new Error(`DB giả chưa biết câu này: ${q}`);
+      const c = calls[v[0]];
+      if (!c || c.member_id !== v[1] || c.status !== 'ready') return { rows: [], rowCount: 0 };
+      c.shared = false;
+      return { rows: [], rowCount: 1 };
+    },
+  };
+  assert.equal(await call.keepCall('c1', 'm-an', db), false);
+  assert.equal(calls.c1.shared, true);
+  assert.equal(await call.keepCall('c1', 'm-me', db), true);
+  assert.equal(calls.c1.shared, false);
+  assert.equal(await call.keepCall('c2', 'm-me', db), false);
+  assert.equal(calls.c2.shared, true);
+  assert.match(call.KEEP_SQL, /status = 'ready'/);
+});

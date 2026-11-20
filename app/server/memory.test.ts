@@ -113,7 +113,7 @@ class FakeDb {
       case S.members: return res(this.members.filter((m) => m.family_id === v[0]));
       case S.answers:
         return res(this.answers.filter((a) => a.call_id === v[0] && a.topic !== 'loi-nhan' && (a.transcript ?? '') !== '')
-          .sort((a, b) => a.idx - b.idx || a.turn - b.turn).map(({ id, question, transcript }) => ({ id, question, transcript })));
+          .sort((a, b) => a.idx - b.idx || a.turn - b.turn).map(({ id, question, transcript, topic }) => ({ id, question, transcript, topic })));
       case S.known: {
         const mine = fromCall(v[2]);
         return res(this.facts.filter((f) => f.family_id === v[0] && (f.source_id === v[1] || (f.about_id === v[1] && f.visibility === 'family'))
@@ -142,7 +142,7 @@ class FakeDb {
         return res([], hit.length);
       }
       case S.share: {
-        const hit = this.facts.filter((f) => f.call_id === v[0] && f.visibility === 'self' && f.kind !== 'health' && f.kind !== 'worry' && f.details?.sensitive !== true);
+        const hit = this.facts.filter((f) => f.call_id === v[0] && f.visibility === 'self' && f.kind !== 'health' && f.kind !== 'worry' && f.details?.sensitive !== true && f.details?.checkin !== true);
         for (const f of hit) f.visibility = 'family';
         return res([], hit.length);
       }
@@ -244,6 +244,24 @@ test('chia sẻ sau: sự thật riêng của cuộc gọi sang cả nhà, trừ
   assert.equal(await M.shareFacts(db, 'c1'), 1);
   assert.deepEqual(db.facts.map((x) => [x.id, x.visibility]), [['food', 'family'], ['health', 'self'], ['worry', 'self'], ['secret', 'self'], ['place', 'family'], ['other', 'self']]);
   assert.equal(await M.shareFacts(db, 'c1'), 0);   // bấm lại không đổi gì
+});
+test('sự thật rút từ câu hỏi thăm luôn là riêng, kể cả cuộc gọi đã chia sẻ; chia sẻ sau cũng không đổi', async () => {
+  const checkinFact = fact({ kind: 'place', text: 'Trời Hà Nội đã mát', text_en: 'The weather in Hà Nội is cool now', evidence: 'trời Hà Nội mát rồi' });
+  const byText = (t: string) => mine().find((f) => f.text === t)!;
+  handler = gemini({ facts: [foodFact, checkinFact], signals: [] });
+  await M.extractCall('c1', { signals: false }, deps);   // c1 đã chia sẻ
+  assert.equal(byText(foodFact.text).visibility, 'family');
+  assert.equal(byText(checkinFact.text).answer_id, 'ans1');
+  assert.equal(byText(checkinFact.text).visibility, 'self');
+  seed();
+  db.calls.c1.shared = false;
+  handler = gemini({ facts: [foodFact, checkinFact], signals: [] });
+  await M.extractCall('c1', { signals: false }, deps);
+  assert.ok(mine().length === 2 && mine().every((f) => f.visibility === 'self'));
+  assert.equal(await M.shareFacts(db, 'c1'), 1);
+  assert.equal(byText(foodFact.text).visibility, 'family');
+  assert.equal(byText(checkinFact.text).visibility, 'self');
+  assert.match(M.MEM_SQL.share, /checkin/);
 });
 test('người kể tắt "Mây nhắc mình liên lạc": vẫn có sự thật, không có tín hiệu', async () => {
   handler = gemini(reply); db.members.find((m) => m.id === 'lan')!.may_nudge = false;
