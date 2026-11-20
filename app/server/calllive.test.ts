@@ -13,6 +13,9 @@ import type { LiveDeps } from './calllive.ts';
 import type { Ctx } from './call.ts';
 
 process.env.MEDIA_DIR = mkdtempSync(path.join(tmpdir(), 'calllive-test-'));
+// Log [call-live] của máy chủ gom vào đây (test đọc được, đầu ra test sạch). console.error giữ nguyên để lỗi thật vẫn hiện.
+const logs: string[] = [];
+console.log = console.warn = (...a: unknown[]) => { logs.push(a.map(String).join(' ')); };
 
 const L = await import('./calllive.ts');
 const { liveConfig } = await import('./liveconfig.ts');
@@ -238,40 +241,57 @@ test('nhấc máy Live: xin token đúng chỗ, tạo hàng calls chưa chia s�
     assert.deepEqual([row.member_id, row.family_id, row.week], ['lan-tok', 'F', '2026-11-16']);
     assert.equal(JSON.parse(row.script).v, 3);
     assert.equal(JSON.parse(row.script).source, 'live');
+    logs.length = 0;
     const e = await bad.post('/api/call/live', 'lan-tok');
     assert.equal(e.status, 502);
     assert.equal(e.body.code, 'live_token');
     assert.equal(db.calls.length, 1);
+    assert.ok(logs.some((l) => l.includes('[call-live] không xin được token: 500 boom')), logs.join('\n'));
+    assert.ok(!logs.some((l) => l.includes(ENV.GEMINI_API_KEY)));   // không bao giờ in khoá
   } finally {
     srv.close(); bad.close();
   }
 });
 
-test('kết thúc Live: ghi giây, tiền, token một lần; không vượt cửa sổ token; cuộc gọi người khác thì không đổi', async () => {
-  const db = fakeDb({ calls: [
-    { id: 'live-1', family_id: 'F', member_id: 'lan-end', live_at: new Date(NOW.getTime() - 120e3), live_sec: null, live_usd: null, live_usage: null },
-    { id: 'live-2', family_id: 'F', member_id: 'lan-end', live_at: new Date(NOW.getTime() - 60e3), live_sec: null, live_usd: null, live_usage: null },
-  ] });
+test('kết thúc Live: giây tính theo đồng hồ máy chủ, ghi tiền, token một lần; cuộc gọi người khác thì không đổi', async () => {
+  const row = (id: string, agoSec: number) => ({ id, family_id: 'F', member_id: 'lan-end', live_at: new Date(NOW.getTime() - agoSec * 1000), live_sec: null, live_usd: null, live_usage: null });
+  const db = fakeDb({ calls: [row('live-1', 120), row('live-2', 60), row('live-3', 3600)] });
   const srv = await serve(deps({ db }));
   const ok = { status: 200, body: { ok: true } };
+  const get = (id: string) => db.calls.find((c) => c.id === id)!;
   try {
+    logs.length = 0;
     assert.deepEqual(await srv.post('/api/call/live-1/live-end', 'lan-end', { sec: 9999, usage: USAGE, lat: [800, 1200, 1000] }), ok);
-    const row = db.calls.find((c) => c.id === 'live-1')!;
-    assert.equal(row.live_sec, 150);                       // 120 giây từ lúc phát token + 30 giây dư
-    assert.ok(row.live_usd > 0);
-    assert.equal(Math.round(row.live_usd * 1000) / 1000, 9.75);
-    assert.equal(JSON.parse(row.live_usage).prompt, 2_000_000);
-    const snap = { ...row };
+    const one = get('live-1');
+    assert.equal(one.live_sec, 120);                       // máy báo 9999 giây: tính 120 giây thật từ lúc phát token
+    assert.ok(one.live_usd > 0);
+    assert.equal(Math.round(one.live_usd * 1000) / 1000, 9.75);
+    assert.equal(JSON.parse(one.live_usage).prompt, 2_000_000);
+    assert.ok(logs.some((l) => /\[call-live\] cuộc gọi live-1: 120 s .*9999.*9\.7500 USD, đáp sau trung vị 1000 ms/.test(l)), logs.join('\n'));
+    const snap = { ...one };
     assert.deepEqual(await srv.post('/api/call/live-1/live-end', 'lan-end', { sec: 10, usage: USAGE }), ok);
-    assert.deepEqual(row, snap);                           // báo lần hai: không đổi
+    assert.deepEqual(one, snap);                           // báo lần hai: không đổi
     // Người khác báo cuộc gọi chưa báo về: không đổi.
     assert.deepEqual(await srv.post('/api/call/live-2/live-end', 'an-end', { sec: 10, usage: USAGE }), ok);
-    assert.equal(db.calls.find((c) => c.id === 'live-2')!.live_sec, null);
-    // Số rác: 0 giây, không tiền; mã cuộc gọi không có vẫn ok.
-    assert.deepEqual(await srv.post('/api/call/live-2/live-end', 'lan-end', { sec: 'x', usage: { prompt: -1 } }), ok);
-    assert.deepEqual(db.calls.find((c) => c.id === 'live-2')!.live_sec, 0);
-    assert.deepEqual([db.calls[1].live_usd, db.calls[1].live_usage], [0, null]);
+    assert.equal(get('live-2').live_sec, null);
+    // Máy cố báo 0 giây (hay số rác): vẫn tính đủ 60 giây đã trôi; token rác thì không tiền.
+    assert.deepEqual(await srv.post('/api/call/live-2/live-end', 'lan-end', { sec: 0, usage: { prompt: -1 } }), ok);
+    assert.deepEqual([get('live-2').live_sec, get('live-2').live_usd, get('live-2').live_usage], [60, 0, null]);
+    // Cuộc gọi treo một giờ rồi mới báo: chỉ tính tới trần một cuộc gọi cộng 30 giây dư (900 + 30), không ăn nửa trần ngày.
+    assert.deepEqual(await srv.post('/api/call/live-3/live-end', 'lan-end', { sec: 3600, usage: USAGE }), ok);
+    assert.equal(get('live-3').live_sec, 930);
     assert.deepEqual(await srv.post('/api/call/khong-co/live-end', 'lan-end', { sec: 5 }), ok);
+  } finally {
+    srv.close();
+  }
+});
+
+test('kết thúc Live: trần một cuộc gọi đổi bằng MAY_CALL_MAX_SEC thì giây tính cũng theo', async () => {
+  const db = fakeDb({ calls: [{ id: 'live-4', family_id: 'F', member_id: 'lan-end2', live_at: new Date(NOW.getTime() - 3600e3), live_sec: null }] });
+  const srv = await serve(deps({ db, env: { ...ENV, MAY_CALL_MAX_SEC: '300' } }));
+  try {
+    await srv.post('/api/call/live-4/live-end', 'lan-end2', { sec: 0 });
+    assert.equal(db.calls[0].live_sec, 330);
   } finally {
     srv.close();
   }

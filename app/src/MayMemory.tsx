@@ -2,21 +2,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from './api';
 import { t } from './i18n';
+import { liveBeta } from './liveBeta';
 import { mascotNameOf, type Me } from './shared';
 import { tap } from './sound';
 import { toast } from './ui';
 
 type Fact = { id: string; text: string; kind: string; by: string; createdAt: string };
 
-/** Máy này đã mở app bằng link có ?thu-may-moi (App.tsx ghi mayLiveBeta): mới thấy công tắc "Thử Mây mới". */
-const liveBeta = () => { try { return localStorage.getItem('mayLiveBeta') === '1'; } catch { return false; } };
-
 export function MaySettings({ me }: { me: Me }) {
   const mascot = mascotNameOf(me.family);
   const [nudges, setNudges] = useState(true);
   const [live, setLive] = useState(false);
-  // Công tắc thử chỉ hiện khi máy chủ đang mở Mây Live và máy này đã mở link thử.
-  const [liveAvail, setLiveAvail] = useState(false);
+  // Công tắc thử: hiện khi máy chủ đang mở Mây Live và máy này đã được mở cho thấy (liveBeta.ts),
+  // hoặc khi mình đang bật sẵn (máy nào cũng tắt được).
+  const [showLive, setShowLive] = useState(false);
   const [open, setOpen] = useState(false);
   const [facts, setFacts] = useState<Fact[] | null>(null);
 
@@ -28,7 +27,7 @@ export function MaySettings({ me }: { me: Me }) {
     api.maySettings().then((s) => {
       saved.current = s.nudges; setNudges(s.nudges);
       savedLive.current = s.live; setLive(s.live);
-      setLiveAvail(s.liveAvail && liveBeta());
+      setShowLive(s.live || (s.liveAvail && liveBeta()));
     }).catch(() => {});
   }, []);
 
@@ -61,7 +60,7 @@ export function MaySettings({ me }: { me: Me }) {
         <span>{t('may.settings.nudge', { mascot })}</span>
         <i className={nudges ? 'on' : ''} aria-hidden><u /></i>
       </button>
-      {liveAvail && (
+      {showLive && (
         <button className="set-switch" role="switch" aria-checked={live} onClick={flipLive}>
           <span>{t('may.settings.live', { mascot })}</span>
           <i className={live ? 'on' : ''} aria-hidden><u /></i>

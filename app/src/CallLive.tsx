@@ -23,6 +23,8 @@ const MIC_GATE_MS = 600;
 const LOUD_RMS = 1000;
 /** Lượt ghi ngắn hơn chừng này giây thì bỏ (mic mở giữa hai mẩu tiếng của Mây). */
 const MIN_REC_SEC = 1;
+/** Mở socket rồi mà chừng này mili giây chưa có setupComplete thì về cuộc gọi cũ. */
+const CONNECT_MS = 15_000;
 
 const toB64 = (buf: ArrayBuffer) => {
   const u = new Uint8Array(buf);
@@ -40,11 +42,13 @@ type Live = {
   quietAt: number; loudAt: number; waiting: boolean; gate: boolean; spoke: boolean; talking: boolean;
   stopRec: (() => Promise<Recording>) | null; recUrl: string;
   cap: string; heard: string; newCap: boolean; newHeard: boolean; raf: number; timer: number;
+  /** Hẹn giờ chờ phiên sẵn sàng (CONNECT_MS). */
+  wait: number;
 };
 const fresh = (): Live => ({
   ctx: null, stream: null, node: null, player: null, ws: null, id: null, maxSec: 0, t0: 0, ended: false, usage: emptyUsage(), lats: [],
   quietAt: 0, loudAt: 0, waiting: false, gate: false, spoke: false, talking: false, stopRec: null, recUrl: '',
-  cap: '', heard: '', newCap: true, newHeard: true, raf: 0, timer: 0,
+  cap: '', heard: '', newCap: true, newHeard: true, raf: 0, timer: 0, wait: 0,
 });
 
 type Phase = 'ring' | 'connecting' | 'talk';
@@ -89,6 +93,7 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
   function teardown() {
     const L = S.current;
     clearInterval(L.timer);
+    clearTimeout(L.wait);
     cancelAnimationFrame(L.raf);
     stopRing();
     L.player?.stop();
@@ -113,7 +118,8 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     const L = S.current;
     if (L.ended) return;
     L.ended = true;
-    const sec = L.t0 ? Math.round((Date.now() - L.t0) / 1000) : 0;
+    // Máy treo (khoá màn hình) thì đồng hồ vẫn chạy: không báo quá trần cuộc gọi. Máy chủ tự tính giây theo đồng hồ của nó, số này chỉ để ghi log.
+    const sec = L.t0 ? Math.min(L.maxSec, Math.round((Date.now() - L.t0) / 1000)) : 0;
     teardown();
     if (L.id) sendEnd(L.id, sec);
     if (why === 'gone') return;
@@ -136,6 +142,8 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
       const ctx = L.ctx;
       if (!ctx) throw new Error('audio');
       L.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      // Cúp máy lúc hộp xin mic còn mở: tắt mic ngay.
+      if (L.ended) return teardown();
       await ctx.audioWorklet.addModule('/mic-worklet.js');
       if (L.ended) return teardown();
       L.node = new AudioWorkletNode(ctx, 'sh-mic');
@@ -163,6 +171,8 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     const L = S.current;
     const ws = new WebSocket(LIVE_URL + encodeURIComponent(tok));
     L.ws = ws;
+    // Quá CONNECT_MS mà phiên chưa sẵn sàng: về cuộc gọi cũ như khi xin token lỗi.
+    L.wait = window.setTimeout(() => { if (!L.t0) end('fallback'); }, CONNECT_MS);
     ws.binaryType = 'arraybuffer';
     const dec = new TextDecoder();
     ws.onopen = () => send({ setup: { model } });
@@ -184,6 +194,7 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
   function connected() {
     const L = S.current;
     L.t0 = Date.now();
+    clearTimeout(L.wait);
     setPhase('talk');
     setMode('listen');
     send({ clientContent: { turns: [{ role: 'user', parts: [{ text: OPEN_CUE }] }], turnComplete: true } });

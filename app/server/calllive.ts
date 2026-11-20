@@ -180,19 +180,22 @@ export function makeLiveRouter(upload: multer.Multer, deps: LiveDeps = DEPS): ex
     res.json({ id, token, model: cfg.model, maxSec });
   }));
 
-  // Kết thúc (máy khách gửi một lần bằng keepalive): giây không vượt cửa sổ token, mỗi cuộc gọi ghi một lần, người khác báo thì không đổi. Luôn ok.
+  // Kết thúc (máy khách gửi một lần bằng keepalive): mỗi cuộc gọi ghi một lần, người khác báo thì không đổi. Luôn ok.
+  // Giây tính trần ngày theo đồng hồ máy chủ, từ lúc phát token tới lúc nhận báo, tối đa trần một cuộc gọi cộng TOKEN_GRACE_SEC (token hết hạn
+  // lúc ấy nên không gọi lâu hơn được): máy treo một giờ rồi mới báo không ăn nửa trần ngày, máy cố báo 0 giây cũng không lọt. sec máy gửi chỉ ghi log.
   r.post('/call/:id/live-end', h(async (req, res) => {
     const id = String(req.params.id);
     const { rows: [row] } = await deps.db.query(LIVE_SQL.endRow, [id, req.member.id]);
     if (!row) return res.json({ ok: true });
     const b = req.body ?? {};
-    const cap = Math.min(3600, Math.round((deps.now().getTime() - new Date(row.live_at).getTime()) / 1000) + TOKEN_GRACE_SEC);
-    const sec = Math.max(0, Math.min(cap, Math.round(Number(b.sec) || 0)));
+    const elapsed = Math.round((deps.now().getTime() - new Date(row.live_at).getTime()) / 1000);
+    const sec = Math.max(0, Math.min(liveConfig(deps.env).callMaxSec + TOKEN_GRACE_SEC, elapsed));
     const tok = cleanUsage(b.usage);
     const usd = tok ? callUsd(tok) : 0;
     await deps.db.query(LIVE_SQL.end, [id, req.member.id, sec, usd, tok ? JSON.stringify(tok) : null]);
+    const said = Math.round(Number(b.sec)) || 0;
     const lat = (Array.isArray(b.lat) ? b.lat : []).map(Number).filter((x: number) => Number.isFinite(x) && x >= 0);
-    console.log(`[call-live] cuộc gọi ${id.slice(0, 8)}: ${sec} s, ${usd.toFixed(4)} USD${lat.length ? `, đáp sau trung vị ${median(lat)} ms` : ''}`);
+    console.log(`[call-live] cuộc gọi ${id.slice(0, 8)}: ${sec} s (máy báo ${said} s), ${usd.toFixed(4)} USD${lat.length ? `, đáp sau trung vị ${median(lat)} ms` : ''}`);
     res.json({ ok: true });
   }));
 
