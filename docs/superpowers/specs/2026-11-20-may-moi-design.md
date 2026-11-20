@@ -148,8 +148,9 @@ Một agent đọc bản này như người sẽ làm, hỏi 13 điểm. Các đ
 11. **Gộp và sửa.** Khi rút sổ nhớ, AI được xem các sự thật đã có của người đó để gộp trùng hoặc đánh dấu sự thật cũ đã sai (`replaced_by`). Trong Cài đặt có mục "Mây nhớ gì về mình": danh sách sự thật về chính mình, xoá được từng dòng.
 13. **Ngôn ngữ.** Lưu `text` theo ngôn ngữ người kể và `text_en` (tiếng Anh) để đưa vào prompt; tên riêng giữ nguyên chữ gốc để `suspect()` so được.
 
-## Câu hỏi còn lại cho người dùng
+## Người dùng trả lời (20/11)
 
-1. Hạn mức giọng: mỗi cuộc gọi mới tốn khoảng 10 câu đọc, mà giọng Gemini chỉ khoảng 70 câu mỗi ngày cho cả app, tức khoảng 7 cuộc gọi mỗi ngày. Giữ Gemini và chấp nhận hết lượt thì hiện chữ, hay chuyển sang Google Cloud Text-to-Speech (giọng Chirp 3 HD, hạn mức rộng, người dùng phải bật API và đưa khoá)?
-2. Cuộc gọi thử sau khi vào nhà bao lâu thì hiện thẻ (người dùng nói 50 phút, Claude đề xuất 10 phút)?
-3. Mây có được dùng chuyện người này kể khi hỏi người khác trong nhà không (cần cho kiểu "hai thế hệ")?
+1. **Giữ giọng Gemini.** Hạn mức khoảng 70 câu mới mỗi ngày giữ nguyên; người làm phải tiết kiệm câu đọc (gộp câu đáp và câu bồi vào một lần đọc, dùng kho giọng cho câu cố định) và hết lượt thì hiện chữ kèm chuông nhẹ như hiện tại. Ghi con số dự kiến số cuộc gọi mỗi ngày.
+2. **Thẻ cuộc gọi thử hiện 10 phút sau khi vào nhà** (người dùng: "10 phút đi"). Để thành hằng số dễ đổi.
+3. **Được dùng chuyện người này kể khi hỏi người khác, nhưng phải hỏi người kể có muốn cho cả nhà biết chuyện đó không.** Cách làm **(Claude chốt)**: cuối chuyện chính, nếu chuyện có chi tiết đáng chia sẻ, Mây hỏi một câu ngắn kiểu "Mây kể chuyện này cho An nghe được không?" (hoặc "cho cả nhà nghe"). Đồng ý thì các sự thật rút từ chuyện đó mang `visibility = 'family'` và được dùng khi hỏi người khác (luôn nói rõ ai kể) và cho kiểu video "hai thế hệ"; không đồng ý, không trả lời hoặc hết giờ thì mang `visibility = 'self'`, chỉ dùng khi hỏi chính người kể. Tập "nhà mình kể" vẫn theo luật hiện có (cả nhà nghe được), nên câu hỏi phải nói rõ là "kể lại cho An khi Mây gọi An". Người kể đổi ý được trong mục "Mây nhớ gì về mình".
+4. **Bộ ảnh và video cho pitch để tiếng Việt** (việc riêng, không thuộc bản này).
