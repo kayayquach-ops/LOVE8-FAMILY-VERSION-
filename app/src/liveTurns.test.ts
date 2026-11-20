@@ -2,10 +2,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  askStep, awayMs, byeDue, CAPTURE_START, captureNext, clockCue, clockDue, CUE, finishJob, holdNext, idleDue, liveStart, onRec, onShareEnd, onTool, onTurn, photoCue,
-  recDue, remindAllow, remindFor, SILENT_MS, silentDue, type AskStep, type Capture, type CaptureAction, type CaptureEvent, type Hold, type Job, type LiveState,
+  askStep, awayMs, byeDue, CAPTURE_START, captureNext, clockCue, clockDue, CUE, finishJob, guarded, holdNext, idleDue, liveStart, onRec, onShareEnd, onShareUndo, onTool, onTurn, photoCue,
+  recDue, remindAllow, remindFor, SILENT_MS, silentDue, waitingAnswer, type AskStep, type Capture, type CaptureAction, type CaptureEvent, type Hold, type Job, type LiveState,
 } from './liveTurns.ts';
-import { SHARE_START, shareNext, type ShareEvent } from './callShare.ts';
+import { SHARE_START, shareNext, type ShareEvent, type ShareState } from './callShare.ts';
 import { LIVE_FIRST_STORY, LIVE_MAX_STORIES } from './shared.ts';
 
 const S = () => liveStart({ id: 'c1', family: 3, themes: ['tuoi-tho', 'mon-an'], relays: ['r1'] });
@@ -575,12 +575,16 @@ test('giữ tiếng Mây lúc xin phép (phán quyết 11): từ lúc đã hỏi
   assert.equal(holdNext(null, { type: 'done' }), null, 'không giữ thì lượt xong không đổi gì');
 });
 
-/** Đường nối bước xin phép đúng thứ tự CallLive.tsx (lời gọi ask_share, tiếng Mây, lượt xong, nút), chỉ bằng hàm thuần: tiếng nào được phát,
- *  việc nào vào hàng chờ, câu nhắn nào gửi model. */
+/** Đường nối bước xin phép đúng thứ tự CallLive.tsx (lời gọi ask_share, tiếng Mây, lượt xong, nút, end_call), chỉ bằng hàm thuần: tiếng nào được
+ *  phát, việc nào vào hàng chờ, câu nhắn nào gửi model. Bộ đọc câu trả lời chặt; chỉ lượt bắt đầu sau lúc đã hỏi (askKey) được đọc; lượt trả lời bị gác. */
 function shareWire() {
-  const w = { s: TOLD(), c: CAPTURE_START, ask: null as AskStep | null, hold: null as Hold, sh: SHARE_START, mayDone: true, played: [] as string[], jobs: [] as Job[], cues: [] as string[] };
-  const decide = (e: ShareEvent) => {
-    const next = shareNext(w.sh, e);
+  const w = {
+    s: TOLD(), c: CAPTURE_START, ask: null as AskStep | null, askKey: Infinity, hold: null as Hold, sh: SHARE_START as ShareState, mayDone: true,
+    undo: false, played: [] as string[], jobs: [] as Job[], cues: [] as string[],
+  };
+  /** quiet: bước dừng vì end_call (Mây đang chào): không nhắn model, thôi giữ tiếng ngay. */
+  const decide = (e: ShareEvent, quiet = false) => {
+    const next = shareNext(w.sh, e, 'vi', { strict: true });
     if (next === w.sh) return;
     w.sh = next;
     if (e.type === 'asked') w.hold = holdNext(w.hold, { type: 'asked' });
@@ -588,24 +592,28 @@ function shareWire() {
     const r = onShareEnd(w.s, next.end);
     w.s = r.state;
     if (r.job) w.jobs.push(r.job);
-    if (r.cue) w.cues.push(r.cue);
-    w.hold = holdNext(w.hold, { type: 'decided', end: next.end, mayDone: w.mayDone });
+    w.undo = next.end === 'yes' && e.type === 'heard';
+    w.hold = quiet ? null : holdNext(w.hold, { type: 'decided', end: next.end, mayDone: w.mayDone });
+    if (r.cue && !quiet) w.cues.push(r.cue);
   };
   const feed = (e: CaptureEvent) => {
     const r = captureNext(w.c, e);
     w.c = r.capture;
     for (const a of r.actions) {
-      if (a.kind === 'startRec') w.s = onRec(w.s, a.key);
+      if (a.kind === 'startRec') {
+        w.s = onRec(w.s, a.key);
+        if (guarded(w.s.rec[a.key])) w.c = captureNext(w.c, { type: 'guard' }).capture;
+      }
       if (a.kind !== 'turn') continue;
       const t = onTurn(w.s, { key: a.key, question: a.question, transcript: a.transcript, seconds: 2 });
       w.s = t.state;
       if (t.job) w.jobs.push(t.job);
-      if (t.consent) decide({ type: 'heard', text: a.transcript });
+      if (t.consent && a.key > w.askKey) decide({ type: 'heard', text: a.transcript });
     }
   };
   return {
     w, feed, decide,
-    askShare: () => { w.s = onTool(w.s, { name: 'ask_share' }).state; w.ask = 'tool'; w.mayDone = false; },
+    askShare: () => { w.s = onTool(w.s, { name: 'ask_share' }).state; w.ask = 'tool'; w.askKey = Infinity; w.mayDone = false; },
     user: (text: string) => { feed({ type: 'loud' }); feed({ type: 'in', text }); },
     may: (text: string) => {
       w.mayDone = false;
@@ -617,9 +625,23 @@ function shareWire() {
       w.mayDone = true;
       if (w.hold === 'share' && w.c.recording) feed({ type: 'audio' });
       w.hold = holdNext(w.hold, { type: 'done' });
-      if (w.ask) { w.ask = askStep(w.ask, 'done'); if (w.ask === 'asked') { w.ask = null; decide({ type: 'asked' }); } }
       feed({ type: 'done' });
+      if (w.ask) { w.ask = askStep(w.ask, 'done'); if (w.ask === 'asked') { w.ask = null; w.askKey = w.c.key; decide({ type: 'asked' }); } }
       feed({ type: 'gate' });
+    },
+    /** Mây gọi end_call (có thể giữa lượt tự đáp, trước turnComplete): đọc lượt trả lời đang chờ khép rồi mới dừng bước xin phép. */
+    endCall: () => {
+      const text = waitingAnswer(w.c, w.s, w.askKey);
+      if (text) decide({ type: 'heard', text }, true);
+      decide({ type: 'hangup' }, true);
+    },
+    /** Bấm Giữ riêng sau lời đồng ý bằng giọng. */
+    undo: () => {
+      if (!w.undo) return;
+      w.undo = false;
+      const r = onShareUndo(w.s);
+      w.jobs.push(r.job);
+      w.cues.push(r.cue);
     },
   };
 }
@@ -668,6 +690,101 @@ test('xin phép qua đường nối: câu hỏi được phát, Mây tự đáp 
   assert.deepEqual(z.w.cues, [CUE.shareNo]);
   assert.deepEqual(z.w.jobs.map((j) => j.url), ['/api/call/c1/keep'], 'câu trả lời không thành lượt kể; giữ riêng gửi /keep');
   assert.equal(z.w.sh.end, 'no', 'lời tới sau khi đã quyết không lật được');
+});
+
+test('xin phép: lời nói trong khe trước câu hỏi không bao giờ là câu trả lời ("mà được cái là" không thành đồng ý)', () => {
+  const g = shareWire();
+  g.askShare();
+  g.done();                                        // lượt chỉ có lời gọi ask_share xong trước câu hỏi: mic mở, một lượt bắt đầu trong khe ấy
+  g.user('mà được cái là');                        // người kể nói tiếp chuyện của mình
+  g.may('Cả nhà nghe chuyện hôm nay được không ạ?');
+  g.done();                                        // câu hỏi xong: lượt trong khe khép trước, rồi mới tính là đã hỏi
+  assert.equal(g.w.sh.stage, 'listen', 'vẫn đang nghe câu trả lời thật');
+  assert.ok(!g.w.jobs.some((j) => j.url.endsWith('/share')), 'không có /share');
+  assert.deepEqual(g.w.cues, []);
+  g.user('Dạ được');
+  g.may('Dạ');
+  g.done();
+  assert.equal(g.w.sh.end, 'yes', 'câu trả lời sau câu hỏi vẫn được đọc');
+});
+
+test('xin phép: đuôi lượt kể chép muộn không lọt vào lượt trả lời (lượt trả lời bị gác tới tiếng to đầu tiên)', () => {
+  const l = shareWire();
+  l.feed({ type: 'gate' });
+  l.user('Hồi đó mẹ nấu');
+  l.askShare();
+  l.may('Cả nhà nghe được không ạ?');
+  l.done();                                        // lượt kể cuối gửi, đã hỏi, lượt trả lời bắt đầu
+  l.feed({ type: 'in', text: ' được' });           // đuôi lượt kể cuối, chép muộn, tới trước tiếng to đầu tiên của lượt trả lời
+  l.done();                                        // Mây im: lượt trả lời khép mà không có tiếng
+  assert.ok(!l.w.jobs.some((j) => j.url.endsWith('/share')), 'không có /share');
+  assert.equal(l.w.sh.stage, 'listen');
+  assert.equal(guarded(undefined), false);
+  assert.equal(guarded({ idx: 0, theme: null, opener: '', share: 'asking', blank: false }), true, 'lượt bắt đầu lúc đang xin phép: gác');
+  assert.equal(guarded({ idx: 0, theme: null, opener: '', share: 'none', blank: true }), true, 'lượt ngay sau lời nhắn khó nói: gác');
+  assert.equal(guarded({ idx: 2, theme: 'mon-an', opener: 'x', share: 'none', blank: false }), false);
+});
+
+test('xin phép: chỉ có tiếng đệm thì nghe tiếp một lần, "dạ" rồi "được" ở hai lượt là đồng ý', () => {
+  const r = shareWire();
+  r.askShare();
+  r.may('Cả nhà nghe được không ạ?');
+  r.done();
+  r.user('Dạ');
+  r.may('Dạ vâng');
+  r.done();
+  assert.equal(r.w.sh.stage, 'listen', '"dạ" một mình: chưa rõ, vẫn nghe');
+  assert.ok(!r.w.jobs.some((j) => j.url.endsWith('/share')));
+  r.user('được');
+  r.may('Dạ');
+  r.done();
+  assert.equal(r.w.sh.end, 'yes');
+});
+
+test('xin phép: Mây gọi end_call giữa lượt tự đáp thì lượt trả lời đang chờ được đọc trước khi bước dừng; lời chào vẫn được nghe', () => {
+  const e = shareWire();
+  e.askShare();
+  e.may('Cả nhà nghe được không ạ?');
+  e.done();
+  e.user('Dạ được');
+  e.may('Dạ');                                     // Mây tự đáp (giữ): lượt trả lời chờ khép
+  e.endCall();                                     // end_call trước turnComplete
+  assert.equal(e.w.sh.end, 'yes');
+  assert.deepEqual(e.w.jobs.map((j) => j.url), ['/api/call/c1/share']);
+  assert.deepEqual(e.w.cues, [], 'Mây đang chào: không nhắn câu trả lời');
+  e.may('Chào mẹ, tuần sau kể tiếp nhé');
+  assert.deepEqual(e.w.played, ['Cả nhà nghe được không ạ?', 'Chào mẹ, tuần sau kể tiếp nhé'], 'lời chào được nghe');
+  e.done();
+  assert.deepEqual(e.w.jobs.map((j) => j.url), ['/api/call/c1/share'], 'lượt khép sau đó không đọc lại');
+  // Chỉ lượt bắt đầu sau lúc đã hỏi, lúc đang xin phép, có lời.
+  const st = onRec(onRec(onTool(TOLD(), { name: 'ask_share' }).state, 3), 4);
+  const pend = (key: number, heard: string): Capture => ({ ...CAPTURE_START, key, pending: { key, question: '', heard, loud: true } });
+  assert.equal(waitingAnswer(pend(4, ' Dạ được '), st, 3), 'Dạ được');
+  assert.equal(waitingAnswer(pend(4, 'Dạ được'), st, 4), null, 'bắt đầu trước lúc đã hỏi: không đọc');
+  assert.equal(waitingAnswer(pend(4, '  '), st, 3), null, 'không có lời');
+  assert.equal(waitingAnswer({ ...CAPTURE_START, key: 4, recording: true, heard: 'được' }, st, 3), 'được', 'lượt còn đang ghi');
+  assert.equal(waitingAnswer(pend(4, 'được'), onRec(TOLD(), 4), 3), null, 'lượt không bắt đầu lúc đang xin phép');
+  assert.equal(waitingAnswer(CAPTURE_START, st, 3), null);
+});
+
+test('xin phép: đồng ý bằng giọng thì nút Giữ riêng còn tới lúc cúp; bấm thì gỡ (/keep là việc cuối, đi sau /share)', () => {
+  const x = shareWire();
+  x.askShare();
+  x.may('Cả nhà nghe được không ạ?');
+  x.done();
+  x.user('Dạ được');
+  x.may('Dạ');
+  x.done();
+  assert.equal(x.w.undo, true);
+  x.undo();
+  assert.deepEqual(x.w.jobs.slice(-2), [{ url: '/api/call/c1/share', fields: {} }, { url: '/api/call/c1/keep', fields: {}, last: true }]);
+  assert.deepEqual(x.w.cues, [CUE.shareYes, CUE.shareNo]);
+  x.undo();
+  assert.equal(x.w.jobs.length, 2, 'gỡ một lần');
+  const b = shareWire();
+  b.askShare();
+  b.decide({ type: 'yes' });
+  assert.equal(b.w.undo, false, 'bấm Chia sẻ là rõ ràng: không cần nút gỡ');
 });
 
 test('báo model sau bước xin ảnh: ô ảnh còn hiện thì luôn báo; đã ẩn thì chỉ báo khi có ảnh; đang chào hay đang giữ tiếng thì không', () => {

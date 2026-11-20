@@ -8,7 +8,10 @@ type Lang = 'vi' | 'en' | 'ko';
  * wait: chỉ chờ bấm nút. done: xong, end cho biết vì sao. */
 export type ShareStage = 'ask' | 'listen' | 'think' | 'wait' | 'done';
 export type ShareEnd = 'yes' | 'no' | 'timeout' | 'hangup';
-export type ShareState = { stage: ShareStage; end: ShareEnd | null };
+/** again: chế độ chặt đã nghe tiếp một lần vì câu trả lời chỉ có tiếng đệm (shareNext). */
+export type ShareState = { stage: ShareStage; end: ShareEnd | null; again?: boolean };
+/** strict: chế độ chặt của Mây Live (shareAnswer). Không truyền thì như màn cũ, từng chữ. */
+export type ShareOpts = { strict?: boolean };
 export type ShareEvent =
   | { type: 'asked' }
   /** text null: có nói nhưng chưa có lời chép (đang nhờ máy chủ); '' là im lặng hoặc không chép được. */
@@ -58,24 +61,47 @@ const SHARE_YES_WHOLE: Partial<Record<Lang, RegExp>> = {
 const SHARE_HEDGE: Partial<Record<Lang, RegExp>> = {
   vi: /(^|\s)(có lẽ|có thể|có khi)(\s|$)|(^|\s)để( \S+)* (nghĩ|xem|tính)(\s|$)/,
 };
+/** Chế độ chặt (Mây Live: Gemini khép lượt sau 1,6 giây im, nên câu trả lời hay dừng ở "dạ", "yeah", "네" là tiếng đệm): thêm câu lưỡng lự... */
+const STRICT_HEDGE: Record<Lang, RegExp> = {
+  vi: /(^|\s)(khoan|từ từ|chờ|đợi|không biết)(\s|$)/,
+  en: /(^|\s)(maybe|not sure|let me|wait|hold on|i guess|hmm+|um+|uh+)(\s|$)/,
+  ko: /(글쎄|생각|잠깐|아마|모르)/,
+};
+/** ...và chỉ lời đồng ý rõ ràng mới là đồng ý (không có SHARE_YES_WHOLE). "안 좋아요", "못 들려줘" không tính. Không bao giờ thêm 괜찮아요. */
+const STRICT_YES: Record<Lang, RegExp> = {
+  vi: /(^|\s)(được|đồng ý|chia sẻ|có chứ)(\s|$)/,
+  en: /(^|\s)(yes|sure|go ahead|of course|please do|share it|that['’]?s fine)(\s|$)/,
+  ko: /(?<!(안|못) ?)(좋아요|좋아|그래요|돼요|되요|공유해|들려줘|물론)/,
+};
+/** Tiếng đệm: cả câu chỉ có những chữ này (kèm ạ, chứ, rồi, nhé, 요). Chế độ chặt coi là chưa rõ và nghe tiếp một lần (shareNext). */
+const BACKCHANNEL: Record<Lang, RegExp> = {
+  vi: /^(dạ|vâng|ừ|ừm|ờ|có|rồi|ok|okay|ạ|chứ|nhé)( (dạ|vâng|ừ|ừm|ờ|có|rồi|ok|okay|ạ|chứ|nhé))*$/,
+  en: /^(yeah|yep|yup|ok|okay|mm|mhm|uh huh|right|alright)( (yeah|yep|yup|ok|okay|mm|mhm|uh huh|right|alright))*$/,
+  ko: /^(네|예|응|어|음)+요?( (네|예|응|어|음)+요?)*$/,
+};
 // i18n-ok-end
 
+const norm = (raw: string) => raw.toLowerCase().normalize('NFC').replace(/[.,!?…~"“”]+/g, ' ').replace(/\s+/g, ' ').trim();
+
 /** Câu trả lời ngắn là đồng ý, từ chối, hay chưa rõ (null: chờ bấm nút). Gọn chữ như photoNo; lời rỗng hay dài quá 10 từ thì chưa rõ.
- *  Đồng ý nhầm thì không gỡ được (tập, sổ nhớ sang cả nhà, có báo), còn chưa rõ chỉ hiện hai nút rồi hết giờ là giữ riêng: nghi thì chưa rõ. */
-export function shareAnswer(text: string | null | undefined, lang: Lang = 'vi'): 'yes' | 'no' | null {
+ *  Đồng ý nhầm thì không gỡ được (tập, sổ nhớ sang cả nhà, có báo), còn chưa rõ chỉ hiện hai nút rồi hết giờ là giữ riêng: nghi thì chưa rõ.
+ *  o.strict (Mây Live): thêm câu lưỡng lự STRICT_HEDGE, và sau lời từ chối chỉ lời đồng ý rõ ràng STRICT_YES mới là đồng ý. */
+export function shareAnswer(text: string | null | undefined, lang: Lang = 'vi', o: ShareOpts = {}): 'yes' | 'no' | null {
   const raw = String(text ?? '');
-  const s = raw.toLowerCase().normalize('NFC').replace(/[.,!?…~"“”]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const s = norm(raw);
   if (!s || s.split(' ').length > 10) return null;
   if (SHARE_REFUSE[lang].test(s)) return 'no';
   // Có dấu hỏi là hỏi lại ("dạ?" của người lớn tuổi là "gì cơ?"), hay lưỡng lự: chưa rõ. Xét trước "không sao" ("không sao, để mẹ nghĩ đã").
-  if (/[?？]/.test(raw) || SHARE_HEDGE[lang]?.test(s)) return null;
+  if (/[?？]/.test(raw) || SHARE_HEDGE[lang]?.test(s) || (o.strict && STRICT_HEDGE[lang].test(s))) return null;
   if (SHARE_SURE[lang]?.test(s)) return 'yes';
   if (SHARE_NO[lang].test(s)) return 'no';
+  if (o.strict) return STRICT_YES[lang].test(s) ? 'yes' : null;
   return SHARE_YES[lang].test(s) || SHARE_YES_WHOLE[lang]?.test(s) ? 'yes' : null;
 }
 
-/** Chặng kế tiếp. Sự kiện không hợp chặng hiện tại thì trả lại đúng đối tượng cũ (nơi gọi so sánh để bỏ qua). */
-export function shareNext(s: ShareState, e: ShareEvent, lang: Lang = 'vi'): ShareState {
+/** Chặng kế tiếp. Sự kiện không hợp chặng hiện tại thì trả lại đúng đối tượng cũ (nơi gọi so sánh để bỏ qua). o.strict: shareAnswer chặt, và câu
+ *  trả lời chỉ có tiếng đệm lúc đang nghe thì nghe tiếp một lần (đối tượng mới, again), để "dạ" rồi "được" ở hai lượt vẫn là đồng ý. */
+export function shareNext(s: ShareState, e: ShareEvent, lang: Lang = 'vi', o: ShareOpts = {}): ShareState {
   if (s.stage === 'done') return s;
   const end = (x: ShareEnd): ShareState => ({ stage: 'done', end: x });
   const to = (stage: ShareStage): ShareState => (stage === s.stage ? s : { stage, end: null });
@@ -87,8 +113,10 @@ export function shareNext(s: ShareState, e: ShareEvent, lang: Lang = 'vi'): Shar
     case 'heard': {
       if (s.stage !== 'listen' && s.stage !== 'think') return s;
       if (e.text === null) return s.stage === 'listen' ? to('think') : to('wait');
-      const a = shareAnswer(e.text, lang);
-      return a ? end(a) : to('wait');
+      const a = shareAnswer(e.text, lang, o);
+      if (a) return end(a);
+      if (o.strict && s.stage === 'listen' && !s.again && BACKCHANNEL[lang].test(norm(e.text))) return { stage: 'listen', end: null, again: true };
+      return to('wait');
     }
     case 'timeout':
       if (s.stage === 'listen' || s.stage === 'think') return to('wait');

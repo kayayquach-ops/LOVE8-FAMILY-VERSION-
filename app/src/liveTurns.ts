@@ -6,10 +6,11 @@
 // Ô 0 hỏi thăm, ô 1 lời nhắn khó nói, chuyện từ ô LIVE_FIRST_STORY (kịch bản v3, server/calllive.ts). Lời đồng ý chia sẻ chỉ từ hai nút hoặc
 // bộ đọc câu trả lời (shareNext, src/callShare.ts), không bao giờ từ model.
 // Nối vào (CallLive.tsx), theo đúng thứ tự tin tới, không chen await giữa:
-// - startRec của captureNext: state = onRec(state, key) rồi mới ghi; bản chụp có blank thì gửi ngay { type: 'guard' } cho captureNext. Mây gọi công cụ ngay trước câu nói đi kèm, tức là ở đầu câu đáp lượt vừa nói,
+// - startRec của captureNext: state = onRec(state, key) rồi mới ghi; bản chụp bị gác (guarded: blank, hay đang xin phép) thì gửi ngay { type: 'guard' }. Mây gọi công cụ ngay trước câu nói đi kèm, tức là ở đầu câu đáp lượt vừa nói,
 //   trước khi lượt ấy được gửi (lúc done); bản chụp giữ cho lượt ấy ô lúc nó bắt đầu, công cụ chỉ có hiệu lực từ lượt sau.
-// - turn: onTurn(state, { key, question, transcript, seconds }) ngay (chỉ chờ bản ghi để gửi job); consent true thì đưa lời chép cho shareNext
-//   ({ type: 'heard' }), không theo "lượt tới lúc đang xin phép" (lượt nói trước câu hỏi chia sẻ cũng tới lúc ấy).
+// - turn: onTurn(state, { key, question, transcript, seconds }) ngay (chỉ chờ bản ghi để gửi job); consent true và key lớn hơn askKey (key của lượt ghi
+//   gần nhất lúc đã hỏi) thì đưa lời chép cho shareNext chặt ({ type: 'heard' }, { strict: true }), không theo "lượt tới lúc đang xin phép" (lượt nói
+//   trước câu hỏi, kể cả lượt mở trong khe giữa lời gọi ask_share và câu hỏi, cũng tới lúc ấy). Lượt của Mây xong: feed done trước, rồi mới asked.
 // - Tiếng Mây bị giữ lúc xin phép (holdNext) vẫn báo captureNext ({ type: 'audio' }) để lượt trả lời khép được (R8); lượt của Mây xong lúc đang giữ
 //   mà lượt trả lời còn đang ghi (Mây im, không có tiếng) thì cũng báo { type: 'audio' } trước done; { type: 'asked' } theo askStep.
 // - mayLine: remindFor với allow của cuộc gọi Live (remindAllow): ownStory true, message true khi có lời nhắn chờ, photos true khi DATA có ảnh
@@ -186,6 +187,24 @@ export function holdNext(h: Hold, e: { type: 'asked' } | { type: 'decided'; end:
   if (e.type === 'asked') return 'share';
   if (e.type === 'decided') return e.end === 'hangup' || e.mayDone ? null : 'tail';
   return h === 'tail' ? null : h;
+}
+
+/** Đã đồng ý bằng giọng mà bấm Giữ riêng trước khi cúp: gỡ lời đồng ý (/keep gỡ được tới lúc chốt) và nhắn model chuyện giữ riêng. /keep là việc
+ *  cuối nhóm để chỉ tới máy chủ sau /share (hai việc thường chạy song song, tới trước thì /share sau đó lại bật chia sẻ). */
+export function onShareUndo(s: LiveState): { cue: string; job: Job } {
+  return { cue: CUE.shareNo, job: { url: `/api/call/${s.id}/keep`, fields: {}, last: true } };
+}
+
+/** Lượt mới có bị gác không (gửi { type: 'guard' } cho captureNext ngay sau startRec): lượt ngay sau lời nhắn khó nói (blank), và lượt bắt đầu lúc
+ *  đang xin phép (lời chép muộn của lượt kể trước, "...thì được", không được thành câu trả lời). */
+export const guarded = (slot?: TurnSlot): boolean => !!slot && (slot.blank || slot.share === 'asking');
+
+/** Lời của lượt trả lời xin phép đang chờ khép (Mây gọi end_call giữa lượt tự đáp, trước turnComplete), để đọc trước khi bước xin phép dừng vì chào:
+ *  lượt đang chờ gửi hay đang ghi, bắt đầu sau lúc đã hỏi (key > askKey), lúc đang xin phép, có lời. Không thì null. */
+export function waitingAnswer(c: Capture, s: LiveState, askKey: number): string | null {
+  const p = c.pending ?? (c.recording ? { key: c.key, heard: c.heard } : null);
+  const text = p?.heard.trim();
+  return p && text && p.key > askKey && s.rec[p.key]?.share === 'asking' ? text : null;
 }
 
 /** Câu báo model sau bước xin ảnh: chọn n ảnh, hay bấm Để sau, huỷ khung chọn (n 0). Ô ảnh còn hiện (on) thì luôn báo; đã ẩn (Mây đã sang việc khác,

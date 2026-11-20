@@ -67,3 +67,40 @@ test('mic tắt lúc chờ nút và lúc máy chủ chép lời', () => {
   assert.equal(shareMic({ stage: 'think', end: null }), false);
   assert.equal(shareMic({ stage: 'listen', end: null }), true);
 });
+
+test('chế độ chặt (Mây Live): tiếng đệm đứng một mình chưa rõ, chỉ lời đồng ý rõ ràng mới là đồng ý; mặc định không đổi', () => {
+  const S = { strict: true };
+  const table: Array<[string, 'vi' | 'en' | 'ko', 'yes' | 'no' | null]> = [
+    ['dạ', 'vi', null], ['có ạ', 'vi', null], ['dạ được', 'vi', 'yes'], ['ừ chia sẻ đi', 'vi', 'yes'], ['được rồi để mẹ nghĩ', 'vi', null],
+    ['yeah', 'en', null], ['yeah sure', 'en', 'yes'], ['ok wait', 'en', null], ['네', 'ko', null], ['네 좋아요', 'ko', 'yes'],
+  ];
+  for (const [s, lang, want] of table) assert.equal(shareAnswer(s, lang, S), want, s);
+  // Tiếng đệm người duyệt chỉ ra: chặt thì chưa rõ, mặc định vẫn như cũ (màn cũ Call.tsx không đổi).
+  for (const s of ['dạ', 'dạ vâng', 'vâng', 'ừ', 'có ạ', 'ok']) {
+    assert.equal(shareAnswer(s, 'vi', S), null, `chặt: ${s}`);
+    assert.equal(shareAnswer(s, 'vi'), 'yes', `mặc định: ${s}`);
+  }
+  for (const s of ['yeah let me think', 'ok wait', 'hold on', 'maybe', 'yep', 'mhm', 'uh huh', 'alright']) assert.equal(shareAnswer(s, 'en', S), null, s);
+  for (const s of ['네 잠깐만요', '글쎄요', '예', '응', '괜찮아요', '안 좋아요']) assert.equal(shareAnswer(s, 'ko', S), null, s);
+  for (const s of ['khoan đã', 'từ từ', 'chờ chút', 'không biết nữa']) assert.equal(shareAnswer(s, 'vi', S), null, s);
+  // Từ chối, "không sao", lời đồng ý rõ vẫn như mặc định.
+  for (const s of ['không', 'thôi giữ riêng nhé', 'không được', 'dạ không ạ']) assert.equal(shareAnswer(s, 'vi', S), 'no', s);
+  for (const s of ['được', 'đồng ý', 'có chứ', 'không sao đâu, chia sẻ đi', 'thôi được']) assert.equal(shareAnswer(s, 'vi', S), 'yes', s);
+  for (const s of ['yes', 'of course', 'please do', 'share it', "that's fine", 'no problem']) assert.equal(shareAnswer(s, 'en', S), 'yes', s);
+  for (const s of ['좋아요', '그래요', '돼요', '공유해 주세요', '물론이죠']) assert.equal(shareAnswer(s, 'ko', S), 'yes', s);
+  assert.equal(shareAnswer('안 돼요', 'ko', S), 'no');
+});
+
+test('chế độ chặt: chỉ có tiếng đệm thì nghe tiếp một lần ("dạ" rồi "được" ở hai lượt vẫn là đồng ý), lần sau mới chờ nút', () => {
+  const S = { strict: true };
+  const listen = shareNext(SHARE_START, { type: 'asked' }, 'vi', S);
+  const again = shareNext(listen, { type: 'heard', text: 'Dạ' }, 'vi', S);
+  assert.equal(again.stage, 'listen', 'tiếng đệm: vẫn nghe');
+  assert.notEqual(again, listen, 'đối tượng mới để nơi gọi đặt lại hẹn giờ nghe');
+  assert.equal(shareNext(again, { type: 'heard', text: 'được' }, 'vi', S).end, 'yes', 'lượt sau nói rõ: đồng ý');
+  assert.equal(shareNext(again, { type: 'heard', text: 'vâng' }, 'vi', S).stage, 'wait', 'tiếng đệm lần hai: chờ nút');
+  assert.equal(shareNext(listen, { type: 'heard', text: 'hôm nay trời đẹp' }, 'vi', S).stage, 'wait', 'lời khác chưa rõ: chờ nút ngay');
+  assert.equal(shareNext(again, { type: 'timeout' }, 'vi', S).stage, 'wait', 'hết giờ nghe: chờ nút');
+  // Mặc định: "dạ" vẫn là đồng ý như màn cũ.
+  assert.equal(shareNext(listen, { type: 'heard', text: 'Dạ' }).end, 'yes');
+});
