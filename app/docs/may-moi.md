@@ -8,7 +8,7 @@ Mọi câu migration chạy lặp được (`if not exists`), không sửa hay x
 
 **`memory_facts`** (`server/memory.ts`, `migrateMemory`): sổ nhớ của Mây, mỗi hàng một điều nghe được.
 - `about_id`: điều đó nói về ai (null là chuyện chung cả nhà); `source_id`: ai kể.
-- `kind`, `text` (theo thứ tiếng người kể), `text_en`; `details` là json `{ evidence, sensitive, occasion, lang }`.
+- `kind`, `text` (theo thứ tiếng người kể), `text_en`; `details` là json `{ evidence, sensitive, occasion, lang, checkin }` (`checkin` true khi câu gốc nằm ở câu hỏi thăm).
 - `call_id` (xoá cuộc gọi thì xoá điều rút từ nó), `answer_id` là câu trả lời gốc.
 - `visibility` mặc định `family`; `replacement_id` là điều mới hơn sửa lại điều này.
 - `used_at`, `used_count`: lần cuối Mây nhắc lại và số lần.
@@ -57,13 +57,14 @@ Mã: `server/memory.ts` (rút sổ nhớ), `server/may.ts` (người nhận, hà
 - Tối đa 12 sự thật và 4 tín hiệu mỗi cuộc gọi. AI không trả lời hoặc trả sai dạng thì `memory_tries + 1`, không ghi gì. AI trả danh sách rỗng là rút xong, không có gì để nhớ.
 
 **Ai thấy được** (`visibilityOf`): `self` khi loại `health` hoặc `worry`, khi AI đánh dấu riêng tư (sức khoẻ, tiền, mâu thuẫn, lo lắng, điều có thể không muốn người khác nghe), hoặc khi cuộc gọi chưa đồng ý chia sẻ (`calls.shared = false`). Còn lại `family`. Cuộc gọi cũ mặc định đã chia sẻ.
+Sự thật có câu gốc ở câu hỏi thăm (`topic = 'hoi-tham'`, câu `answers` đọc kèm `topic`) luôn là `self`, kể cả cuộc gọi đã chia sẻ, và ghi `details.checkin = true`: lời đồng ý chia sẻ chỉ hỏi cho câu chuyện chính. Chia sẻ sau (`shareFacts`) cũng không đổi chúng.
 
 **Gộp và thay**
 - `same_as` trỏ tới một sự thật đã có: không thêm hàng mới.
 - `replaces` trỏ tới một sự thật đã có: sự thật cũ nhận `replacement_id` là mã sự thật mới, từ đó không đưa vào AI nữa.
 - Chỉ nhận mã nằm trong danh sách sự thật đã đưa cho AI.
 - Rút lại một cuộc gọi: gỡ `replacement_id` đang trỏ tới sự thật của cuộc gọi đó, xoá sự thật của cuộc gọi đó, rồi ghi lại. Lần rút sau vẫn thấy sự thật cũ mà lần trước đã thay, nên không treo mã đã xoá.
-- `details` = `{ evidence, sensitive, occasion, lang }`. `occasion` chỉ là một trong `OCCASION_KEYS`, khác thì null. Trong schema gửi AI, không gắn dịp là `'none'` (không dùng chuỗi rỗng trong enum vì Gemini có thể không nhận), lúc đọc đổi về null.
+- `details` = `{ evidence, sensitive, occasion, lang, checkin }`. `occasion` chỉ là một trong `OCCASION_KEYS`, khác thì null. Trong schema gửi AI, không gắn dịp là `'none'` (không dùng chuỗi rỗng trong enum vì Gemini có thể không nhận), lúc đọc đổi về null.
 - Xong thì `calls.memory_at = now()`. Cuộc gọi không có câu trả lời nào có lời chép cũng đánh dấu xong.
 
 **Tín hiệu** (rút cùng lần gọi AI, `checkSignal`)
@@ -93,7 +94,7 @@ Mã: `server/memory.ts` (rút sổ nhớ), `server/may.ts` (người nhận, hà
 Mã: `src/shared.ts` (chủ đề, kiểu bộ câu), `server/call.ts` (soạn câu, hỏi thêm, chia sẻ), `server/podcast.ts` (chỉ chuyện chính thành tập). Test: `server/call.test.ts`, `server/podcast.test.ts`. Màn gọi `src/Call.tsx` đổi theo ở task 4; giữa hai task không deploy.
 
 **Một bộ câu** (`CallScript.v = 2`): `questions = [hỏi thăm, chuyện chính, lời nhắn?]`.
-- Hỏi thăm: `topic 'hoi-tham'`, `part 'checkin'`. Không hỏi thêm, không xin ảnh, không bao giờ thành tập. Câu trả lời vẫn vào sổ nhớ và tín hiệu (chỉ lời nhắn khó nói bị loại).
+- Hỏi thăm: `topic 'hoi-tham'`, `part 'checkin'`. Không hỏi thêm, không xin ảnh, không bao giờ thành tập, không bao giờ vào lịch chung (`saveDates` loại cả `NO_EPISODE_TOPICS`). Câu trả lời vẫn vào sổ nhớ và tín hiệu (chỉ lời nhắn khó nói bị loại), nhưng sự thật rút từ đây luôn riêng (`self`).
 - Chuyện chính: `part 'story'`, `theme` thuộc `STORY_THEMES`, `topic = THEME_TOPIC[theme]`. Hỏi thêm tối đa `script.follow` lượt: `MAX_STORY_FOLLOW = 4`, cuộc gọi thử `TRIAL_FOLLOW = 2`. Không còn trần riêng cho cả cuộc gọi.
 - Lời nhắn khó nói: như cũ (`relayQuestion`). Nhà một người hoặc cuộc gọi thử thì không có.
 - Lời tạm biệt luôn là câu cố định `call.line.bye.<vai>`, không còn hứa "cả nhà cùng nghe" vì chuyện có thể được giữ riêng.
@@ -116,8 +117,10 @@ Mã: `src/shared.ts` (chủ đề, kiểu bộ câu), `server/call.ts` (soạn c
 - Trần lấy từ `script.follow` (bản cũ không có thì 4). Máy chủ không còn đọc `follows` máy khách gửi.
 
 **Chia sẻ**: cuộc gọi mới ghi `calls.shared = false`. `POST /api/call/:id/share` (không có thân, gửi lại được) bật `shared = true` cho cuộc gọi của chính người gọi; không thấy cuộc gọi thì 404 `call_not_found`. Cuộc gọi cũ vẫn là đã chia sẻ. Từ task 8 lệnh này đi qua `shareCall` (mục "Tập riêng và tập chia sẻ").
+`POST /api/call/:id/keep` (không có thân, gửi lại được, luôn `{ ok: true }`): `keepCall` chạy `update calls set shared = false where id = $1 and member_id = $2 and status = 'ready'` (`KEEP_SQL`). Dùng khi người kể giữ riêng: tải lại giữa cuộc gọi rồi gọi tiếp cùng cuộc gọi thì lời "không" lần này gỡ lời "có" lần trước. Cuộc gọi đã chốt (`done`) thì không đổi gì; từ đó chỉ nút chia sẻ mới chia sẻ được.
 
-**Câu cố định mới** (`callLines`, nạp sẵn giọng bằng `warmFixedVoices`): `share`, `shareYes`, `shareNo`, `bye`. Mỗi vai mỗi thứ tiếng nay 15 câu.
+**Câu cố định mới** (`callLines`, nạp sẵn giọng bằng `warmFixedVoices`): `share`, `shareYes`, `shareNo`, `bye`. Câu `skip` (đổi chuyện) không còn nói ở đâu nên không nạp nữa. Mỗi vai mỗi thứ tiếng nay 14 câu (`fixedLines`).
+Nạp sẵn chỉ chạy một lần 15 giây sau khởi động và dừng khi ngân sách ngày còn dưới 30% hay một lần đọc lỗi. Vì vậy `POST /api/call/tts` (`ttsFor`) với `kind: 'fixed'`: câu có trong `fixedLines` mà kho chưa có thì đọc ngay như câu bắt buộc (ngân sách còn là đọc, không tính ngưỡng 30%), rồi nằm trong kho, không bao giờ đọc lại; hết ngân sách thì trả lý do như câu bắt buộc (`budget`, `cooldown`). Chữ khác gửi kèm `fixed` (câu `ack`) vẫn chỉ lấy từ kho. Không đổi `CACHE_VER`.
 
 **Podcast**: câu hỏi thăm cũng như lời nhắn, không bao giờ vào tập (`NO_EPISODE_TOPICS`, lọc cả trong SQL của `callAnswers`, `buildTopic`, `refreshTopicsOf`). Cuộc gọi v2 chỉ chấm chuyện chính (`episodeIdx`) nên không còn phần đuôi; cuộc gọi cũ chấm như trước.
 
@@ -136,18 +139,18 @@ Mã: `src/Call.tsx` (luồng cuộc gọi), `src/callShare.ts` (chặng của b�
 **Bước xin phép chia sẻ** (`askShare`, cùng khuôn với bước xin ảnh)
 - Hiện hai nút "Chia sẻ" và "Giữ riêng" (khoá `call.share.yes`, `call.share.no`), Mây hỏi `call.line.share` (câu cố định), rồi nghe tối đa 8 giây (`SHARE_HEAR_MS`).
 - Máy không tự chép được lời thì nhờ `POST /api/call/:id/hear` chép (không lưu gì), nút vẫn bấm được trong lúc chờ. Mic tắt lúc chờ nút và lúc chờ máy chủ chép.
-- Hiểu câu trả lời (`shareAnswer`, câu tối đa 10 từ): lời từ chối rõ ràng xét trước tiên ("đừng", "giữ riêng", "để sau", "không chia sẻ" trừ khi câu trả lời mở đầu bằng "sao không chia sẻ", nên "không sao, không chia sẻ nhé" vẫn là giữ riêng; tiếng Anh "private", "don't" trừ "don't mind", "keep it"; tiếng Hàn "안 ...도 돼", "하지 마", "말아"), có nó thì là giữ riêng dù câu có "không sao", "no problem". Sau đó câu có chữ phủ định mà vẫn là đồng ý ("không sao", "sao không", "chia sẻ đi", "được thôi", "thôi được"; tiếng Anh "no problem", "why not", "I don't mind"), rồi câu từ chối ("không", "thôi", "đừng", "để sau", "chưa", "khỏi", "giữ riêng"...), rồi câu đồng ý ("được", "ừ", "ok", "vâng", "đồng ý", "có chứ"...). Tiếng Hàn "네" phải đứng riêng, nên đuôi câu như "좋네요" không tính là đồng ý. Không rõ thì chờ bấm nút.
+- Hiểu câu trả lời (`shareAnswer`, câu tối đa 10 từ): lời từ chối rõ ràng xét trước tiên ("đừng", "giữ riêng", "để sau", "không chia sẻ" trừ khi câu trả lời mở đầu bằng "sao không chia sẻ", nên "không sao, không chia sẻ nhé" vẫn là giữ riêng; tiếng Anh "private", "don't" trừ "don't mind", "keep it"; tiếng Hàn "안 ...도 돼", "하지 마", "말아"), có nó thì là giữ riêng dù câu có "không sao", "no problem". Sau đó câu có chữ phủ định mà vẫn là đồng ý ("không sao", "sao không", "chia sẻ đi", "được thôi", "thôi được"; tiếng Anh "no problem", "why not", "I don't mind"), rồi câu từ chối ("không", "thôi", "đừng", "để sau", "chưa", "khỏi", "giữ riêng"...), rồi câu đồng ý ("được", "ừ", "ừm", "ờ", "dạ", "có", "ok", "vâng", "đồng ý", "có chứ"...; "dạ không", "không ạ", "có... thôi đừng" vẫn là giữ riêng vì lời từ chối xét trước). Tiếng Hàn "네" phải đứng riêng, nên đuôi câu như "좋네요" không tính là đồng ý. Không rõ thì chờ bấm nút.
 - Hẹn giờ (`SHARE_WAIT`): nghe 12 giây, chờ máy chủ chép 7 giây, chờ nút 12 giây. Hết giờ chờ nút là giữ riêng.
-- Đồng ý: `POST /api/call/:id/share` qua hàng chờ (cùng nhóm cuộc gọi, nên luôn tới trước lệnh kết thúc), Mây nói `shareYes`. Từ chối hay hết giờ: Mây nói `shareNo`, cuộc gọi giữ `shared = false`. Cúp máy: dừng, không gửi lời vừa nghe ở bước này (chỉ là câu trả lời có hay không, gửi sẽ đè lên lượt kể cuối).
+- Đồng ý: `POST /api/call/:id/share` qua hàng chờ (cùng nhóm cuộc gọi, nên luôn tới trước lệnh kết thúc), Mây nói `shareYes`. Từ chối hay hết giờ: `POST /api/call/:id/keep` qua hàng chờ (cũng trước lệnh kết thúc, gỡ lời đồng ý của lần thử trước nếu có), Mây nói `shareNo`, cuộc gọi giữ `shared = false`. Cúp máy: dừng, không gửi lời vừa nghe ở bước này (chỉ là câu trả lời có hay không, gửi sẽ đè lên lượt kể cuối).
 - Nhà một người thì không hỏi, cuộc gọi giữ `shared = false`.
 
-**Số câu giọng dự kiến** (chi tiết ở `docs/tts-budget.md`): chào + hỏi thăm 1, câu đáp hỏi thăm gộp câu mở 1, mỗi câu hỏi thêm 1 (0 tới 4, câu nhắc ngày đi chung), câu đáp cuối 1 (chỉ khi ngân sách ngày còn trên 30%, không thì câu cố định). Còn lại là câu cố định trong kho. Tổng 2 tới 7 câu, thường khoảng 6; cuộc gọi thử 2 tới 5. 70 câu mỗi ngày đủ khoảng 10 cuộc gọi đủ giọng (11 nếu toàn cuộc gọi 6 câu), sau đó hiện chữ kèm chuông nhẹ. Kiểu cũ tới 11 câu một cuộc gọi. Bốn câu cố định mới tốn 12 câu giọng mỗi thứ tiếng một lần (4 câu x 3 vai), `warmFixedVoices` nạp sẵn.
+**Số câu giọng dự kiến** (chi tiết ở `docs/tts-budget.md`): chào + hỏi thăm 1, câu đáp hỏi thăm gộp câu mở 1, mỗi câu hỏi thêm 1 (0 tới 4, câu nhắc ngày đi chung), câu đáp cuối 1 (chỉ khi ngân sách ngày còn trên 30%, không thì câu cố định). Còn lại là câu cố định trong kho. Tổng 2 tới 7 câu, thường khoảng 6; cuộc gọi thử 2 tới 5. 70 câu mỗi ngày đủ khoảng 10 cuộc gọi đủ giọng (11 nếu toàn cuộc gọi 6 câu), sau đó hiện chữ kèm chuông nhẹ. Kiểu cũ tới 11 câu một cuộc gọi. Bốn câu cố định mới tốn 12 câu giọng mỗi thứ tiếng một lần (4 câu x 3 vai), `warmFixedVoices` nạp sẵn; nạp sẵn hụt thì đọc một lần lúc máy khách xin (`ttsFor`).
 
 ## Cuộc gọi thử
 
 - Thẻ mời: `GET /api/call/due` trả `{ due, done, trial }`. `dueState` (`server/call.ts`): chưa có cuộc gọi nào xong (`hadDone` false) thì `trial: true` và `due` khi đã quá `TRIAL_AFTER_MIN` = 10 phút kể từ `members.created_at` (tạo nhà hoặc được duyệt vào), mọi ngày kể cả thứ Bảy. Đã gọi xong thì `trial: false`, `due` chỉ khi đang khung cuối tuần và tuần này chưa có cuộc gọi thật xong. Luật 24 giờ cũ đã bỏ.
 - Cuộc gọi thử không chiếm lượt tuần: `done` và `doneThisWeek` chỉ đếm cuộc gọi `status = 'done' and not trial`; `weeklyTick` (`server/push.ts`) cũng vậy. Người mới chỉ gọi thử vẫn thấy thẻ ngày thứ Bảy.
-- `POST /api/call/start`: người chưa có cuộc gọi xong thì soạn `aiScript(c, week, START_AI_MS, { trial: true })` (đầu vào AI có `trial: true`, prompt dặn một chuyện dễ, ấm, lấy từ câu trả lời giới thiệu hoặc nơi ở; không có câu lời nhắn; `follow = TRIAL_FOLLOW` = 2; `trial: true`). AI lỗi, quá hạn hay hết lượt soạn thì `firstScript`. Dòng `calls` ghi `trial = true`.
+- `POST /api/call/start`: người chưa có cuộc gọi xong thì soạn `aiScript(c, week, START_AI_MS, { trial: true })` (đầu vào AI có `trial: true`, prompt dặn một chuyện dễ, ấm, lấy từ câu trả lời giới thiệu hoặc nơi ở; không có câu lời nhắn; `follow = TRIAL_FOLLOW` = 2; `trial: true`). AI lỗi, quá hạn hay hết lượt soạn thì `firstScript`. Câu nào AI viết hỏng (lời chào, hỏi thăm, câu mở) thì thay bằng câu tương ứng của `firstScript`, không phải bộ câu tuần (`templateScript` có thể chọn ngày cưới). Dòng `calls` ghi `trial = true`.
 - Máy khách: `App.tsx` giữ `callTrial` từ `/api/call/due`, `Home` truyền `trial` cho `CallCard`; thẻ hiện `call.card.trial` và `call.card.trialLen` (khoảng 3 phút).
 - Test: `server/call.test.ts` (`dueState`, `aiScript` với `trial`).
 
@@ -196,7 +199,8 @@ Mã: `server/may.ts` (`pickSends`, `nudgeText`, `mayTick`, `startMayScheduler`, 
 - Mỗi lượt mỗi người nhận tối đa một lời nhắc, kể cả từ nhiều người kể khác nhau (tin chuyện mới đi riêng, mục "Tập riêng và tập chia sẻ"). Nhiều tín hiệu tranh nhau thì `want_contact` > `miss` > `low` > `good_news` > `upcoming` (`SIGNAL_PRIORITY`), cùng loại thì tín hiệu cũ hơn trước.
 - Gửi một lần: giành tín hiệu và ghi `may_nudges` trong một câu (`MAY_SQL.claimNudge`: `with c as (update may_signals set sent_at = $2 where id = $1 and sent_at is null and dropped is null returning ...) insert into may_nudges ... select ... from c returning id`). Chỉ khi câu trả lại hàng mới gửi thông báo, nên hai lượt chạy cùng lúc vẫn chỉ gửi một lần, và không bao giờ có tín hiệu đã gửi mà thiếu lời nhắc: lượt khác đọc hàng chờ trước rồi mới đọc lời nhắc đã gửi để đếm trần, nên luôn thấy lời nhắc vừa gửi và không gửi thêm cho cùng người trong ngày.
 
-**Chữ lời nhắc** (`nudgeText`, khoá máy chủ `nudge.*`): tiêu đề là tên linh vật của nhà, thân là câu mẫu theo loại, chỉ điền tên, vai và tên linh vật. Không bao giờ trích câu gốc (`evidence`) hay lời trong cuộc gọi, kể cả cuộc gọi người kể đã đồng ý chia sẻ. Bố mẹ nhắc con thì gọi người kể theo vai (`nudge.call.bo`, `nudge.call.me`: "mẹ vừa kể với Mây..."), còn lại gọi tên (`nudge.by_name`, tiếng Hàn kèm 님). Người nhận luôn gọi tên. Viết hoa chữ đầu.
+**Chữ lời nhắc** (`nudgeText`, khoá máy chủ `nudge.*`): tiêu đề là tên linh vật của nhà, thân là câu mẫu theo loại, chỉ điền tên, vai và tên linh vật. Không bao giờ trích câu gốc (`evidence`) hay lời trong cuộc gọi, kể cả cuộc gọi người kể đã đồng ý chia sẻ. Người kể và người nhận cùng một luật (`callName`): bố mẹ đi với con thì gọi theo vai (`nudge.call.bo`, `nudge.call.me`), còn lại gọi tên (`nudge.by_name`, tiếng Hàn kèm 님). Bố mẹ nhắc con: "An ơi, mẹ vừa kể với Mây là nhớ An lắm..."; con nhắc bố mẹ: "Mẹ ơi, An vừa kể với Mây là nhớ mẹ lắm. Gọi cho An một chút nhé.", "Dạo này An hơi mệt, bố hỏi thăm An nhé." Con không bao giờ gọi tên bố mẹ; vợ chồng, anh em vẫn gọi tên. Tiếng Anh "Mom, An was just telling Mây about missing you..."; tiếng Hàn gọi bố mẹ là 엄마, 아빠 như `ko.json` ("엄마, An님께서 Mây에게 엄마 많이 보고 싶다고 하셨어요..."), câu mẫu tiếng Hàn không còn tự thêm 님 sau `{to}` (tên đã kèm 님 qua `nudge.by_name`) và bỏ trợ từ ngay sau `{to}` để 엄마, 님 đều đọc tự nhiên. Viết hoa chữ đầu.
+Người dùng chốt 21/11: chuyện không cho chia sẻ vẫn có thể thành lời nhắc (ví dụ "Dạo này mẹ hơi mệt, An hỏi thăm mẹ nhé"), chỉ bằng câu soạn sẵn, không trích lời trong chuyện.
 
 **Thông báo**: `kind: 'may'`, `tag: may-<mã lời nhắc>`, `open: may:<mã>`, `ttl` 12 giờ. Loại `may` luôn gửi như `relay` (công tắc là `members.may_nudge`, không phải công tắc thông báo).
 
@@ -224,6 +228,7 @@ Mã: `server/podcast.ts` (`shareCall`, `listPodcasts`, `POST /api/podcasts/:id/s
 - `GET /api/vault` bỏ ảnh của cuộc gọi chưa chia sẻ của người khác.
 - Tập chủ đề chỉ gom chuyện của cuộc gọi đã chia sẻ. Ảnh bìa tự chọn (`coverFor`) và ảnh thêm của tập cũ theo cả cuộc gọi (`photosFor`) không lấy ảnh của cuộc gọi chưa chia sẻ.
 - Phim tuần (`server/recap.ts`) chỉ đọc `posts` nên không cần lọc; video câu chuyện nằm trên hàng `podcasts` nên lọc cùng tập.
+- Lịch chung (`saveDates`, chạy sau `/finish` nên `calls.shared` đã chốt): cuộc gọi chưa chia sẻ chỉ ghi ngày, tháng, năm và loại, tên theo loại (`callEvent.<loại>`, ví dụ "Ngày cưới bố mẹ", "Sinh nhật") và ghi chú soạn sẵn `callEvent.note` ("Lan kể trong cuộc gọi"); không dùng tên hay ghi chú AI viết từ chuyện; bỏ hẳn loại `memory` và `other`. Lịch chung tới cả nhà, tới thông báo `calendarTick` và vào dữ liệu soạn câu của người khác, nên chuyện giữ riêng không được lọt qua đây. Cuộc gọi đã chia sẻ giữ như cũ (tên, ghi chú AI viết). Chia sẻ sau không đổi lại các ngày đã ghi.
 - Cuộc gọi và tập cũ mặc định đã chia sẻ.
 
 **Nút chia sẻ sau**: trên tập riêng của mình, `Player` hiện dòng nhỏ `podcast.private` ("chỉ mình bạn nghe") và nút `podcast.shareAll` ("chia sẻ cho cả nhà"). Bấm là `POST /api/podcasts/:id/share`: tập phải là `story:<callId>:<idx>` trong nhà mình và do mình kể, không thì 404 `podcast_not_found`. Xong thì báo `podcast.sharedDone` ("Cả nhà nghe được rồi") và tải lại danh sách.
@@ -231,7 +236,7 @@ Mã: `server/podcast.ts` (`shareCall`, `listPodcasts`, `POST /api/podcasts/:id/s
 **Chia sẻ đổi gì** (`shareCall(callId, memberId)`, chỉ người kể của cuộc gọi, không phải thì `false`):
 1. `calls.shared = true`.
 2. Các tập `story:<callId>:%` còn riêng thành tập chia sẻ.
-3. Sự thật `self` của cuộc gọi thành `family`, trừ `health`, `worry` và `details.sensitive` (`shareFacts`).
+3. Sự thật `self` của cuộc gọi thành `family`, trừ `health`, `worry`, `details.sensitive` và `details.checkin` (rút từ câu hỏi thăm) (`shareFacts`).
 4. Mỗi tập vừa chia sẻ xếp tin chuyện mới (tập chưa dựng xong thì lượt gửi chờ).
 5. Dựng lại tập chủ đề của các tập đó (chạy nền, lệnh chia sẻ không chờ).
 
@@ -241,13 +246,13 @@ Bấm lại hay gửi lại không đổi gì: chỉ tập còn riêng mới đ�
 
 **Tin chuyện mới** (`queueStory`: `may_signals.kind = 'story'`, `ref` là mã tập, `evidence` rỗng, hạn `STORY_TTL_H` = 72 giờ từ lúc xếp): `mayTick` gửi khi tập đã dựng xong tiếng (câu lấy hàng chờ left join `podcasts` theo `ref`, `status = 'ready'`), trong khung 9:00 tới trước 21:30 giờ người nhận, chưa hết hạn. Không tính trần, không theo công tắc "Mây nhắc mình liên lạc", không tranh lượt với lời nhắc liên lạc (cùng người cùng lượt vẫn gửi cả hai), không ghi `may_nudges` (giành bằng `MAY_SQL.claimStory`), nên cũng không tính vào trần lời nhắc. Tập không bao giờ dựng xong thì tín hiệu hết hạn.
 
-**Thông báo**: `kind: 'post'` (theo công tắc "Tin nhà"), tiêu đề `nudge.story.title` ("Mẹ vừa kể một chuyện"), thân `nudge.story.body` ("Mẹ vừa kể cho An nghe một chuyện, nghe nhé."), người kể gọi như lời nhắc (bố mẹ nói với con theo vai, còn lại theo tên, tiếng Hàn kèm 님), viết hoa chữ đầu; `tag: story-<mã tập>`, `open: podcast:<mã tập>`, `ttl` 24 giờ. Chạm thông báo: `App.tsx` mở tab podcast ở đúng tập đó.
+**Thông báo**: `kind: 'post'` (theo công tắc "Tin nhà"), tiêu đề `nudge.story.title` ("Mẹ vừa kể một chuyện"), thân `nudge.story.body` ("Mẹ vừa kể cho An nghe một chuyện, nghe nhé."; con kể thì "An vừa kể cho mẹ nghe một chuyện, nghe nhé."), người kể và người nhận gọi như lời nhắc (bố mẹ đi với con theo vai, còn lại theo tên, tiếng Hàn kèm 님), viết hoa chữ đầu; `tag: story-<mã tập>`, `open: podcast:<mã tập>`, `ttl` 24 giờ. Chạm thông báo: `App.tsx` mở tab podcast ở đúng tập đó.
 
 ## Cài đặt (task 9)
 
 Mã: `server/may.ts` (`GET/PUT /api/may/settings`), `server/memory.ts` (`makeMemoryRouter`, `MEM_SQL.list`, `MEM_SQL.forget`), `src/MayMemory.tsx` (`MaySettings`, chèn trong `src/Settings.tsx` ngay sau ô "Bạn nhỏ của nhà").
 
-**Công tắc "Mây nhắc mình liên lạc"** (`members.may_nudge`, mặc định bật): `GET` trả `{ nudges }`, `PUT { nudges }` chỉ nhận kiểu boolean, sai thì 400 `may_settings_invalid`. Tắt thì không ai bị xếp tín hiệu nhắc người này và lời nhắc đang chờ bị bỏ (`dropped = 'off'`); người này vẫn có điều nhớ trong sổ. Tin chuyện mới không theo công tắc này (theo công tắc "Tin nhà"). Máy khách đổi công tắc ngay, lỗi thì trả lại và hiện toast.
+**Công tắc "Mây nhắc mình liên lạc"** (`members.may_nudge`, mặc định bật): `GET` trả `{ nudges }`, `PUT { nudges }` chỉ nhận kiểu boolean, sai thì 400 `may_settings_invalid`. Tắt thì không ai bị xếp tín hiệu nhắc người này và lời nhắc đang chờ bị bỏ (`dropped = 'off'`); người này vẫn có điều nhớ trong sổ. Tin chuyện mới không theo công tắc này (theo công tắc "Tin nhà"). Máy khách đổi công tắc ngay, lỗi thì trả về giá trị máy chủ đang giữ (lần đọc hay lần lưu được gần nhất, không phải giá trị tạm của lần bấm trước, nên bấm nhanh hai lần vẫn khớp) và hiện toast.
 
 **"Mây nhớ gì về mình"**: `GET /api/may/memory` trả tối đa 100 điều mới nhất `{ id, text, kind, by, createdAt }`. Điều được thấy: `about_id` là mình, chưa bị thay (`replacement_id` null), cùng nhà, và do chính mình kể (mọi chế độ) hoặc `visibility = 'family'`. Điều người khác kể riêng (`self`) về mình không hiện, không xoá được. `text` là câu gốc khi `details.lang` trùng thứ tiếng người xem, khác thì `text_en`. `by` là tên người kể, rỗng khi chính mình kể (máy khách chỉ in "X kể" khi có `by`).
 
