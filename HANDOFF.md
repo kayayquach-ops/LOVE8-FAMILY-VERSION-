@@ -164,7 +164,7 @@ Người dùng trả lời từng mục trong danh sách việc còn lại:
 - **Không làm lúc này**: nói chuyện với Mây thời gian thực (Gemini Live), đề nghị để sau buổi pitch vì phải thay bộ máy cuộc gọi.
 - Chưa kiểm: SQL mới trên Postgres thật (join, dịch), đăng nhập Google thật, giao diện dịch trên iPhone.
 
-### 20/11: đang làm (chưa commit, chưa deploy)
+### 20/11: bảy việc theo góp ý (gộp xong tới commit nối cuối, CHƯA DEPLOY)
 Người dùng và bạn trong đội (Đạt) báo lỗi và xin thêm tính năng; chia cho các agent chạy song song:
 - Sửa "rời nhà" chỉ đăng xuất ở máy nên vào lại thành 2 người (rời nhà thật trên máy chủ, người cuối rời thì xoá nhà).
 - Sửa cuộc gọi Mây đứng ở màn xin ảnh (bấm nút và trả lời giọng đều không ăn, app lag).
@@ -173,3 +173,14 @@ Người dùng và bạn trong đội (Đạt) báo lỗi và xin thêm tính n�
 - Nhiệm vụ tuần tự tích khi làm xong (không tích tay); giấy gấp sao bỏ giá từng món, tất cả gói vào thuê bao (chưa có thanh toán).
 - Chat: nhắn riêng từng người (`messages.to_id`), nút gọi thoại và gọi video trong chat.
 - Thấy thêm: viên tên trên ảnh tuần ở trang chủ chế độ tối chữ gần như không đọc được (chưa sửa, chưa được bảo).
+- Kết quả (đã gộp, 177/177 test, build sạch):
+  - Rời nhà thật: `DELETE /api/me` (`server/members.ts` `leaveFamily`, `FAMILY_PLAN` khi người cuối rời).
+  - Mây màn xin ảnh: nguyên nhân là màn đó không nghe và không có hạn giờ; nay có `src/callPhoto.ts`, `POST /call/:id/hear`, mic tắt khi chờ bấm.
+  - Gọi video: mã phiên, gửi lại lời mời/ready, mở lại SSE, khởi động lại ICE (khoảng 40 giây), log `[facetime] turn ok` lúc khởi động và một dòng `[facetime] diag` mỗi cuộc gọi (xem `turn=`, `pair=relay`); gọi thoại `startFaceTime(id, { audio: true })`.
+  - Vị trí thật: `server/location.ts`, cột `loc_*` trên `members`, `POST /api/me/location`, `PUT /api/me/location/share`, phát qua kênh live; `app/docs/vi-tri.md`.
+  - Nhiệm vụ tự tích: `server/missions.ts` (dò từ dữ liệu, `markCall` nối vào `onCallConnected` ở `server/index.ts`), `app/docs/nhiem-vu-tuan.md`; giấy gấp sao bỏ giá.
+  - Nhắn riêng: `messages.to_id`, `messages.read_at`, `?with=`, `GET /api/chat/threads`, đẩy riêng `notifyChatTo`; `app/docs/tin-rieng.md`.
+  - "nhà mình kể": đổi tên mọi chữ podcast người dùng thấy, kệ ảnh lấy liền ở trang chủ; viên tên trên ảnh tuần đọc rõ ở chế độ tối.
+- Chưa kiểm: mọi SQL mới trên Postgres thật; `add column if not exists ... references` (messages.to_id) cần Postgres 13 trở lên; iPhone thật cho vị trí, gọi thoại, mic sau màn xin ảnh; hai máy thật Wi-Fi + 4G cho gọi video.
+- Mây mới: bản thiết kế `docs/superpowers/specs/2026-11-20-may-moi-design.md` (đã soát), còn 3 câu chờ người dùng: hạn mức giọng (giữ Gemini hay Google Cloud TTS), thẻ cuộc gọi thử sau bao lâu, có dùng chuyện người này hỏi người kia không. Chưa làm code.
+- Bộ ảnh và video cho pitch tuần sau: chờ người dùng chọn chữ tiếng Hàn hay tiếng Việt kèm phụ đề Hàn.
