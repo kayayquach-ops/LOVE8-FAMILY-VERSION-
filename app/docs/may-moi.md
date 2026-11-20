@@ -183,3 +183,31 @@ Mã: `server/callfacts.ts` (nạp và chọn dữ liệu), `server/place.ts` (n�
 **Thời tiết** (`weatherAt`): open-meteo như máy khách (`current=temperature_2m,weather_code`), toạ độ làm tròn 1 số lẻ (khoảng 11 km) trước khi hỏi, nhớ 1 giờ theo toạ độ đó trong bộ nhớ máy chủ, chờ tối đa 2 giây, lỗi gì cũng bỏ. Lỗi (chậm, sập, trả sai dạng) cũng nhớ, 10 phút, và chỉ ghi log `[place]` lúc nhớ lỗi: open-meteo hỏng thì mỗi ô toạ độ chỉ chờ 2 giây một lần mỗi 10 phút. Chữ "5°C, cloudy" tiếng Anh, cùng nhóm mã như `src/time.ts` (`clear`, `few clouds`, `cloudy`, `fog`, `drizzle`, `rain`, `snow`, `storm`).
 
 **Nơi ở** (`placeOfMember`): vị trí thật nếu đang chia sẻ, không thì `members.city`. Thành phố tự chọn thì gọi đúng tên ấy; vị trí thật thì tên nơi gần nhất trong `src/places.json` khi trong 60 km, xa hơn chỉ biết nước. Tên nơi và tên nước theo thứ tiếng người nghe. Tra lỗi (ví dụ `places.json` hỏng) thì ghi log `[place]` và coi như không biết ở đâu.
+
+## Mây nối người
+
+Mã: `server/may.ts` (`pickSends`, `nudgeText`, `mayTick`, `startMayScheduler`, `makeMayRouter`, `markContact`, `contactFromMessages`), `server/facetime.ts` (`connectedIn`), `server/push.ts` (loại `may`), `src/App.tsx` (chạm thông báo). Test: `server/may.test.ts`.
+
+**Hàng chờ và hạn**: tín hiệu nằm trong `may_signals` (xếp ở mục "Sổ nhớ và tín hiệu"). Mỗi phút một lượt `mayTick`: lượt đầu 30 giây sau khởi động, rồi mỗi 60 giây; lỗi chỉ ghi log `[may]`, không làm sập máy chủ; test không chạy bộ hẹn giờ. Tín hiệu hết hạn (`expires_at <= now`) thì `dropped = 'expired'`; người nhận hay người kể đã tắt "Mây nhắc mình liên lạc" (`members.may_nudge`) thì `dropped = 'off'`. Chưa tới `due_at` hay ngoài khung giờ thì chờ, không bỏ. Người nhận hay người kể không còn trong nhà thì câu lấy hàng chờ bỏ qua (PLAN đã xoá hàng của họ).
+
+**Ưu tiên, trần, khung giờ** (`pickSends`, tính theo giờ người nhận, `tzOfMember`)
+- Chỉ gửi từ 9:00 tới trước 21:30 (`QUIET`). Múi giờ hỏng thì giờ Việt Nam.
+- Mỗi người nhận tối đa 1 lời nhắc của Mây mỗi ngày (theo ngày ở nơi người nhận) và 3 trong 7 ngày gần nhất (`CAP`), mọi loại cộng chung.
+- Mỗi lượt mỗi người nhận tối đa một lời nhắc, kể cả từ nhiều người kể khác nhau. Nhiều tín hiệu tranh nhau thì `want_contact` > `miss` > `low` > `good_news` > `upcoming` (`SIGNAL_PRIORITY`), cùng loại thì tín hiệu cũ hơn trước.
+- Gửi một lần: mỗi tín hiệu phải giành được bằng `update ... set sent_at where id = $1 and sent_at is null and dropped is null returning id`; chỉ lượt nhận lại hàng mới ghi `may_nudges` và gửi thông báo, nên hai lượt chạy cùng lúc vẫn chỉ gửi một lần.
+
+**Chữ lời nhắc** (`nudgeText`, khoá máy chủ `nudge.*`): tiêu đề là tên linh vật của nhà, thân là câu mẫu theo loại, chỉ điền tên, vai và tên linh vật. Không bao giờ trích câu gốc (`evidence`) hay lời trong cuộc gọi, kể cả cuộc gọi người kể đã đồng ý chia sẻ. Bố mẹ nhắc con thì gọi người kể theo vai (`nudge.call.bo`, `nudge.call.me`: "mẹ vừa kể với Mây..."), còn lại gọi tên (`nudge.by_name`, tiếng Hàn kèm 님). Người nhận luôn gọi tên. Viết hoa chữ đầu.
+
+**Thông báo**: `kind: 'may'`, `tag: may-<mã lời nhắc>`, `open: may:<mã>`, `ttl` 12 giờ. Loại `may` luôn gửi như `relay` (công tắc là `members.may_nudge`, không phải công tắc thông báo).
+
+**Chạm vào thông báo**: Web Push trên iPhone không có nút, nên chạm là `App.tsx` gọi `POST /api/may/nudges/:id/open` rồi gọi thoại ngay cho người kể (`startFaceTime(peerId, { audio: true })`); lỗi thì thôi, app vẫn mở. Máy chủ chỉ nhận người nhận của lời nhắc, khi người nhận và người kể còn trong nhà; không thì 404 `nudge_not_found`. `opened_at` ghi một lần (`coalesce`).
+
+**Đo lời nhắc dẫn tới liên lạc** (`contact_at`, trong `CONTACT_H` = 48 giờ sau lúc gửi)
+- Cuộc gọi trong app nối thông (`onCallConnected`, `markCallContact`): lời nhắc giữa hai người cùng đã nối trong cuộc gọi (`connectedIn` cộng người vừa nối), có ít nhất một người vừa nối, thì ghi. Gọi nhóm có người vào sau cũng tính.
+- Tin nhắn riêng (`messages.to_id`), chiều nào cũng được: đầu mỗi lượt `mayTick` soát lời nhắc chưa có liên lạc trong 72 giờ qua, lấy lúc của tin riêng sớm nhất giữa hai người trong 48 giờ sau lúc gửi. Tin cả nhà không tính.
+- Lần soạn câu sau (`loadScriptExtras`): `recent` là tên những người đã liên lạc được sau lời nhắc, `contact_at` trong 7 ngày qua; `scriptFacts` đưa thành `recent_contact` (rỗng thì `none yet: no contact after a nudge`). Luật prompt 18: lời chào hay câu hỏi thăm được hỏi ấm áp chuyện nói với người đó thế nào, không gắn mốc thời gian (lớp lọc chặn "hôm trước", "yesterday", "어제"), không đoán đã nói gì.
+
+**Số liệu pitch**
+```sql
+select count(*) sent, count(opened_at) opened, count(contact_at) contacted from may_nudges where sent_at > now() - interval '30 days';
+```

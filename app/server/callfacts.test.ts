@@ -48,7 +48,7 @@ const fact = (id: string, o: Row): Row => ({ id, family_id: 'F', about_id: null,
   used_at: null, used_count: 0, replacement_id: null, created_at: new Date('2026-11-10'), ...o });
 
 /** DB giả: đúng từng câu trong EXTRAS_SQL, điều kiện viết lại bằng JS. */
-function fakeDb(members: Row[], facts: Row[], calls: Row[]) {
+function fakeDb(members: Row[], facts: Row[], calls: Row[], nudges: Row[] = []) {
   const S = F.EXTRAS_SQL;
   return {
     async query(q: string, v: any[] = []) {
@@ -59,6 +59,15 @@ function fakeDb(members: Row[], facts: Row[], calls: Row[]) {
           return { rows: facts.filter((f) => f.family_id === v[0] && f.replacement_id == null && (f.visibility === 'family' || f.source_id === v[1]))
             .sort((a, b) => +b.created_at - +a.created_at).slice(0, 300) };
         case S.calls: return { rows: calls.filter((c) => c.member_id === v[0]) };
+        case S.recent: {
+          const at = new Map<string, number>();
+          for (const n of nudges) {
+            if ((n.from_id !== v[0] && n.to_id !== v[0]) || !(n.contact_at > v[1])) continue;
+            const other = members.find((m) => m.id === (n.from_id === v[0] ? n.to_id : n.from_id) && m.family_id === n.family_id);
+            if (other) at.set(other.name, Math.max(at.get(other.name) ?? 0, +n.contact_at));
+          }
+          return { rows: [...at].sort((a, b) => b[1] - a[1]).map(([name]) => ({ name })) };
+        }
       }
       throw new Error(`DB giả chưa biết câu này: ${q}`);
     },
@@ -79,10 +88,16 @@ test('nạp dữ liệu soạn câu: tuổi, nơi ở, giờ chênh, sổ nhớ 
     fact('tet', { source_id: 'hung', kind: 'occasion', text_en: 'The family wraps banh chung at Tet', details: { occasion: 'tet' } }),
   ];
   const calls = [{ member_id: 'an', script: JSON.stringify({ v: 2, questions: [{ part: 'checkin' }, { part: 'story', theme: 'mon-an' }] }), done_at: '2026-11-15', story_turns: 3 }];
+  // Lời nhắc của Mây đã dẫn tới liên lạc: với mẹ 1 hôm trước (tính), với bố 10 hôm trước (quá 7 ngày), lời nhắc chưa liên lạc thì không.
+  const nudges = [
+    { family_id: 'F', from_id: 'lan', to_id: 'an', contact_at: new Date('2026-11-19T11:00:00Z') },
+    { family_id: 'F', from_id: 'an', to_id: 'hung', contact_at: new Date('2026-11-10T11:00:00Z') },
+    { family_id: 'F', from_id: 'hung', to_id: 'an', contact_at: null },
+  ];
   const urls: string[] = [];
   const fetchFn = (async (u: string) => { urls.push(String(u)); return new Response(JSON.stringify({ current: { temperature_2m: 4.6, weather_code: 3 } })); }) as typeof fetch;
   const x = await F.loadScriptExtras({ id: 'an', family_id: 'F' }, 'vi', {
-    db: fakeDb(members, facts, calls), fetch: fetchFn, now: () => new Date('2026-11-20T11:00:00Z'), // 20:00 ở Busan
+    db: fakeDb(members, facts, calls, nudges), fetch: fetchFn, now: () => new Date('2026-11-20T11:00:00Z'), // 20:00 ở Busan
     events: async () => [{ title: 'Sinh nhật An', kind: 'birthday', date: '2026-12-01', inDays: 11, dobName: 'An' }],
   });
   assert.equal(x.age, 21);
@@ -96,6 +111,7 @@ test('nạp dữ liệu soạn câu: tuổi, nơi ở, giờ chênh, sổ nhớ 
   assert.deepEqual(x.told, [{ theme: 'mon-an', times: 1, turns: 3, last: '2026-11-15' }]);
   assert.ok(x.themes.includes('mon-an') && !x.themes.includes('ngay-cuoi'));
   assert.deepEqual(x.gaps, ['seen']);                                                        // đã có sự thật món ăn về An
+  assert.deepEqual(x.recent, ['Lan']);
   assert.doesNotMatch(JSON.stringify(x), /bí mật|back pain/);
 });
 // i18n-ok-end

@@ -363,6 +363,7 @@ FAMILY DATA THAT GROWS OVER TIME (each rule applies only when its field is in th
 15. memory lists what the family told Mây in earlier calls. An entry with told_by_you false was told by someone else: use it only together with who told it (for example: Mẹ kể là ..., or Mom told me ...), never as if Mây knew it by itself. Write every name from memory exactly as given. used_facts lists the id of every memory entry your lines use, or is empty.
 16. When profile_gaps is a list, the checkin may weave in one gap question: seen is how long since they last saw the family, food is the home dish they miss most (for a parent, the dish their child loves most).
 17. A memory entry with private true is something the person told only Mây. It may only be touched gently in the checkin, never used as or inside the story opener, because the story opener can later be shown to the whole family.
+18. recent_contact lists people this person got in touch with after Mây nudged them. When it lists someone, the greeting or checkin may warmly ask how talking with that person went, with their name exactly as given. Never put a time on it (no yesterday, the other day, last time, recently, or anything similar) and never guess what they talked about.
 
 The greeting is one or two short sentences and mentions nothing outside the input.${trial ? `
 
@@ -409,6 +410,7 @@ export function scriptFacts(c: Ctx) {
       told_themes: orNone(x.told.map((t) => ({ theme: t.theme, times: t.times, depth: t.turns >= 3 ? 'deep' : 'short', last: t.last })), 'no story told'),
       untold_themes: orNone(x.themes.filter((t) => !x.told.some((d) => d.theme === t)), 'every theme told'),
       allowed_themes: x.themes,
+      recent_contact: orNone(x.recent, 'no contact after a nudge'),
     } : {}),
   };
 }

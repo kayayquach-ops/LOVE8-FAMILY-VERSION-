@@ -23,6 +23,11 @@ const view = (r?: Room): LiveRoom => (r ? { id: r.id, by: r.by, to: r.to, audio:
  * Mỗi người chỉ được tính một lần mỗi cuộc gọi: cặp đầu tiên nối được thì gọi với cả hai người; gọi nhóm có người nối thêm thì gọi lại chỉ với người mới. */
 export const onCallConnected: Array<(familyId: string, memberIds: string[]) => void> = [];
 
+/** Những người đã nối thông thật (hình, tiếng đi được) trong phòng đang gọi của nhà này (Room.up). Không có phòng thì rỗng. */
+export function connectedIn(familyId: string): string[] {
+  return [...(rooms.get(familyId)?.up ?? [])];
+}
+
 function send(memberId: string, msg: unknown) {
   const c = conns.get(memberId);
   if (!c) return;

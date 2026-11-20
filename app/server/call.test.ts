@@ -244,7 +244,7 @@ const extras: ScriptExtras = {
   family: [],
   memory: [{ id: 'f1', about: 'An', toldBy: 'An', toldByYou: false, private: false, kind: 'food', fact: 'An loves sour soup' }],
   occasions: [{ key: 'noel', name: 'Noel', date: '2026-12-25', inDays: 24, who: null }],
-  told: [], themes: themesFor('me', true, false), gaps: [],
+  told: [], themes: themesFor('me', true, false), gaps: [], recent: [],
 };
 
 test('bộ câu mẫu v2: hỏi thăm, một chuyện chính mời kể, lời nhắn cuối; nhà một người thì không hỏi lời nhắn', () => {
@@ -352,6 +352,10 @@ test('bộ câu mẫu: kể hết mọi chủ đề rồi thì xoay vòng nhưng
       assert.notEqual(sc.questions[1].theme, newest, `${newest} ${week}`);
     }
   }
+});
+test('liên lạc sau lời nhắc: có tên thì đưa cho AI, không có thì none yet', () => {
+  assert.deepEqual(call.scriptFacts({ ...ctx('me', both), extras: { ...extras, recent: ['An'] } }).recent_contact, ['An']);
+  assert.match(String(call.scriptFacts({ ...ctx('me', both), extras }).recent_contact), /^none yet/);
 });
 test('sổ nhớ: điều riêng của chính người nghe mang cờ private cho AI', () => {
   const mine = { ...extras.memory[0], id: 'f2', toldByYou: true, private: true, kind: 'worry', fact: 'Lan worries about money' };

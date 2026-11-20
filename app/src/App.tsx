@@ -174,6 +174,8 @@ export function App() {
       else if (o === 'post') setSheet('feed');
       else if (o === 'recap') setSheet('recap');
       else if (o.startsWith('shot')) { const id = shotIdFrom(o); if (id) void openShot(id); else void loadShots(); }
+      // Lời nhắc của Mây (iPhone không có nút trên thông báo): chạm là gọi thoại ngay cho người kể. Lỗi thì thôi, app vẫn mở.
+      else if (o.startsWith('may:')) void api.mayOpen(o.slice(4)).then((r) => startFaceTime(r.peerId, { audio: true })).catch(() => {});
     });
   }, [!!me]);
 

@@ -21,6 +21,8 @@ import { buildFirstVoicePodcast, migratePodcast, podcastRouter, refreshFirstVoic
 import { liveRouter, liveStreamRouter, onCallConnected } from './facetime.ts';
 // Cuộc gọi trong app nối được thật thì nhiệm vụ tuần "gọi điện" tự tích cho mọi người trong cuộc gọi.
 onCallConnected.push(markCall);
+// Và lời nhắc của Mây giữa những người trong cuộc gọi (48 giờ qua) được tính là đã dẫn tới liên lạc (server/may.ts).
+onCallConnected.push(markCallContact);
 import { migratePush, notifyJoin, notifyPost, notifyReply, pushRouter, startPushScheduler } from './push.ts';
 import { thumbRoute, warmThumbs } from './thumb.ts';
 import { googlePublicRouter, googleRouter, linkPendingGoogle, takePendingGoogle } from './google.ts';
@@ -30,7 +32,7 @@ import { membersRouter } from './members.ts';
 import { joinPublicRouter, joinRouter, joinView, memberAuth, memberFields, migrateJoin } from './join.ts';
 import { locationRouter, memberLoc, migrateLocation } from './location.ts';
 import { migrateMemory, startMemoryBackfill } from './memory.ts';
-import { migrateMay } from './may.ts';
+import { makeMayRouter, markCallContact, migrateMay, startMayScheduler } from './may.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -175,6 +177,7 @@ app.use('/api', googleRouter);
 app.use('/api', membersRouter());
 app.use('/api', locationRouter());
 app.use('/api', joinRouter(joinDeps));
+app.use('/api', makeMayRouter());
 
 app.get('/api/me', h(async (req, res) => {
   const m = req.member!;
@@ -403,4 +406,5 @@ await migrateLocation(pool);
 startRecapScheduler(pool);
 startPushScheduler();
 startMemoryBackfill();
+startMayScheduler();
 app.listen(port, () => console.log(`Homeletter chạy ở cổng ${port}`));

@@ -156,6 +156,8 @@ export const api = {
   shotNudge: (id: string) => call<{ ok: boolean }>(`/api/shots/${encodeURIComponent(id)}/nudge`, { method: 'POST' }),
   shotRedo: (id: string, b: { occasion?: ShotOccasion; custom?: string } = {}) => call<{ shot: Shot }>(`/api/shots/${encodeURIComponent(id)}/redo`, json(b)),
   shotPost: (id: string) => call<{ ok: boolean; postId: string }>(`/api/shots/${encodeURIComponent(id)}/post`, { method: 'POST' }),
+  /** Bấm lời nhắc của Mây: máy chủ ghi đã mở, trả người cần gọi. */
+  mayOpen: (id: string) => call<{ peerId: string }>(`/api/may/nudges/${encodeURIComponent(id)}/open`, { method: 'POST' }),
 };
 
 // Mọi yêu cầu tới /api/ mang theo ngôn ngữ đang chọn (header x-lang), để lời báo lỗi và chữ máy chủ soạn đúng thứ tiếng

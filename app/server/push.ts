@@ -10,8 +10,9 @@ import { upcoming } from './calendar.ts';
 import { weekKey } from './recap.ts';
 
 /** relay: lời nhắn khó nói gửi qua Mây, luôn bật (không có công tắc riêng, mỗi lời nhắn chỉ một thông báo cho đúng người nhận).
- *  join: có người xin vào nhà, chỉ báo người duyệt, cũng luôn bật. */
-export type PushKind = 'call' | 'chat' | 'post' | 'calendar' | 'weekly' | 'letter' | 'relay' | 'join';
+ *  join: có người xin vào nhà, chỉ báo người duyệt, cũng luôn bật.
+ *  may: lời nhắc của Mây (server/may.ts), luôn gửi: công tắc là members.may_nudge, không phải công tắc thông báo. */
+export type PushKind = 'call' | 'chat' | 'post' | 'calendar' | 'weekly' | 'letter' | 'relay' | 'join' | 'may';
 export type PushPayload = {
   kind: PushKind;
   title: string;
@@ -27,7 +28,7 @@ export type PushPayload = {
 /** Chữ của thông báo viết theo ngôn ngữ của từng người nhận (members.lang). */
 type Payload = PushPayload | ((lang: Lang) => PushPayload);
 
-type PrefKind = Exclude<PushKind, 'relay' | 'join'>;
+type PrefKind = Exclude<PushKind, 'relay' | 'join' | 'may'>;
 const KINDS: PrefKind[] = ['call', 'chat', 'post', 'calendar', 'weekly', 'letter'];
 type Prefs = Record<PrefKind, boolean>;
 const DEFAULT_PREFS: Prefs = { call: true, chat: true, post: true, calendar: true, weekly: true, letter: true };
@@ -86,7 +87,7 @@ async function deliver(subs: SubRow[], make: Payload) {
     const opts = { TTL: payload.ttl ?? 6 * 3600, urgency: payload.urgency ?? 'normal' } as const;
     let prefs: Partial<Prefs> = {};
     try { if (s.prefs) prefs = JSON.parse(s.prefs); } catch {}
-    if (payload.kind !== 'relay' && payload.kind !== 'join' && withLetter(prefs)[payload.kind] === false) return;
+    if (payload.kind !== 'relay' && payload.kind !== 'join' && payload.kind !== 'may' && withLetter(prefs)[payload.kind] === false) return;
     try {
       await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body, opts);
     } catch (e: any) {

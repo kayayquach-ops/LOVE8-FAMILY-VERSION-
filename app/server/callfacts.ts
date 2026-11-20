@@ -1,4 +1,5 @@
-// Dữ liệu soạn câu lớn dần cho Mây (21/11/2026, spec C): sổ nhớ, dịp trong 30 ngày, bản đồ chủ đề đã kể, nơi ở thật, giờ và thời tiết.
+// Dữ liệu soạn câu lớn dần cho Mây (21/11/2026, spec C): sổ nhớ, dịp trong 30 ngày, bản đồ chủ đề đã kể, nơi ở thật, giờ và thời tiết,
+// người vừa liên lạc được sau lời nhắc của Mây (chỉ tên, không có gì từ tín hiệu).
 // call.ts (context) nạp một lần khi soạn bộ câu; scriptFacts đưa cho AI, templateScript dùng bản đồ chủ đề. Chi tiết: docs/may-moi.md.
 // Riêng tư: sự thật 'self' của người khác không bao giờ vào (câu SQL lẫn pickFacts); không đọc intro.unsaid, không đọc lời nhắn khó nói.
 // Kiểm bằng server/callfacts.test.ts (DB giả theo từng câu trong EXTRAS_SQL).
@@ -114,6 +115,8 @@ export type ScriptExtras = {
   /** private: điều 'self' của chính người nghe (chỉ được nhắc nhẹ ở câu hỏi thăm, không bao giờ vào câu mở chuyện chính, vì câu mở thành thẻ trong tập cả nhà xem). */
   memory: Array<{ id: string; about: string; toldBy: string; toldByYou: boolean; private: boolean; kind: string; fact: string }>;
   occasions: Occasion[]; told: ThemeTold[]; themes: StoryTheme[]; gaps: Array<'food' | 'seen'>;
+  /** Tên những người mà người nghe đã liên lạc được sau một lời nhắc của Mây (contact_at trong 7 ngày qua), mới nhất trước. */
+  recent: string[];
 };
 
 export const EXTRAS_SQL = {
@@ -127,6 +130,11 @@ export const EXTRAS_SQL = {
   calls: `select c.script, to_char(c.done_at at time zone 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD') as done_at,
      (select count(*)::int from call_answers a where a.call_id = c.id and a.topic <> all($2::text[]) and coalesce(a.transcript, '') <> '') as story_turns
      from calls c where c.member_id = $1 and c.status = 'done' order by c.done_at desc limit 100`,
+  // Người phía bên kia của lời nhắc có người nghe ở một đầu, đã liên lạc sau $2 (7 ngày trước), còn trong nhà. Chỉ lấy tên.
+  recent: `select m.name from may_nudges n
+     join members m on m.id = (case when n.from_id = $1 then n.to_id else n.from_id end) and m.family_id = n.family_id
+     where (n.from_id = $1 or n.to_id = $1) and n.contact_at > $2
+     group by m.id, m.name order by max(n.contact_at) desc`,
 };
 
 export type ExtrasDeps = { db: Db; fetch: typeof fetch; now: () => Date; events: (familyId: string) => Promise<FamilyEvent[]> };
@@ -146,11 +154,12 @@ function ageOn(dob: unknown, today: Day): number | null {
 export async function loadScriptExtras(member: { id: string; family_id: string }, lang: Lang, deps: ExtrasDeps = DEPS): Promise<ScriptExtras> {
   const { db } = deps;
   const now = deps.now();
-  const [{ rows: [me] }, { rows: family }, { rows: facts }, { rows: calls }, events] = await Promise.all([
+  const [{ rows: [me] }, { rows: family }, { rows: facts }, { rows: calls }, { rows: recent }, events] = await Promise.all([
     db.query(EXTRAS_SQL.member, [member.id]),
     db.query(EXTRAS_SQL.family, [member.family_id]),
     db.query(EXTRAS_SQL.facts, [member.family_id, member.id]),
     db.query(EXTRAS_SQL.calls, [member.id, [...NO_EPISODE_TOPICS]]),
+    db.query(EXTRAS_SQL.recent, [member.id, new Date(now.getTime() - 7 * DAY_MS)]),
     deps.events(member.family_id),
   ]);
   if (!me) throw new Error(`member ${member.id} not found`);
@@ -196,5 +205,6 @@ export async function loadScriptExtras(member: { id: string; family_id: string }
     memory, occasions, told,
     themes: themesFor(me.role, hasPair, !!me.has_wedding),
     gaps,
+    recent: recent.map((r) => String(r.name)),
   };
 }
