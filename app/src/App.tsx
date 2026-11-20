@@ -56,6 +56,8 @@ export function App() {
   // Mở app là vào camera như Locket; Trang chủ là một tab.
   const [tab, setTab] = useState<'home' | 'camera' | 'may'>('camera');
   const [chatUnread, setChatUnread] = useState(0);
+  // Chạm thông báo tin riêng: mở thẳng luồng riêng với người gửi.
+  const [chatWith, setChatWith] = useState<string | null>(null);
   const [podcastId, setPodcastId] = useState<string | null>(null);
   const [feedPost, setFeedPost] = useState<string | null>(null);
   // Mở app mà chưa nối được máy chủ: giữ mã của máy, chỉ báo và cho thử lại.
@@ -160,6 +162,7 @@ export function App() {
       else if (o === 'join') { setSheet(null); setTab('home'); void loadMe().catch(() => {}); }
       else if (o === 'weekly') setCalling(true);
       else if (o === 'chat' || o === 'calendar') setSheet(o);
+      else if (o.startsWith('chat:')) { setChatWith(o.slice(5)); setSheet('chat'); }
       else if (o === 'letter') setSheet('letters');
       else if (o === 'post') setSheet('feed');
       else if (o === 'recap') setSheet('recap');
@@ -211,6 +214,12 @@ export function App() {
 
   const doneHug = () => { try { localStorage.setItem(HUG_KEY, today()); } catch {} setHug(false); };
 
+  // Gọi thoại từ luồng tin riêng (Chat.tsx). TẠM THỜI mở cuộc gọi video như nút gọi video.
+  // Khi FaceTime có chế độ chỉ tiếng, chỉ cần trỏ hàm này sang lối vào đó; Chat không phải sửa gì.
+  const startVoiceCall = (memberId: string) => startFaceTime(memberId);
+  // Đóng chat bằng bất kỳ đường nào thì lần mở sau về danh sách, không mở lại luồng cũ của thông báo.
+  useEffect(() => { if (sheet !== 'chat') setChatWith(null); }, [sheet]);
+
   let body = null;
   if (!ready) body = null;
   else if (!me && waiting) body = (
@@ -248,7 +257,7 @@ export function App() {
           onJoin={(s) => { putShot(s, true); setSkipShots((k) => k.filter((x) => x !== s.id)); setSheet(null); setShot(null); setTab('camera'); }}
           onFeed={(postId) => { setShot(null); setFeedPost(postId); setSheet('feed'); }} />
       )}
-      {sheet === 'chat' && <Chat me={me} live={!!room} onClose={() => { setSheet(null); void loadUnread(); }} onCall={() => startFaceTime()} />}
+      {sheet === 'chat' && <Chat me={me} live={!!room} start={chatWith} onClose={() => { setSheet(null); void loadUnread(); }} onVideo={startFaceTime} onVoice={startVoiceCall} />}
       <Suspense fallback={null}>
       {sheet === 'settings' && <Settings me={me} onClose={() => setSheet(null)} onProfile={() => setSheet('family')} onMascot={() => setSheet('mascot')} />}
       {sheet === 'mascot' && <MascotSheet me={me} onClose={() => setSheet(null)} onSaved={() => void loadMe().catch(() => {})} />}
