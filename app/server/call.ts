@@ -198,7 +198,7 @@ const storyQ = (text: string, theme: StoryTheme, photo = false, event: CallQuest
 /** Câu tạm biệt cố định theo vai (giọng nằm sẵn trong kho), không hứa "cả nhà cùng nghe" vì chuyện có thể được giữ riêng. */
 const byeOf = (c: Ctx) => callLines(c.member.role, (k, v) => tServer(c.lang, k, v)).bye;
 /** Chủ đề chuyện chính được hỏi người này (themesFor): ngày cưới chỉ khi nhà có đủ bố lẫn mẹ và lịch chưa có ngày cưới. */
-const themesOf = (c: Ctx) => themesFor(c.member.role,
+export const themesOf = (c: Ctx) => themesFor(c.member.role,
   c.family.some((m) => m.role === 'bo') && c.family.some((m) => m.role === 'me'),
   c.events.some((e) => e.kind === 'wedding'));
 
@@ -614,7 +614,7 @@ function selfOf(lang: Lang, role: string) {
   const self = role === 'bo' ? tServer(lang, 'call.self.bo') : role === 'me' ? tServer(lang, 'call.self.me') : '';
   return { self, Self: self ? self[0].toUpperCase() + self.slice(1) : '' };
 }
-const cleanLine = (s: unknown) => String(s ?? '').replace(/\s*[—–]\s*/g, ', ').replace(/["“”«»]/g, '').split('\n')[0].replace(/\s+/g, ' ').trim();
+export const cleanLine = (s: unknown) => String(s ?? '').replace(/\s*[—–]\s*/g, ', ').replace(/["“”«»]/g, '').split('\n')[0].replace(/\s+/g, ' ').trim();
 
 function validDate(day: unknown, month: unknown, year: unknown): TurnAI['date'] {
   const d = Math.round(Number(day)), m = Math.round(Number(month)), y = Math.round(Number(year));
@@ -1082,7 +1082,7 @@ export async function ttsFor(body: { text?: unknown; kind?: unknown; provider?: 
 }
 
 /** Lời nhắn người khác gửi cho người này, chưa chuyển (Mây nói ở cuối cuộc gọi). Chỉ lời nhắn của cuộc gọi đã xong. */
-async function pendingRelays(memberId: string): Promise<CallRelay[]> {
+export async function pendingRelays(memberId: string): Promise<CallRelay[]> {
   const { rows } = await pool.query(
     `select r.id, r.said from relays r left join calls c on c.id = r.call_id
      where r.to_id = $1 and r.delivered_at is null and coalesce(r.said, '') <> '' and (r.call_id is null or c.status = 'done')

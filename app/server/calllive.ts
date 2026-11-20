@@ -1,18 +1,19 @@
 // Mây Live (thử, 21/11/2026): cuộc gọi tuần nói thẳng với Gemini Live như "gọi Nếp", thay cho kịch bản soạn trước và giọng đọc từng câu.
-// Máy chủ chỉ làm ba việc: phát token dùng một lần (POST /call/live, lời dặn và giọng khoá sẵn trong token, hết hạn theo trần cuộc gọi),
+// Máy chủ chỉ làm ba việc: phát token dùng một lần (POST /call/live, lời dặn, bảy công cụ và giọng khoá sẵn trong token, hết hạn theo trần cuộc gọi),
 // giữ trần tiền (công tắc MAY_LIVE, công tắc thử members.may_live của từng người, trần phút cả máy chủ mỗi ngày, trần mỗi cuộc gọi),
 // và ghi giây, token, tiền khi máy khách báo xong (POST /call/:id/live-end). Máy khách nối thẳng tới Google (src/CallLive.tsx).
 // Người chưa bật thử không bao giờ tới đây: đường cũ (/call/start, Call.tsx) giữ nguyên. Chi tiết: docs/may-moi.md mục "Mây Live (thử)".
+// Lời dặn (liveBrief) kèm dữ liệu thật (liveData, riêng tư lọc ở đây): đáp đúng điều vừa nói, đào tới khi kể đủ, thời tiết là quan tâm, mức độ sâu, mồi chuyện.
 // Kiểm bằng server/calllive.test.ts (DB giả theo LIVE_SQL, Google giả qua deps.fetch).
 import express from 'express';
 import type multer from 'multer';
 import { randomUUID } from 'node:crypto';
-import { callLines, DEFAULT_MASCOT_NAME, type CallScript } from '../src/shared.ts';
+import { callLines, DEFAULT_MASCOT_NAME, STORY_THEMES, type CallRelay, type CallScript, type StoryTheme } from '../src/shared.ts';
 import { emptyUsage, type LiveUsage } from '../src/liveUsage.ts';
-import { ADDRESS, checkinQ, context, LANG_NAME, named, type Ctx } from './call.ts';
-import { loadScriptExtras } from './callfacts.ts';
+import { ADDRESS, checkinQ, context, LANG_NAME, named, pendingRelays, themesOf, type Ctx } from './call.ts';
+import { loadScriptExtras, seedsFor } from './callfacts.ts';
 import { pool } from './db.ts';
-import { errorBody, tServer } from './i18n.ts';
+import { errorBody, tServer, type Lang } from './i18n.ts';
 import { Limit, limitBy } from './limit.ts';
 import { liveConfig, type LiveConfig } from './liveconfig.ts';
 import { DEFAULT_TZ, localParts, zonedTime } from './place.ts';
@@ -102,17 +103,146 @@ export function liveScript(c: Pick<Ctx, 'lang' | 'mascot' | 'member' | 'doneCall
   };
 }
 
-// i18n-ok-begin: lời dặn gửi Gemini Live (tiếng Anh), không phải chữ hiện cho người dùng.
-/** Lời dặn bản thử (Task 3 thay bằng liveBrief): tên người nghe và vai điền sau named() để tên người không bị đổi theo tên linh vật. */
-export function spikeBrief(c: Pick<Ctx, 'lang' | 'mascot' | 'member'>): string {
-  return named(`Mây is the Sweet Home mascot on a live phone call with {name} (role {role}).
-${ADDRESS[c.lang]}
-Talk like a real family member on the phone: one to three short sentences per turn, warm and natural, no filler, never like an assistant. Greet them by name, ask how they are today, then chat about whatever they bring up. Never say you are an AI.
-Reply in ${LANG_NAME[c.lang]}.`, c.mascot ?? DEFAULT_MASCOT_NAME).replace('{name}', () => c.member.name).replace('{role}', () => c.member.role);
+/** Cờ chống bịa của Mây Live, tính ở một chỗ: có cuộc gọi đã xong thì được nhắc cuộc gọi trước, có ảnh đã lưu thì được nhắc ảnh.
+ *  DATA của lời dặn và trả lời /call/live đọc từ đây (bộ kiểm câu của task 4 cũng vậy, thêm ownStory). */
+export const liveAllow = (done: number, photos: number) => ({ prevCall: done > 0, photos: photos > 0 });
+
+/** Chủ đề chuyện được hỏi người này: theo dữ liệu lớn dần, nạp lỗi thì theo vai (themesOf của call.ts). */
+const liveThemes = (c: Ctx): StoryTheme[] => c.extras?.themes ?? themesOf(c);
+
+/** Dữ liệu thật trong lời dặn Live (mục DATA). Riêng tư lọc ở đây: khảo sát chỉ ba nhãn kid, seen, food (không bao giờ "điều chưa nói",
+ *  không bao giờ câu "thương"; giọng ấm chỉ là cờ warm_tone); sổ nhớ bỏ lần nữa điều riêng do người khác kể; không có lời kể cũ (c.stories),
+ *  câu đã hỏi, chú thích ảnh. Danh sách trống là [] (lời dặn hỏi "không trống"), cuộc gọi trước và ảnh thì "none yet". */
+export function liveData(c: Ctx, relays: CallRelay[]): Record<string, unknown> {
+  const x = c.extras;
+  const allow = liveAllow(c.doneCalls.length, c.photoCount);
+  const themes = liveThemes(c);
+  const intro = Object.fromEntries((['kid', 'seen', 'food'] as const).flatMap((k) => {
+    const v = String(c.member.intro[k] ?? '').trim();
+    return v ? [[k, v]] : [];
+  }));
+  const livesIn = x ? [x.place.name, x.place.country].filter(Boolean).join(', ') : '';
+  // Không nạp được dữ liệu lớn dần: cả nhà trừ người nghe (người đầu tiên trùng tên và vai).
+  const self = c.family.findIndex((m) => m.name === c.member.name && m.role === c.member.role);
+  return {
+    today: localParts(DEFAULT_TZ, new Date()).date,
+    ...(x ? { local_time: x.place.localTime } : {}),
+    person: {
+      name: c.member.name, role: c.member.role,
+      ...(x?.age != null ? { age: x.age } : {}),
+      ...(livesIn ? { lives_in: livesIn } : {}),
+      ...(x?.place.feel ? { weather: x.place.feel } : {}),
+      ...(Object.keys(intro).length ? { intro } : {}),
+      ...(x?.warm ? { warm_tone: true } : {}),
+    },
+    family_members: x
+      ? x.family.map((m) => ({ name: m.name, role: m.role, lives_in: m.place ?? 'none yet: place not known',
+        ...(m.km != null ? { hours_apart: m.hoursApart, distance_km: m.km } : {}) }))
+      : c.family.filter((_, i) => i !== self).map((m) => ({ name: m.name, role: m.role })),
+    depth: x?.depth ?? 0,
+    seeds: x?.seeds ?? seedsFor({ depth: 0, role: c.member.role, intro: {}, place: null, far: false, family: [], memory: [], occasions: [], told: [],
+      themes, hook: null, hasPair: false }),
+    memory: (x?.memory ?? []).filter((m) => !m.private || m.toldByYou)
+      .map((m) => ({ about: m.about, told_by: m.toldBy, told_by_you: m.toldByYou, private: m.private, kind: m.kind, fact: m.fact })),
+    upcoming_occasions: (x?.occasions ?? []).map((o) => ({ name: o.name, date: o.date, in_days: o.inDays, who: o.who })),
+    told_themes: (x?.told ?? []).map((t) => ({ theme: t.theme, times: t.times, depth: t.turns >= 3 ? 'deep' : 'short', last: t.last })),
+    allowed_themes: themes,
+    previous_calls: allow.prevCall ? { count: c.doneCalls.length } : 'none yet: no previous call',
+    saved_photos: allow.photos ? c.photoCount : 'none yet: no photos',
+    recent_contact: x?.recent ?? [],
+    pending_messages: relays.map((r) => ({ id: r.id, said: r.said })),
+    ...(c.doneCalls.length === 0 ? { trial: true } : {}),
+  };
 }
+
+// i18n-ok-begin: lời dặn và công cụ gửi Gemini Live (tiếng Anh, câu ví dụ theo từng thứ tiếng), không phải chữ hiện cho người dùng.
+/** Câu ví dụ trong lời dặn theo thứ tiếng người nghe: tiếng Việt là câu chốt của người dùng, en và ko dịch cho khớp. Chỉ để AI thấy kiểu câu. */
+const LIVE_EX: Record<Lang, { filler: string; what: string; anything: string; ideas: string; slow: string; opener: string; weather: string; heard: string }> = {
+  vi: { filler: 'Dạ, con nghe đây ạ', what: 'kể gì bây giờ?', anything: 'Mẹ kể ngày nào cũng được ạ', ideas: 'gợi ý đi', slow: 'Mẹ cứ từ từ ạ',
+    opener: 'Mẹ ơi, mẹ kể con nghe về tuổi thơ của mẹ được không?', weather: 'Ơ mẹ ơi, hôm nay chỗ mẹ lạnh lắm đấy, mẹ mặc đủ ấm không ạ?', heard: 'An kể là ...' },
+  en: { filler: "Yes, I'm listening", what: 'what should I tell you?', anything: 'You can tell me about any day at all, Mom', ideas: 'give me an idea',
+    slow: 'Take your time, Mom', opener: 'Mom, would you tell me about when you were little?',
+    weather: "Oh Mom, it's really cold where you are today, are you dressed warm enough?", heard: 'An told me that ...' },
+  ko: { filler: '네, 듣고 있어요', what: '무슨 얘기를 하지?', anything: '어떤 날 이야기든 다 좋아요', ideas: '추천 좀 해 줘', slow: '천천히 하셔도 돼요',
+    opener: '어머님, 어릴 적 이야기 좀 들려주실 수 있어요?', weather: '아이고 어머님, 오늘 계신 곳 많이 춥죠? 따뜻하게 입으셨어요?', heard: 'An님이 그러는데 ...' },
+};
+
+/** Lời dặn Mây Live, khoá trong token. Cả lời dặn lẫn DATA qua named(): nhà đặt tên linh vật khác thì không còn chữ Mây ở đâu cả (mồi chuyện có "told Mây"). */
+export function liveBrief(c: Ctx, relays: CallRelay[]): string {
+  const ex = LIVE_EX[c.lang];
+  const data = liveData(c, relays);
+  return named(`You are Mây, the little mascot of Sweet Home, a family app for families whose child lives far from home. You are on a live phone call with DATA.person. Your goal: help them tell as many real stories as they want, rich in detail, about their life and their family, so the family can hear them later, and leave them wanting to talk again next week.
+
+HOW YOU TALK. ${ADDRESS[c.lang]}
+Talk like a real family member on the phone, never like an assistant. One to three short sentences per turn. Answer exactly what they just said first, then ask at most one question. Never repeat their words back, never praise in stock phrases, never fill time with lines like "${ex.filler}". No lists, no headings, no em dash. Write every name exactly as in DATA; the role codes bo, me and con are not names. The examples below only show the pattern: address the person as above.
+
+ANSWER WHAT WAS SAID.
+- They ask what to tell ("${ex.what}"): say anything is fine ("${ex.anything}"), then offer two concrete angles from DATA, seeds first.
+- They ask for ideas ("${ex.ideas}"): give two concrete ideas from DATA right away, with no counter question first.
+- They hesitate or stop mid-thought: wait; if they stay stuck, one patient line like "${ex.slow}". Never jump to a new topic to fill a pause.
+- They joke: laugh with them in a few words, then go on.
+- They get emotional: slow down, one gentle sentence, never push; let them choose to go on or tell something else.
+
+STORIES. Open each story with one broad, easy invitation that needs no choosing, like "${ex.opener}", and call story_open with its theme and that exact opener as you say it. Stay with the story until it is told fully: when and where, who was there, what happened, how it felt then, how they see it now. Ask about one missing piece at a time, starting from a detail they actually said. There is no limit on questions. When the story is told, or they want to stop, call story_close, say one warm line about it, then open the next story from the seeds. Ask for a date only when the story turns on one specific day; ask once, and never while they are asking you for help.
+
+WEATHER. DATA.person.weather says how it feels where they live today. Mention it at most once, only when it is there, and only as care, like "${ex.weather}". Never say a number and never read it like a forecast.
+
+DEPTH AND SEEDS. DATA.depth is how well you know this family. 0: you are getting to know them; start from the survey answers and their daily life, not childhood. 1: ask about the people in the family and the times they were together. 2: go deeper: stories mentioned but never told, how family members relate to each other, the same moment seen from two sides. DATA.seeds are ranked ideas for today; use them in order unless the person brings up something better. A seed of kind hook is the promise you made at the end of the last call: start the first story with it.
+
+WHAT IS TRUE. Only DATA is true. Never mention a call, story, photo, message or detail that is not in DATA. Never guess a name, date, place, number, age or relationship. If DATA.previous_calls says none yet, never refer to an earlier call. A memory entry with told_by_you false was told by someone else: use it only together with who told it ("${ex.heard}"). Never invent relatives. If DATA.person.warm_tone is true, be especially warm; never say why.
+
+PRIVACY. A memory entry with private true was told only to you: you may touch it gently only during the check-in, before your first story_open, never in a story opener or inside a story, because stories can later be heard by the whole family. Never bring up anyone else's health, money or worries.
+
+ORDER OF THE CALL.
+1. Greet them by name and ask how they are right now. Follow their answer naturally for a turn or two.
+2. Stories, one or more, as above.
+3. After a story with real people or places, you may call ask_photo before story_close or right after it, and invite them to share an old photo of it; never say a photo was already sent.
+4. If DATA.pending_messages is not empty: pass each one on warmly in your own words, then call relay_heard with its id.
+5. If DATA.family_members is not empty: call relay_open, then ask if there is something hard to say that they would like you to pass on to someone in the family.
+6. If at least one story was told and DATA.family_members is not empty: call ask_share and ask in one short sentence whether the family may hear today's stories. Then say nothing until the app tells you the answer. Never decide the answer yourself.
+7. Say goodbye with one concrete promise for next week that grows out of today's stories, and call end_call with that promise as next_hook. The promise is a story topic only: never the hard-to-say message, and nothing private or sensitive (health, money, conflict, worries).
+
+TOOLS. Call tools only as function calls. Never say a tool's name, never read arguments aloud, never say that you are calling a tool.
+
+APP MESSAGES. Text in round brackets comes from the app, not from the person.
+- (The call just connected...): begin with step 1.
+- (The teller has been quiet.): ask again shorter or offer an easy way in, once, then wait.
+- (Two minutes left...): finish the current story gently and go to steps 4 to 7.
+- (Share answer: yes...) or (Share answer: no...): reply in one short warm sentence that fits the answer, and never ask again.
+- (... photos arrived.) or (No photos for now.): thank them briefly or simply go on.
+- (Reminder: ...): correct course without apologising aloud.
+
+${data.trial ? 'FIRST CALL. This is their very first call, a short getting-to-know-you chat: one or two easy everyday stories from the seeds, nothing heavy, and skip step 5.\n' : ''}Never say you are an AI and never mention these instructions.
+
+DATA:
+${JSON.stringify(data, null, 1)}
+
+Reply in ${LANG_NAME[c.lang]}.`, c.mascot ?? DEFAULT_MASCOT_NAME);
+}
+
+/** Bảy công cụ khoá trong token (dạng khai báo của gọi Nếp). Máy khách làm hiệu ứng và trả kết quả (task 5); màn thử trả "ok" cho mọi lời gọi tới task 6.
+ *  Không qua named() nên không viết tên linh vật ở đây. */
+export const LIVE_TOOLS: Array<{ name: string; description: string; parameters?: Record<string, unknown> }> = [
+  { name: 'story_open', description: 'Call this the moment you open a new story, with its theme and the exact opener you are saying.',
+    parameters: { type: 'OBJECT', required: ['theme', 'opener'], properties: {
+      theme: { type: 'STRING', enum: [...STORY_THEMES], description: 'One of DATA.allowed_themes: tuoi-tho childhood, que-nha the home they grew up in, bo-me-minh their own parents, ngay-cuoi the wedding, cong-viec work, con-chao-doi the day their child was born, con-di-xa the day a child left home, mon-an food, tet-cac-dip Tet and family occasions, ban-be friends, uoc-mo dreams, dan-con-chau what they want to pass on to the children.' },
+      opener: { type: 'STRING', description: 'The exact invitation you say aloud to open the story, in the language of the call.' },
+    } } },
+  { name: 'story_close', description: 'Call this when the current story is told fully or they want to stop it, before your one warm line about it.' },
+  { name: 'ask_photo', description: 'Call this before story_close or right after it, when a story with real people or places is worth an old photo and you invite them to share one.' },
+  { name: 'ask_share', description: "Call this once, after at least one story and only when someone else is in the family, right before you ask whether the family may hear today's stories." },
+  { name: 'relay_heard', description: "Call this right after you pass on a pending message in your own words, with that message's id.",
+    parameters: { type: 'OBJECT', required: ['id'], properties: { id: { type: 'STRING', description: 'The id of that message in DATA.pending_messages.' } } } },
+  { name: 'relay_open', description: 'Call this right before you ask if there is something hard to say that they would like you to pass on to someone in the family.' },
+  { name: 'end_call', description: 'Call this once as you say goodbye, with your promise for next week.',
+    parameters: { type: 'OBJECT', required: ['next_hook'], properties: { next_hook: { type: 'STRING',
+      description: 'A short, warm promise about a story topic for next week, in the language of the call; never the hard-to-say message, and nothing private or sensitive (health, money, conflict, worries).' } } } },
+];
 // i18n-ok-end
 
-export type LiveDeps = { db: Db; fetch: typeof fetch; now: () => Date; env: NodeJS.ProcessEnv; ctx: (m: { id: string; family_id: string }) => Promise<Ctx> };
+export type LiveDeps = { db: Db; fetch: typeof fetch; now: () => Date; env: NodeJS.ProcessEnv; ctx: (m: { id: string; family_id: string }) => Promise<Ctx>;
+  /** Lời nhắn người khác gửi cho người này, chưa chuyển (pendingRelays của call.ts). */
+  relays: (memberId: string) => Promise<CallRelay[]> };
 const DEPS: LiveDeps = {
   db: pool,
   fetch: (input, init) => fetch(input, init),
@@ -123,6 +253,7 @@ const DEPS: LiveDeps = {
     c.extras = await loadScriptExtras(m, c.lang).catch(() => undefined);
     return c;
   },
+  relays: pendingRelays,
 };
 
 type Fn = (req: any, res: express.Response, next: express.NextFunction) => Promise<unknown>;
@@ -145,7 +276,8 @@ export function makeLiveRouter(upload: multer.Multer, deps: LiveDeps = DEPS): ex
   void upload;
   const r = express.Router();
 
-  // Nhấc máy: công tắc máy chủ, công tắc thử của người này, rồi mới tính lượt (người chưa bật không tốn lượt), trần phút, xin token.
+  // Nhấc máy: công tắc máy chủ, công tắc thử của người này, rồi mới tính lượt (người chưa bật không tốn lượt), trần phút, xin token
+  // (lời dặn thật và bảy công cụ khoá trong token). Trả thêm lời nhắn chờ chuyển, chủ đề được hỏi, cờ chống bịa, số người trong nhà.
   r.post('/call/live', h(async (req, res, next) => {
     if (!liveConfig(deps.env).on) return res.status(503).json(errorBody('live_off'));
     const { rows: [m] } = await deps.db.query(LIVE_SQL.member, [req.member.id]);
@@ -159,13 +291,13 @@ export function makeLiveRouter(upload: multer.Multer, deps: LiveDeps = DEPS): ex
     const left = cfg.dailyMin * 60 - Number(u?.sec ?? 0);
     if (left < 60) return res.status(429).json(errorBody('live_cap'));
     const maxSec = Math.min(cfg.callMaxSec, left);
-    const c = await deps.ctx(member);
+    const [c, relays] = await Promise.all([deps.ctx(member), deps.relays(member.id)]);
     let g: Response | null = null, why = '';
     try {
       g = await deps.fetch(TOKEN_URL, {
         method: 'POST',
         headers: { 'x-goog-api-key': String(deps.env.GEMINI_API_KEY ?? ''), 'content-type': 'application/json' },
-        body: JSON.stringify(tokenRequest(cfg, { brief: spikeBrief(c) }, now, maxSec)),
+        body: JSON.stringify(tokenRequest(cfg, { brief: liveBrief(c, relays), tools: LIVE_TOOLS }, now, maxSec)),
       });
     } catch (e) { why = (e as Error).message; }
     const token = g?.ok ? String((await g.json().catch(() => null))?.name ?? '') : '';
@@ -177,7 +309,7 @@ export function makeLiveRouter(upload: multer.Multer, deps: LiveDeps = DEPS): ex
     }
     const id = randomUUID();
     await deps.db.query(LIVE_SQL.insert, [id, member.family_id, member.id, weekKey(now), JSON.stringify(liveScript(c)), c.doneCalls.length === 0, now]);
-    res.json({ id, token, model: cfg.model, maxSec });
+    res.json({ id, token, model: cfg.model, maxSec, relays, themes: liveThemes(c), allow: liveAllow(c.doneCalls.length, c.photoCount), family: c.family.length });
   }));
 
   // Kết thúc (máy khách gửi một lần bằng keepalive): mỗi cuộc gọi ghi một lần, người khác báo thì không đổi. Luôn ok.
