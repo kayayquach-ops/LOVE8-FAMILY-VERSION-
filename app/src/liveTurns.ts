@@ -9,8 +9,10 @@
 // - turn: onTurn(state, { key, question, transcript, seconds }) ngay (chỉ chờ bản ghi để gửi job); consent true thì đưa lời chép cho shareNext
 //   ({ type: 'heard' }), không theo "lượt tới lúc đang xin phép" (lượt nói trước câu hỏi chia sẻ cũng tới lúc ấy).
 // - Tiếng Mây bị giữ lúc xin phép vẫn báo captureNext ({ type: 'audio' }) để lượt trả lời khép được (R8); { type: 'asked' } theo askStep.
-import { slip, type Allow } from '../server/guard.ts';
-import { isTheme, LIVE_FIRST_STORY, type StoryTheme } from './shared';
+// - mayLine: remindFor với allow của cuộc gọi Live: ownStory true, message true khi có lời nhắn chờ, photos true khi DATA có ảnh hoặc ảnh đã tới
+//   trong cuộc gọi này (CUE.photos(n) với n > 0).
+import { slipLive, type Allow } from '../server/guard.ts';
+import { isTheme, LIVE_FIRST_STORY, LIVE_MAX_STORIES, type StoryTheme } from './shared';
 
 // i18n-ok-begin: câu nhắn và kết quả công cụ cho model (tiếng Anh như mọi prompt), không phải chữ hiện cho người dùng.
 export const CUE = {
@@ -57,24 +59,26 @@ export type Effect = { kind: 'job'; job: Job } | { kind: 'photo' } | { kind: 'sh
  *  family: số người trong nhà; themes: chủ đề được mở (DATA.allowed_themes); relays: mã lời nhắn đang chờ, heard: mã đã chuyển;
  *  share: bước xin phép; hook: câu hẹn tuần sau (end_call); reminded: đã nhắc chống bịa (một lần mỗi cuộc gọi);
  *  lastStory: ô chuyện mở gần nhất (0: chưa có), giữ cả sau story_close để xin ảnh sau khi khép chuyện vẫn được (R5);
- *  rec: ô lúc từng lượt bắt đầu ghi, theo key (onRec), bỏ khi lượt ấy gửi (onTurn). */
+ *  rec: ô lúc từng lượt bắt đầu ghi, theo key (onRec), bỏ khi lượt ấy gửi (onTurn); lastRec: ô của lượt ghi gần nhất;
+ *  ended: đã có end_call (các lần sau bỏ qua). */
 export type LiveState = {
   id: string; idx: number; theme: StoryTheme | null; opener: string; next: number; turns: Record<number, number>; storyTurns: number;
   family: number; themes: StoryTheme[]; relays: string[]; heard: string[]; share: 'none' | 'asking' | 'done'; hook: string; reminded: boolean;
-  lastStory: number; rec: Record<number, TurnSlot>;
+  lastStory: number; rec: Record<number, TurnSlot>; lastRec: number; ended: boolean;
 };
-export type TurnSlot = { idx: number; theme: StoryTheme | null; opener: string; share: LiveState['share'] };
+/** blank: lượt ngay sau lời nhắn khó nói, câu hỏi của nó (câu Mây đáp lời nhắn, có khi nhắc lại lời nhắn) không gửi. */
+export type TurnSlot = { idx: number; theme: StoryTheme | null; opener: string; share: LiveState['share']; blank: boolean };
 
 export function liveStart(p: { id: string; family: number; themes: StoryTheme[]; relays: string[] }): LiveState {
   return {
     id: p.id, idx: 0, theme: null, opener: '', next: LIVE_FIRST_STORY, turns: {}, storyTurns: 0, family: p.family, themes: p.themes,
-    relays: p.relays, heard: [], share: 'none', hook: '', reminded: false, lastStory: 0, rec: {},
+    relays: p.relays, heard: [], share: 'none', hook: '', reminded: false, lastStory: 0, rec: {}, lastRec: 0, ended: false,
   };
 }
 
-/** Một lời gọi công cụ của model: trạng thái mới, câu đáp model (toolResponse) và việc cho app làm. Gọi sai (chủ đề lạ, mã lạ, hỏi lần hai,
- *  công cụ lạ) thì không làm gì, chỉ một câu ngắn để model đi tiếp. Ô lời nhắn (1) khép ở lời gọi công cụ kế tiếp, relay_open thì mở lại:
- *  lượt nói thêm sau lời nhắn (chào, "dạ vâng") không đè lời nhắn. */
+/** Một lời gọi công cụ của model: trạng thái mới, câu đáp model (toolResponse) và việc cho app làm. Gọi sai (chủ đề lạ, quá LIVE_MAX_STORIES
+ *  chuyện, mã lạ, hỏi lần hai, chào lần hai, công cụ lạ) thì không làm gì, chỉ một câu ngắn để model đi tiếp. Ô lời nhắn (1) khép ở lời gọi
+ *  công cụ kế tiếp, relay_open thì mở lại: lượt nói thêm sau lời nhắn (chào, "dạ vâng") không đè lời nhắn. */
 export function onTool(s: LiveState, f: { name: string; args?: Record<string, unknown> }): { state: LiveState; result: string; effects: Effect[] } {
   const st = s.idx === 1 ? { ...s, idx: 0 } : s;
   const arg = (k: string) => String(f.args?.[k] ?? '').trim();
@@ -83,8 +87,8 @@ export function onTool(s: LiveState, f: { name: string; args?: Record<string, un
   switch (f.name) {
     case 'story_open': {
       const theme = f.args?.theme, opener = arg('opener').slice(0, 300);
-      if (!isTheme(theme) || !st.themes.includes(theme) || !opener) return say(SAY.notOpened);
       const idx = st.next;
+      if (!isTheme(theme) || !st.themes.includes(theme) || !opener || idx >= LIVE_FIRST_STORY + LIVE_MAX_STORIES) return say(SAY.notOpened);
       return say(SAY.opened, { ...st, idx, next: idx + 1, theme, opener, lastStory: idx },
         [{ kind: 'job', job: { url: `${base}/story`, fields: { idx: String(idx), theme, opener }, last: true } }]);
     }
@@ -102,29 +106,37 @@ export function onTool(s: LiveState, f: { name: string; args?: Record<string, un
         [{ kind: 'job', job: { url: `${base}/relay/${encodeURIComponent(rid)}/heard`, fields: {} } }]);
     }
     case 'relay_open': return st.family < 2 ? say(SAY.alone) : say(SAY.askNow, { ...st, idx: 1 });
-    case 'end_call': return say(SAY.bye, { ...st, hook: arg('next_hook').slice(0, 200) }, [{ kind: 'end' }]);
+    case 'end_call': return st.ended ? say(SAY.bye) : say(SAY.bye, { ...st, hook: arg('next_hook').slice(0, 200), ended: true }, [{ kind: 'end' }]);
     default: return say('ok');
   }
 }
 
 /** Lượt key bắt đầu ghi (captureNext ra startRec): chụp ô, chuyện và bước xin phép lúc ấy cho onTurn của lượt này. Nhờ vậy câu đáp hỏi thăm
- *  không lọt vào chuyện vừa mở, đoạn cuối chuyện không rơi về ô 0 khi story_close, lời nhắn không mất hay rơi về ô 0 khi ask_share, end_call tới ngay sau. */
+ *  không lọt vào chuyện vừa mở, đoạn cuối chuyện không rơi về ô 0 khi story_close, lời nhắn không mất hay rơi về ô 0 khi ask_share, end_call tới ngay sau.
+ *  Lượt ngay sau lượt ở ô lời nhắn thì không gửi câu hỏi: đó là câu Mây đáp lời nhắn, có khi nhắc lại lời nhắn, mà lượt ô 0 vào sổ nhớ. */
 export function onRec(s: LiveState, key: number): LiveState {
-  return { ...s, rec: { ...s.rec, [key]: { idx: s.idx, theme: s.theme, opener: s.opener, share: s.share } } };
+  const slot: TurnSlot = { idx: s.idx, theme: s.theme, opener: s.opener, share: s.share, blank: s.lastRec === 1 };
+  return { ...s, rec: { ...s.rec, [key]: slot }, lastRec: s.idx };
 }
 
-/** Một lượt đã khép (captureNext ra turn): việc gửi /answer?live=1 (nơi gọi gắn bản ghi), hoặc null. Ô theo bản chụp của key (onRec), không có
- *  thì theo trạng thái lúc này. Lượt bắt đầu lúc đang xin phép là câu trả lời xin phép (consent: đưa cho shareNext), không thành lượt kể. */
+/** Một lượt đã khép (captureNext ra turn): việc gửi /answer?live=1 (nơi gọi gắn bản ghi), hoặc null. Ô theo bản chụp của key (onRec); không truyền
+ *  key thì theo trạng thái lúc này. Có key mà không có bản chụp (nối thiếu onRec, lượt gửi hai lần) thì bỏ lượt, không đoán ô: đoán sai có thể đưa
+ *  lời nhắn khó nói về ô 0 (vào sổ nhớ) hay lời thường vào ô 1 (máy chủ giữ lời dài nhất, có thể đè lời nhắn). Lượt bắt đầu lúc đang xin phép là
+ *  câu trả lời xin phép (consent: đưa cho shareNext), không thành lượt kể. */
 export function onTurn(s: LiveState, t: { key?: number; question: string; transcript: string; seconds: number }): { state: LiveState; job: Job | null; consent: boolean } {
-  const at = (t.key !== undefined && s.rec[t.key]) || { idx: s.idx, theme: s.theme, opener: s.opener, share: s.share };
   const rec = { ...s.rec };
-  if (t.key !== undefined) delete rec[t.key];
+  let at: TurnSlot = { idx: s.idx, theme: s.theme, opener: s.opener, share: s.share, blank: false };
+  if (t.key !== undefined) {
+    if (!rec[t.key]) return { state: s, job: null, consent: false };
+    at = rec[t.key];
+    delete rec[t.key];
+  }
   const st = { ...s, rec };
   if (at.share === 'asking') return { state: st, job: null, consent: true };
   if (t.seconds < 1 && !t.transcript.trim()) return { state: st, job: null, consent: false };
   const turn = s.turns[at.idx] ?? 0, story = at.idx >= LIVE_FIRST_STORY;
   const fields: Record<string, string> = {
-    live: '1', idx: String(at.idx), turn: String(turn), question: t.question.slice(0, 300), transcript: t.transcript, seconds: String(t.seconds),
+    live: '1', idx: String(at.idx), turn: String(turn), question: at.blank ? '' : t.question.slice(0, 300), transcript: t.transcript, seconds: String(t.seconds),
     ...(story ? { theme: at.theme ?? '', opener: at.opener } : {}),
   };
   return {
@@ -133,8 +145,10 @@ export function onTurn(s: LiveState, t: { key?: number; question: string; transc
   };
 }
 
-/** Bước xin phép xong (shareNext tới done): việc gửi (đồng ý /share, không hay hết giờ /keep, cúp máy không gì) và câu nhắn model. Về ô 0. */
+/** Bước xin phép xong (shareNext tới done): việc gửi (đồng ý /share, không hay hết giờ /keep, cúp máy không gì) và câu nhắn model. Về ô 0.
+ *  Chỉ khi đang hỏi: chưa hỏi hay đã xong thì không đổi gì (lời đồng ý tới muộn không lật được lời từ chối). */
 export function onShareEnd(s: LiveState, end: 'yes' | 'no' | 'timeout' | 'hangup'): { state: LiveState; cue: string | null; job: Job | null } {
+  if (s.share !== 'asking') return { state: s, cue: null, job: null };
   const state: LiveState = { ...s, share: 'done', idx: 0 };
   if (end === 'hangup') return { state, cue: null, job: null };
   return end === 'yes'
@@ -151,9 +165,10 @@ export function askStep(a: AskStep, e: 'audio' | 'done'): AskStep {
   return a;
 }
 
-/** Câu Mây vừa nói xong có dấu hiệu bịa (slip, không cần dữ liệu) thì nhắc model một lần mỗi cuộc gọi. */
+/** Câu Mây vừa nói xong có dấu hiệu bịa (slipLive: không cần dữ liệu, bỏ mốc thời gian vì trong cuộc gọi chúng chỉ lại chính cuộc gọi này)
+ *  thì nhắc model một lần mỗi cuộc gọi. allow là allow của cuộc gọi Live (xem đầu tệp). */
 export function remindFor(s: LiveState, line: string, allow: Allow, lang: 'vi' | 'en' | 'ko'): { state: LiveState; cue: string | null } {
-  if (s.reminded || !slip(line, allow, lang)) return { state: s, cue: null };
+  if (s.reminded || !slipLive(line, allow, lang)) return { state: s, cue: null };
   return { state: { ...s, reminded: true }, cue: CUE.remind };
 }
 

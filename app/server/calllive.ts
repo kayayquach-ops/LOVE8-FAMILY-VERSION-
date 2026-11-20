@@ -10,7 +10,7 @@
 import express from 'express';
 import type multer from 'multer';
 import { randomUUID } from 'node:crypto';
-import { callLines, cityOf, DEFAULT_MASCOT_NAME, isTheme, LIVE_FIRST_STORY, STORY_THEMES, THEME_TOPIC, type CallQuestion, type CallRelay, type CallScript, type StoryTheme, type Topic } from '../src/shared.ts';
+import { callLines, cityOf, DEFAULT_MASCOT_NAME, isTheme, LIVE_FIRST_STORY, LIVE_MAX_STORIES, STORY_THEMES, THEME_TOPIC, type CallQuestion, type CallRelay, type CallScript, type StoryTheme, type Topic } from '../src/shared.ts';
 import { emptyUsage, type LiveUsage } from '../src/liveUsage.ts';
 import { ADDRESS, checkinQ, cleanLine, context, LANG_NAME, named, pendingRelays, storyQ, templateOpener, themesOf, type Ctx } from './call.ts';
 import { loadScriptExtras, seedsFor } from './callfacts.ts';
@@ -266,8 +266,7 @@ export const LIVE_TOOLS: Array<{ name: string; description: string; parameters?:
 
 // ---------- Kịch bản v3 trên máy chủ (task 4): ô chuyện, lượt kể, thẻ câu hỏi, câu hẹn ----------
 
-/** Một cuộc gọi Live có tối đa chừng này chuyện (ô LIVE_FIRST_STORY tới LIVE_FIRST_STORY + 19) và chừng này lượt mỗi ô. */
-export const LIVE_MAX_STORIES = 20;
+/** Một ô Live có tối đa chừng này lượt (số chuyện tối đa: LIVE_MAX_STORIES ở src/shared.ts, máy khách cũng dùng). */
 export const LIVE_MAX_TURNS = 200;
 
 /** Số nguyên không âm máy khách gửi (chuỗi của multipart, số của JSON); khác thì NaN. */
@@ -388,15 +387,19 @@ export type LiveRow = { idx: number; turn: number; topic: Topic; question: strin
 
 /** Lượt kể Live (POST /call/:id/answer?live=1) thành hàng call_answers; ô ngoài khoảng hay kịch bản không phải v3 thì null. Không trần 4 lượt
  *  (LIVE_MAX_TURNS), ô lời nhắn luôn lượt 0. Không cần ô đã có (lượt có thể tới trước /story): chủ đề theo theme gửi kèm. Câu hỏi ở ô chuyện
- *  thành thẻ trong tập nên qua cardText (câu Mây hỏi, không thì câu mở, không thì câu mẫu của chủ đề); hỏi thăm, lời nhắn không thành tập, chỉ làm sạch. */
+ *  thành thẻ trong tập nên qua cardText (câu Mây hỏi, không thì câu mở, không thì câu mẫu của chủ đề); hỏi thăm, lời nhắn không thành tập, chỉ làm sạch.
+ *  Câu hỏi ở ô hỏi thăm vào sổ nhớ (memory.ts đọc question của mọi lượt trừ lời nhắn): chạm điều riêng (Mây nhắc lại lời nhắn khó nói vừa nghe,
+ *  điều riêng của người nghe) thì thay bằng câu của ô. */
 export function liveAnswerRow(script: CallScript, body: Record<string, unknown>, k: LiveCheck): LiveRow | null {
   const idx = intOf(body.idx);
   if (script.v !== 3 || !Number.isInteger(idx) || idx < 0 || idx >= LIVE_FIRST_STORY + LIVE_MAX_STORIES) return null;
   const topic = liveTopic(script, idx, body.theme);
   const turn = idx === 1 ? 0 : Math.min(LIVE_MAX_TURNS - 1, Math.max(0, Math.round(Number(body.turn)) || 0));
   let question: string;
-  if (idx < LIVE_FIRST_STORY) question = cardLine(body.question) || script.questions[idx]?.text || '';
-  else {
+  if (idx < LIVE_FIRST_STORY) {
+    const line = cardLine(body.question);
+    question = (idx === 0 && privateHit(line, k.privates) ? '' : line) || script.questions[idx]?.text || '';
+  } else {
     // Như liveTopic: theme gửi kèm trước (ô có thể là bản sao lấp chỗ trống), rồi theo ô.
     const slot = script.questions[idx]?.theme;
     const theme: StoryTheme = isTheme(body.theme) ? body.theme : isTheme(slot) ? slot : 'que-nha';

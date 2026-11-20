@@ -766,6 +766,18 @@ test('lượt Live: không trần 4 lượt, lời nhắn luôn lượt 0, ô ch
   for (const idx of ['-1', 'abc', '1.5', '']) assert.equal(L.liveAnswerRow(s, { ...body, idx }, K), null, idx);
 });
 
+test('lượt ô 0: câu Mây chạm điều riêng (nhắc lại lời nhắn khó nói vừa nghe) không vào sổ nhớ, thay bằng câu của ô (v3 để trống)', () => {
+  const s = L.liveScript(lanCtx());
+  assert.equal(s.questions[0].text, '', 'ô hỏi thăm của kịch bản v3 không có câu sẵn');
+  const k = { ...K, privates: [...K.privates, 'Mẹ thương bố nhiều lắm'] };
+  const echo = L.liveAnswerRow(s, { idx: '0', turn: '3', question: 'Dạ con sẽ nhắn bố là mẹ thương bố nhiều lắm. Chào mẹ nhé', transcript: 'Chào con' }, k)!;
+  assert.equal(echo.question, s.questions[0].text, 'nhắc lại lời nhắn: câu của ô');
+  assert.equal(echo.transcript, 'Chào con', 'lời người kể giữ nguyên');
+  assert.equal(L.liveAnswerRow(s, { idx: '0', turn: '1', question: 'Mẹ còn đau lưng không ạ?' }, k)!.question, s.questions[0].text, 'chạm điều riêng của người nghe: câu của ô');
+  assert.equal(L.liveAnswerRow(s, { idx: '0', turn: '2', question: 'Hôm nay mẹ ăn gì ạ?' }, k)!.question, 'Hôm nay mẹ ăn gì ạ?', 'câu thường giữ nguyên');
+  assert.equal(L.liveAnswerRow(s, { idx: '1', question: 'Mẹ có điều gì khó nói muốn nhắn không ạ?' }, k)!.question, 'Mẹ có điều gì khó nói muốn nhắn không ạ?', 'ô lời nhắn không vào sổ nhớ: chỉ làm sạch');
+});
+
 test('ô lời nhắn giữ lời dài nhất (phán quyết R6): lượt sau ngắn hơn không đè, dài hơn thì thay; ô chuyện thì lượt nào cũng ghi, gửi lại thì thay', async () => {
   const db = lanHome();
   const call = db.calls[0] as { id: string; family_id: string; member_id: string };

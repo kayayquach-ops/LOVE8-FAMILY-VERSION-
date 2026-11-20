@@ -91,6 +91,8 @@ export type CallScript = { greeting: string; questions: CallQuestion[]; goodbye:
   /** Mây Live: câu móc để mở đầu cuộc gọi sau. */ next_hook?: string };
 /** Kịch bản v3 (Mây Live): ô 0 hỏi thăm và ô 1 lời nhắn luôn có, chuyện đầu tiên ở ô này. */
 export const LIVE_FIRST_STORY = 2;
+/** Một cuộc gọi Live có tối đa chừng này chuyện (ô LIVE_FIRST_STORY tới LIVE_FIRST_STORY + 19): máy chủ nhận, máy khách mở trong khoảng này. */
+export const LIVE_MAX_STORIES = 20;
 
 /** Hàm tra chữ: máy khách truyền `t`, máy chủ truyền `tServer` theo ngôn ngữ của người nghe. */
 export type Tr = (key: string, vars?: Record<string, string | number>) => string;

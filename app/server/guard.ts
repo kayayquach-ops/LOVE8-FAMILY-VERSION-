@@ -16,11 +16,12 @@ const NAME_OK = new Set([
 const KO_OK = new Set(['어머', '아버', '어머니', '아버지', '할머', '할아버', '부모', '선생', '형', '누', '따', '아드', '손', '사모', '고객', '사장', '하느', '하나']);
 
 const MESSAGE = 'nhắc tin nhắn không có trong dữ liệu';
+const TIME = 'mốc thời gian không có trong dữ liệu';
 /** Mỗi nhóm: [lý do, mẫu]. Chạy cho mọi thứ tiếng (mẫu tiếng này không khớp câu tiếng kia). */
 const ALWAYS: Array<[string, RegExp]> = [
-  ['mốc thời gian không có trong dữ liệu', /hôm (trước|qua|kia|nọ)|lúc nãy|vừa nãy|mới đây|hồi sáng nay/],
-  ['mốc thời gian không có trong dữ liệu', /\byesterday\b|\bthe other day\b|\bearlier today\b|\ba (moment|minute|little while) ago\b|\bjust now\b|\blast night\b/],
-  ['mốc thời gian không có trong dữ liệu', /어제|그저께|엊그제|아까(?![워운웠와])|방금|얼마 전/],
+  [TIME, /hôm (trước|qua|kia|nọ)|lúc nãy|vừa nãy|mới đây|hồi sáng nay/],
+  [TIME, /\byesterday\b|\bthe other day\b|\bearlier today\b|\ba (moment|minute|little while) ago\b|\bjust now\b|\blast night\b/],
+  [TIME, /어제|그저께|엊그제|아까(?![워운웠와])|방금|얼마 전/],
   [MESSAGE, /tin nhắn\s+(của\s+)?(bạn|bố|mẹ|con)|(bạn|bố|mẹ)\s+(đã\s+)?nhắn\s+(cho|với)/],
   [MESSAGE, /\byour (text|message|note)s?\b|\byou (texted|messaged)\b|\b(message|text)s? you (sent|wrote|left)\b/],
   [MESSAGE, /(보내\s?주신|보내신|보낸|남기신|남겨\s?주신|남긴)\s*(메시지|문자|글|편지)|(메시지|문자)(를|도)?\s*(보내\s?주셨|보내셨|남기셨|보냈)/],
@@ -47,15 +48,27 @@ const GENDER: Array<[RegExp, RegExp]> = [
 
 const fold = (s: string) => s.toLowerCase().normalize('NFC');
 
-/** Phần của suspect() không cần dữ liệu thật: mốc thời gian, tin nhắn, cuộc gọi trước, điều đã kể, ảnh đã gửi. Máy khách cũng gọi
- *  (nhắc chống bịa giữa cuộc gọi Mây Live, src/liveTurns.ts). Mẫu chạy cho mọi thứ tiếng nên lang chưa dùng, giữ cho cùng khuôn với suspect. */
-export function slip(text: string, allow: Allow, lang: Lang = 'vi'): string | null {
+/** Các dấu hiệu không cần dữ liệu thật; live bỏ nhóm mốc thời gian. */
+function slipOf(text: string, allow: Allow, live: boolean): string | null {
   const t = fold(text);
-  for (const [why, re] of ALWAYS) if (!(allow.message && why === MESSAGE) && re.test(t)) return why;
+  for (const [why, re] of ALWAYS) if (!(live && why === TIME) && !(allow.message && why === MESSAGE) && re.test(t)) return why;
   if (!allow.prevCall && PREV_CALL.some((re) => re.test(t))) return 'nhắc cuộc gọi trước không có';
   if (!allow.ownStory && OWN_STORY.some((re) => re.test(t))) return 'nhắc điều đã kể mà chưa có';
   if (!allow.photos && PHOTOS.some((re) => re.test(t))) return 'nhắc ảnh đã gửi mà chưa có';
   return null;
+}
+
+/** Phần của suspect() không cần dữ liệu thật: mốc thời gian, tin nhắn, cuộc gọi trước, điều đã kể, ảnh đã gửi.
+ *  Mẫu chạy cho mọi thứ tiếng nên lang chưa dùng, giữ cho cùng khuôn với suspect. */
+export function slip(text: string, allow: Allow, lang: Lang = 'vi'): string | null {
+  return slipOf(text, allow, false);
+}
+
+/** Như slip cho câu Mây nói giữa cuộc gọi Live (nhắc chống bịa, src/liveTurns.ts): bỏ nhóm mốc thời gian, vì "lúc nãy", "just now", "아까", "방금"
+ *  hay "hôm qua" người kể vừa nói đều chỉ lại chính cuộc gọi này. Còn lại điều không thể đúng trong cuộc gọi: cuộc gọi trước khi chưa có, ảnh chưa gửi,
+ *  lời nhắn khi không có lời nhắn chờ, điều đã kể khi allow không cho. */
+export function slipLive(text: string, allow: Allow, lang: Lang = 'vi'): string | null {
+  return slipOf(text, allow, true);
 }
 
 /** Lý do câu này có dấu hiệu bịa (nhắc điều không có trong dữ liệu), hoặc null nếu ổn. haystack là toàn bộ dữ liệu thật đã đưa vào. */

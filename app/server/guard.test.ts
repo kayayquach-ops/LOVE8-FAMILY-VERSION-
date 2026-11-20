@@ -1,7 +1,7 @@
 // Kiểm lớp lọc chống bịa suspect() và đọc ngày parseDate() cho vi, en, ko. Không gọi mạng. Chạy cùng npm run test:tts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDate, slip, suspect, type Allow } from './guard.ts';
+import { parseDate, slip, slipLive, suspect, type Allow } from './guard.ts';
 
 const NONE: Allow = { prevCall: false, ownStory: false, photos: false };
 const ALL: Allow = { prevCall: true, ownStory: true, photos: true };
@@ -75,6 +75,29 @@ test('slip: dấu hiệu bịa không cần dữ liệu, suspect vẫn như cũ'
   assert.equal(slip('Minh ơi, bạn 25 tuổi rồi nhỉ?', NONE, 'vi'), null, 'tên, con số cần dữ liệu thật: slip không xét');
   assert.equal(suspect('Lần trước bạn kể về quê, kể tiếp nhé?', HAY, NONE, 'vi'), 'nhắc cuộc gọi trước không có', 'suspect: lý do như cũ (phần slip)');
   assert.equal(suspect('Minh ơi, dạo này thế nào?', HAY, NONE, 'vi'), 'tên "Minh" không có trong dữ liệu', 'suspect: lý do như cũ (phần cần dữ liệu)');
+});
+
+test('slipLive: mốc thời gian chỉ lại chính cuộc gọi thì không tính, điều không thể đúng trong cuộc gọi thì vẫn bắt', () => {
+  const LIVE: Allow = { prevCall: false, ownStory: true, photos: false };
+  const ok: Array<[string, 'vi' | 'en' | 'ko']> = [
+    ['Lúc nãy mẹ nói bà ngoại ở quê, quê mình ở đâu ạ?', 'vi'],
+    ['Hôm qua mẹ đi chợ mua gì ạ?', 'vi'],
+    ['That sounds lovely, just now I could picture it.', 'en'],
+    ['You said yesterday was busy, what happened?', 'en'],
+    ['아까 말씀하신 시장은 어디였어요?', 'ko'],
+    ['방금 그 얘기 정말 재밌어요.', 'ko'],
+  ];
+  for (const [s, lang] of ok) {
+    assert.equal(slipLive(s, LIVE, lang), null, s);
+    assert.ok(slip(s, LIVE, lang), `slip ngoài cuộc gọi vẫn bắt: ${s}`);
+  }
+  assert.equal(slipLive('Lần trước mẹ kể chuyện bà', LIVE, 'vi'), 'nhắc cuộc gọi trước không có', 'chưa có cuộc gọi trước: bắt');
+  assert.equal(slipLive('Last time we talked about your garden.', LIVE, 'en'), 'nhắc cuộc gọi trước không có');
+  assert.equal(slipLive('Ảnh mẹ vừa gửi đẹp quá', LIVE, 'vi'), 'nhắc ảnh đã gửi mà chưa có', 'ảnh chưa gửi: bắt');
+  assert.equal(slipLive('보내주신 사진 정말 예뻤어요.', LIVE, 'ko'), 'nhắc ảnh đã gửi mà chưa có');
+  assert.equal(slipLive('Bố nhắn cho mẹ là bố nhớ mẹ', LIVE, 'vi'), 'nhắc tin nhắn không có trong dữ liệu', 'không có lời nhắn chờ: bắt');
+  assert.equal(slipLive('Bố nhắn cho mẹ là bố nhớ mẹ', { ...LIVE, message: true }, 'vi'), null, 'có lời nhắn chờ: không bắt');
+  assert.equal(slipLive('You told me you love cooking.', NONE, 'en'), 'nhắc điều đã kể mà chưa có', 'ownStory theo allow như slip');
 });
 
 test('parseDate: vi, en, ko', () => {
