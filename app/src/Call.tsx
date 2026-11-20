@@ -429,7 +429,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     if (!live.current) return;
     // Câu đáp mẫu chọn trước. Câu cố định chỉ lấy từ kho (không tốn hạn mức).
     const fallback = { short: pickOne(lines.short), long: pickOne(lines.long) };
-    if (!machine.current) [fallback.short, fallback.long, lines.ack, lines.slow, lines.skip, lines.busy].forEach((x) => warmVoice(x, 'fixed'));
+    if (!machine.current) [fallback.short, fallback.long, lines.ack, lines.slow, lines.busy].forEach((x) => warmVoice(x, 'fixed'));
 
     // Hỏi thăm. Lời chào + câu hỏi thăm đọc trong MỘT yêu cầu (một file) nếu vừa độ dài cho phép.
     // Lúc người nghe đang đáp không xin trước giọng câu mở chuyện chính: câu gộp (joined) thay nó, xin trước là phí một câu giọng.
@@ -491,8 +491,9 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       await wait(250);
       const more = await hear();
       if (!live.current) return;
-      // Không nói gì sau câu hỏi thêm thì thôi, không hỏi lại.
-      if (!more || !more.recording || more.recording.seconds < 1) { await say(lines.skip, undefined, 'fixed'); break; }
+      // Không nói gì sau câu hỏi thêm thì thôi, không hỏi lại. Chỉ một câu nhận lời ngắn có sẵn trong kho: bước sau vẫn là chuyện này
+      // (ảnh, chia sẻ) hay lời nhắn, tạm biệt, nên không nói "mình nói chuyện khác nhé".
+      if (!more || !more.recording || more.recording.seconds < 1) { await say(fallback.short, undefined, 'fixed'); break; }
       h = more;
     }
 
@@ -500,8 +501,8 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     if (st.photo && live.current) {
       const end = await askPhoto(s, si);
       if (!live.current) return;
-      // Nói "để sau" hay im lặng tới hết giờ: Mây nhận lời rồi đi tiếp. Bấm nút thì đi tiếp luôn.
-      if (end === 'no' || end === 'timeout') await say(lines.skip, undefined, 'fixed');
+      // Nói "để sau" hay im lặng tới hết giờ: Mây nhận lời ngắn (câu có sẵn trong kho) rồi sang bước sau. Bấm nút thì đi tiếp luôn.
+      if (end === 'no' || end === 'timeout') await say(fallback.short, undefined, 'fixed');
     }
     if (me.members.length >= 2 && live.current) {
       const end = await askShare(s);

@@ -16,7 +16,16 @@ test('trả lời bằng giọng: đồng ý, giữ riêng, hay chưa rõ (chờ
 test('chữ phủ định mà là đồng ý ở tiếng Anh; "네" phải đứng riêng, đuôi câu "좋네요" không tính', () => {
   for (const s of ['no problem', 'why not']) assert.equal(shareAnswer(s, 'en'), 'yes', s);
   for (const s of ['네, 그렇게 해요', '네']) assert.equal(shareAnswer(s, 'ko'), 'yes', s);
-  for (const s of ['오늘 날씨 좋네요', '안돼요']) assert.notEqual(shareAnswer(s, 'ko'), 'yes', s);
+  assert.equal(shareAnswer('오늘 날씨 좋네요', 'ko'), null);
+  assert.equal(shareAnswer('안돼요', 'ko'), 'no');
+});
+
+test('có lời từ chối rõ thì câu "không sao", "no problem" mất tác dụng; "được thôi", "I don\'t mind" là đồng ý', () => {
+  for (const s of ['không sao đâu, đừng chia sẻ', 'Không sao, con cứ giữ riêng nhé', 'sao không giữ riêng']) assert.equal(shareAnswer(s, 'vi'), 'no', s);
+  assert.equal(shareAnswer('No problem, keep it private', 'en'), 'no');
+  for (const s of ['안 해도 돼요', '안 보내도 돼요']) assert.equal(shareAnswer(s, 'ko'), 'no', s);
+  for (const s of ['được thôi', 'thôi được rồi', 'sao không chia sẻ']) assert.equal(shareAnswer(s, 'vi'), 'yes', s);
+  for (const s of ["I don't mind", "sure, I don't mind"]) assert.equal(shareAnswer(s, 'en'), 'yes', s);
 });
 
 test('chặng: hỏi, nghe, đồng ý hay giữ riêng; chưa rõ thì chờ nút; hết giờ chờ nút là giữ riêng; cúp máy là giữ riêng', () => {

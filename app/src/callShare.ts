@@ -27,10 +27,17 @@ export const SHARE_HEAR_MS = 8000;
 export const SHARE_WAIT: Partial<Record<ShareStage, number>> = { listen: SHARE_HEAR_MS + 4000, think: 7000, wait: 12000 };
 
 // i18n-ok-begin: mẫu nhận biết câu đồng ý hay từ chối chia sẻ, không phải chữ hiện cho người dùng.
-/** Có chữ phủ định mà vẫn là đồng ý ("không sao", "sao không", "chia sẻ đi"): xét trước tiên. */
+/** Lời từ chối rõ ràng: xét trước tiên, có nó thì câu "không sao", "no problem" cũng thành giữ riêng ("không sao đâu, đừng chia sẻ").
+ * "sao không chia sẻ" là đồng ý; "I don't mind" không phải từ chối. */
+const SHARE_REFUSE: Record<Lang, RegExp> = {
+  vi: /(^|\s)(đừng|giữ riêng|để sau|(?<!sao )không chia sẻ)(\s|$)/,
+  en: /(^|\s)(private|don['’]?t(?! mind)|keep it)(\s|$)/,
+  ko: /(안 ?\S+도 ?돼|하지 ?마|말아)/,
+};
+/** Có chữ phủ định mà vẫn là đồng ý ("không sao", "sao không", "được thôi", "I don't mind"): xét ngay sau lời từ chối rõ ràng. */
 const SHARE_SURE: Partial<Record<Lang, RegExp>> = {
-  vi: /(^|\s)(không sao|sao không|chia sẻ đi)(\s|$)/,
-  en: /(^|\s)(no problem|why not)(\s|$)/,
+  vi: /(^|\s)(không sao|sao không|chia sẻ đi|được thôi|thôi được)(\s|$)/,
+  en: /(^|\s)(no problem|why not|don['’]?t mind)(\s|$)/,
 };
 const SHARE_NO: Record<Lang, RegExp> = {
   vi: /(^|\s)(không|thôi|đừng|để sau|chưa|khỏi|giữ riêng)(\s|$)/,
@@ -48,6 +55,7 @@ const SHARE_YES: Record<Lang, RegExp> = {
 export function shareAnswer(text: string | null | undefined, lang: Lang = 'vi'): 'yes' | 'no' | null {
   const s = String(text ?? '').toLowerCase().normalize('NFC').replace(/[.,!?…~"“”]+/g, ' ').replace(/\s+/g, ' ').trim();
   if (!s || s.split(' ').length > 10) return null;
+  if (SHARE_REFUSE[lang].test(s)) return 'no';
   if (SHARE_SURE[lang]?.test(s)) return 'yes';
   if (SHARE_NO[lang].test(s)) return 'no';
   return SHARE_YES[lang].test(s) ? 'yes' : null;
