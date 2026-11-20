@@ -22,6 +22,8 @@ test('chữ phủ định mà là đồng ý ở tiếng Anh; "네" phải đứ
 
 test('có lời từ chối rõ thì câu "không sao", "no problem" mất tác dụng; "được thôi", "I don\'t mind" là đồng ý', () => {
   for (const s of ['không sao đâu, đừng chia sẻ', 'Không sao, con cứ giữ riêng nhé', 'sao không giữ riêng']) assert.equal(shareAnswer(s, 'vi'), 'no', s);
+  // "sao không chia sẻ" chỉ là đồng ý khi đứng đầu câu; "không sao, không chia sẻ" là từ chối.
+  for (const s of ['Không sao, không chia sẻ nhé', 'không sao đâu, không chia sẻ']) assert.equal(shareAnswer(s, 'vi'), 'no', s);
   assert.equal(shareAnswer('No problem, keep it private', 'en'), 'no');
   for (const s of ['안 해도 돼요', '안 보내도 돼요']) assert.equal(shareAnswer(s, 'ko'), 'no', s);
   for (const s of ['được thôi', 'thôi được rồi', 'sao không chia sẻ']) assert.equal(shareAnswer(s, 'vi'), 'yes', s);

@@ -28,9 +28,9 @@ export const SHARE_WAIT: Partial<Record<ShareStage, number>> = { listen: SHARE_H
 
 // i18n-ok-begin: mẫu nhận biết câu đồng ý hay từ chối chia sẻ, không phải chữ hiện cho người dùng.
 /** Lời từ chối rõ ràng: xét trước tiên, có nó thì câu "không sao", "no problem" cũng thành giữ riêng ("không sao đâu, đừng chia sẻ").
- * "sao không chia sẻ" là đồng ý; "I don't mind" không phải từ chối. */
+ * Câu hỏi ngược "sao không chia sẻ" đứng đầu câu trả lời là đồng ý ("không sao, không chia sẻ" thì vẫn là từ chối); "I don't mind" không phải từ chối. */
 const SHARE_REFUSE: Record<Lang, RegExp> = {
-  vi: /(^|\s)(đừng|giữ riêng|để sau|(?<!sao )không chia sẻ)(\s|$)/,
+  vi: /(^|\s)(đừng|giữ riêng|để sau|(?<!^sao )không chia sẻ)(\s|$)/,
   en: /(^|\s)(private|don['’]?t(?! mind)|keep it)(\s|$)/,
   ko: /(안 ?\S+도 ?돼|하지 ?마|말아)/,
 };
