@@ -248,8 +248,6 @@
   "call.live.fallback": "The new {mascot} is resting, let's call the usual way",
   "call.live.busy": "{mascot} is busy, call again in a bit",
   "call.live.lost": "Lost the connection",
-  "call.live.lat": "{mascot} answered in {s} s",
-  "call.live.rec": "Recorded {s} s",
 
   "common.seconds": "{n} sec",
 

@@ -1,6 +1,7 @@
 // Logic cuộc gọi Mây Live ở máy khách, hàm thuần cho CallLive.tsx nối vào (task 6, 7). Kiểm bằng src/liveTurns.test.ts.
 // Công cụ của model làm gì với trạng thái cuộc gọi và đáp model câu gì (onTool), lượt nào vào ô nào (onRec, onTurn), ghi giọng từng lượt
-// (captureNext), xin phép chia sẻ (onShareEnd, askStep), nhắc chống bịa một lần (remindFor), nhắc đồng hồ (clockDue), chốt (finishJob).
+// (captureNext), xin phép chia sẻ (onShareEnd, askStep), nhắc chống bịa một lần (remindFor, remindAllow), nhắc đồng hồ (clockDue), nhắc im lặng
+// (silentDue), cúp sau lời chào (byeDue), lúc bắt đầu ghi lượt người kể (recDue), chốt (finishJob).
 // Ô 0 hỏi thăm, ô 1 lời nhắn khó nói, chuyện từ ô LIVE_FIRST_STORY (kịch bản v3, server/calllive.ts). Lời đồng ý chia sẻ chỉ từ hai nút hoặc
 // bộ đọc câu trả lời (shareNext, src/callShare.ts), không bao giờ từ model.
 // Nối vào (CallLive.tsx), theo đúng thứ tự tin tới, không chen await giữa:
@@ -9,8 +10,8 @@
 // - turn: onTurn(state, { key, question, transcript, seconds }) ngay (chỉ chờ bản ghi để gửi job); consent true thì đưa lời chép cho shareNext
 //   ({ type: 'heard' }), không theo "lượt tới lúc đang xin phép" (lượt nói trước câu hỏi chia sẻ cũng tới lúc ấy).
 // - Tiếng Mây bị giữ lúc xin phép vẫn báo captureNext ({ type: 'audio' }) để lượt trả lời khép được (R8); { type: 'asked' } theo askStep.
-// - mayLine: remindFor với allow của cuộc gọi Live: ownStory true, message true khi có lời nhắn chờ, photos true khi DATA có ảnh hoặc ảnh đã tới
-//   trong cuộc gọi này (CUE.photos(n) với n > 0).
+// - mayLine: remindFor với allow của cuộc gọi Live (remindAllow): ownStory true, message true khi có lời nhắn chờ, photos true khi DATA có ảnh
+//   hoặc ảnh đã tới trong cuộc gọi này (CUE.photos(n) với n > 0).
 import { slipLive, type Allow } from '../server/guard.ts';
 import { isTheme, LIVE_FIRST_STORY, LIVE_MAX_STORIES, type StoryTheme } from './shared';
 
@@ -49,6 +50,12 @@ export const CLOCK_LEFT_SEC = 120;
 export const MIC_GATE_MS = 600;
 /** Cuộc gọi chỉ được chừng này giây trở xuống thì không nhắc đồng hồ (R12): vừa vào đã bị bảo khép chuyện. */
 const CLOCK_MIN_SEC = 150;
+/** Sau lượt tạm biệt: giọng Mây im chừng này mili giây là phát hết, cúp được (byeDue). */
+const BYE_QUIET_MS = 300;
+/** Chờ giọng phát hết tối đa chừng này sau lượt tạm biệt; end_call xong chừng này mà Mây chưa cất tiếng thì cũng cúp. */
+const BYE_DRAIN_MS = 8000;
+/** Mây đã nói lời chào mà lượt mãi không xong (không có turnComplete): chừng này sau end_call thì cúp. */
+const BYE_MAX_MS = 30_000;
 
 /** Một việc cho hàng chờ gửi (src/outbox.ts, nhóm là mã cuộc gọi). last: chỉ đi sau mọi việc trước nó của cuộc gọi (ô chuyện, chốt). */
 export type Job = { url: string; fields: Record<string, string>; last?: boolean };
@@ -165,6 +172,25 @@ export function askStep(a: AskStep, e: 'audio' | 'done'): AskStep {
   return a;
 }
 
+/** Cúp máy chưa, sau end_call (hoặc khi Google báo sắp đóng phiên, goAway, coi như lượt tạm biệt đã xong: step 'asked'). step theo askStep từ
+ *  lúc end_call: công cụ gọi ngay trước lời chào nên lúc ấy giọng chưa tới, máy im chưa có nghĩa là đã chào. quietMs: máy phát im bao lâu;
+ *  sinceEnd: từ end_call; sinceDone: từ lúc thành 'asked'. */
+export function byeDue(p: { step: AskStep; quietMs: number; sinceEnd: number; sinceDone: number }): boolean {
+  if (p.step === 'asked') return p.quietMs >= BYE_QUIET_MS || p.sinceDone >= BYE_DRAIN_MS;
+  return p.sinceEnd >= (p.step === 'tool' ? BYE_DRAIN_MS : BYE_MAX_MS);
+}
+
+/** allow của cuộc gọi Live cho remindFor: allow lúc nhấc máy (/call/live, DATA có cuộc gọi trước, có ảnh), cộng chuyện kể ngay trong cuộc gọi
+ *  (ownStory luôn true), lời nhắn khi lúc nhấc máy có lời nhắn chờ (relays: số lời nhắn ấy), ảnh khi ảnh đã tới trong cuộc gọi này (photos: số ảnh). */
+export function remindAllow(allow: { prevCall: boolean; photos: boolean }, p: { relays: number; photos: number }): Allow {
+  return { prevCall: allow.prevCall, ownStory: true, photos: allow.photos || p.photos > 0, message: p.relays > 0 };
+}
+
+/** Đến lúc nhắc model người kể im chưa (CUE.silent): Mây đã nói xong lượt (turnComplete), máy phát đã im, không nghe gì SILENT_MS (quietMs: từ lúc
+ *  Mây im, lúc mic nghe to hay có lời chép gần nhất), và chưa nhắc từ lần người kể nói gần nhất (nudged: nơi gọi bỏ cờ khi có lời chép của người kể). */
+export const silentDue = (p: { mayDone: boolean; talking: boolean; quietMs: number; nudged: boolean }): boolean =>
+  p.mayDone && !p.talking && !p.nudged && p.quietMs >= SILENT_MS;
+
 /** Câu Mây vừa nói xong có dấu hiệu bịa (slipLive: không cần dữ liệu, bỏ mốc thời gian vì trong cuộc gọi chúng chỉ lại chính cuộc gọi này)
  *  thì nhắc model một lần mỗi cuộc gọi. allow là allow của cuộc gọi Live (xem đầu tệp). */
 export function remindFor(s: LiveState, line: string, allow: Allow, lang: 'vi' | 'en' | 'ko'): { state: LiveState; cue: string | null } {
@@ -190,6 +216,12 @@ export type Capture = { key: number; recording: boolean; loud: boolean; heard: s
 export type CaptureEvent = { type: 'gate' } | { type: 'loud' } | { type: 'in'; text: string } | { type: 'out'; text: string } | { type: 'audio' } | { type: 'done' } | { type: 'hangup' };
 export type CaptureAction = { kind: 'startRec'; key: number } | { kind: 'stopRec'; key: number } | { kind: 'turn'; key: number; question: string; transcript: string } | { kind: 'mayLine'; text: string };
 export const CAPTURE_START: Capture = { key: 0, recording: false, loud: false, heard: '', question: '', mayLine: '', pending: null };
+
+/** Bắt đầu ghi lượt người kể chưa (gửi gate cho captureNext): mic đã mở lại (gate: Mây im MIC_GATE_MS cộng độ trễ loa), Mây đã nói ít nhất một lần,
+ *  lượt của Mây đã xong (mayDone: turnComplete) hay bị chạm cắt (hush), chưa đang ghi. Mic mở giữa lượt của Mây (tiếng tới chậm, chờ lời đáp công cụ
+ *  giữa câu khép chuyện và câu mở chuyện sau) thì chưa: tiếng kế tiếp của Mây sẽ dừng lượt mới ấy và đè lên lượt đang chờ gửi (pending chỉ giữ một). */
+export const recDue = (p: { gate: boolean; spoke: boolean; mayDone: boolean; hush: boolean; recording: boolean }): boolean =>
+  p.gate && p.spoke && (p.mayDone || p.hush) && !p.recording;
 
 const voiced = (p: { heard: string; loud: boolean }) => p.loud || !!p.heard.trim();
 const turnOf = (p: { key: number; question: string; heard: string }): CaptureAction => ({ kind: 'turn', key: p.key, question: p.question, transcript: p.heard.trim() });

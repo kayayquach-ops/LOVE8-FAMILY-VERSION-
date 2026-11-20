@@ -245,8 +245,6 @@
   "call.live.fallback": "새 {mascot}가 쉬고 있어요. 원래 방식으로 통화해요",
   "call.live.busy": "{mascot}가 바빠요. 조금 있다 다시 전화해요",
   "call.live.lost": "연결이 끊겼어요",
-  "call.live.lat": "{mascot}가 {s}초 만에 대답했어요",
-  "call.live.rec": "{s}초 녹음했어요",
 
   "common.seconds": "{n}초",
 

@@ -245,8 +245,6 @@
   "call.live.fallback": "{mascot} mới đang nghỉ, mình gọi kiểu cũ nhé",
   "call.live.busy": "{mascot} đang bận, lát gọi lại nhé",
   "call.live.lost": "Mất kết nối rồi",
-  "call.live.lat": "{mascot} đáp sau {s} giây",
-  "call.live.rec": "Đã ghi {s} giây",
 
   "common.seconds": "{n} giây",
 
