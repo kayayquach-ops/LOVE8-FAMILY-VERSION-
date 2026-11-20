@@ -164,7 +164,7 @@ Người dùng trả lời từng mục trong danh sách việc còn lại:
 - **Không làm lúc này**: nói chuyện với Mây thời gian thực (Gemini Live), đề nghị để sau buổi pitch vì phải thay bộ máy cuộc gọi.
 - Chưa kiểm: SQL mới trên Postgres thật (join, dịch), đăng nhập Google thật, giao diện dịch trên iPhone.
 
-### 20/11: bảy việc theo góp ý (gộp xong tới commit nối cuối, CHƯA DEPLOY)
+### 20/11: bảy việc theo góp ý (ĐÃ DEPLOY 20/11 bản 989b834, bundle index-BsC9K36_.js, push branch + main; log khởi động có `[facetime] turn ok: 2 ICE servers, 8 urls (6 turn)` nên TURN Cloudflare chạy thật)
 Người dùng và bạn trong đội (Đạt) báo lỗi và xin thêm tính năng; chia cho các agent chạy song song:
 - Sửa "rời nhà" chỉ đăng xuất ở máy nên vào lại thành 2 người (rời nhà thật trên máy chủ, người cuối rời thì xoá nhà).
 - Sửa cuộc gọi Mây đứng ở màn xin ảnh (bấm nút và trả lời giọng đều không ăn, app lag).
