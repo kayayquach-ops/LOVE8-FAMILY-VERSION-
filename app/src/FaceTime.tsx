@@ -94,7 +94,6 @@ export function FaceTime({ me, to, audio = false, onClose }: { me: Me; to?: stri
   const ended = useRef(false);
   const state = useRef({ mic: true, cam: !audio });
   const videos = useRef(new Map<string, HTMLVideoElement>());
-  const counted = useRef(false);
   // Phòng gần nhất có mình (để vào lại đúng phòng khi máy chủ quên), phòng gần nhất nhận được, hạn giữ kết nối khi đang vào lại.
   const known = useRef<LiveRoom>(null);
   const lastRoom = useRef<LiveRoom>(null);
@@ -168,7 +167,6 @@ export function FaceTime({ me, to, audio = false, onClose }: { me: Me; to?: stri
         p.downAt = 0; p.fixes = 0; p.d.gaveUp = false;
         ready.current.delete(id);
         void signal(id, { state: state.current });
-        if (!counted.current) { counted.current = true; api.mission('call').catch(() => {}); }
         if (!firstUp.current) firstUp.current = Date.now();
         // Lần đầu nối thông với người này: báo máy chủ (móc onCallConnected, không ghi log).
         if (!p.d.ok) { p.d.ok = true; p.d.ttc = Date.now() - p.d.t0; void livePost('diag', { up: id, room: known.current?.id }).catch(() => {}); }

@@ -222,7 +222,7 @@ export function App() {
 
   // Gọi thoại từ luồng tin riêng (Chat.tsx). TẠM THỜI mở cuộc gọi video như nút gọi video.
   // Khi FaceTime có chế độ chỉ tiếng, chỉ cần trỏ hàm này sang lối vào đó; Chat không phải sửa gì.
-  const startVoiceCall = (memberId: string) => startFaceTime(memberId);
+  const startVoiceCall = (memberId: string) => startFaceTime(memberId, { audio: true });
   // Đóng chat bằng bất kỳ đường nào thì lần mở sau về danh sách, không mở lại luồng cũ của thông báo.
   useEffect(() => { if (sheet !== 'chat') setChatWith(null); }, [sheet]);
 

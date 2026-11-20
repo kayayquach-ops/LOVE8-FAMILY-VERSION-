@@ -11,14 +11,16 @@ import { migrate, pool } from './db.ts';
 import { errorBody, isLang, langMiddleware, langOf, LANGS, tReq, tServer } from './i18n.ts';
 import { calendarRouter, migrateCalendar } from './calendar.ts';
 import { jarRouter, migrateJar } from './jar.ts';
-import { MISSIONS, missionsRouter, syncMissions, weekKey } from './missions.ts';
+import { markCall, MISSIONS, missionsRouter, syncMissions, weekKey } from './missions.ts';
 import { homeRouter } from './home.ts';
 import { chatRouter, chatStreamRouter, migrateChat } from './chat.ts';
 import { lettersRouter, migrateLetters } from './letters.ts';
 import { migrateRecap, recapRouter, startRecapScheduler } from './recap.ts';
 import { callRouter, migrateCall } from './call.ts';
 import { buildFirstVoicePodcast, migratePodcast, podcastRouter, refreshFirstVoicePodcasts } from './podcast.ts';
-import { liveRouter, liveStreamRouter } from './facetime.ts';
+import { liveRouter, liveStreamRouter, onCallConnected } from './facetime.ts';
+// Cuộc gọi trong app nối được thật thì nhiệm vụ tuần "gọi điện" tự tích cho mọi người trong cuộc gọi.
+onCallConnected.push(markCall);
 import { migratePush, notifyJoin, notifyPost, notifyReply, pushRouter, startPushScheduler } from './push.ts';
 import { thumbRoute, warmThumbs } from './thumb.ts';
 import { googlePublicRouter, googleRouter, linkPendingGoogle, takePendingGoogle } from './google.ts';

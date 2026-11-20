@@ -142,7 +142,6 @@ export const api = {
   firstVoice: (f: FormData) => call('/api/me/first-voice', { method: 'POST', body: f }),
   remove: (id: string) => call(`/api/posts/${id}`, { method: 'DELETE' }),
   week: () => call<Week>('/api/week'),
-  mission: (key: string) => call(`/api/missions/${key}`, { method: 'POST' }),
   lang: (lang: string) => call('/api/me/lang', { method: 'PUT', body: JSON.stringify({ lang }) }),
   mascot: (b: { name?: string; shape?: string }) => call('/api/family/mascot', { method: 'PUT', body: JSON.stringify(b) }),
   /** Xoá một người khác khỏi nhà cùng mọi dữ liệu của họ (không xoá được chính mình). */
