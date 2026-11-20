@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { FactPick, Seed, SeedInput } from './callfacts.ts';
-import { themesFor } from '../src/shared.ts';
+import { themesFor, type StoryTheme } from '../src/shared.ts';
 
 const F = await import('./callfacts.ts');
 
@@ -95,14 +95,22 @@ test('mồi chuyện mức 1: dịp gần nhất, điều người khác kể k�
   assert.deepEqual(kinds(s), ['occasion', 'heard', 'person', 'person', 'together']);
   assert.deepEqual(s[0], { kind: 'occasion', hint: 'Noel is in 24 days: how they will keep it this year, how it was in earlier years.', theme: 'tet-cac-dip' });
   assert.deepEqual(s[1], { kind: 'heard', hint: 'An told Mây: An loves sour soup. Ask their side of it and say who told it.', theme: null });
+  // Hai người: một người thế hệ kia (con) rồi một người cùng thế hệ (chồng), gọi theo quan hệ từ phía người nghe.
   assert.deepEqual(s[2], { kind: 'person', hint: 'A story about An (their child): a moment with them they remember well.', theme: null });
-  assert.match(s[3].hint, /^A story about Bình \(their child\)/);                                // tối đa hai người
-  // Ngày của nhà thì không gắn chủ đề lễ Tết; con hỏi về bố mẹ thì chủ đề bố mẹ mình.
+  assert.deepEqual(s[3], { kind: 'person', hint: 'A story about Hùng (their husband): a moment with them they remember well.', theme: null });
+  assert.equal(F.seedsFor({ ...p, role: 'bo', family: [{ name: 'Lan', role: 'me' }] }).find((x) => x.kind === 'person')?.hint,
+    'A story about Lan (their wife): a moment with them they remember well.');
+  assert.equal(F.seedsFor({ ...p, family: [{ name: 'Hoa', role: 'me' }] }).find((x) => x.kind === 'person')?.hint,
+    'A story about Hoa: a moment with them they remember well.');                             // cùng vai người lớn: chỉ tên
+  // Ngày của nhà thì không gắn chủ đề lễ Tết; dịp hôm nay, ngày mai thì nói hôm nay, ngày mai.
   assert.equal(F.seedsFor({ ...p, occasions: [p.occasions[1]] })[0].theme, null);
+  assert.equal(F.seedsFor({ ...p, occasions: [{ ...p.occasions[0], inDays: 0 }] })[0].hint, 'Noel is today: how they will keep it this year, how it was in earlier years.');
+  assert.equal(F.seedsFor({ ...p, occasions: [{ ...p.occasions[0], inDays: 1 }] })[0].hint, 'Noel is tomorrow: how they will keep it this year, how it was in earlier years.');
+  // Con: bố hay mẹ (chủ đề bố mẹ mình) rồi anh chị em (hỏi chuyện trêu nhau, không chủ đề).
   const con = F.seedsFor(seedIn({ depth: 1, role: 'con', themes: themesFor('con', true, false), family: [{ name: 'Lan', role: 'me' }, { name: 'Hùng', role: 'bo' }, { name: 'Bình', role: 'con' }] }));
   assert.deepEqual(con.filter((x) => x.kind === 'person').map((x) => [x.hint, x.theme]), [
     ['A story about Lan (their mother): a moment with them they remember well.', 'bo-me-minh'],
-    ['A story about Hùng (their father): a moment with them they remember well.', 'bo-me-minh']]);
+    ['A story about Bình (their brother or sister): how they get along, a time they teased each other.', null]]);
 });
 test('mồi chuyện: điều riêng không bao giờ thành mồi; chủ đề không hợp vai thì bỏ; chủ đề đã kể sâu thì bỏ', () => {
   const secret = mem('An is afraid of losing the scholarship', { toldBy: 'An', toldByYou: true, private: true, kind: 'person' });
@@ -123,6 +131,10 @@ test('mồi chuyện: điều riêng không bao giờ thành mồi; chủ đề 
   const wed = F.seedsFor({ ...parent, themes: themesFor('me', true, true) });
   assert.ok(wed.every((x) => x.theme !== 'ngay-cuoi' && x.kind !== 'relation'));
   assert.ok(F.seedsFor({ ...parent, hasPair: false }).every((x) => x.kind !== 'relation'));
+  // Con mà nhà không có đủ bố mẹ thì không hỏi bố mẹ gặp nhau thế nào; mức 2 vẫn có một người (anh chị em khi không có bố mẹ).
+  const lone = F.seedsFor(seedIn({ depth: 2, role: 'con', themes: themesFor('con', false, false), hasPair: false, family: [{ name: 'Bình', role: 'con' }] }));
+  assert.deepEqual(kinds(lone), ['person', 'together', 'everyday']);
+  assert.match(lone[0].hint, /^A story about Bình \(their brother or sister\)/);
   // Chủ đề đã kể sâu (từ 3 lượt) thì bỏ; kể ngắn thì vẫn giữ; sợi chuyện chỉ lấy chủ đề chưa kể sâu.
   const food = seedIn({ intro: { food: 'canh chua' } });
   assert.ok(!kinds(F.seedsFor({ ...food, told: [{ theme: 'mon-an', times: 1, turns: 4, last: '2026-11-15' }] })).includes('food'));
@@ -137,6 +149,9 @@ test('mồi chuyện: không biết gì thì vẫn đủ ba mồi', () => {
   assert.deepEqual(s[2], { kind: 'childhood', hint: 'What they loved doing as a child.', theme: 'tuoi-tho' });
   assert.equal(s[0].hint, 'Something small from their week that made them smile.');
   assert.deepEqual(kinds(F.seedsFor(seedIn({ depth: 1 }))), ['together', 'everyday', 'childhood']);
+  // Mồi chung bù vào cũng phải qua bộ lọc: chủ đề đã kể sâu thì không bù lại, thiếu ba mồi cũng được.
+  const told = (theme: StoryTheme) => ({ theme, times: 1, turns: 3, last: '2026-11-15' });
+  assert.deepEqual(kinds(F.seedsFor(seedIn({ told: [told('tet-cac-dip'), told('tuoi-tho')] }))), ['everyday']);
 });
 
 // ---------- Nạp cả bộ dữ liệu (DB giả) ----------
@@ -242,5 +257,17 @@ test('nạp dữ liệu Mây Live: cuộc gọi v3 đếm lượt theo từng ô
   assert.equal(x.place.weather, '26°C, clear');
   assert.ok(x.seeds.some((s) => s.hint.includes('canh chua.')));                             // món của khảo sát, bỏ khoảng trắng thừa
   assert.ok(x.seeds.length >= 3 && x.seeds.length <= 5);
+});
+test('nạp dữ liệu Mây Live: ở xa chỉ tính thế hệ kia; con ở nhà có anh chị em du học thì không có mồi nhớ nhà', async () => {
+  const members = [member('lan', 'Lan', 'me', 'hanoi'), member('hung', 'Hùng', 'bo', 'hanoi'), member('an', 'An', 'con', 'hanoi'), member('binh', 'Bình', 'con', 'busan')];
+  const load = (id: string, rows = members) => F.loadScriptExtras({ id, family_id: 'F' }, 'vi', {
+    db: fakeDb(rows, [], []), fetch: (async () => new Response(JSON.stringify({ current: { temperature_2m: 22, weather_code: 0 } }))) as typeof fetch,
+    now: () => new Date('2026-11-20T11:00:00Z'), events: async () => [],
+  });
+  const kindsOf = async (id: string, rows = members) => (await load(id, rows)).seeds.map((s) => s.kind);
+  assert.ok(!(await kindsOf('an')).includes('away'));                                        // Bình ở Busan là anh chị em, An vẫn ở nhà
+  assert.ok((await kindsOf('lan')).includes('away'));                                        // con ở Busan: mẹ có mồi lúc con đi xa
+  const yearApart = members.map((m) => (m.id === 'an' ? { ...m, intro: JSON.stringify({ seen: 'year' }) } : m));
+  assert.ok((await kindsOf('an', yearApart)).includes('away'));                              // khảo sát hơn một năm chưa gặp cả nhà
 });
 // i18n-ok-end

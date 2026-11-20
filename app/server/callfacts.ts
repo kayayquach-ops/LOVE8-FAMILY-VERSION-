@@ -140,21 +140,29 @@ const MAX_SEEDS = 5;
 const MIN_SEEDS = 3;
 /** Loại mồi không bị bỏ vì chủ đề đã kể sâu (câu hẹn, chuyện người khác kể, sợi chuyện vốn chỉ lấy chủ đề chưa kể sâu). */
 const KEEP_WHEN_DEEP: readonly SeedKind[] = ['hook', 'heard', 'thread'];
+/** Vai bố mẹ (thế hệ trên); vai khác là con. */
+const isParent = (role: string) => role === 'bo' || role === 'me';
 
 // i18n-ok-begin: gợi ý mồi chuyện tiếng Anh chỉ đưa vào lời dặn cho AI (Mây Live); nhà đặt tên linh vật khác thì lời dặn thay tên (named, task 3).
 const EVERYDAY: Seed = { kind: 'everyday', hint: 'Something small from their week that made them smile.', theme: null };
 const TOGETHER: Seed = { kind: 'together', hint: 'A time the whole family was together: a trip, a Tet, a meal.', theme: 'tet-cac-dip' };
 const CHILDHOOD: Seed = { kind: 'childhood', hint: 'What they loved doing as a child.', theme: 'tuoi-tho' };
-/** Người trong nhà gọi theo quan hệ với người nghe: bố mẹ chỉ có mồi về con, con chỉ có mồi về bố mẹ (chữ luôn đúng từ phía người nghe). */
-const ROLE_WORD: Record<string, string> = { me: 'their mother', bo: 'their father', con: 'their child' };
+/** Người trong nhà gọi theo quan hệ từ phía người nghe (me: vai người nghe, them: vai người kia); hai người lớn cùng vai thì chỉ gọi tên (null). */
+function relWord(me: string, them: string): string | null {
+  if (!isParent(them)) return isParent(me) ? 'their child' : 'their brother or sister';
+  if (!isParent(me)) return them === 'me' ? 'their mother' : 'their father';
+  return me !== them ? (me === 'me' ? 'their husband' : 'their wife') : null;
+}
 
 /** Mồi chuyện xếp hạng cho Mây Live (3 tới 5): câu hẹn tuần trước luôn đầu, rồi theo mức độ sâu. Mức 0 từ khảo sát, nơi ở, vai (không mặc định
  *  tuổi thơ); mức 1 về người trong nhà, dịp, điều người khác kể; mức 2 sợi chuyện bỏ ngỏ, quan hệ. Bỏ chủ đề không hợp vai, chủ đề đã kể sâu,
  *  mồi trùng; thiếu thì thêm mồi chung. Điều riêng ('self') không bao giờ thành mồi. Chi tiết: docs/may-moi.md mục Mây Live (thử). */
 export function seedsFor(p: SeedInput): Seed[] {
-  const parent = p.role === 'bo' || p.role === 'me';
+  const parent = isParent(p.role);
   const seed = (kind: SeedKind, hint: string, theme: StoryTheme | null = null): Seed => ({ kind, hint, theme });
   const deep = (theme: StoryTheme | null) => theme != null && p.told.some((t) => t.theme === theme && t.turns >= 3);
+  /** Qua bộ lọc chủ đề: hợp vai, chưa kể sâu (trừ loại KEEP_WHEN_DEEP). Mồi chung bù vào cũng phải qua. */
+  const allowed = (c: Seed) => (!c.theme || p.themes.includes(c.theme)) && (!deep(c.theme) || KEEP_WHEN_DEEP.includes(c.kind));
   const { food, seen } = p.intro;
 
   const foodSeed = () => (food ? [seed('food', parent ? `The dish their child loves: ${food}. Who cooks it, a meal with it they remember.`
@@ -166,32 +174,35 @@ export function seedsFor(p: SeedInput): Seed[] {
     : [seed('place', `Life in ${p.place}: what a normal day there is like, what surprised them.`, 'cong-viec')]);
   const away = () => (!p.far ? [] : parent ? [seed('away', 'What they felt when their child moved far away, and what they do when they miss them.', 'con-di-xa')]
     : [seed('away', 'What they miss most about home and the family.', 'que-nha')]);
-  const occasion = () => p.occasions.slice(0, 1).map((o) => seed('occasion', `${o.name} is in ${o.inDays} days: how they will keep it this year, how it was in earlier years.`,
+  const when = (days: number) => (days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`);
+  const occasion = () => p.occasions.slice(0, 1).map((o) => seed('occasion', `${o.name} is ${when(o.inDays)}: how they will keep it this year, how it was in earlier years.`,
     HOLIDAYS.some((h) => h.key === o.key) ? 'tet-cac-dip' : null));
   const heard = () => p.memory.filter((m) => !m.toldByYou && !m.private).slice(0, 1)
     .map((m) => seed('heard', `${m.toldBy} told Mây: ${m.fact}. Ask their side of it and say who told it.`));
-  const people = (n: number) => p.family.filter((m) => (parent ? m.role === 'con' : m.role === 'bo' || m.role === 'me')).slice(0, n)
-    .map((m) => seed('person', `A story about ${m.name} (${ROLE_WORD[m.role]}): a moment with them they remember well.`, parent ? null : 'bo-me-minh'));
+  // Một người thế hệ kia, một người cùng thế hệ (vợ chồng, anh chị em), rồi những người còn lại theo thứ tự đó.
+  const cross = p.family.filter((m) => isParent(m.role) !== parent), same = p.family.filter((m) => isParent(m.role) === parent);
+  const people = (n: number) => [...cross.slice(0, 1), ...same.slice(0, 1), ...cross.slice(1), ...same.slice(1)].slice(0, n).map((m) => {
+    const w = relWord(p.role, m.role);
+    const tail = !parent && !isParent(m.role) ? 'how they get along, a time they teased each other' : 'a moment with them they remember well';
+    return seed('person', `A story about ${m.name}${w ? ` (${w})` : ''}: ${tail}.`, !parent && isParent(m.role) ? 'bo-me-minh' : null);
+  });
   const threads = () => p.memory.flatMap((m) => {
     const theme = KIND_THEME[m.kind as FactKind];
     return !m.private && theme && !deep(theme) ? [seed('thread', `Mentioned before but never told as a story: ${m.fact} (told by ${m.toldBy}).`, theme)] : [];
   }).slice(0, 2);
-  const relation = () => (!parent ? [seed('relation', 'Their parents when they were young, what they know of how they met.', 'bo-me-minh')]
-    : p.hasPair ? [seed('relation', `How they and ${p.role === 'me' ? 'their husband' : 'their wife'} met, their early days together.`, 'ngay-cuoi')] : []);
+  // Chuyện bố mẹ gặp nhau chỉ khi nhà có đủ cả bố lẫn mẹ.
+  const relation = () => (!p.hasPair ? [] : !parent ? [seed('relation', 'Their parents when they were young, what they know of how they met.', 'bo-me-minh')]
+    : [seed('relation', `How they and ${p.role === 'me' ? 'their husband' : 'their wife'} met, their early days together.`, 'ngay-cuoi')]);
 
   const hook = p.hook ? [seed('hook', `Last call ended with this promise: ${p.hook}`)] : [];
   const candidates = [...hook, ...(p.depth === 0 ? [...foodSeed(), ...seenSeed(), ...placeSeed(), ...away(), EVERYDAY]
     : p.depth === 1 ? [...occasion(), ...heard(), ...people(2), TOGETHER, ...foodSeed(), EVERYDAY]
     : [...threads(), ...relation(), ...heard(), ...occasion(), ...people(1), TOGETHER])];
   const out: Seed[] = [];
-  for (const c of candidates) {
-    if (c.theme && !p.themes.includes(c.theme)) continue;
-    if (deep(c.theme) && !KEEP_WHEN_DEEP.includes(c.kind)) continue;
-    if (out.some((s) => s.hint === c.hint)) continue;
-    out.push({ ...c });
-  }
+  for (const c of candidates) if (allowed(c) && !out.some((s) => s.hint === c.hint)) out.push({ ...c });
   const seeds = out.slice(0, MAX_SEEDS);
-  for (const f of [EVERYDAY, TOGETHER, CHILDHOOD]) if (seeds.length < MIN_SEEDS && !seeds.some((s) => s.kind === f.kind)) seeds.push({ ...f });
+  // Còn dưới 3 thì bù mồi chung chưa có, chỉ mồi qua bộ lọc; bù hết mà vẫn thiếu thì thôi.
+  for (const f of [EVERYDAY, TOGETHER, CHILDHOOD]) if (seeds.length < MIN_SEEDS && allowed(f) && !seeds.some((s) => s.kind === f.kind)) seeds.push({ ...f });
   return seeds;
 }
 // i18n-ok-end
@@ -301,7 +312,8 @@ export async function loadScriptExtras(member: { id: string; family_id: string }
       hoursApart: hoursApart(tzOfMember(m), tz, now), km: p && here ? distanceKm(p, here) : null };
   });
   const seen = answer('seen');
-  const far = others.some((m) => m.km != null && m.km >= 300) || seen === 'months' || seen === 'year';
+  // Ở xa chỉ tính thế hệ kia (con đi xa bố mẹ, hay bố mẹ ở xa con): anh chị em đi du học không làm người ở nhà thành "xa nhà".
+  const far = others.some((m) => isParent(m.role) !== isParent(me.role) && m.km != null && m.km >= 300) || seen === 'months' || seen === 'year';
   const depth = depthOf({ done: calls.length, facts: facts.length });
 
   return {
