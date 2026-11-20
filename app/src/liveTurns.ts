@@ -1,11 +1,12 @@
 // Logic cuộc gọi Mây Live ở máy khách, hàm thuần cho CallLive.tsx nối vào (task 6, 7). Kiểm bằng src/liveTurns.test.ts.
 // Công cụ của model làm gì với trạng thái cuộc gọi và đáp model câu gì (onTool), lượt nào vào ô nào (onRec, onTurn), ghi giọng từng lượt
-// (captureNext), xin phép chia sẻ (onShareEnd, askStep), nhắc chống bịa một lần (remindFor, remindAllow), nhắc đồng hồ (clockDue), nhắc im lặng
-// (silentDue), cúp sau lời chào (byeDue), lúc bắt đầu ghi lượt người kể (recDue), chốt (finishJob).
+// (captureNext), xin phép chia sẻ (onShareEnd, askStep), nhắc chống bịa một lần (remindFor, remindAllow), nhắc đồng hồ (clockDue, clockCue), nhắc
+// im lặng (silentDue), máy bỏ trên bàn (idleDue), Google sắp đóng kết nối (awayMs), cúp sau lời chào (byeDue), lúc bắt đầu ghi lượt người kể (recDue),
+// chốt (finishJob).
 // Ô 0 hỏi thăm, ô 1 lời nhắn khó nói, chuyện từ ô LIVE_FIRST_STORY (kịch bản v3, server/calllive.ts). Lời đồng ý chia sẻ chỉ từ hai nút hoặc
 // bộ đọc câu trả lời (shareNext, src/callShare.ts), không bao giờ từ model.
 // Nối vào (CallLive.tsx), theo đúng thứ tự tin tới, không chen await giữa:
-// - startRec của captureNext: state = onRec(state, key) rồi mới ghi. Mây gọi công cụ ngay trước câu nói đi kèm, tức là ở đầu câu đáp lượt vừa nói,
+// - startRec của captureNext: state = onRec(state, key) rồi mới ghi; bản chụp có blank thì gửi ngay { type: 'guard' } cho captureNext. Mây gọi công cụ ngay trước câu nói đi kèm, tức là ở đầu câu đáp lượt vừa nói,
 //   trước khi lượt ấy được gửi (lúc done); bản chụp giữ cho lượt ấy ô lúc nó bắt đầu, công cụ chỉ có hiệu lực từ lượt sau.
 // - turn: onTurn(state, { key, question, transcript, seconds }) ngay (chỉ chờ bản ghi để gửi job); consent true thì đưa lời chép cho shareNext
 //   ({ type: 'heard' }), không theo "lượt tới lúc đang xin phép" (lượt nói trước câu hỏi chia sẻ cũng tới lúc ấy).
@@ -24,6 +25,8 @@ export const CUE = {
   shareNo: "(Share answer: no, today's stories stay private.)",
   photos: (n: number) => (n ? `(${n} photos arrived.)` : '(No photos for now.)'),
   remind: '(Reminder: only DATA is true. Do not mention earlier calls, earlier stories or photos unless DATA has them.)',
+  idle: "(Still nothing heard; they may have stepped away. Call end_call with next week's promise, then say a short warm goodbye.)",
+  away: "(The line will drop in a few seconds. Call end_call with next week's promise, then say a short warm goodbye.)",
 };
 const SAY = {
   notOpened: 'Not opened: use a theme from DATA.allowed_themes and say the opener.',
@@ -38,7 +41,8 @@ const SAY = {
   unknown: 'Unknown message id.',
   delivered: 'Delivered.',
   askNow: 'Ask now.',
-  bye: 'Say nothing more; the app hangs up.',
+  bye: 'Say your goodbye now; the app hangs up after it.',
+  byeAgain: 'Say nothing more; the app hangs up.',
 };
 // i18n-ok-end
 
@@ -56,6 +60,15 @@ const BYE_QUIET_MS = 300;
 const BYE_DRAIN_MS = 8000;
 /** Mây đã nói lời chào mà lượt mãi không xong (không có turnComplete): chừng này sau end_call thì cúp. */
 const BYE_MAX_MS = 30_000;
+/** Nhắc đồng hồ đợi chừng này không ai nói (clockCue); còn dưới CLOCK_LATE_SEC giây thì thôi đợi. */
+const CALM_MS = 2000;
+const CLOCK_LATE_SEC = 60;
+/** Máy bỏ trên bàn: nhắc im lặng xong chừng này mà vẫn không nghe gì thì nhắc Mây chào (CUE.idle); nhắc chào chừng này mà chưa vào bước chào thì cúp. */
+const IDLE_BYE_MS = 60_000;
+const IDLE_HANG_MS = 15_000;
+/** goAway: cúp cứng sớm hơn timeLeft chừng này; không đọc được timeLeft thì cúp cứng sau AWAY_DEFAULT_MS (socket đóng trước thì cũng kết thúc êm). */
+const AWAY_MARGIN_MS = 1500;
+const AWAY_DEFAULT_MS = 15_000;
 
 /** Một việc cho hàng chờ gửi (src/outbox.ts, nhóm là mã cuộc gọi). last: chỉ đi sau mọi việc trước nó của cuộc gọi (ô chuyện, chốt). */
 export type Job = { url: string; fields: Record<string, string>; last?: boolean };
@@ -113,7 +126,7 @@ export function onTool(s: LiveState, f: { name: string; args?: Record<string, un
         [{ kind: 'job', job: { url: `${base}/relay/${encodeURIComponent(rid)}/heard`, fields: {} } }]);
     }
     case 'relay_open': return st.family < 2 ? say(SAY.alone) : say(SAY.askNow, { ...st, idx: 1 });
-    case 'end_call': return st.ended ? say(SAY.bye) : say(SAY.bye, { ...st, hook: arg('next_hook').slice(0, 200), ended: true }, [{ kind: 'end' }]);
+    case 'end_call': return st.ended ? say(SAY.byeAgain) : say(SAY.bye, { ...st, hook: arg('next_hook').slice(0, 200), ended: true }, [{ kind: 'end' }]);
     default: return say('ok');
   }
 }
@@ -172,12 +185,34 @@ export function askStep(a: AskStep, e: 'audio' | 'done'): AskStep {
   return a;
 }
 
-/** Cúp máy chưa, sau end_call (hoặc khi Google báo sắp đóng phiên, goAway, coi như lượt tạm biệt đã xong: step 'asked'). step theo askStep từ
- *  lúc end_call: công cụ gọi ngay trước lời chào nên lúc ấy giọng chưa tới, máy im chưa có nghĩa là đã chào. quietMs: máy phát im bao lâu;
+/** Cúp máy chưa, sau end_call (Google đóng kết nối sau goAway khi lời chào đã có tiếng thì coi như lượt tạm biệt đã xong: step 'asked'). step theo
+ *  askStep từ lúc end_call: công cụ gọi ngay trước lời chào nên lúc ấy giọng chưa tới, máy im chưa có nghĩa là đã chào. quietMs: máy phát im bao lâu;
  *  sinceEnd: từ end_call; sinceDone: từ lúc thành 'asked'. */
 export function byeDue(p: { step: AskStep; quietMs: number; sinceEnd: number; sinceDone: number }): boolean {
   if (p.step === 'asked') return p.quietMs >= BYE_QUIET_MS || p.sinceDone >= BYE_DRAIN_MS;
   return p.sinceEnd >= (p.step === 'tool' ? BYE_DRAIN_MS : BYE_MAX_MS);
+}
+
+/** Nhắc đồng hồ lúc này chưa (CUE.clock, nơi gọi giữ chỉ nhắc một lần): đã tới lúc (clockDue), Mây đã nói xong lượt và máy phát đã im, không ai nói
+ *  CALM_MS (quietMs: từ lúc Mây im, mic nghe to hay có lời chép gần nhất), để không chen ngang ai. Người kể đáp liền mọi lượt thì không có lúc ấy:
+ *  còn dưới CLOCK_LATE_SEC giây thì nhắc ngay khi Mây nói xong, để Mây kịp khép chuyện trước khi cúp. */
+export function clockCue(p: { maxSec: number; elapsedSec: number; mayDone: boolean; talking: boolean; quietMs: number }): boolean {
+  if (!clockDue(p.maxSec, p.elapsedSec) || !p.mayDone || p.talking) return false;
+  return p.quietMs >= CALM_MS || p.maxSec - p.elapsedSec <= CLOCK_LATE_SEC;
+}
+
+/** Máy để đó không ai nói: nudgedAt lúc nhắc im lặng (0: chưa nhắc, hay người kể đã nói lại), byeAt lúc nhắc Mây chào (0: chưa). 'bye': nhắc Mây
+ *  chào (CUE.idle), đường cúp sau lời chào như thường lo phần còn lại; 'hang': nhắc chào đã lâu mà chưa vào bước chào (nơi gọi chỉ hỏi khi chưa có
+ *  end_call), cúp luôn. */
+export function idleDue(p: { now: number; nudgedAt: number; byeAt: number }): 'bye' | 'hang' | null {
+  if (p.byeAt) return p.now - p.byeAt >= IDLE_HANG_MS ? 'hang' : null;
+  return p.nudgedAt && p.now - p.nudgedAt >= IDLE_BYE_MS ? 'bye' : null;
+}
+
+/** goAway: bao nhiêu mili giây nữa thì cúp cứng nếu lời chào chưa xong. timeLeft của Google là Duration JSON ("12.5s") hay số giây; trừ AWAY_MARGIN_MS. */
+export function awayMs(timeLeft: unknown): number {
+  const sec = typeof timeLeft === 'number' ? timeLeft : parseFloat(String(timeLeft ?? ''));
+  return Number.isFinite(sec) ? Math.max(0, Math.round(sec * 1000) - AWAY_MARGIN_MS) : AWAY_DEFAULT_MS;
 }
 
 /** allow của cuộc gọi Live cho remindFor: allow lúc nhấc máy (/call/live, DATA có cuộc gọi trước, có ảnh), cộng chuyện kể ngay trong cuộc gọi
@@ -209,13 +244,16 @@ export function finishJob(s: LiveState, may: string[]): Job {
 // ---------- Ghi từng lượt ----------
 
 /** key đếm lượt ghi; recording: đang ghi; loud, heard: lượt đang ghi có tiếng to, lời chép; question: câu Mây nói xong gần nhất (câu hỏi của lượt sau);
- *  mayLine: câu Mây đang nói; pending: lượt đã dừng ghi (Mây bắt đầu đáp) chờ Mây nói xong, vì lời chép của người kể có thể tới muộn. */
-export type Capture = { key: number; recording: boolean; loud: boolean; heard: string; question: string; mayLine: string; pending: { key: number; question: string; heard: string; loud: boolean } | null };
+ *  mayLine: câu Mây đang nói; pending: lượt đã dừng ghi (Mây bắt đầu đáp) chờ Mây nói xong, vì lời chép của người kể có thể tới muộn;
+ *  guard: lượt đang ghi bị gác (lượt ngay sau lượt ở ô lời nhắn khó nói, onRec cho blank): lời chép tới trước tiếng to đầu tiên của lượt bị bỏ, vì đó
+ *  có thể là đuôi lời nhắn chép muộn, mà lượt này vào ô 0, nơi sổ nhớ đọc. */
+export type Capture = { key: number; recording: boolean; loud: boolean; heard: string; question: string; mayLine: string; pending: { key: number; question: string; heard: string; loud: boolean } | null; guard: boolean };
 /** gate: Mây im MIC_GATE_MS cộng độ trễ phát; loud: mic có tiếng to; in, out: lời chép của người kể, của Mây; audio: tiếng đầu tiên của Mây từ lần done
- *  trước (kể cả tiếng không phát lúc xin phép); done: model turnComplete; hangup: cúp máy, mọi lý do. */
-export type CaptureEvent = { type: 'gate' } | { type: 'loud' } | { type: 'in'; text: string } | { type: 'out'; text: string } | { type: 'audio' } | { type: 'done' } | { type: 'hangup' };
+ *  trước (kể cả tiếng không phát lúc xin phép); done: model turnComplete; hangup: cúp máy, mọi lý do; guard: gác lượt đang ghi (nơi gọi gửi ngay sau
+ *  startRec khi bản chụp onRec của lượt ấy có blank). */
+export type CaptureEvent = { type: 'gate' } | { type: 'loud' } | { type: 'in'; text: string } | { type: 'out'; text: string } | { type: 'audio' } | { type: 'done' } | { type: 'hangup' } | { type: 'guard' };
 export type CaptureAction = { kind: 'startRec'; key: number } | { kind: 'stopRec'; key: number } | { kind: 'turn'; key: number; question: string; transcript: string } | { kind: 'mayLine'; text: string };
-export const CAPTURE_START: Capture = { key: 0, recording: false, loud: false, heard: '', question: '', mayLine: '', pending: null };
+export const CAPTURE_START: Capture = { key: 0, recording: false, loud: false, heard: '', question: '', mayLine: '', pending: null, guard: false };
 
 /** Bắt đầu ghi lượt người kể chưa (gửi gate cho captureNext): mic đã mở lại (gate: Mây im MIC_GATE_MS cộng độ trễ loa), Mây đã nói ít nhất một lần,
  *  lượt của Mây đã xong (mayDone: turnComplete) hay bị chạm cắt (hush), chưa đang ghi. Mic mở giữa lượt của Mây (tiếng tới chậm, chờ lời đáp công cụ
@@ -232,9 +270,13 @@ export function captureNext(c: Capture, e: CaptureEvent): { capture: Capture; ac
   switch (e.type) {
     case 'gate':
       if (c.recording) return { capture: c, actions: [] };
-      return { capture: { ...c, key: c.key + 1, recording: true, heard: '', loud: false }, actions: [{ kind: 'startRec', key: c.key + 1 }] };
+      return { capture: { ...c, key: c.key + 1, recording: true, heard: '', loud: false, guard: false }, actions: [{ kind: 'startRec', key: c.key + 1 }] };
+    case 'guard': return { capture: c.recording ? { ...c, guard: true } : c, actions: [] };
     case 'loud': return { capture: { ...c, loud: true }, actions: [] };
-    case 'in': return { capture: c.pending ? { ...c, pending: { ...c.pending, heard: c.pending.heard + e.text } } : { ...c, heard: c.heard + e.text }, actions: [] };
+    case 'in':
+      if (c.pending) return { capture: { ...c, pending: { ...c.pending, heard: c.pending.heard + e.text } }, actions: [] };
+      if (c.recording && c.guard && !c.loud) return { capture: c, actions: [] };
+      return { capture: { ...c, heard: c.heard + e.text }, actions: [] };
     case 'out': return { capture: { ...c, mayLine: c.mayLine + e.text }, actions: [] };
     case 'audio':
       if (!c.recording) return { capture: c, actions: [] };

@@ -171,7 +171,7 @@ async function serve(d: LiveDeps) {
 
 test('cấu hình Live: mặc định, công tắc tắt, thiếu khoá, đổi bằng biến', () => {
   const c = liveConfig({ GEMINI_API_KEY: 'k' });
-  assert.deepEqual(c, { on: true, model: 'models/gemini-3.8-live', voice: 'Zephyr', silenceMs: 1600, ctxTrigger: 12000, ctxTarget: 7000, callMaxSec: 900, dailyMin: 120 });
+  assert.deepEqual(c, { on: true, model: 'models/gemini-3.8-live', voice: 'Zephyr', silenceMs: 1600, ctxTrigger: 12000, ctxTarget: 7000, callMaxSec: 540, dailyMin: 120 });
   assert.equal(liveConfig({ GEMINI_API_KEY: 'k', MAY_LIVE: 'off' }).on, false);
   assert.equal(liveConfig({ GEMINI_API_KEY: 'k', MAY_LIVE: '0' }).on, false);
   assert.equal(liveConfig({}).on, false);
@@ -181,7 +181,7 @@ test('cấu hình Live: mặc định, công tắc tắt, thiếu khoá, đổi 
   // Thêm: các trần đổi được bằng biến; số hỏng thì về mặc định.
   const e = liveConfig({ GEMINI_API_KEY: 'k', MAY_LIVE_SILENCE_MS: '1200', MAY_LIVE_CTX_TRIGGER: '9000', MAY_LIVE_CTX_TARGET: '5000', MAY_CALL_MAX_SEC: '300', MAY_LIVE_DAILY_MIN: '30' });
   assert.deepEqual([e.silenceMs, e.ctxTrigger, e.ctxTarget, e.callMaxSec, e.dailyMin], [1200, 9000, 5000, 300, 30]);
-  assert.equal(liveConfig({ GEMINI_API_KEY: 'k', MAY_CALL_MAX_SEC: 'abc' }).callMaxSec, 900);
+  assert.equal(liveConfig({ GEMINI_API_KEY: 'k', MAY_CALL_MAX_SEC: 'abc' }).callMaxSec, 540);
 });
 
 test('token Live: dùng một lần, hết hạn theo trần cuộc gọi cộng 30 giây, khoá giọng, VAD, cuộn ngữ cảnh, chép lời hai chiều', () => {
@@ -256,7 +256,7 @@ test('nhấc máy Live: trần phút trong ngày, cuộc gọi chưa báo về t
   assert.equal(L.dayStartVN(NOW).toISOString(), '2026-11-20T17:00:00.000Z');   // 0:00 ngày 21/11 giờ Việt Nam
   const at = new Date('2026-11-21T01:00:00Z');
   const f = fakeFetch();
-  // Hôm nay: một cuộc 3000 giây, một cuộc chưa báo về (tính đủ 900); hôm qua 5000 giây không tính.
+  // Hôm nay: một cuộc 3000 giây, một cuộc chưa báo về (tính đủ 540); hôm qua 5000 giây không tính.
   const db = fakeDb({ members: [{ id: 'lan-cap', may_live: true }], calls: [
     { id: 'c1', member_id: 'x', live_at: at, live_sec: 3000 },
     { id: 'c2', member_id: 'x', live_at: at, live_sec: null },
@@ -264,11 +264,11 @@ test('nhấc máy Live: trần phút trong ngày, cuộc gọi chưa báo về t
   ] });
   const srv = await serve(deps({ db, fetch: f }));
   try {
-    const r1 = await srv.post('/api/call/live', 'lan-cap');   // đã dùng 3900 trên 7200, còn 3300
+    const r1 = await srv.post('/api/call/live', 'lan-cap');   // đã dùng 3540 trên 7200, còn 3660
     assert.equal(r1.status, 200);
-    assert.equal(r1.body.maxSec, 900);
-    // Cuộc vừa mở chưa báo về (900) + thêm 2100: đã dùng 6900, còn 300.
-    db.calls.push({ id: 'c3', member_id: 'x', live_at: at, live_sec: 2100 });
+    assert.equal(r1.body.maxSec, 540);
+    // Cuộc vừa mở chưa báo về (540) + thêm 2820: đã dùng 6900, còn 300.
+    db.calls.push({ id: 'c3', member_id: 'x', live_at: at, live_sec: 2820 });
     const r2 = await srv.post('/api/call/live', 'lan-cap');
     assert.equal(r2.status, 200);
     assert.equal(r2.body.maxSec, 300);
@@ -294,7 +294,7 @@ test('nhấc máy Live: xin token đúng chỗ, tạo hàng calls chưa chia s�
     assert.equal(r.status, 200);
     assert.equal(r.body.token, 'tok-1');
     assert.equal(r.body.model, 'models/gemini-3.8-live');
-    assert.equal(r.body.maxSec, 900);
+    assert.equal(r.body.maxSec, 540);
     assert.equal(typeof r.body.id, 'string');
     assert.equal(f.calls.length, 1);
     assert.equal(f.calls[0].url, TOKEN_URL);
@@ -346,9 +346,9 @@ test('kết thúc Live: giây tính theo đồng hồ máy chủ, ghi tiền, to
     // Máy cố báo 0 giây (hay số rác): vẫn tính đủ 60 giây đã trôi; token rác thì không tiền.
     assert.deepEqual(await srv.post('/api/call/live-2/live-end', 'lan-end', { sec: 0, usage: { prompt: -1 } }), ok);
     assert.deepEqual([get('live-2').live_sec, get('live-2').live_usd, get('live-2').live_usage], [60, 0, null]);
-    // Cuộc gọi treo một giờ rồi mới báo: chỉ tính tới trần một cuộc gọi cộng 30 giây dư (900 + 30), không ăn nửa trần ngày.
+    // Cuộc gọi treo một giờ rồi mới báo: chỉ tính tới trần một cuộc gọi cộng 30 giây dư (540 + 30), không ăn nửa trần ngày.
     assert.deepEqual(await srv.post('/api/call/live-3/live-end', 'lan-end', { sec: 3600, usage: USAGE }), ok);
-    assert.equal(get('live-3').live_sec, 930);
+    assert.equal(get('live-3').live_sec, 570);
     assert.deepEqual(await srv.post('/api/call/khong-co/live-end', 'lan-end', { sec: 5 }), ok);
   } finally {
     srv.close();

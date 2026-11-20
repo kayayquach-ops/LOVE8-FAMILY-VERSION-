@@ -2,8 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  askStep, byeDue, CAPTURE_START, captureNext, clockDue, CUE, finishJob, liveStart, onRec, onShareEnd, onTool, onTurn, recDue, remindAllow, remindFor,
-  SILENT_MS, silentDue, type AskStep, type Capture, type CaptureAction, type CaptureEvent, type Job, type LiveState,
+  askStep, awayMs, byeDue, CAPTURE_START, captureNext, clockCue, clockDue, CUE, finishJob, idleDue, liveStart, onRec, onShareEnd, onTool, onTurn, recDue,
+  remindAllow, remindFor, SILENT_MS, silentDue, type AskStep, type Capture, type CaptureAction, type CaptureEvent, type Job, type LiveState,
 } from './liveTurns.ts';
 import { SHARE_START, shareNext } from './callShare.ts';
 import { LIVE_FIRST_STORY, LIVE_MAX_STORIES } from './shared.ts';
@@ -121,7 +121,7 @@ test('chào và câu hẹn; công cụ lạ thì ok; xin ảnh khi chưa mở ch
   const bye = onTool(S(), { name: 'end_call', args: { next_hook: '  Tuần sau kể tiếp chuyện bà nhé ' } });
   assert.equal(bye.state.hook, 'Tuần sau kể tiếp chuyện bà nhé', 'câu hẹn đã cắt khoảng trắng');
   assert.deepEqual(bye.effects, [{ kind: 'end' }]);
-  assert.equal(bye.result, 'Say nothing more; the app hangs up.');
+  assert.equal(bye.result, 'Say your goodbye now; the app hangs up after it.', 'model nói lời chào và câu hẹn, app cúp sau đó');
   const bare = onTool(S(), { name: 'end_call', args: {} });
   assert.equal(bare.state.hook, '', 'không có câu hẹn: rỗng');
   assert.deepEqual(bare.effects, [{ kind: 'end' }], 'không có câu hẹn vẫn cúp máy');
@@ -350,7 +350,7 @@ test('chào hai lần: chỉ lần đầu tính, câu hẹn giữ nguyên, khôn
   const second = onTool(first.state, { name: 'end_call', args: {} });
   assert.equal(second.state.hook, 'Tuần sau kể tiếp', 'câu hẹn lần đầu giữ nguyên');
   assert.deepEqual(second.effects, [], 'không có lệnh cúp máy thứ hai');
-  assert.equal(second.result, 'Say nothing more; the app hangs up.', 'vẫn bảo model im');
+  assert.equal(second.result, 'Say nothing more; the app hangs up.', 'lần hai bảo model im, không chào lần nữa');
 });
 
 test('khép chuyện khi chưa mở chuyện nào: không làm gì', () => {
@@ -483,4 +483,83 @@ test('bắt đầu ghi lượt người kể chỉ khi lượt của Mây đã x
   c = CAPTURE_START; turns = [];
   step({ type: 'gate' }); step({ type: 'loud' }); step({ type: 'audio' }); step({ type: 'gate' }); step({ type: 'audio' }); step({ type: 'done' });
   assert.deepEqual(turns, [], 'ghi giữa lượt thì lượt có tiếng biến mất');
+});
+
+test('nhắc đồng hồ đợi hai giây không ai nói; còn dưới một phút mà chưa có lúc ấy thì nhắc ngay khi Mây nói xong', () => {
+  const p = { maxSec: 540, elapsedSec: 420, mayDone: true, talking: false, quietMs: 2000 };
+  assert.equal(clockCue(p), true, 'còn 120 giây, Mây xong, hai giây im: nhắc');
+  assert.equal(clockCue({ ...p, quietMs: 600 }), false, 'Mây vừa im (người kể chưa kịp đáp): chưa nhắc');
+  assert.equal(clockCue({ ...p, elapsedSec: 419 }), false, 'chưa tới lúc');
+  assert.equal(clockCue({ ...p, mayDone: false }), false, 'Mây đang đáp: không chen');
+  assert.equal(clockCue({ ...p, talking: true }), false, 'giọng Mây còn phát: không chen');
+  assert.equal(clockCue({ ...p, elapsedSec: 480, quietMs: 0 }), true, 'còn 60 giây: Mây xong là nhắc, không chờ im');
+  assert.equal(clockCue({ ...p, elapsedSec: 480, quietMs: 0, talking: true }), false, 'còn 60 giây nhưng Mây đang nói: chờ');
+  assert.equal(clockCue({ ...p, maxSec: 150, elapsedSec: 100, quietMs: 5000 }), false, 'cuộc gọi 150 giây: không nhắc (R12)');
+});
+
+test('máy bỏ trên bàn: nhắc im lặng xong một phút vẫn không nghe gì thì nhắc Mây chào; nhắc chào 15 giây mà chưa vào bước chào thì cúp', () => {
+  assert.equal(idleDue({ now: 100_000, nudgedAt: 0, byeAt: 0 }), null, 'chưa nhắc im lặng: không làm gì');
+  assert.equal(idleDue({ now: 59_999, nudgedAt: 1, byeAt: 0 }), null, 'chưa đủ một phút sau nhắc im lặng');
+  assert.equal(idleDue({ now: 60_001, nudgedAt: 1, byeAt: 0 }), 'bye', 'đủ một phút: nhắc Mây chào');
+  assert.equal(idleDue({ now: 74_999, nudgedAt: 1, byeAt: 60_000 }), null, 'đã nhắc chào: chờ Mây chào');
+  assert.equal(idleDue({ now: 75_000, nudgedAt: 1, byeAt: 60_000 }), 'hang', 'nhắc chào 15 giây vẫn chưa cúp: cúp');
+  assert.match(CUE.idle, /end_call/, 'lời nhắc bảo gọi end_call');
+});
+
+test('Google sắp đóng kết nối (goAway): cúp cứng trước timeLeft một chút; không đọc được timeLeft thì 15 giây', () => {
+  assert.equal(awayMs('12.5s'), 11_000);
+  assert.equal(awayMs('60s'), 58_500);
+  assert.equal(awayMs(30), 28_500, 'số giây');
+  assert.equal(awayMs('1s'), 0, 'gần hết rồi: cúp ngay');
+  assert.equal(awayMs(undefined), 15_000);
+  assert.equal(awayMs('abc'), 15_000);
+  assert.match(CUE.away, /end_call/, 'lời nhắc bảo gọi end_call với câu hẹn');
+});
+
+test('lời chép tới muộn của lời nhắn khó nói không lọt vào lượt ô 0 ngay sau (lượt ấy vào sổ nhớ): lượt bị gác bỏ lời chép trước tiếng to đầu tiên', () => {
+  let s = onTool(S(), { name: 'relay_open' }).state;
+  let c: Capture = CAPTURE_START, a: CaptureAction[] = [];
+  const turns: Array<{ idx: string; transcript: string }> = [];
+  const step = (e: CaptureEvent) => {
+    ({ capture: c, actions: a } = captureNext(c, e));
+    for (const x of a) {
+      if (x.kind === 'startRec') {
+        s = onRec(s, x.key);
+        // Như CallLive.tsx: lượt ngay sau lượt ở ô lời nhắn bị gác.
+        if (s.rec[x.key].blank) c = captureNext(c, { type: 'guard' }).capture;
+      }
+      if (x.kind === 'turn') {
+        const r = onTurn(s, { key: x.key, question: x.question, transcript: x.transcript, seconds: 3 });
+        s = r.state;
+        if (r.job) turns.push({ idx: r.job.fields.idx, transcript: r.job.fields.transcript });
+      }
+    }
+  };
+  step({ type: 'gate' });
+  step({ type: 'loud' });
+  step({ type: 'in', text: 'Mẹ thương bố' });
+  step({ type: 'audio' });
+  s = onTool(s, { name: 'story_close' }).state;   // lời gọi công cụ kế tiếp khép ô lời nhắn
+  step({ type: 'out', text: 'Dạ con nhớ rồi ạ.' });
+  step({ type: 'done' });
+  step({ type: 'gate' });
+  step({ type: 'in', text: ' nhiều lắm' });       // đuôi lời nhắn, chép muộn, tới khi lượt mới đã bắt đầu
+  step({ type: 'loud' });
+  step({ type: 'in', text: 'Dạ' });
+  step({ type: 'audio' });
+  step({ type: 'done' });
+  assert.deepEqual(turns, [{ idx: '1', transcript: 'Mẹ thương bố' }, { idx: '0', transcript: 'Dạ' }], 'đuôi lời nhắn không vào lượt ô 0');
+  // Lượt thường không bị gác: lời chép tới trước tiếng to vẫn giữ (người nói nhỏ).
+  c = CAPTURE_START;
+  ({ capture: c } = captureNext(c, { type: 'gate' }));
+  ({ capture: c } = captureNext(c, { type: 'in', text: 'Con nói nhỏ' }));
+  ({ capture: c } = captureNext(c, { type: 'audio' }));
+  ({ capture: c, actions: a } = captureNext(c, { type: 'done' }));
+  assert.deepEqual(a, [{ kind: 'turn', key: 1, question: '', transcript: 'Con nói nhỏ' }]);
+  // Gác chỉ cho lượt đang ghi: lượt mới bỏ gác.
+  ({ capture: c } = captureNext(captureNext(captureNext(CAPTURE_START, { type: 'gate' }).capture, { type: 'guard' }).capture, { type: 'audio' }));
+  ({ capture: c } = captureNext(c, { type: 'done' }));
+  ({ capture: c } = captureNext(c, { type: 'gate' }));
+  ({ capture: c } = captureNext(c, { type: 'in', text: 'Lượt mới' }));
+  assert.equal(c.heard, 'Lượt mới', 'lượt sau lượt bị gác không bị gác');
 });

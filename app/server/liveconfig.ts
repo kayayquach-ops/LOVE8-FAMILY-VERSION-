@@ -20,8 +20,9 @@ export function liveConfig(env: NodeJS.ProcessEnv = process.env): LiveConfig {
     // Ngữ cảnh quá trigger token thì bỏ lượt cũ tới còn target (lời dặn luôn giữ): mỗi câu đáp tính tiền lại cả ngữ cảnh.
     ctxTrigger: num(env.MAY_LIVE_CTX_TRIGGER, 12000),
     ctxTarget: num(env.MAY_LIVE_CTX_TARGET, 7000),
-    // Trần một cuộc gọi (giây) và trần cả máy chủ mỗi ngày giờ Việt Nam (phút).
-    callMaxSec: num(env.MAY_CALL_MAX_SEC, 900),
+    // Trần một cuộc gọi (giây) và trần cả máy chủ mỗi ngày giờ Việt Nam (phút). 540 vì Google đóng mỗi kết nối Live sau chừng 600 giây (goAway) và
+    // chưa nối lại phiên: nhắc còn hai phút ở giây 420 và cúp ở 540, cả hai trước lúc ấy.
+    callMaxSec: num(env.MAY_CALL_MAX_SEC, 540),
     dailyMin: num(env.MAY_LIVE_DAILY_MIN, 120),
   };
 }

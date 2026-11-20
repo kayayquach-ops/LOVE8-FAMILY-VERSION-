@@ -11,7 +11,7 @@ import { snooze } from './callSnooze';
 import { getLang, t } from './i18n';
 import { livePlayer, type LivePlayer } from './livePlayer';
 import {
-  askStep, byeDue, CAPTURE_START, captureNext, clockDue, CUE, finishJob, liveStart, MIC_GATE_MS, onRec, onShareEnd, onTool, onTurn,
+  askStep, awayMs, byeDue, CAPTURE_START, captureNext, clockCue, CUE, finishJob, idleDue, liveStart, MIC_GATE_MS, onRec, onShareEnd, onTool, onTurn,
   recDue, remindAllow, remindFor, silentDue, type AskStep, type Capture, type CaptureAction, type CaptureEvent, type LiveState,
 } from './liveTurns';
 import { addUsage, emptyUsage, type LiveUsage } from './liveUsage';
@@ -61,24 +61,26 @@ type Live = {
   st: LiveState | null; cap: Capture; recs: Map<number, Rec>; work: Promise<void>[]; count: number; lines: string[];
   /** allow lúc nhấc máy, số lời nhắn chờ lúc nhấc máy, số ảnh tới trong cuộc gọi (task 7): cho remindAllow. */
   allow: { prevCall: boolean; photos: boolean }; relays: number; photos: number;
-  /** Mây đã nói xong lượt (turnComplete), lúc gần nhất có tiếng (Mây nói, mic to, lời chép, lời nhắc), đã nhắc im lặng, đã nhắc đồng hồ. */
-  mayDone: boolean; idleAt: number; nudged: boolean; clocked: boolean;
+  /** Mây đã nói xong lượt (turnComplete), lúc gần nhất có tiếng (Mây nói, mic to, lời chép, lời nhắc), lúc nhắc im lặng (0: chưa, hay người kể đã
+   *  nói lại), lúc nhắc Mây chào vì máy bỏ đó (0: chưa), đã nhắc đồng hồ. */
+  mayDone: boolean; idleAt: number; nudgedAt: number; idleByeAt: number; clocked: boolean;
   /** Chạm linh vật lúc Mây đang nói: bỏ phần còn lại của lượt đang sinh (hush của gọi Nếp). */
   hush: boolean;
   said: string; heard: string; newSaid: boolean; newHeard: boolean; raf: number; timer: number;
   /** Hẹn giờ chờ phiên sẵn sàng (CONNECT_MS). */
   wait: number;
-  /** Cúp sau lời chào (end_call) hay khi Google báo sắp đóng kết nối (goAway): bước của lượt tạm biệt (askStep), lúc bắt đầu, lúc lượt ấy xong,
-   *  lúc máy còn phát gần nhất, hẹn giờ kiểm (byeDue). */
+  /** Cúp sau lời chào (end_call): bước của lượt tạm biệt (askStep), lúc bắt đầu, lúc lượt ấy xong, lúc máy còn phát gần nhất, hẹn giờ kiểm (byeDue). */
   bye: AskStep | null; byeAt: number; byeDoneAt: number; talkAt: number; byeT: number;
+  /** Google đã báo sắp đóng kết nối (goAway), hẹn giờ cúp cứng (awayMs). */
+  away: boolean; awayT: number;
 };
 const fresh = (): Live => ({
   ctx: null, stream: null, node: null, player: null, ws: null, id: null, maxSec: 0, t0: 0, ended: false, usage: emptyUsage(), lats: [],
   quietAt: 0, loudAt: 0, waiting: false, gate: false, spoke: false, talking: false,
   st: null, cap: CAPTURE_START, recs: new Map(), work: [], count: 0, lines: [], allow: { prevCall: false, photos: false }, relays: 0, photos: 0,
-  mayDone: false, idleAt: 0, nudged: false, clocked: false, hush: false,
+  mayDone: false, idleAt: 0, nudgedAt: 0, idleByeAt: 0, clocked: false, hush: false,
   said: '', heard: '', newSaid: true, newHeard: true, raf: 0, timer: 0, wait: 0,
-  bye: null, byeAt: 0, byeDoneAt: 0, talkAt: 0, byeT: 0,
+  bye: null, byeAt: 0, byeDoneAt: 0, talkAt: 0, byeT: 0, away: false, awayT: 0,
 });
 
 type Phase = 'ring' | 'connecting' | 'talk' | 'bye';
@@ -144,6 +146,7 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     clearInterval(L.timer);
     clearTimeout(L.wait);
     clearInterval(L.byeT);
+    clearTimeout(L.awayT);
     cancelAnimationFrame(L.raf);
     stopRing();
     L.player?.stop();
@@ -251,10 +254,11 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
       onMessage(m);
     };
     // Đóng trước khi phiên sẵn sàng: về cuộc gọi cũ. Sau đó: 1011, 1008 là Google từ chối (hết hạn mức, cấu hình sai), còn lại là mất mạng;
-    // cả hai đều kết thúc êm như cúp máy: lượt đang ghi vẫn gửi, cuộc gọi vẫn chốt.
+    // cả hai đều kết thúc êm như cúp máy: lượt đang ghi vẫn gửi, cuộc gọi vẫn chốt. Đóng sau goAway là đã báo trước: không toast (awayEnd).
     ws.onclose = (e) => {
       if (L.ended || L.ws !== ws) return;
       if (!L.t0) return void end('fallback');
+      if (L.away) return awayEnd();
       toast(t(e.code === 1011 || e.code === 1008 ? 'call.live.busy' : 'call.live.lost', { mascot }));
       void end('closed');
     };
@@ -281,22 +285,27 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     anim();
   }
 
-  /** Mỗi giây: đủ maxSec thì cúp; còn hai phút thì nhắc một lần (R12: clockDue); người kể im SILENT_MS thì nhắc một lần tới khi họ nói lại. */
+  /** Mỗi giây: đủ maxSec thì cúp; còn hai phút thì nhắc một lần lúc không ai nói (clockCue, R12); người kể im SILENT_MS thì nhắc một lần tới khi họ
+   *  nói lại; nhắc rồi mà một phút sau vẫn im (máy bỏ trên bàn) thì nhắc Mây chào, Mây không vào bước chào thì cúp (idleDue). Đang chào hay Google
+   *  sắp đóng kết nối thì thôi nhắc. */
   function tick() {
     const L = S.current, now = Date.now();
     if (L.ended) return;
     const el = (now - L.t0) / 1000;
     if (el >= L.maxSec) return void end('time');
     wake();
-    if (L.bye) return;
-    const talking = !!L.player?.talking;
-    // Nhắc đồng hồ lúc Mây đã nói xong và người kể đang ngưng, để không chen ngang ai.
-    if (!L.clocked && clockDue(L.maxSec, el) && L.mayDone && !talking && now - L.loudAt > 2000) {
+    if (L.bye || L.away) return;
+    const idle = idleDue({ now, nudgedAt: L.nudgedAt, byeAt: L.idleByeAt });
+    if (idle === 'hang') return void end('bye');
+    if (idle === 'bye') { L.idleByeAt = now; return cue(CUE.idle); }
+    if (L.idleByeAt) return;
+    const talking = !!L.player?.talking, quietMs = now - L.idleAt;
+    if (!L.clocked && clockCue({ maxSec: L.maxSec, elapsedSec: el, mayDone: L.mayDone, talking, quietMs })) {
       L.clocked = true;
       return cue(CUE.clock);
     }
-    if (silentDue({ mayDone: L.mayDone, talking, quietMs: now - L.idleAt, nudged: L.nudged })) {
-      L.nudged = true;
+    if (silentDue({ mayDone: L.mayDone, talking, quietMs, nudged: L.nudgedAt > 0 })) {
+      L.nudgedAt = now;
       cue(CUE.silent);
     }
   }
@@ -322,6 +331,8 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     if (a.kind === 'startRec') {
       // Chụp ô của lượt lúc nó bắt đầu (onRec), mọi lượt, trước khi ghi và kể cả khi máy không ghi được: thiếu bản chụp thì onTurn bỏ lượt.
       if (L.st) L.st = onRec(L.st, a.key);
+      // Lượt ngay sau lời nhắn khó nói: gác, để đuôi lời nhắn chép muộn không vào lượt ô 0 này (captureNext bỏ lời chép trước tiếng to đầu tiên).
+      if (L.st?.rec[a.key]?.blank) L.cap = captureNext(L.cap, { type: 'guard' }).capture;
       let stop: Rec['stop'] = null;
       try { if (L.stream) stop = record(L.stream, AUDIO_TYPE()); } catch { /* máy không ghi được: lượt vẫn gửi lời chép */ }
       L.recs.set(a.key, { stop, t0: Date.now(), t1: 0, p: null });
@@ -373,9 +384,7 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     if (L.ended) return;
     if (m.setupComplete) return connected();
     if (m.usageMetadata) addUsage(L.usage, m.usageMetadata);
-    // Google đóng mỗi kết nối Live sau chừng 10 phút và báo trước (goAway). Token dùng một lần nên chưa nối lại được (sessionResumption cần máy chủ
-    // phát thêm token): Mây im là cúp êm như bấm nút, lượt đang ghi vẫn gửi, cuộc gọi vẫn chốt. Đóng trước lúc ấy thì ws.onclose cũng kết thúc êm.
-    if (m.goAway && !L.bye) startBye('asked');
+    if (m.goAway && !L.away) goAway(m.goAway.timeLeft);
     const calls = m.toolCall?.functionCalls;
     if (Array.isArray(calls) && calls.length) onTools(calls);
     const sc = m.serverContent;
@@ -385,7 +394,8 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
       const text = String(sc.inputTranscription.text);
       // Người kể lên tiếng: lượt sau của Mây phát lại bình thường, lời nhắc im lặng dùng lại được.
       L.hush = false;
-      L.nudged = false;
+      L.nudgedAt = 0;
+      L.idleByeAt = 0;
       L.idleAt = now;
       feed({ type: 'in', text });
       if (L.newHeard) { L.heard = ''; L.newHeard = false; }
@@ -455,7 +465,7 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
           st = s.state;
           if (s.job) void outbox({ group: id, ...s.job });
           result = SHARE_LATER;
-        } else if (e.kind === 'end') startBye('tool');
+        } else if (e.kind === 'end') startBye();
       }
       functionResponses.push({ id: f.id, name: f.name, response: { result } });
     }
@@ -464,13 +474,36 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     cues.forEach(cue);
   }
 
-  /** Bắt đầu chờ cúp: end_call ('tool': lời chào chưa tới) hay goAway ('asked': chỉ chờ Mây im). byeDue quyết lúc cúp, kiểm mỗi 100 ms. */
-  function startBye(step: AskStep) {
+  /** Google đóng mỗi kết nối Live sau chừng 10 phút và báo trước (goAway). Token dùng một lần nên chưa nối lại được (sessionResumption cần máy chủ
+   *  phát thêm token). Ghi log giây đã gọi và timeLeft (đo giới hạn thật), nhắc Mây chào kèm câu hẹn (CUE.away, Mây gọi end_call rồi đường cúp sau
+   *  lời chào lo tiếp), và hẹn cúp cứng trước timeLeft một chút (awayMs) nếu lời chào chưa xong. */
+  function goAway(timeLeft: unknown) {
+    const L = S.current;
+    L.away = true;
+    console.info(`[call-live] goAway sau ${Math.round((Date.now() - L.t0) / 1000)} s, timeLeft ${String(timeLeft ?? '?')}`);
+    if (!L.bye && !L.idleByeAt) cue(CUE.away);
+    L.awayT = window.setTimeout(awayEnd, awayMs(timeLeft));
+  }
+
+  /** Hết giờ sau goAway hay Google đã đóng: lời chào đã có tiếng thì để giọng đã tới phát hết (coi như lượt tạm biệt xong, byeDue tối đa 8 giây),
+   *  chưa thì cúp ngay. Cúp kiểu nào cũng gửi lượt đang ghi và chốt cuộc gọi. */
+  function awayEnd() {
+    const L = S.current;
+    if (L.ended) return;
+    if (L.bye === 'spoke' || L.bye === 'asked') {
+      if (L.bye === 'spoke') { L.bye = 'asked'; L.byeDoneAt = Date.now(); }
+      return;
+    }
+    void end('closed');
+  }
+
+  /** Bắt đầu chờ cúp sau end_call: lời chào chưa tới ('tool'). byeDue quyết lúc cúp, kiểm mỗi 100 ms. */
+  function startBye() {
     const L = S.current, now = Date.now();
-    L.bye = step;
+    L.bye = 'tool';
     L.byeAt = now;
     L.talkAt = now;
-    L.byeDoneAt = step === 'asked' ? now : 0;
+    L.byeDoneAt = 0;
     clearInterval(L.byeT);
     L.byeT = window.setInterval(() => {
       const at = Date.now();
