@@ -206,6 +206,8 @@ Làm lại Mây, nhánh `ux-simple-poetic`, 9 task. Chi tiết từng phần ở
 
 ## 21/11: Mây Live (Mây duy nhất cho mọi người; ban đầu deploy 21/11 02:45 giờ VN, bản a5e4d0b)
 
+**ĐÃ DEPLOY bản feefc6f (21/11, đã push nhánh + main):** người dùng bảo "chỉ có 1 Mây" nên bỏ công tắc thử, mọi người gọi bằng Mây Live; người dùng chốt giữ trần 120 phút mỗi ngày cả app (hết trần hay Live lỗi thì tự về Mây cũ). Chưa có cuộc gọi Live thật nào trên iPhone lúc ghi.
+
 Cuộc gọi tuần mới cho mọi thành viên, theo kế hoạch `docs/superpowers/plans/2026-11-21-may-live.md` (7 task, xong 21/11). Chi tiết đầy đủ: `app/docs/may-moi.md` mục "Mây Live".
 
 - **Là gì**: Mây gọi bằng Gemini Live (như "gọi Nếp" của app TOPIK): nghe và đáp liền, muốn chen ngang thì chạm linh vật (mic đóng lúc Mây nói nên nói đè không ngắt được Mây), đào một chuyện tới khi kể đủ rồi mở chuyện sau, nhiều chuyện mỗi cuộc gọi, xin ảnh cho chuyện vừa kể, chuyển lời nhắn chờ, hỏi lời nhắn khó nói, xin phép chia sẻ một lần cho cả cuộc gọi (chỉ theo hai nút hay bộ đọc câu trả lời chặt trên lượt nói sau câu hỏi, không bao giờ theo model), chào kèm câu hẹn tuần sau. Mỗi lượt có giọng người kể vào `call_answers`, cuộc gọi là kịch bản v3, nên podcast, sổ nhớ, lịch, lời nhắn sau cuộc gọi chạy như cũ. `Call.tsx` chỉ còn là đường lùi êm (token hay kết nối lỗi, hết trần ngày).
