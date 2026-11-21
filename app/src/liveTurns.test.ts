@@ -901,34 +901,41 @@ test('lời nhắn khó nói: Mây hỏi chia sẻ hay chào khi chưa gọi rel
   assert.deepEqual(onTool(S(), { name: 'end_call', args: {} }).effects, [{ kind: 'end' }], 'không biết có phải cuộc gọi đầu không: không bảo');
 });
 
-test('lời nhắn khó nói: Mây hỏi mà quên relay_open thì câu Mây nói (khó nói, hard to say, 말하기 어려운) đưa lượt sau vào ô 1', () => {
-  // Đang ở ô chuyện (ô có thể chia sẻ): câu hỏi lời nhắn không kèm relay_open.
-  const story = onTool(NORMAL(), OPEN).state;
-  const s = relayLine(story, 'Mẹ có điều gì khó nói muốn con nhắn giúp ai trong nhà không ạ?');
+test('lời nhắn khó nói: Mây hỏi mà quên relay_open lúc không có chuyện đang mở thì câu hỏi của Mây (khó nói, hard to say, 말하기 어려운) đưa lượt sau vào ô 1', () => {
+  // Sau story_close (ô 0, sổ nhớ đọc): câu hỏi lời nhắn không kèm relay_open.
+  const closed = onTool(onTool(NORMAL(), OPEN).state, { name: 'story_close' }).state;
+  const s = relayLine(closed, 'Có điều gì khó nói mẹ muốn con nhắn giúp không ạ?');
   assert.equal(s.idx, 1, 'lượt sau vào ô 1');
   assert.equal(s.relay, 'line', 'coi như đã gọi relay_open (log ghi là đoán từ câu Mây)');
-  const t = onTurn(onRec(s, 5), { key: 5, question: 'Mẹ có điều gì khó nói muốn con nhắn giúp ai trong nhà không ạ?', transcript: 'SECRET mẹ thương bố', seconds: 4 });
-  assert.equal(t.job?.fields.idx, '1', 'lời nhắn vào ô 1, không vào ô chuyện');
-  assert.equal(t.job?.fields.theme, undefined, 'không gửi theme của chuyện');
+  const t = onTurn(onRec(s, 5), { key: 5, question: 'Có điều gì khó nói mẹ muốn con nhắn giúp không ạ?', transcript: 'SECRET mẹ thương bố', seconds: 4 });
+  assert.equal(t.job?.fields.idx, '1', 'lời nhắn vào ô 1, không vào ô 0');
   // Đã coi như mở bước lời nhắn: ask_share không bị bảo gọi relay_open nữa; công cụ kế tiếp khép ô 1 như thường.
-  const told = { ...t.state, storyTurns: 1 };
-  const a = onTool(told, { name: 'ask_share' });
+  const a = onTool({ ...t.state, storyTurns: 1 }, { name: 'ask_share' });
   assert.deepEqual(a.effects, [{ kind: 'share' }]);
   assert.equal(a.state.idx, 0, 'công cụ kế tiếp khép ô 1');
-  // Ô 0 (hỏi thăm, sổ nhớ đọc), tiếng Anh và tiếng Hàn.
+  // Gemini bỏ dấu hỏi: đuôi câu "không", "không ạ", "nhé", "nha" vẫn là câu hỏi.
+  for (const q of ['Mẹ có điều gì khó nói muốn nhắn ai không', 'Mẹ có điều gì khó nói muốn con nhắn giúp không ạ.', 'Có gì khó nói thì mẹ bảo con nhắn giúp nhé', 'Có gì khó nói mẹ nói con nghe nha']) {
+    assert.equal(relayLine(closed, q).idx, 1, q);
+  }
+  // Trước story_open đầu tiên, tiếng Anh và tiếng Hàn (có dấu hỏi).
   assert.equal(relayLine(NORMAL(), 'Is there anything hard to say that you would like me to pass on?').idx, 1);
   assert.equal(relayLine(NORMAL(), '가족에게 하기 어려운 말이 있으세요?').idx, 1);
   assert.equal(relayLine(NORMAL(), '가족 중 누구에게 말하기 어려운 얘기가 있으세요?').idx, 1);
-  // Không đổi gì: câu thường, đang ở ô 1, nhà một người (như relay_open).
-  const plain = NORMAL();
-  assert.equal(relayLine(plain, 'Hôm nay mẹ thế nào ạ?'), plain, 'câu thường: giữ nguyên');
-  const one = relayLine(onTool(NORMAL(), { name: 'relay_open' }).state, 'Chuyện khó nói thế mà mẹ kể con nghe');
-  assert.equal(one.relay, 'tool', 'đang ở ô 1: log vẫn là Mây đã gọi relay_open');
+  // Không đổi gì: Mây an ủi giữa chuyện, hay cả câu hỏi lúc chuyện đang mở (đoán nhầm thì lượt kể thành lời nhắn gửi đi).
+  const story = onTool(NORMAL(), OPEN).state;
+  assert.equal(relayLine(story, 'nếu khó nói thì mẹ cứ từ từ'), story, 'an ủi giữa chuyện: giữ nguyên ô chuyện');
+  assert.equal(relayLine(story, 'Có điều gì khó nói mẹ muốn con nhắn giúp không ạ?'), story, 'chuyện đang mở: không đoán');
+  assert.equal(relayLine(closed, 'Chuyện đó chắc khó nói lắm'), closed, 'không phải câu hỏi: giữ nguyên');
+  assert.equal(relayLine(closed, 'Hôm nay mẹ thế nào ạ?'), closed, 'câu hỏi thường: giữ nguyên');
+  const after = onTool(onTool(NORMAL(), { name: 'relay_open' }).state, { name: 'xyz' }).state;
+  assert.equal(relayLine(after, 'Mẹ còn điều gì khó nói nữa không ạ?'), after, 'đã gọi relay_open (ô 1 đã khép): không đoán nữa');
+  const one = onTool(NORMAL(), { name: 'relay_open' }).state;
+  assert.equal(relayLine(one, 'Chuyện khó nói thế mà mẹ kể con nghe không?'), one, 'đang ở ô 1: giữ nguyên');
   const lone = liveStart({ id: 'c1', family: 1, themes: [], relays: [], trial: false });
   assert.equal(relayLine(lone, 'Mẹ có điều gì khó nói không ạ?'), lone, 'nhà một người: không có bước lời nhắn');
 });
 
-test('lời nhắn khó nói qua captureNext: Mây hỏi không kèm relay_open, lượt sau vẫn vào ô 1; chạm linh vật cắt câu hỏi rồi nói ngay cũng vậy', () => {
+test('lời nhắn khó nói qua captureNext: Mây khép chuyện rồi hỏi không kèm relay_open, lượt sau vẫn vào ô 1; chạm linh vật cắt câu hỏi rồi nói ngay cũng vậy', () => {
   let s: LiveState = onTool(NORMAL(), OPEN).state;
   let c: Capture = CAPTURE_START;
   const jobs: Job[] = [];
@@ -947,7 +954,8 @@ test('lời nhắn khó nói qua captureNext: Mây hỏi không kèm relay_open,
   };
   feed({ type: 'out', text: 'Mẹ kể con nghe về món canh chua nhé' }); feed({ type: 'audio' }); feed({ type: 'done' }); feed({ type: 'gate' });
   feed({ type: 'loud' }); feed({ type: 'in', text: 'A1' });
-  feed({ type: 'out', text: 'Mẹ có điều gì khó nói muốn nhắn ai không ạ?' }); feed({ type: 'audio' }); feed({ type: 'done' }); feed({ type: 'gate' });
+  s = onTool(s, { name: 'story_close' }).state;          // story_close ngay trước câu hỏi lời nhắn
+  feed({ type: 'out', text: 'Có điều gì khó nói mẹ muốn con nhắn giúp không ạ?' }); feed({ type: 'audio' }); feed({ type: 'done' }); feed({ type: 'gate' });
   feed({ type: 'loud' }); feed({ type: 'in', text: 'SECRET mẹ thương bố' });
   feed({ type: 'out', text: 'Dạ con nhớ rồi ạ' }); feed({ type: 'audio' }); feed({ type: 'done' });
   const ans = jobs.map((j) => `${j.fields.idx}:${j.fields.transcript}`);
@@ -959,7 +967,8 @@ test('lời nhắn khó nói qua captureNext: Mây hỏi không kèm relay_open,
   jobs.length = 0;
   feed({ type: 'out', text: 'Mẹ kể con nghe về món canh chua nhé' }); feed({ type: 'audio' }); feed({ type: 'done' }); feed({ type: 'gate' });
   feed({ type: 'loud' }); feed({ type: 'in', text: 'A1' });
-  feed({ type: 'out', text: 'Mẹ có điều gì khó nói' }); feed({ type: 'audio' });
+  s = onTool(s, { name: 'story_close' }).state;
+  feed({ type: 'out', text: 'Có điều gì khó nói mẹ muốn con nhắn giúp không ạ?' }); feed({ type: 'audio' });
   feed({ type: 'gate' }); feed({ type: 'loud' });        // chạm linh vật: mic mở, lượt mới ghi trước khi lượt của Mây xong
   feed({ type: 'done' });                                 // Gemini nghe người kể nói (interrupted): câu Mây (có chữ khó nói) tới lúc lượt trả lời đang ghi
   feed({ type: 'in', text: 'SECRET mẹ thương bố' });

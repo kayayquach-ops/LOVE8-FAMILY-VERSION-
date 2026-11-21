@@ -52,6 +52,8 @@ const SAY = {
 };
 /** Câu Mây hỏi lời nhắn khó nói (bước 5 của lời dặn: "something hard to say ... pass on"), để bắt khi Mây quên gọi relay_open (relayLine). */
 const RELAY_ASK = /khó nói|khó mở lời|hard to say|difficult to say|말하기 ?(어려운|힘든)|하기 ?(어려운|힘든) ?말/;
+/** Câu hỏi khi Gemini bỏ dấu hỏi: đuôi câu "không", "không ạ", "nhé", "nha" (relayLine; en, ko chỉ theo dấu hỏi). */
+const ASK_END = /(^|\s)(không|không ạ|nhé|nha)$/;
 // i18n-ok-end
 
 /** Người kể im chừng này (Mây đã nói xong, máy phát đã im) thì nhắc model (CUE.silent), một lần mỗi lượt của Mây. */
@@ -155,12 +157,17 @@ export function onTool(s: LiveState, f: { name: string; args?: Record<string, un
   }
 }
 
-/** Mây vừa nói xong một câu (mayLine): câu có lời hỏi lời nhắn khó nói (RELAY_ASK) mà ô chưa là 1 thì như relay_open (nhà một người thì không có
- *  bước ấy), để lượt kế của người kể vào ô 1, không vào ô 0 hay ô chuyện. Nơi gọi gọi trước khi lượt ấy bắt đầu ghi (mayLine tới ở done, trước gate);
- *  recKey: lượt đang ghi lúc ấy (chạm linh vật cắt câu hỏi rồi nói ngay, lượt bắt đầu trước khi lượt của Mây xong) cũng chuyển sang ô 1. */
+/** Mây vừa nói xong một câu (mayLine) mà quên relay_open: câu là câu hỏi (có dấu hỏi, hay đuôi ASK_END), có lời hỏi lời nhắn khó nói (RELAY_ASK),
+ *  lúc ở ô 0 (không có chuyện đang mở: trước story_open đầu tiên hay sau story_close; ô 1 thì đã mở), relay_open chưa gọi, nhà từ hai người (như
+ *  relay_open), thì như relay_open: lượt kế của người kể vào ô 1, không vào ô 0 nơi sổ nhớ đọc. Không đoán lúc chuyện đang mở: câu an ủi giữa chuyện
+ *  ("nếu khó nói thì mẹ cứ từ từ") mà đoán nhầm thì lượt kể dài nhất ô 1 thành lời nhắn gửi đi lúc chốt. Nơi gọi gọi trước khi lượt kế bắt đầu ghi
+ *  (mayLine tới ở done, trước gate); recKey: lượt đang ghi lúc ấy (chạm linh vật cắt câu hỏi rồi nói ngay, lượt bắt đầu trước khi lượt của Mây xong)
+ *  cũng chuyển sang ô 1. */
 export function relayLine(s: LiveState, line: string, recKey?: number): LiveState {
-  if (s.idx === 1 || s.family < 2 || !RELAY_ASK.test(line.toLowerCase().normalize('NFC').replace(/\s+/g, ' '))) return s;
-  const st: LiveState = { ...s, idx: 1, relay: s.relay === 'tool' ? 'tool' : 'line' };
+  const l = line.toLowerCase().normalize('NFC').replace(/\s+/g, ' ').trim();
+  const ask = /[?？]/.test(l) || ASK_END.test(l.replace(/[.!…,\s]+$/, ''));
+  if (s.idx !== 0 || s.relay === 'tool' || s.family < 2 || !ask || !RELAY_ASK.test(l)) return s;
+  const st: LiveState = { ...s, idx: 1, relay: 'line' };
   const at = recKey === undefined ? undefined : s.rec[recKey];
   return at ? { ...st, rec: { ...s.rec, [recKey!]: { ...at, idx: 1, theme: null, opener: '' } }, lastRec: 1 } : st;
 }
