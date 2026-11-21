@@ -145,3 +145,18 @@ test('chế độ chặt: câu hỏi ngược, lời từ chối có "not", "ch�
   assert.equal(shareAnswer('chắc là được'), 'yes', 'mặc định như cũ');
   assert.equal(shareAnswer('sure, who will hear it', 'en'), 'yes', 'mặc định như cũ');
 });
+
+test('chế độ chặt: câu đồng ý kiểu "không sao", "chia sẻ đi", "I don\'t mind" mà kèm "chỉ", "only" hay chữ hỏi lại thì chưa rõ (đồng ý có điều kiện, chờ nút)', () => {
+  const S = { strict: true };
+  const cond: Array<[string, 'vi' | 'en' | 'ko']> = [
+    ['không sao, nhưng chỉ bố nghe thôi', 'vi'], ['chia sẻ đi, chỉ bố thôi', 'vi'], ['được thôi, chỉ bố nghe', 'vi'], ['sao không, chỉ mẹ thôi', 'vi'],
+    ["I don't mind, but only dad", 'en'], ['why not share it with dad only', 'en'], ['no problem, just not mom', 'en'],
+  ];
+  for (const [s, l] of cond) assert.equal(shareAnswer(s, l, S), null, s);
+  const yes: Array<[string, 'vi' | 'en' | 'ko']> = [
+    ['sao không chia sẻ', 'vi'], ['dạ được', 'vi'], ['ừ chia sẻ đi', 'vi'], ['why not', 'en'], ["I don't mind", 'en'], ['yeah sure', 'en'], ['네 좋아요', 'ko'],
+  ];
+  for (const [s, l] of yes) assert.equal(shareAnswer(s, l, S), 'yes', s);
+  // Mặc định (màn cũ Call.tsx) không đổi.
+  for (const [s, l] of cond) assert.equal(shareAnswer(s, l), 'yes', `mặc định: ${s}`);
+});

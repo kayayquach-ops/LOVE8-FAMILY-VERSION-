@@ -913,14 +913,28 @@ test('lời nhắn khó nói: Mây hỏi mà quên relay_open lúc không có ch
   const a = onTool({ ...t.state, storyTurns: 1 }, { name: 'ask_share' });
   assert.deepEqual(a.effects, [{ kind: 'share' }]);
   assert.equal(a.state.idx, 0, 'công cụ kế tiếp khép ô 1');
-  // Gemini bỏ dấu hỏi: đuôi câu "không", "không ạ", "nhé", "nha" vẫn là câu hỏi.
-  for (const q of ['Mẹ có điều gì khó nói muốn nhắn ai không', 'Mẹ có điều gì khó nói muốn con nhắn giúp không ạ.', 'Có gì khó nói thì mẹ bảo con nhắn giúp nhé', 'Có gì khó nói mẹ nói con nghe nha']) {
+  // Gemini bỏ dấu hỏi: đuôi câu "không", "không ạ" vẫn là câu hỏi.
+  for (const q of ['Mẹ có điều gì khó nói muốn nhắn ai không', 'Mẹ có điều gì khó nói muốn con nhắn giúp không ạ.', 'Mẹ có gì khó nói cần con chuyển lời không ạ']) {
     assert.equal(relayLine(closed, q).idx, 1, q);
   }
-  // Trước story_open đầu tiên, tiếng Anh và tiếng Hàn (có dấu hỏi).
+  // Trước story_open đầu tiên, tiếng Anh và tiếng Hàn (có dấu hỏi, có chữ chuyển lời).
   assert.equal(relayLine(NORMAL(), 'Is there anything hard to say that you would like me to pass on?').idx, 1);
-  assert.equal(relayLine(NORMAL(), '가족에게 하기 어려운 말이 있으세요?').idx, 1);
-  assert.equal(relayLine(NORMAL(), '가족 중 누구에게 말하기 어려운 얘기가 있으세요?').idx, 1);
+  assert.equal(relayLine(NORMAL(), 'Is there something hard to say you want me to tell someone?').idx, 1);
+  assert.equal(relayLine(NORMAL(), '가족에게 하기 어려운 말이 있으면 제가 전해 드릴까요?').idx, 1);
+  assert.equal(relayLine(NORMAL(), '가족 중 누구에게 말하기 어려운 얘기를 전달해 드릴까요?').idx, 1);
+  // "nhé", "nha" là lời nhẹ của một lời khuyên, không phải câu hỏi; câu không có chữ chuyển lời không phải câu hỏi lời nhắn.
+  for (const q of ['Nếu khó nói thì mẹ cứ từ từ nhé', 'Chuyện đó chắc khó nói lắm, mẹ không cần kể đâu nhé.', 'Khó nói thì mình để lúc khác nha',
+    'Có gì khó nói thì mẹ bảo con nhắn giúp nhé', 'Chuyện đó khó nói lắm phải không ạ?', '가족에게 하기 어려운 말이 있으세요?', 'Was that hard to say?']) {
+    assert.equal(relayLine(closed, q), closed, q);
+  }
+  // Đã chào (end_call), hay lời dặn không có bước lời nhắn (cuộc gọi đầu, không biết): không đoán.
+  const ended = { ...closed, ended: true };
+  assert.equal(relayLine(ended, 'Có điều gì khó nói mẹ muốn con nhắn giúp không ạ?'), ended, 'đã chào: giữ nguyên');
+  assert.equal(relayLine(ended, 'Lần sau có gì khó nói thì mẹ cứ nói con nghe nhé'), ended, 'lời chào: giữ nguyên');
+  assert.equal(relayLine(closed, 'Lần sau có gì khó nói thì mẹ cứ nói con nghe nhé'), closed, 'câu kiểu lời chào: giữ nguyên');
+  const trial = liveStart({ id: 'c1', family: 3, themes: [], relays: [], trial: true });
+  assert.equal(relayLine(trial, 'Có điều gì khó nói mẹ muốn con nhắn giúp không ạ?'), trial, 'cuộc gọi đầu: giữ nguyên');
+  assert.equal(relayLine(S(), 'Có điều gì khó nói mẹ muốn con nhắn giúp không ạ?').idx, 0, 'không biết có phải cuộc gọi đầu: giữ nguyên');
   // Không đổi gì: Mây an ủi giữa chuyện, hay cả câu hỏi lúc chuyện đang mở (đoán nhầm thì lượt kể thành lời nhắn gửi đi).
   const story = onTool(NORMAL(), OPEN).state;
   assert.equal(relayLine(story, 'nếu khó nói thì mẹ cứ từ từ'), story, 'an ủi giữa chuyện: giữ nguyên ô chuyện');
@@ -932,7 +946,7 @@ test('lời nhắn khó nói: Mây hỏi mà quên relay_open lúc không có ch
   const one = onTool(NORMAL(), { name: 'relay_open' }).state;
   assert.equal(relayLine(one, 'Chuyện khó nói thế mà mẹ kể con nghe không?'), one, 'đang ở ô 1: giữ nguyên');
   const lone = liveStart({ id: 'c1', family: 1, themes: [], relays: [], trial: false });
-  assert.equal(relayLine(lone, 'Mẹ có điều gì khó nói không ạ?'), lone, 'nhà một người: không có bước lời nhắn');
+  assert.equal(relayLine(lone, 'Mẹ có điều gì khó nói muốn con nhắn giúp không ạ?'), lone, 'nhà một người: không có bước lời nhắn');
 });
 
 test('lời nhắn khó nói qua captureNext: Mây khép chuyện rồi hỏi không kèm relay_open, lượt sau vẫn vào ô 1; chạm linh vật cắt câu hỏi rồi nói ngay cũng vậy', () => {
