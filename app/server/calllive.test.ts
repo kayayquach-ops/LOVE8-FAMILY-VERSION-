@@ -403,7 +403,7 @@ const extras = (o: Partial<ScriptExtras> = {}): ScriptExtras => ({
     { kind: 'person', hint: 'A story about An (their child): a moment with them they remember well.', theme: null },
     { kind: 'together', hint: 'A time the whole family was together: a trip, a Tet, a meal.', theme: 'tet-cac-dip' },
   ],
-  hook: null, warm: false,
+  hook: null, warm: false, news: [],
   ...o,
 });
 
@@ -465,8 +465,9 @@ test('dữ liệu Live: thời tiết là cảm giác, không có số; không c
 test('dữ liệu Live: đủ các mục theo thứ tự, lời nhắn có mã, cuộc gọi trước và ảnh theo cùng một cờ', () => {
   const c = lanCtx('lan', { doneCalls: ['2026-11-14'], photoCount: 3, extras: extras() });
   const d: any = L.liveData(c, [{ id: 'r1', said: 'An nhắn là nhớ mẹ lắm' }]);
-  assert.deepEqual(Object.keys(d), ['today', 'local_time', 'person', 'family_members', 'depth', 'seeds', 'memory', 'upcoming_occasions',
+  assert.deepEqual(Object.keys(d), ['today', 'local_time', 'person', 'family_members', 'depth', 'seeds', 'memory', 'family_news', 'upcoming_occasions',
     'told_themes', 'allowed_themes', 'previous_calls', 'saved_photos', 'recent_contact', 'pending_messages']);
+  assert.equal(d.family_news, 'none yet');
   assert.match(d.today, /^\d{4}-\d{2}-\d{2}$/);
   // Ngày theo giờ Việt Nam của now truyền vào: 17:30 UTC ngày 31/1 đã là 0:30 ngày 1/2 ở Việt Nam.
   assert.equal((L.liveData(c, [], new Date('2027-01-31T17:30:00Z')) as any).today, '2027-02-01');
@@ -502,6 +503,7 @@ test('dữ liệu Live: không có dữ liệu lớn dần thì mức 0, mồi c
   assert.deepEqual(d.person, { name: 'Lan', role: 'me' });
   assert.equal('local_time' in d, false);
   assert.deepEqual([d.memory, d.upcoming_occasions, d.told_themes, d.recent_contact], [[], [], [], []]);
+  assert.equal(d.family_news, 'none yet');
   assert.deepEqual(d.allowed_themes, themesFor('me', false, false));
   assert.doesNotMatch(JSON.stringify(d), /OLD-ANSWER|OLD-QUESTION|OLD-CAPTION/);
 });
@@ -513,18 +515,17 @@ test('lời dặn Live: đủ các phần, ví dụ của người dùng, mồi 
   for (const h of heads) assert.ok(b.includes(h), h);
   for (let i = 1; i < heads.length; i++) assert.ok(b.indexOf(heads[i - 1]) < b.indexOf(heads[i]), `${heads[i - 1]} trước ${heads[i]}`);
   for (const ex of ['Mẹ kể ngày nào cũng được ạ', 'Mẹ cứ từ từ ạ', 'Ơ mẹ ơi, hôm nay chỗ mẹ lạnh lắm đấy, mẹ mặc đủ ấm không ạ?', 'Dạ, con nghe đây ạ', 'kể gì bây giờ?', 'gợi ý đi',
-    'Mẹ ơi, mẹ kể con nghe về tuổi thơ của mẹ được không?', 'An kể là ...']) assert.ok(b.includes(ex), ex);
+    'Mẹ ơi, mẹ có nhớ món Cún thích ăn nhất không ạ?', 'An kể là ...']) assert.ok(b.includes(ex), ex);
   assert.ok(b.startsWith('You are Mây, the little mascot of Sweet Home'));
   assert.ok(b.includes('call story_open with its theme and that exact opener right before you say it'));
-  assert.ok(b.includes('(copy its shape; the topic comes from the seeds)'));
-  // Đào chuyện như đứa cháu tò mò, không như điền phiếu; không phải lượt nào cũng hỏi.
-  for (const w of ['never walk through these like a form', 'pick up the most alive detail they just gave', 'the way a curious grandchild would',
-    'Not every turn needs a question', 'There is no limit on questions.', 'then, if a question helps, ask only one.',
+  assert.ok(b.includes('(copy its shape: one concrete person, dish, place or day, never a broad "tell me a memory about it")'));
+  // Đào chuyện như đứa cháu tò mò, không như điền phiếu; đang kể say thì chỉ đáp vài chữ.
+  for (const w of ['never walk through these like a form', 'Pick up the most alive detail they just gave', 'the way a curious grandchild would',
+    'not every turn needs a question', 'then, if a question helps, ask only one.',
     'laugh along in a few words, then carry on with the story', 'never the same line twice in a row',
-    'say one warm line about something specific they told', 'ideally one that grows out of what they just said',
-    'treat it as the first story', 'instead of forcing the hook seed']) assert.ok(b.includes(w), w);
-  assert.ok(!b.includes('at most one question'));
-  assert.ok(!b.includes('how it felt then, how they see it now'));
+    'say one warm line about something specific they told', 'treat it as today\'s story', 'instead of forcing the hook seed']) assert.ok(b.includes(w), w);
+  for (const w of ['at most one question', 'how it felt then, how they see it now', 'There is no limit on questions.', 'ideally one that grows out of what they just said',
+    'as many real stories', 'Stories, one or more', 'use them in order', 'start the first story']) assert.ok(!b.includes(w), w);
   // Gọi điện chỉ có giọng: không có luật danh sách, tiêu đề, gạch dài; tên là "nói" cho đúng.
   assert.ok(!b.includes('No lists, no headings'));
   assert.ok(b.includes('Say every name exactly as in DATA'));
@@ -532,6 +533,7 @@ test('lời dặn Live: đủ các phần, ví dụ của người dùng, mồi 
   assert.ok(b.includes('Speak only Vietnamese for the whole call, even though these notes and the app messages are in English.'));
   assert.ok(b.indexOf('Speak only Vietnamese') < b.indexOf('HOW YOU TALK.'));
   assert.ok(b.includes('written for a mother: with this person always swap Mẹ/mẹ, con and ạ for the address above; An stands for whoever told it.'));
+  assert.ok(b.includes('Cún stands for the family member you are asking about: always use their real name from DATA.'));
   // Điều thật: DATA và điều người nghe kể trong cuộc gọi này.
   assert.ok(b.includes('Only DATA and what they tell you in this call are true. Never bring up a call, story, photo, message or detail that is in neither.'));
   // Công cụ gọi ngay trước câu nói đi kèm, không sau (kết quả công cụ mở lượt mới, Mây dễ nói lặp).
@@ -545,8 +547,8 @@ test('lời dặn Live: đủ các phần, ví dụ của người dùng, mồi 
   assert.doesNotMatch(b, /[—–]/);
   // Ảnh: gần cuối chuyện, trước story_close hay ngay sau (phán quyết R5).
   assert.ok(b.includes('near its end (before story_close or right after it)'));
-  // Câu hẹn: chỉ là chủ đề chuyện tuần sau, không bao giờ lời nhắn khó nói hay điều riêng, nhạy cảm (phán quyết mang từ task 2).
-  assert.ok(b.includes('never the hard-to-say message, and nothing private or sensitive (health, money, conflict, worries)'));
+  // Câu hẹn: chỉ là chủ đề chuyện tuần sau, không bao giờ lời nhắn (kể cả lời khó nói) hay điều riêng, nhạy cảm (phán quyết mang từ task 2).
+  assert.ok(b.includes('never their message to the family, and nothing private or sensitive (health, money, conflict, worries)'));
   // Không phải cuộc gọi đầu: không có phần FIRST CALL; DATA không có trial.
   assert.ok(!b.includes('FIRST CALL.'));
   assert.ok(!b.includes('"trial"'));
@@ -567,7 +569,7 @@ test('lời dặn Live: cuộc gọi đầu có phần FIRST CALL; nhà đổi t
   const first = L.liveBrief(lanCtx('lan', { extras: extras() }), []);
   assert.ok(first.includes('FIRST CALL.'));
   assert.ok(first.indexOf('FIRST CALL.') < first.indexOf('DATA:'));
-  assert.ok(first.includes('start with easy everyday stories from the seeds, nothing heavy'));   // không giới hạn số chuyện
+  assert.ok(first.includes("today's one story is an easy everyday one from the seeds, nothing heavy, and skip step 4d."));   // vẫn một chuyện, không mời gửi lời nhắn
   assert.ok(!first.includes('one or two easy'));
   assert.ok(first.includes('"trial": true'));
   const later = lanCtx('lan', { doneCalls: ['2026-11-14'], extras: extras() });
@@ -607,6 +609,8 @@ test('công cụ Live: đúng bảy công cụ, story_open bắt buộc theme tr
   assert.equal(by.ask_photo.description, 'Call this right before you invite them to share an old photo, near the end of a story with real people or places (before story_close or right after it).');
   assert.equal(by.relay_heard.description, "Call this right before you pass on a pending message in your own words, with that message's id.");
   assert.equal(by.end_call.description, 'Call this once, right before your goodbye, with the promise for next week you are about to make.');
+  // Bước lời nhắn là lời gửi một người trong nhà (gồm cả lời khó nói), gọi ngay trước câu mời.
+  assert.equal(by.relay_open.description, 'Call this right before you invite them to send a message to a family member, including something hard to say.');
   assert.ok(so.properties.theme.description.includes('que-nha home and hometown, then and now'));
   const hook = ec.properties.next_hook.description;
   for (const w of ['short, warm promise about a story topic for next week', 'never the hard-to-say message', 'nothing private or sensitive (health, money, conflict, worries)']) assert.ok(hook.includes(w), w);
@@ -1212,4 +1216,63 @@ test('lời dặn Live: mọi câu nhắn của app (CUE) có trong APP MESSAGES
   }
   assert.ok(CUE.photos(3).endsWith(' photos arrived.)') && app.includes(' photos arrived.)'));
   assert.ok(app.includes('end_call'), 'hai câu nhắc chào: gọi end_call kèm câu hẹn');
+});
+
+/** Lan (mẹ) có con là Cún; Cún đã kể với Mây hai điều cả nhà được biết (tin cả nhà của loadScriptExtras). */
+const CUN_NEWS = ['Cún started a part-time job at a bakery in Busan', 'Cún cooked thịt ba chỉ rang cháy cạnh for friends'];
+const cunCtx = (o: Partial<Ctx> = {}) => lanCtx('lan', { doneCalls: ['2026-11-14'], family: [{ name: 'Lan', role: 'me' }, { name: 'Cún', role: 'con' }],
+  extras: extras({ family: [{ name: 'Cún', role: 'con', place: 'Busan, Hàn Quốc', hoursApart: 2, km: 2600 }], memory: [], seeds: [
+    { kind: 'food', hint: 'The dish their child loves: thịt ba chỉ rang cháy cạnh. Who cooks it, a meal with it they remember.', theme: 'mon-an' },
+    { kind: 'person', hint: 'A story about Cún (their child): a moment with them they remember well.', theme: null },
+    { kind: 'everyday', hint: 'Something small from their week that made them smile.', theme: null },
+  ], news: [{ name: 'Cún', role: 'con', news: CUN_NEWS }] }), ...o });
+
+test('dữ liệu Live: tin cả nhà (family_news) theo từng người, chỉ điều chính người ấy kể mà cả nhà được biết; trống thì none yet; không điều riêng, không điều chưa nói', () => {
+  const memory: ScriptExtras['memory'] = [
+    { id: 'o1', about: 'Cún', toldBy: 'Cún', toldByYou: false, private: true, kind: 'worry', fact: 'OTHER-SECRET' },
+    { id: 'm1', about: 'Lan', toldBy: 'Lan', toldByYou: true, private: true, kind: 'health', fact: 'MY-SECRET' },
+  ];
+  const base = cunCtx();
+  const c = cunCtx({ member: { id: 'lan', name: 'Lan', role: 'me', intro: { unsaid: 'UNSAID-SECRET' } }, extras: { ...base.extras!, memory } });
+  const d: any = L.liveData(c, []);
+  assert.deepEqual(d.family_news, [{ name: 'Cún', role: 'con', news: CUN_NEWS }]);
+  assert.doesNotMatch(JSON.stringify(d.family_news), /SECRET/);
+  assert.doesNotMatch(L.liveBrief(c, []), /OTHER-SECRET|UNSAID-SECRET/);
+  // Không ai kể gì, hay không nạp được dữ liệu lớn dần: none yet.
+  assert.equal((L.liveData(lanCtx('lan', { extras: extras() }), []) as any).family_news, 'none yet');
+  assert.equal((L.liveData(lanCtx('lan'), []) as any).family_news, 'none yet');
+});
+
+test('lời dặn Live: một chuyện mỗi cuộc gọi, câu mở cụ thể, theo dòng kể, kể xong thì hỏi bên lề (nhớ, tin cả nhà, lời nhắn) rồi chia sẻ, chào', () => {
+  const c = cunCtx();
+  const b = L.liveBrief(c, [{ id: 'r1', said: 'Cún nhắn là nhớ mẹ lắm' }]);
+  // Câu ví dụ của người dùng, nguyên văn.
+  for (const ex of ['Mẹ ơi, mẹ có nhớ món Cún thích ăn nhất không ạ?', 'Có bữa nào Cún ăn món đó mà mẹ nhớ mãi không ạ?',
+    'Mẹ ơi, dạo này Cún cũng sống tốt lắm, Cún nhớ mẹ lắm đấy ạ', 'mẹ có lời gì gửi Cún không ạ?']) assert.ok(b.includes(ex), ex);
+  const stories = b.slice(b.indexOf('STORIES.'), b.indexOf('WEATHER.'));
+  for (const w of ['One story per call.', 'built from the top seed', 'Stay inside this story until it is told.', 'react in a few words only, so they keep going',
+    'Only when they get stuck, ask one question that opens a concrete direction inside the same story: who was there, what happened that day, a funny detail, how the other person reacted.',
+    'Never move to another story and never ask whether they have another story to tell: one story is enough.',
+    'Open a different story only if they say they do not want to tell this one or ask to talk about something else.',
+    'call story_close, then say one warm line about something specific they told and go on to the side questions']) assert.ok(stories.includes(w), w);
+  // Thứ tự: xin ảnh gần cuối chuyện, rồi hỏi bên lề (nhớ, tin, lời nhắn chờ, relay_open ngay trước câu mời gửi lời), chia sẻ, chào.
+  const order = b.slice(b.indexOf('ORDER OF THE CALL.'), b.indexOf('TOOLS.'));
+  const steps = ['call ask_photo right before you ask', 'Ask whether they miss that person.', 'If DATA.family_news has news from that person',
+    'call relay_heard with its id', 'Call relay_open right before you invite a message to that person', 'call ask_share', 'call end_call'];
+  for (const w of steps) assert.ok(order.includes(w), w);
+  for (let i = 1; i < steps.length; i++) assert.ok(order.indexOf(steps[i - 1]) < order.indexOf(steps[i]), `${steps[i - 1]} trước ${steps[i]}`);
+  for (const w of ['always saying it comes from them', 'Use only what the news says', 'never anyone\'s health, money or worries',
+    'Whatever they answer, even something hard to say, is a message to send to that family member.', 'the message comes last']) assert.ok(order.includes(w), w);
+  assert.ok(b.includes('(Two minutes left...): finish the current story gently and go to steps 4 to 6.'));
+  assert.ok(b.includes('"family_news": ['));
+  assert.ok(b.includes(CUN_NEWS[0]));
+  // Tiếng Anh, tiếng Hàn: cùng bốn câu, dịch cho khớp; câu mời gửi lời khớp bộ đoán của máy khách (message for, 전할 말).
+  const en = L.liveBrief({ ...c, lang: 'en' }, []);
+  for (const ex of ["Mom, do you remember Cún's favorite food?", 'Was there a time Cún ate it that you still remember, Mom?',
+    'Mom, Cún is doing really well these days, and misses you a lot', 'do you have a message for Cún?']) assert.ok(en.includes(ex), ex);
+  const ko = L.liveBrief({ ...c, lang: 'ko' }, []);
+  for (const ex of ['어머님, Cún님이 제일 좋아하는 음식 기억나세요?', 'Cún님이 그 음식 먹던 날 중에 오래 기억나는 날 있으세요?',
+    '어머님, 요즘 Cún님도 잘 지내요. 어머님 많이 보고 싶어 해요', 'Cún님한테 전할 말 있으세요?']) assert.ok(ko.includes(ex), ex);
+  for (const x of [b, en, ko]) assert.doesNotMatch(x, /[—–]/);
+  for (const x of [en, ko]) assert.ok(!x.includes('Mẹ ơi'));
 });

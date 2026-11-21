@@ -270,4 +270,43 @@ test('nạp dữ liệu Mây Live: ở xa chỉ tính thế hệ kia; con ở nh
   const yearApart = members.map((m) => (m.id === 'an' ? { ...m, intro: JSON.stringify({ seen: 'year' }) } : m));
   assert.ok((await kindsOf('an', yearApart)).includes('away'));                              // khảo sát hơn một năm chưa gặp cả nhà
 });
+test('nạp dữ liệu Mây Live: tin cả nhà là tối đa 3 điều mới nhất chính người ấy kể mà cả nhà được biết; không điều riêng, không điều người nghe kể, không điều chưa nói, không lời nhắn; sổ nhớ vẫn trần 30', async () => {
+  // Chỉ từ sổ nhớ (memory_facts); lời nhắn khó nói không bao giờ vào sổ nhớ (MEM_SQL.answers bỏ loi-nhan, server/memory.test.ts).
+  assert.match(F.EXTRAS_SQL.facts, /from memory_facts/);
+  assert.doesNotMatch(F.EXTRAS_SQL.facts, /call_answers|loi-nhan|intro/);
+  const members = [member('lan', 'Lan', 'me', 'hanoi', { intro: JSON.stringify({ unsaid: 'mẹ giấu chuyện nợ' }) }),
+    member('cun', 'Cún', 'con', 'busan', { intro: JSON.stringify({ unsaid: 'bí mật không nói' }) }), member('hung', 'Hùng', 'bo', 'hanoi'), member('binh', 'Bình', 'con', 'hanoi')];
+  const day = (d: number) => new Date(Date.UTC(2026, 10, d));
+  const facts = [
+    // 32 điều Hùng kể về Lan, chưa dùng: điểm cao, lấp gần hết 30 chỗ của sổ nhớ.
+    ...Array.from({ length: 32 }, (_, i) => fact(`h${i}`, { source_id: 'hung', about_id: 'lan', text_en: `Hung fact ${i}`, created_at: day(1) })),
+    fact('c1', { source_id: 'cun', about_id: 'cun', text_en: 'Cún started a part-time job in Busan', created_at: day(15) }),
+    fact('c2', { source_id: 'cun', about_id: 'lan', text_en: "Cún misses Mom's pork belly", created_at: day(18) }),
+    fact('c3', { source_id: 'cun', about_id: 'cun', text_en: 'Cún moved to a new dorm', created_at: day(12) }),
+    fact('c4', { source_id: 'cun', about_id: 'cun', text_en: 'Cún OLDEST news', created_at: day(5) }),
+    fact('c-old', { source_id: 'cun', about_id: 'cun', text_en: 'Cún REPLACED news', replacement_id: 'c1', created_at: day(19) }),
+    fact('c-self', { source_id: 'cun', about_id: 'cun', kind: 'worry', visibility: 'self', text_en: 'Cún worries about money', created_at: day(19) }),
+    fact('lan-own', { source_id: 'lan', about_id: 'cun', text_en: 'LAN-TOLD Cún loves sour soup', created_at: day(19) }),
+    fact('lan-self', { source_id: 'lan', about_id: 'lan', kind: 'health', visibility: 'self', text_en: 'Mom has back pain', created_at: day(19) }),
+  ];
+  const x = await F.loadScriptExtras({ id: 'lan', family_id: 'F' }, 'vi', {
+    db: fakeDb(members, facts, []), fetch: (async () => new Response(JSON.stringify({ current: { temperature_2m: 22, weather_code: 0 } }))) as typeof fetch,
+    now: () => new Date('2026-11-20T11:00:00Z'), events: async () => [],
+  });
+  // Theo thứ tự cả nhà, mới nhất trước, người chưa kể gì (Bình) thì không có.
+  assert.deepEqual(x.news, [
+    { name: 'Cún', role: 'con', news: ["Cún misses Mom's pork belly", 'Cún started a part-time job in Busan', 'Cún moved to a new dorm'] },
+    { name: 'Hùng', role: 'bo', news: ['Hung fact 0', 'Hung fact 1', 'Hung fact 2'] },
+  ]);
+  assert.doesNotMatch(JSON.stringify(x.news), /OLDEST|REPLACED|worries about money|LAN-TOLD|back pain|bí mật|giấu chuyện nợ/);
+  // Trần 30 của sổ nhớ giữ nguyên; tin của Cún không cần nằm trong sổ nhớ.
+  assert.equal(x.memory.length, 30);
+  assert.ok(!x.memory.some((m) => m.fact === 'Cún started a part-time job in Busan'));
+  // Nhà chưa ai kể gì: danh sách trống.
+  const none = await F.loadScriptExtras({ id: 'lan', family_id: 'F' }, 'vi', {
+    db: fakeDb(members, [], []), fetch: (async () => new Response(JSON.stringify({ current: { temperature_2m: 22, weather_code: 0 } }))) as typeof fetch,
+    now: () => new Date('2026-11-20T11:00:00Z'), events: async () => [],
+  });
+  assert.deepEqual(none.news, []);
+});
 // i18n-ok-end

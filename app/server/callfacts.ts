@@ -1,8 +1,8 @@
 // Dữ liệu soạn câu lớn dần cho Mây (21/11/2026, spec C): sổ nhớ, dịp trong 30 ngày, bản đồ chủ đề đã kể, nơi ở thật, giờ và thời tiết,
 // người vừa liên lạc được sau lời nhắc của Mây (chỉ tên, không có gì từ tín hiệu).
 // call.ts (context) nạp một lần khi soạn bộ câu; scriptFacts đưa cho AI, templateScript dùng bản đồ chủ đề. Chi tiết: docs/may-moi.md.
-// Mây Live (21/11/2026, plan may-live task 2): mức độ sâu, mồi chuyện xếp hạng, câu hẹn của cuộc gọi trước, giọng ấm, thời tiết thành cảm giác;
-// bộ câu cũ không đọc các mục này (scriptFacts lấy từng mục theo tên).
+// Mây Live (21/11/2026, plan may-live task 2): mức độ sâu, mồi chuyện xếp hạng, câu hẹn của cuộc gọi trước, giọng ấm, thời tiết thành cảm giác,
+// tin cả nhà (news, chỉ điều cả nhà được biết do chính người ấy kể); bộ câu cũ không đọc các mục này (scriptFacts lấy từng mục theo tên).
 // Riêng tư: sự thật 'self' của người khác không bao giờ vào (câu SQL lẫn pickFacts); điều 'self' của chính người nghe không thành mồi chuyện;
 // không đọc intro.unsaid, không đọc lời nhắn khó nói.
 // Kiểm bằng server/callfacts.test.ts (DB giả theo từng câu trong EXTRAS_SQL).
@@ -18,6 +18,8 @@ type Db = { query: (sql: string, args?: any[]) => Promise<{ rows: any[]; rowCoun
 
 /** Tối đa chừng này sự thật trong sổ nhớ đưa vào một lần soạn. */
 export const MAX_MEMORY = 30;
+/** Tin cả nhà của Mây Live: mỗi người tối đa chừng này điều (không tính vào trần sổ nhớ). */
+export const MAX_NEWS = 3;
 /** Dịp trong chừng này ngày tới mới đưa vào. */
 export const OCCASION_DAYS = 30;
 
@@ -219,6 +221,9 @@ export type ScriptExtras = {
   recent: string[];
   /** Mây Live: mức độ sâu, mồi chuyện xếp hạng, câu hẹn của cuộc gọi xong gần nhất, giọng ấm (khảo sát "chưa nói thương bao giờ"). */
   depth: Depth; seeds: Seed[]; hook: string | null; warm: boolean;
+  /** Mây Live: tin của từng người khác trong nhà, theo thứ tự cả nhà: tối đa MAX_NEWS điều mới nhất chính người ấy kể mà cả nhà được biết
+   *  (không bao giờ điều 'self', không bao giờ điều người nghe kể); người chưa kể gì thì không có. */
+  news: Array<{ name: string; role: string; news: string[] }>;
 };
 
 export const EXTRAS_SQL = {
@@ -281,6 +286,10 @@ export async function loadScriptExtras(member: { id: string; family_id: string }
     .map((f) => ({ id: f.id, about: f.about_id == null ? 'whole family' : names.get(f.about_id), toldBy: names.get(f.source_id),
       toldByYou: f.source_id === me.id, private: f.visibility === 'self', kind: f.kind, fact: f.text_en }))
     .filter((f): f is ScriptExtras['memory'][number] => f.about != null && f.toldBy != null);
+  // Tin cả nhà: dùng lại các sự thật đã nạp (mới nhất trước, không qua trần sổ nhớ), chỉ điều cả nhà được biết do chính người ấy kể.
+  const news = family.filter((m) => m.id !== me.id).map((m) => ({ name: m.name, role: m.role,
+    news: facts.filter((f) => f.source_id === m.id && f.visibility === 'family').map((f) => String(f.text_en ?? '').trim()).filter(Boolean).slice(0, MAX_NEWS) }))
+    .filter((m) => m.news.length);
 
   // Chỉ đọc ba câu khảo sát: food, seen (hồ sơ còn trống gì, mồi chuyện), love (giọng ấm); "điều chưa nói" không bao giờ đọc ở đây.
   let intro: Record<string, unknown> = {};
@@ -333,5 +342,6 @@ export async function loadScriptExtras(member: { id: string; family_id: string }
       family: others.map((m) => ({ name: m.name, role: m.role })), memory, occasions, told, themes, hook, hasPair }),
     hook,
     warm: intro.love === 'never',
+    news,
   };
 }

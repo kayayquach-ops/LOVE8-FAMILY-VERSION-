@@ -245,11 +245,12 @@ const extras: ScriptExtras = {
   memory: [{ id: 'f1', about: 'An', toldBy: 'An', toldByYou: false, private: false, kind: 'food', fact: 'An loves sour soup' }],
   occasions: [{ key: 'noel', name: 'Noel', date: '2026-12-25', inDays: 24, who: null }],
   told: [], themes: themesFor('me', true, false), gaps: [], recent: [],
-  depth: 0, seeds: [], hook: null, warm: false,
+  depth: 0, seeds: [], hook: null, warm: false, news: [],
 };
 
-test('dữ liệu Mây Live (mức độ, mồi chuyện, câu hẹn, giọng ấm, thời tiết cảm giác) không vào dữ liệu bộ câu cũ', () => {
+test('dữ liệu Mây Live (mức độ, mồi chuyện, câu hẹn, giọng ấm, thời tiết cảm giác, tin cả nhà) không vào dữ liệu bộ câu cũ', () => {
   const live: ScriptExtras = { ...extras, place: { ...extras.place, feel: 'very cold' }, depth: 2, hook: 'Mẹ kể tiếp chuyện bà ngoại', warm: true,
+    news: [{ name: 'An', role: 'con', news: ['An started a part-time job'] }],
     seeds: [{ kind: 'hook', hint: 'Last call ended with this promise: Mẹ kể tiếp chuyện bà ngoại', theme: null }] };
   assert.deepEqual(call.scriptFacts({ ...ctx('me', both), extras: live }), call.scriptFacts({ ...ctx('me', both), extras }));
 });

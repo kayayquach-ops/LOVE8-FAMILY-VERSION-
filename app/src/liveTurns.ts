@@ -36,7 +36,8 @@ export const CUE = {
 const SAY = {
   notOpened: 'Not opened: use a theme from DATA.allowed_themes and say the opener.',
   opened: 'Story opened.',
-  closed: 'Story closed. Open the next seed or go to the closing steps.',
+  closed: 'Story closed. Go on to the side questions, then the closing steps.',
+  oneStory: 'One story per call: stay with this story, then go on to the side questions.',
   noStory: 'No story is open: skip the photo.',
   photo: 'The photo button is showing. Wait for them; the app will tell you how many photos arrived.',
   alone: 'They are the only one in the family: skip this step.',
@@ -48,16 +49,21 @@ const SAY = {
   askNow: 'Ask now.',
   bye: 'Say your goodbye now; the app hangs up after it.',
   byeAgain: 'Say nothing more; the app hangs up.',
-  relayFirst: 'Call relay_open first, then ask if there is something hard to say that they would like you to pass on to someone in the family.',
+  relayFirst: 'Call relay_open first, then ask if they have a message for someone in the family.',
 };
-/** Câu Mây hỏi lời nhắn khó nói (bước 5 của lời dặn: "something hard to say ... pass on"), để bắt khi Mây quên gọi relay_open (relayLine). */
+/** Câu Mây hỏi lời nhắn khó nói ("something hard to say ... pass on"), để bắt khi Mây quên gọi relay_open (relayLine). */
 const RELAY_ASK = /khó nói|khó mở lời|hard to say|difficult to say|말하기 ?(어려운|힘든)|하기 ?(어려운|힘든) ?말/;
 /** ...và chữ chuyển lời đi kèm ("nhắn", "pass on", 전해): câu an ủi "khó nói thì cứ từ từ" không có. */
 const RELAY_PASS = /nhắn|gửi|chuyển|pass on|\btell\b|전해|전달/;
+/** Câu Mây mời gửi lời cho người trong nhà (bước 4d của lời dặn: "mẹ có lời gì gửi Cún không ạ?"): vi "lời gì" cùng "gửi", "nhắn", "nói với";
+ *  en "message for", "anything to tell"; ko 전할 말, 하고 싶은 말. */
+const RELAY_INVITE = /(?=.*lời gì)(?=.*(gửi|nhắn|nói với))|message for|anything to tell|전할 ?말|하고 ?싶은 ?말/;
 /** Câu hỏi khi Gemini bỏ dấu hỏi: đuôi câu "không", "không ạ" (relayLine; en, ko chỉ theo dấu hỏi). "nhé", "nha" chỉ làm nhẹ một lời khuyên, không tính. */
 const ASK_END = /(^|\s)(không|không ạ)$/;
 // i18n-ok-end
 
+/** Một chuyện mỗi cuộc gọi: chuyện gần nhất có chừng này lượt kể (đã gửi) thì story_open lần nữa bị từ chối (onTool). */
+const ONE_STORY_TURNS = 2;
 /** Người kể im chừng này (Mây đã nói xong, máy phát đã im) thì nhắc model (CUE.silent), một lần mỗi lượt của Mây. */
 export const SILENT_MS = 12_000;
 /** Còn chừng này giây thì nhắc model sắp hết giờ (CUE.clock), một lần; xem clockDue. */
@@ -94,7 +100,7 @@ export type Effect = { kind: 'job'; job: Job } | { kind: 'photo' } | { kind: 'sh
  *  lastStory: ô chuyện mở gần nhất (0: chưa có), giữ cả sau story_close để xin ảnh sau khi khép chuyện vẫn được (R5);
  *  rec: ô lúc từng lượt bắt đầu ghi, theo key (onRec), bỏ khi lượt ấy gửi (onTurn); lastRec: ô của lượt ghi gần nhất;
  *  ended: đã có end_call (các lần sau bỏ qua);
- *  relayAsk: lời dặn có bước lời nhắn khó nói (bước 5: nhà từ hai người, không phải cuộc gọi đầu); relay: bước ấy đã mở chưa, bằng relay_open ('tool')
+ *  relayAsk: lời dặn có bước mời gửi lời (bước 4d, gồm cả lời khó nói: nhà từ hai người, không phải cuộc gọi đầu); relay: bước ấy đã mở chưa, bằng relay_open ('tool')
  *  hay đoán từ câu Mây nói ('line', relayLine), /finish ghi log; relayNag: công cụ đã bị bảo gọi relay_open trước (mỗi công cụ một lần). */
 export type LiveState = {
   id: string; idx: number; theme: StoryTheme | null; opener: string; next: number; turns: Record<number, number>; storyTurns: number;
@@ -105,7 +111,7 @@ export type LiveState = {
 /** blank: lượt ngay sau lời nhắn khó nói, câu hỏi của nó (câu Mây đáp lời nhắn, có khi nhắc lại lời nhắn) không gửi. */
 export type TurnSlot = { idx: number; theme: StoryTheme | null; opener: string; share: LiveState['share']; blank: boolean };
 
-/** trial: cuộc gọi đầu (DATA.trial, lời dặn bỏ bước 5; máy khách biết qua allow.prevCall). Không truyền thì coi như không có bước lời nhắn khó nói. */
+/** trial: cuộc gọi đầu (DATA.trial, lời dặn bỏ bước 4d; máy khách biết qua allow.prevCall). Không truyền thì coi như không có bước lời nhắn khó nói. */
 export function liveStart(p: { id: string; family: number; themes: StoryTheme[]; relays: string[]; trial?: boolean }): LiveState {
   return {
     id: p.id, idx: 0, theme: null, opener: '', next: LIVE_FIRST_STORY, turns: {}, storyTurns: 0, family: p.family, themes: p.themes,
@@ -115,7 +121,8 @@ export function liveStart(p: { id: string; family: number; themes: StoryTheme[];
 }
 
 /** Một lời gọi công cụ của model: trạng thái mới, câu đáp model (toolResponse) và việc cho app làm. Gọi sai (chủ đề lạ, quá LIVE_MAX_STORIES
- *  chuyện, mã lạ, hỏi lần hai, chào lần hai, công cụ lạ) thì không làm gì, chỉ một câu ngắn để model đi tiếp. Ô lời nhắn (1) khép ở lời gọi
+ *  chuyện, mã lạ, hỏi lần hai, chào lần hai, công cụ lạ) thì không làm gì, chỉ một câu ngắn để model đi tiếp. Một chuyện mỗi cuộc gọi: story_open
+ *  khi chuyện gần nhất (còn mở hay đã khép) đã có từ hai lượt kể thì bị từ chối như vậy; dưới hai lượt là người nghe không muốn kể chuyện ấy, mở được. Ô lời nhắn (1) khép ở lời gọi
  *  công cụ kế tiếp, relay_open thì mở lại: lượt nói thêm sau lời nhắn (chào, "dạ vâng") không đè lời nhắn.
  *  Lời dặn có bước lời nhắn khó nói (relayAsk) mà bước ấy chưa mở: ask_share, end_call lần đầu được bảo gọi relay_open trước (mỗi công cụ một lần,
  *  không lặp mãi), vì lời nhắn hỏi không kèm relay_open rơi vào ô đang mở (ô 0 sổ nhớ đọc, ô chuyện có thể chia sẻ). Đang hỏi chia sẻ (end_call
@@ -132,6 +139,8 @@ export function onTool(s: LiveState, f: { name: string; args?: Record<string, un
     case 'story_open': {
       const theme = f.args?.theme, opener = arg('opener').slice(0, 300);
       const idx = st.next;
+      // Một chuyện mỗi cuộc gọi: chuyện gần nhất đã có từ ONE_STORY_TURNS lượt kể thì không mở chuyện khác (dưới đó là người nghe không muốn kể chuyện ấy).
+      if (st.lastStory >= LIVE_FIRST_STORY && (st.turns[st.lastStory] ?? 0) >= ONE_STORY_TURNS) return say(SAY.oneStory);
       if (!isTheme(theme) || !st.themes.includes(theme) || !opener || idx >= LIVE_FIRST_STORY + LIVE_MAX_STORIES) return say(SAY.notOpened);
       return say(SAY.opened, { ...st, idx, next: idx + 1, theme, opener, lastStory: idx },
         [{ kind: 'job', job: { url: `${base}/story`, fields: { idx: String(idx), theme, opener }, last: true } }]);
@@ -160,7 +169,8 @@ export function onTool(s: LiveState, f: { name: string; args?: Record<string, un
 }
 
 /** Mây vừa nói xong một câu (mayLine) mà quên relay_open: câu là câu hỏi (có dấu hỏi, hay đuôi ASK_END), có lời hỏi lời nhắn khó nói (RELAY_ASK) và chữ
- *  chuyển lời (RELAY_PASS), lúc ở ô 0 (không có chuyện đang mở: trước story_open đầu tiên hay sau story_close; ô 1 thì đã mở), relay_open chưa gọi,
+ *  chuyển lời (RELAY_PASS), hay có lời mời gửi lời cho người trong nhà (RELAY_INVITE: "có lời gì gửi Cún không"),
+ *  lúc ở ô 0 (không có chuyện đang mở: trước story_open đầu tiên hay sau story_close; ô 1 thì đã mở), relay_open chưa gọi,
  *  chưa chào (end_call), lời dặn có bước lời nhắn (relayAsk), thì như relay_open: lượt kế của người kể vào ô 1, không vào ô 0 nơi sổ nhớ đọc. Đoán
  *  nhầm thì lượt dài nhất ô 1 thành lời nhắn gửi đi lúc chốt, nên chỉ đoán khi đủ cả mấy điều ấy (câu an ủi "khó nói thì mẹ cứ từ từ nhé" không đủ).
  *  Nơi gọi gọi trước khi lượt kế bắt đầu ghi (mayLine tới ở done, trước gate); recKey: lượt đang ghi lúc ấy (chạm linh vật cắt câu hỏi rồi nói ngay,
@@ -168,7 +178,7 @@ export function onTool(s: LiveState, f: { name: string; args?: Record<string, un
 export function relayLine(s: LiveState, line: string, recKey?: number): LiveState {
   const l = line.toLowerCase().normalize('NFC').replace(/\s+/g, ' ').trim();
   const ask = /[?？]/.test(l) || ASK_END.test(l.replace(/[.!…,\s]+$/, ''));
-  if (s.idx !== 0 || s.relay === 'tool' || s.ended || !s.relayAsk || !ask || !RELAY_ASK.test(l) || !RELAY_PASS.test(l)) return s;
+  if (s.idx !== 0 || s.relay === 'tool' || s.ended || !s.relayAsk || !ask || !((RELAY_ASK.test(l) && RELAY_PASS.test(l)) || RELAY_INVITE.test(l))) return s;
   const st: LiveState = { ...s, idx: 1, relay: 'line' };
   const at = recKey === undefined ? undefined : s.rec[recKey];
   return at ? { ...st, rec: { ...s.rec, [recKey!]: { ...at, idx: 1, theme: null, opener: '' } }, lastRec: 1 } : st;
