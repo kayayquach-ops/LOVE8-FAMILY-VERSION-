@@ -117,7 +117,7 @@ export async function startGoogle(intent: 'signin' | 'link', join?: string) {
 
 type Joining = { name: string; role: string; city: string; lang?: string; intro?: Record<string, string | boolean>; google?: { state: string; bind: string } };
 /** Cài đặt của Mây (GET/PUT /api/may/settings). */
-export type MaySettings = { nudges: boolean; live: boolean; liveAvail: boolean };
+export type MaySettings = { nudges: boolean };
 
 export const api = {
   create: (b: Joining & { family: string }) => call<{ token: string; google?: boolean }>('/api/families', json(b)),
@@ -131,9 +131,8 @@ export const api = {
   googleFinish: (p: GooglePending) => call<GoogleResult>('/api/google/finish', json({ state: p.state, bind: p.bind })),
   googleMe: () => call<{ enabled: boolean; linked: boolean; email: string | null }>('/api/google/me'),
   googleUnlink: () => call('/api/google/link', { method: 'DELETE' }),
-  /** live: đã bật "Thử Mây mới"; liveAvail: máy chủ đang mở Mây Live. */
   maySettings: () => call<MaySettings>('/api/may/settings'),
-  setMaySettings: (p: { nudges?: boolean; live?: boolean }) => call<MaySettings>('/api/may/settings', { method: 'PUT', body: JSON.stringify(p) }),
+  setMaySettings: (p: { nudges?: boolean }) => call<MaySettings>('/api/may/settings', { method: 'PUT', body: JSON.stringify(p) }),
   memory: () => call<Array<{ id: string; text: string; kind: string; by: string; createdAt: string }>>('/api/may/memory'),
   forget: (id: string) => call<{ ok: boolean }>(`/api/may/memory/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   familyName: (code: string) => call<{ name: string }>(`/api/family/${code}`),

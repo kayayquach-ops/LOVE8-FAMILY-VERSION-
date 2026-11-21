@@ -11,7 +11,6 @@ import { DEFAULT_MASCOT_NAME } from '../src/shared.ts';
 import { pool } from './db.ts';
 import { connectedIn } from './facetime.ts';
 import { errorBody, tServer, type Lang } from './i18n.ts';
-import { liveConfig } from './liveconfig.ts';
 import type { SignalDraft } from './memory.ts';
 import { localParts, tzOfMember, zonedTime, type PlaceRow } from './place.ts';
 import { notifyMembers, type PushPayload } from './push.ts';
@@ -84,10 +83,9 @@ export const MAY_SQL = {
   markContact: `update may_nudges set contact_at = $2 where family_id = $1 and contact_at is null and sent_at > $3
      and from_id = any($4) and to_id = any($4) and (from_id = any($5) or to_id = any($5))`,
   // Bấm lời nhắc: chỉ người nhận, khi người nhận và người kể còn trong nhà. opened_at ghi một lần.
-  // Công tắc "Mây nhắc mình liên lạc" và "Thử Mây mới" (Mây Live, server/calllive.ts) của chính người dùng.
-  getNudge: 'select may_nudge, may_live from members where id = $1',
+  // Công tắc "Mây nhắc mình liên lạc" của chính người dùng.
+  getNudge: 'select may_nudge from members where id = $1',
   setNudge: 'update members set may_nudge = $2 where id = $1',
-  setLive: 'update members set may_live = $2 where id = $1',
   open: `update may_nudges n set opened_at = coalesce(n.opened_at, now())
      where n.id = $1 and n.to_id = $2 and n.family_id = $3
        and exists (select 1 from members m where m.id = n.to_id and m.family_id = $3)
@@ -402,19 +400,17 @@ const h = (fn: (req: any, res: express.Response) => Promise<unknown>) => (req: a
 /** Gắn sau auth. POST /may/nudges/:id/open: người nhận bấm thông báo, trả { peerId } là người kể để máy gọi thoại ngay. */
 export function makeMayRouter(deps: MayDeps = DEPS) {
   const r = express.Router();
-  // liveAvail: máy chủ đang mở Mây Live (MAY_LIVE, GEMINI_API_KEY); không thì máy khách ẩn công tắc "Thử Mây mới".
   const settings = async (id: string) => {
     const { rows } = await deps.db.query(MAY_SQL.getNudge, [id]);
-    return { nudges: rows[0]?.may_nudge !== false, live: rows[0]?.may_live === true, liveAvail: liveConfig().on };
+    return { nudges: rows[0]?.may_nudge !== false };
   };
   r.get('/may/settings', h(async (req, res) => res.json(await settings(req.member.id))));
-  // Gửi công tắc nào thì đổi công tắc đó; phải có ít nhất một, và công tắc gửi lên phải là boolean (sai thì không đổi gì).
+  // nudges phải là boolean (sai thì không đổi gì). live: máy cũ còn gửi, nhận nhưng bỏ qua (Mây Live nay mở cho mọi người).
   r.put('/may/settings', h(async (req, res) => {
     const { nudges, live } = req.body ?? {};
     const bad = (v: unknown) => v !== undefined && typeof v !== 'boolean';
     if (bad(nudges) || bad(live) || (nudges === undefined && live === undefined)) return res.status(400).json(errorBody('may_settings_invalid'));
     if (nudges !== undefined) await deps.db.query(MAY_SQL.setNudge, [req.member.id, nudges]);
-    if (live !== undefined) await deps.db.query(MAY_SQL.setLive, [req.member.id, live]);
     res.json(await settings(req.member.id));
   }));
   r.post('/may/nudges/:id/open', h(async (req, res) => {

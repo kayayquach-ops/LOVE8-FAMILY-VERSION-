@@ -1,5 +1,5 @@
 // Mây Live (thử, 21/11/2026): cuộc gọi tuần nói thẳng với Gemini Live như "gọi Nếp": Mây nghe và đáp liền, giọng liền mạch, không kịch bản soạn trước.
-// App.tsx chỉ mở màn này cho người bật "Thử Mây mới" (Me.mayLive); xin token hay nối không được thì về cuộc gọi cũ (onFallback).
+// App.tsx mở màn này cho mọi người khi Me.mayLive; xin token hay nối không được thì về cuộc gọi cũ (onFallback).
 // Máy chủ phát token dùng một lần (POST /api/call/live, server/calllive.ts), máy nối thẳng tới Google; xong thì báo giây, token, độ trễ một lần (live-end).
 // Logic cuộc gọi là hàm thuần ở src/liveTurns.ts (công cụ, ô chuyện, ghi từng lượt, các lời nhắc), màn này chỉ nối dây: mọi tin của Live đi qua
 // captureNext theo đúng thứ tự tới; mỗi lượt có tiếng vào hàng chờ (src/outbox.ts) tới /answer?live=1 kèm bản ghi giọng người kể; cúp máy vì lý do

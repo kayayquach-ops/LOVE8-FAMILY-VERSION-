@@ -1,6 +1,6 @@
 // Mây Live (thử, 21/11/2026): cuộc gọi tuần nói thẳng với Gemini Live như "gọi Nếp", thay cho kịch bản soạn trước và giọng đọc từng câu.
 // Máy chủ chỉ làm ba việc: phát token dùng một lần (POST /call/live, lời dặn, bảy công cụ và giọng khoá sẵn trong token, hết hạn theo trần cuộc gọi),
-// giữ trần tiền (công tắc MAY_LIVE, công tắc thử members.may_live của từng người, trần phút cả máy chủ mỗi ngày, trần mỗi cuộc gọi),
+// giữ trần tiền (công tắc MAY_LIVE, trần phút cả máy chủ mỗi ngày, trần mỗi cuộc gọi),
 // và ghi giây, token, tiền khi máy khách báo xong (POST /call/:id/live-end). Máy khách nối thẳng tới Google (src/CallLive.tsx).
 // Người chưa bật thử không bao giờ tới đây: đường cũ (/call/start, Call.tsx) giữ nguyên. Chi tiết: docs/may-moi.md mục "Mây Live (thử)".
 // Lời dặn (liveBrief) kèm dữ liệu thật (liveData, riêng tư lọc ở đây): đáp đúng điều vừa nói, đào tới khi kể đủ, thời tiết là quan tâm, mức độ sâu, mồi chuyện.
@@ -40,7 +40,6 @@ export async function migrateLive(db: Db = pool): Promise<void> {
 
 /** Câu SQL của Mây Live, xuất ra để DB giả trong test khớp đúng từng câu. */
 export const LIVE_SQL = {
-  member: 'select may_live from members where id = $1',
   // Giây Live đã dùng hôm nay (cả máy chủ): cuộc gọi chưa báo về tính đủ trần một cuộc ($2).
   usedToday: 'select coalesce(sum(coalesce(live_sec, $2)), 0)::int as sec from calls where live_at >= $1',
   insert: 'insert into calls (id, family_id, member_id, week, script, shared, trial, live_at) values ($1,$2,$3,$4,$5,false,$6,$7)',
@@ -539,12 +538,10 @@ const median = (xs: number[]) => {
 export function makeLiveRouter(upload: multer.Multer, deps: LiveDeps = DEPS): express.Router {
   const r = express.Router();
 
-  // Nhấc máy: công tắc máy chủ, công tắc thử của người này, rồi mới tính lượt (người chưa bật không tốn lượt), trần phút, xin token
+  // Nhấc máy: công tắc máy chủ, rồi tính lượt, trần phút, xin token
   // (lời dặn thật và bảy công cụ khoá trong token). Trả thêm lời nhắn chờ chuyển, chủ đề được hỏi, cờ chống bịa, số người trong nhà.
   r.post('/call/live', h(async (req, res, next) => {
     if (!liveConfig(deps.env).on) return res.status(503).json(errorBody('live_off'));
-    const { rows: [m] } = await deps.db.query(LIVE_SQL.member, [req.member.id]);
-    if (m?.may_live !== true) return res.status(403).json(errorBody('live_not_enabled'));
     next();
   }), limitLive, h(async (req, res) => {
     const cfg = liveConfig(deps.env);

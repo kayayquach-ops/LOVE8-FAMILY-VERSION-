@@ -928,7 +928,6 @@
   "chat.translating": "translating...",
   "settings.autoTranslate": "Translate messages automatically",
   "may.settings.nudge": "{mascot} reminds me to get in touch",
-  "may.settings.live": "Try the new {mascot}",
   "may.memory.title": "What {mascot} remembers about me",
   "may.memory.empty": "{mascot} doesn't remember anything about you yet",
   "may.memory.by": "Told by {name}",

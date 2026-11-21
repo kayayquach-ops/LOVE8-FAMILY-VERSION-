@@ -912,7 +912,6 @@
   "chat.translating": "번역 중...",
   "settings.autoTranslate": "메시지 자동 번역",
   "may.settings.nudge": "{mascot}가 연락하라고 알려줘요",
-  "may.settings.live": "새 {mascot} 써 보기",
   "may.memory.title": "{mascot}가 나에 대해 기억하는 것",
   "may.memory.empty": "{mascot}가 아직 기억하는 게 없어요",
   "may.memory.by": "{name}님이 들려줌",

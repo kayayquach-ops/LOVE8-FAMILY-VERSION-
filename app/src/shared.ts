@@ -47,7 +47,7 @@ export type JoinRequest = { id: string; name: string; role: Role; city: string |
 export type Me = { family: Family; me: Member; members: Member[]; unseen: number; approverId?: string | null; requests?: JoinRequest[]; waiting?: number;
   /** Mình có đang bật chia sẻ vị trí với cả nhà không (chỉ người gọi /api/me biết của chính mình). */
   locShare?: boolean;
-  /** Mình đã bật "Thử Mây mới" (members.may_live) và máy chủ đang mở Mây Live: cuộc gọi tuần dùng màn CallLive. */
+  /** Máy chủ đang mở Mây Live (MAY_LIVE, GEMINI_API_KEY): cuộc gọi tuần dùng màn CallLive cho mọi người. */
   mayLive?: boolean };
 
 export type Week = {

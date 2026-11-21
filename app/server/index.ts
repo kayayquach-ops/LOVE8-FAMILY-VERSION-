@@ -199,8 +199,8 @@ app.get('/api/me', h(async (req, res) => {
   const { mascot_name, mascot_shape, ...fam } = f.rows[0];
   const family = { ...fam, mascotName: mascot_name || DEFAULT_MASCOT_NAME, mascotShape: isMascotShape(mascot_shape) ? mascot_shape : 'cloud' };
   const locShare = ms.rows.some((x) => x.id === m.id && x.loc_share === true);
-  // Cuộc gọi tuần kiểu mới: mình đã bật thử và máy chủ đang mở Mây Live.
-  const mayLive = ms.rows.some((x) => x.id === m.id && x.may_live === true) && liveConfig().on;
+  // Cuộc gọi tuần kiểu mới (Mây Live) mở cho mọi người khi máy chủ đang mở Live (MAY_LIVE, GEMINI_API_KEY).
+  const mayLive = liveConfig().on;
   res.json({ family, me: members.find((x) => x.id === m.id), members, unseen: unseen.rows[0].n, locShare, mayLive, ...join });
 }));
 

@@ -7,7 +7,6 @@ import { MayTab } from './MayTab';
 import { NotifyAsk } from './NotifyAsk';
 import { Greeting, JoinWait, Onboarding, sendKept } from './Onboarding';
 import { mascotNameOf, type Me, type Shot } from './shared';
-import { setLiveBeta } from './liveBeta';
 import { GroupShot } from './GroupShot';
 import { isInviteFor, isPendingFor, shotIdFrom } from './shot';
 import { Calendar } from './Calendar';
@@ -42,15 +41,6 @@ const Podcast = lazy(() => loadPodcast().then((m) => ({ default: m.Podcast })));
 const Call = lazy(() => loadCall().then((m) => ({ default: m.Call })));
 const CallLive = lazy(() => loadCallLive().then((m) => ({ default: m.CallLive })));
 const FaceTime = lazy(() => loadFaceTime().then((m) => ({ default: m.FaceTime })));
-
-// Thử Mây mới (Mây Live): mở app một lần bằng link có ?thu-may-moi thì máy này thấy công tắc "Thử Mây mới" trong Cài đặt (liveBeta.ts).
-// Đọc một lần lúc mở app rồi bỏ khỏi thanh địa chỉ.
-if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('thu-may-moi')) {
-  setLiveBeta();
-  const u = new URL(location.href);
-  u.searchParams.delete('thu-may-moi');
-  history.replaceState(history.state, '', u.pathname + u.search + u.hash);
-}
 
 const HUG_KEY = 'homeletter-hug-day';
 const ME_KEY = 'homeletter-me';

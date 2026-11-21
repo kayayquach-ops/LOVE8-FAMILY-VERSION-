@@ -112,7 +112,6 @@ function fakeDb(t: Tables = {}, o: { lenient?: boolean } = {}) {
         case S.relaySlot:
           return out(db.answers.filter((a) => a.call_id === v[0] && a.idx === 1 && a.topic === 'loi-nhan')
             .sort((a, b) => (b.transcript ?? '').length - (a.transcript ?? '').length).slice(0, 1).map((a) => ({ question: a.question, transcript: a.transcript })));
-        case S.member: return out(db.members.filter((m) => m.id === v[0]).map((m) => ({ may_live: m.may_live })));
         case S.usedToday:
           return out([{ sec: db.calls.filter((c) => c.live_at != null && +c.live_at >= +v[0]).reduce((s, c) => s + (c.live_sec ?? v[1]), 0) }]);
         case S.insert: {
@@ -230,7 +229,7 @@ test('kịch bản v3: ô hỏi thăm và ô lời nhắn luôn có, chuyện b�
   assert.equal(L.liveScript(lanCtx('lan', { doneCalls: ['2026-11-14'] })).trial, undefined);
 });
 
-test('nhấc máy Live: công tắc máy chủ tắt thì 503, chưa bật thử thì 403, không xin token', async () => {
+test('nhấc máy Live: công tắc máy chủ tắt thì 503 và không xin token, còn mở thì ai cũng được token (không cần cờ may_live)', async () => {
   const f = fakeFetch();
   const db = fakeDb({ members: [{ id: 'lan-off', may_live: true }, { id: 'an-off', may_live: false }] });
   const off = await serve(deps({ db, fetch: f, env: { ...ENV, MAY_LIVE: 'off' } }));
@@ -241,12 +240,12 @@ test('nhấc máy Live: công tắc máy chủ tắt thì 503, chưa bật thử
     assert.equal(a.status, 503);
     assert.equal(a.body.code, 'live_off');
     assert.equal((await nokey.post('/api/call/live', 'lan-off')).status, 503);
-    const b = await on.post('/api/call/live', 'an-off');
-    assert.equal(b.status, 403);
-    assert.equal(b.body.code, 'live_not_enabled');
-    assert.equal((await on.post('/api/call/live', 'khong-co')).body.code, 'live_not_enabled');
     assert.equal(f.calls.length, 0);
     assert.equal(db.calls.length, 0);
+    const b = await on.post('/api/call/live', 'an-off');
+    assert.equal(b.status, 200);
+    assert.ok(b.body.token);
+    assert.equal(db.calls.length, 1);
   } finally {
     off.close(); nokey.close(); on.close();
   }

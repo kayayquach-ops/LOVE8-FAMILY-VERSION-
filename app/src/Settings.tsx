@@ -5,7 +5,6 @@ import { setThemeMode, THEME_MODES, useThemeMode } from './theme';
 import { Notify } from './Notify';
 import { LocationShare } from './LocationShare';
 import { MaySettings } from './MayMemory';
-import { revealTap, setLiveBeta } from './liveBeta';
 import { GoogleMark } from './Onboarding';
 import { mascotNameOf, type Me } from './shared';
 import { setUiSounds, tap, uiSoundsOn } from './sound';
@@ -18,16 +17,6 @@ export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose
   const [sound, setSound] = useState(uiSoundsOn());
   const [autoTr, setAutoTr] = useState(autoTranslateOn());
   const google = useGoogleLink();
-  // Công tắc ẩn "Thử Mây mới": chạm năm lần vào tiêu đề "Bạn nhỏ của nhà" trong 3 giây thì mở (liveBeta.ts), vẽ lại MaySettings để đọc cờ.
-  const taps = useRef<number[]>([]);
-  const [mayKey, setMayKey] = useState(0);
-  const revealLive = () => {
-    const r = revealTap(taps.current, Date.now());
-    taps.current = r.taps;
-    if (!r.hit) return;
-    setLiveBeta();
-    setMayKey((k) => k + 1);
-  };
 
   // Rời nhà: hỏi lại bằng thẻ dưới đáy như "xoá khỏi nhà" (Sheets.tsx), vì máy chủ xoá hẳn mình cùng ảnh, tin nhắn, cuộc gọi.
   const [leaving, setLeaving] = useState(false);
@@ -66,12 +55,12 @@ export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose
           <span className="chip">{t('settings.profileEdit')}</span>
         </button>
 
-        <div className="h2" onClick={revealLive}>{t('settings.mascot')}</div>
+        <div className="h2">{t('settings.mascot')}</div>
         <button className="panel set-profile" onClick={() => { tap(); onMascot(); }}>
           <span className="set-name"><b>{mascotNameOf(me.family)}</b></span>
           <span className="chip">{t('may.customize')}</span>
         </button>
-        <MaySettings key={mayKey} me={me} />
+        <MaySettings me={me} />
 
         <div className="h2">{t('family.language')}</div>
         <div className="panel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
