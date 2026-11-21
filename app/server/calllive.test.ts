@@ -928,6 +928,23 @@ test('chốt cuộc gọi Live: lưu câu hẹn sạch; câu hẹn có tên lạ
   assert.equal((await L.finishLive('c1', 'lan', { may }, later)).flagged, 0);
 });
 
+test('chốt cuộc gọi Live: dòng log tổng ghi Mây có gọi relay_open không (lời nhắn khó nói chỉ riêng tư khi vào ô 1)', async () => {
+  const db = lanHome();
+  const may = JSON.stringify(['Chào Mẹ ạ']);
+  const line = () => logs.find((l) => l.startsWith('[call-live] cuộc gọi c1:')) ?? logs.join('\n');
+  logs.length = 0;
+  await L.finishLive('c1', 'lan', { may, relay: 'tool' }, db);
+  assert.equal(line(), '[call-live] cuộc gọi c1: 1 câu của Mây, 0 câu nghi bịa, relay_open: yes');
+  logs.length = 0;
+  await L.finishLive('c1', 'lan', { may, relay: 'line' }, db);
+  assert.equal(line(), '[call-live] cuộc gọi c1: 1 câu của Mây, 0 câu nghi bịa, relay_open: no (đoán từ câu Mây)');
+  for (const relay of ['none', undefined, 'x']) {
+    logs.length = 0;
+    await L.finishLive('c1', 'lan', { may, ...(relay ? { relay } : {}) }, db);
+    assert.equal(line(), '[call-live] cuộc gọi c1: 1 câu của Mây, 0 câu nghi bịa, relay_open: no', String(relay));
+  }
+});
+
 test('lời nhắn khó nói của cuộc gọi này là điều riêng: thẻ, câu mở, câu hẹn nhắc lại lời nhắn thì bỏ; câu không liên quan vẫn giữ', async () => {
   // An (con) gọi; lời nhắn khó nói (ô 1) là xin lỗi bố chuyện cãi nhau hôm Tết.
   const msg = 'con xin lỗi bố chuyện cãi nhau hôm tết';

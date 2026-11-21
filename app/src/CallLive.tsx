@@ -14,7 +14,7 @@ import { getLang, t } from './i18n';
 import { livePlayer, type LivePlayer } from './livePlayer';
 import {
   askKeyAt, askStep, awayMs, byeDue, CAPTURE_START, captureNext, clockCue, CUE, finishJob, guarded, holdNext, idleDue, liveStart, MIC_GATE_MS, onRec,
-  onShareEnd, onShareUndo, onTool, onTurn, photoCue, recDue, remindAllow, remindFor, shareJob, silentDue, waitingNo, type AskStep, type Capture, type CaptureAction, type CaptureEvent, type Hold, type LiveState,
+  onShareEnd, onShareUndo, onTool, onTurn, photoCue, recDue, relayLine, remindAllow, remindFor, shareJob, silentDue, waitingNo, type AskStep, type Capture, type CaptureAction, type CaptureEvent, type Hold, type LiveState,
 } from './liveTurns';
 import { addUsage, emptyUsage, type LiveUsage } from './liveUsage';
 import { type Drive, type MascotMode } from './Mascot';
@@ -265,7 +265,8 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     // Cúp máy lúc đang xin token: hàng calls đã có, báo 0 giây.
     if (L.ended) { sendEnd(r.id, 0); return teardown(); }
     L.maxSec = r.maxSec;
-    L.st = liveStart({ id: r.id, family: r.family, themes: r.themes, relays: r.relays.map((x) => x.id) });
+    // Cuộc gọi đầu (chưa có cuộc gọi xong, DATA.trial): lời dặn bỏ bước lời nhắn khó nói.
+    L.st = liveStart({ id: r.id, family: r.family, themes: r.themes, relays: r.relays.map((x) => x.id), trial: !r.allow.prevCall });
     L.allow = r.allow;
     L.relays = r.relays.length;
     L.player = livePlayer(L.ctx!);
@@ -408,6 +409,9 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     const L = S.current;
     L.lines.push(text);
     if (L.lines.length > 120) L.lines.shift();
+    // Mây hỏi lời nhắn khó nói mà quên relay_open: lượt kế vào ô 1 (relayLine). Ở đây trước khi lượt ấy bắt đầu ghi (openTurn sau feed done); lượt
+    // đang ghi lúc này (chạm linh vật cắt câu hỏi rồi nói ngay) cũng sang ô 1.
+    if (L.st) L.st = relayLine(L.st, text, L.cap.recording ? L.cap.key : undefined);
     // Sau lời chào thì thôi nhắc: nhắc lúc ấy làm Mây nói tiếp sau khi đã tạm biệt.
     if (!L.st || L.bye) return;
     const r = remindFor(L.st, text, remindAllow(L.allow, { relays: L.relays, photos: L.photos }), getLang());
@@ -505,7 +509,8 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     for (const f of calls) {
       const name = String(f.name ?? '');
       if (name === 'story_open' || name === 'ask_share' || name === 'end_call') photoStop();
-      const r = onTool(L.st, { name, args: f.args });
+      // App đã bảo Mây chào (máy bỏ trên bàn, Google sắp đóng kết nối): end_call không bị bảo gọi relay_open trước.
+      const r = onTool(L.st, { name, args: f.args }, { wrap: L.away || L.idleByeAt > 0 });
       L.st = r.state;
       for (const e of r.effects) {
         if (e.kind === 'job') void outbox({ group: id, ...e.job });

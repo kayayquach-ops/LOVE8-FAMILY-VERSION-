@@ -1,6 +1,6 @@
 // Logic cuộc gọi Mây Live ở máy khách, hàm thuần cho CallLive.tsx nối vào (task 6, 7). Kiểm bằng src/liveTurns.test.ts.
 // Công cụ của model làm gì với trạng thái cuộc gọi và đáp model câu gì (onTool), lượt nào vào ô nào (onRec, onTurn), ghi giọng từng lượt
-// (captureNext), xin phép chia sẻ (onShareEnd, askStep, giữ tiếng Mây: holdNext), báo sau bước xin ảnh (photoCue), nhắc chống bịa một lần (remindFor, remindAllow), nhắc đồng hồ (clockDue, clockCue), nhắc
+// (captureNext), Mây hỏi lời nhắn khó nói mà quên relay_open (relayLine), xin phép chia sẻ (onShareEnd, askStep, giữ tiếng Mây: holdNext), báo sau bước xin ảnh (photoCue), nhắc chống bịa một lần (remindFor, remindAllow), nhắc đồng hồ (clockDue, clockCue), nhắc
 // im lặng (silentDue), máy bỏ trên bàn (idleDue), Google sắp đóng kết nối (awayMs), cúp sau lời chào (byeDue), lúc bắt đầu ghi lượt người kể (recDue),
 // chốt (finishJob).
 // Ô 0 hỏi thăm, ô 1 lời nhắn khó nói, chuyện từ ô LIVE_FIRST_STORY (kịch bản v3, server/calllive.ts). Lời đồng ý chia sẻ chỉ từ hai nút hoặc
@@ -11,10 +11,11 @@
 // - turn: onTurn(state, { key, question, transcript, seconds, askKey }) ngay (chỉ chờ bản ghi để gửi job); consent true (lượt bắt đầu lúc đang xin
 //   phép, key lớn hơn askKey: askKeyAt lúc đã hỏi) thì đưa lời chép cho shareNext chặt ({ type: 'heard' }, { strict: true }); lượt mở trong khe giữa
 //   lời gọi ask_share và câu hỏi là lượt kể. Lượt của Mây xong: feed done trước, rồi mới asked. end_call lúc đang xin phép: chỉ waitingNo.
+// - onTool(state, lời gọi, { wrap }): wrap khi app đã bảo Mây chào (goAway, máy bỏ trên bàn), để end_call không bị bảo gọi relay_open trước.
 // - Câu trả lời chỉ là ý định (state.intent); lúc cúp máy shareJob ra /share hay /keep, xếp ngay trước finishJob.
 // - Tiếng Mây bị giữ lúc xin phép (holdNext) vẫn báo captureNext ({ type: 'audio' }) để lượt trả lời khép được (R8); lượt của Mây xong lúc đang giữ
 //   mà lượt trả lời còn đang ghi (Mây im, không có tiếng) thì cũng báo { type: 'audio' } trước done; { type: 'asked' } theo askStep.
-// - mayLine: remindFor với allow của cuộc gọi Live (remindAllow): ownStory true, message true khi có lời nhắn chờ, photos true khi DATA có ảnh
+// - mayLine: relayLine(state, câu, key lượt đang ghi nếu có) trước, rồi remindFor với allow của cuộc gọi Live (remindAllow): ownStory true, message true khi có lời nhắn chờ, photos true khi DATA có ảnh
 //   hoặc ảnh đã tới trong cuộc gọi này (CUE.photos(n) với n > 0).
 import { slipLive, type Allow } from '../server/guard.ts';
 import { shareAnswer } from './callShare';
@@ -47,7 +48,10 @@ const SAY = {
   askNow: 'Ask now.',
   bye: 'Say your goodbye now; the app hangs up after it.',
   byeAgain: 'Say nothing more; the app hangs up.',
+  relayFirst: 'Call relay_open first, then ask if there is something hard to say that they would like you to pass on to someone in the family.',
 };
+/** Câu Mây hỏi lời nhắn khó nói (bước 5 của lời dặn: "something hard to say ... pass on"), để bắt khi Mây quên gọi relay_open (relayLine). */
+const RELAY_ASK = /khó nói|khó mở lời|hard to say|difficult to say|말하기 ?(어려운|힘든)|하기 ?(어려운|힘든) ?말/;
 // i18n-ok-end
 
 /** Người kể im chừng này (Mây đã nói xong, máy phát đã im) thì nhắc model (CUE.silent), một lần mỗi lượt của Mây. */
@@ -85,29 +89,40 @@ export type Effect = { kind: 'job'; job: Job } | { kind: 'photo' } | { kind: 'sh
  *  (shareJob); hook: câu hẹn tuần sau (end_call); reminded: đã nhắc chống bịa (một lần mỗi cuộc gọi);
  *  lastStory: ô chuyện mở gần nhất (0: chưa có), giữ cả sau story_close để xin ảnh sau khi khép chuyện vẫn được (R5);
  *  rec: ô lúc từng lượt bắt đầu ghi, theo key (onRec), bỏ khi lượt ấy gửi (onTurn); lastRec: ô của lượt ghi gần nhất;
- *  ended: đã có end_call (các lần sau bỏ qua). */
+ *  ended: đã có end_call (các lần sau bỏ qua);
+ *  relayAsk: lời dặn có bước lời nhắn khó nói (bước 5: nhà từ hai người, không phải cuộc gọi đầu); relay: bước ấy đã mở chưa, bằng relay_open ('tool')
+ *  hay đoán từ câu Mây nói ('line', relayLine), /finish ghi log; relayNag: công cụ đã bị bảo gọi relay_open trước (mỗi công cụ một lần). */
 export type LiveState = {
   id: string; idx: number; theme: StoryTheme | null; opener: string; next: number; turns: Record<number, number>; storyTurns: number;
   family: number; themes: StoryTheme[]; relays: string[]; heard: string[]; share: 'none' | 'asking' | 'done'; intent: 'yes' | 'no' | null; hook: string; reminded: boolean;
   lastStory: number; rec: Record<number, TurnSlot>; lastRec: number; ended: boolean;
+  relayAsk: boolean; relay: 'none' | 'tool' | 'line'; relayNag: string[];
 };
 /** blank: lượt ngay sau lời nhắn khó nói, câu hỏi của nó (câu Mây đáp lời nhắn, có khi nhắc lại lời nhắn) không gửi. */
 export type TurnSlot = { idx: number; theme: StoryTheme | null; opener: string; share: LiveState['share']; blank: boolean };
 
-export function liveStart(p: { id: string; family: number; themes: StoryTheme[]; relays: string[] }): LiveState {
+/** trial: cuộc gọi đầu (DATA.trial, lời dặn bỏ bước 5; máy khách biết qua allow.prevCall). Không truyền thì coi như không có bước lời nhắn khó nói. */
+export function liveStart(p: { id: string; family: number; themes: StoryTheme[]; relays: string[]; trial?: boolean }): LiveState {
   return {
     id: p.id, idx: 0, theme: null, opener: '', next: LIVE_FIRST_STORY, turns: {}, storyTurns: 0, family: p.family, themes: p.themes,
     relays: p.relays, heard: [], share: 'none', intent: null, hook: '', reminded: false, lastStory: 0, rec: {}, lastRec: 0, ended: false,
+    relayAsk: p.trial === false && p.family >= 2, relay: 'none', relayNag: [],
   };
 }
 
 /** Một lời gọi công cụ của model: trạng thái mới, câu đáp model (toolResponse) và việc cho app làm. Gọi sai (chủ đề lạ, quá LIVE_MAX_STORIES
  *  chuyện, mã lạ, hỏi lần hai, chào lần hai, công cụ lạ) thì không làm gì, chỉ một câu ngắn để model đi tiếp. Ô lời nhắn (1) khép ở lời gọi
- *  công cụ kế tiếp, relay_open thì mở lại: lượt nói thêm sau lời nhắn (chào, "dạ vâng") không đè lời nhắn. */
-export function onTool(s: LiveState, f: { name: string; args?: Record<string, unknown> }): { state: LiveState; result: string; effects: Effect[] } {
+ *  công cụ kế tiếp, relay_open thì mở lại: lượt nói thêm sau lời nhắn (chào, "dạ vâng") không đè lời nhắn.
+ *  Lời dặn có bước lời nhắn khó nói (relayAsk) mà bước ấy chưa mở: ask_share, end_call lần đầu được bảo gọi relay_open trước (mỗi công cụ một lần,
+ *  không lặp mãi), vì lời nhắn hỏi không kèm relay_open rơi vào ô đang mở (ô 0 sổ nhớ đọc, ô chuyện có thể chia sẻ). Đang hỏi chia sẻ (end_call
+ *  giữa lúc ấy đi đường waitingNo, tiếng Mây đang bị giữ) hay o.wrap (app đã bảo Mây chào: máy bỏ trên bàn, Google sắp đóng kết nối; lời dặn: không
+ *  bắt đầu gì mới) thì không bảo. */
+export function onTool(s: LiveState, f: { name: string; args?: Record<string, unknown> }, o: { wrap?: boolean } = {}): { state: LiveState; result: string; effects: Effect[] } {
   const st = s.idx === 1 ? { ...s, idx: 0 } : s;
   const arg = (k: string) => String(f.args?.[k] ?? '').trim();
   const say = (result: string, state = st, effects: Effect[] = []) => ({ state, result, effects });
+  const relayFirst = st.relayAsk && st.relay === 'none' && st.share !== 'asking' && !o.wrap && !st.relayNag.includes(f.name);
+  const nag = () => say(SAY.relayFirst, { ...st, relayNag: [...st.relayNag, f.name] });
   const base = `/api/call/${s.id}`;
   switch (f.name) {
     case 'story_open': {
@@ -123,6 +138,7 @@ export function onTool(s: LiveState, f: { name: string; args?: Record<string, un
       if (st.family < 2) return say(SAY.alone);
       if (st.storyTurns === 0) return say(SAY.untold);
       if (st.share !== 'none') return say(SAY.again);
+      if (relayFirst) return nag();
       return say(SAY.share, { ...st, share: 'asking' }, [{ kind: 'share' }]);
     case 'relay_heard': {
       const rid = arg('id');
@@ -130,10 +146,23 @@ export function onTool(s: LiveState, f: { name: string; args?: Record<string, un
       return say(SAY.delivered, { ...st, heard: [...st.heard, rid] },
         [{ kind: 'job', job: { url: `${base}/relay/${encodeURIComponent(rid)}/heard`, fields: {} } }]);
     }
-    case 'relay_open': return st.family < 2 ? say(SAY.alone) : say(SAY.askNow, { ...st, idx: 1 });
-    case 'end_call': return st.ended ? say(SAY.byeAgain) : say(SAY.bye, { ...st, hook: arg('next_hook').slice(0, 200), ended: true }, [{ kind: 'end' }]);
+    case 'relay_open': return st.family < 2 ? say(SAY.alone) : say(SAY.askNow, { ...st, idx: 1, relay: 'tool' });
+    case 'end_call':
+      if (st.ended) return say(SAY.byeAgain);
+      if (relayFirst) return nag();
+      return say(SAY.bye, { ...st, hook: arg('next_hook').slice(0, 200), ended: true }, [{ kind: 'end' }]);
     default: return say('ok');
   }
+}
+
+/** Mây vừa nói xong một câu (mayLine): câu có lời hỏi lời nhắn khó nói (RELAY_ASK) mà ô chưa là 1 thì như relay_open (nhà một người thì không có
+ *  bước ấy), để lượt kế của người kể vào ô 1, không vào ô 0 hay ô chuyện. Nơi gọi gọi trước khi lượt ấy bắt đầu ghi (mayLine tới ở done, trước gate);
+ *  recKey: lượt đang ghi lúc ấy (chạm linh vật cắt câu hỏi rồi nói ngay, lượt bắt đầu trước khi lượt của Mây xong) cũng chuyển sang ô 1. */
+export function relayLine(s: LiveState, line: string, recKey?: number): LiveState {
+  if (s.idx === 1 || s.family < 2 || !RELAY_ASK.test(line.toLowerCase().normalize('NFC').replace(/\s+/g, ' '))) return s;
+  const st: LiveState = { ...s, idx: 1, relay: s.relay === 'tool' ? 'tool' : 'line' };
+  const at = recKey === undefined ? undefined : s.rec[recKey];
+  return at ? { ...st, rec: { ...s.rec, [recKey!]: { ...at, idx: 1, theme: null, opener: '' } }, lastRec: 1 } : st;
 }
 
 /** Lượt key bắt đầu ghi (captureNext ra startRec): chụp ô, chuyện và bước xin phép lúc ấy cho onTurn của lượt này. Nhờ vậy câu đáp hỏi thăm
@@ -291,9 +320,10 @@ export function remindFor(s: LiveState, line: string, allow: Allow, lang: 'vi' |
 /** Đến lúc nhắc còn hai phút chưa (CUE.clock; nơi gọi giữ chỉ nhắc một lần). Cuộc gọi chỉ 150 giây trở xuống thì không nhắc. */
 export const clockDue = (maxSec: number, elapsedSec: number): boolean => maxSec > CLOCK_MIN_SEC && maxSec - elapsedSec <= CLOCK_LEFT_SEC;
 
-/** Việc chốt cuộc gọi (POST /finish, việc cuối của nhóm): câu hẹn và các câu Mây đã nói (tối đa 120, máy chủ ghi log chống bịa). Cuộc gọi Live nào cũng chốt bằng việc này. */
+/** Việc chốt cuộc gọi (POST /finish, việc cuối của nhóm): câu hẹn, các câu Mây đã nói (tối đa 120, máy chủ ghi log chống bịa) và relay (bước lời nhắn
+ *  khó nói mở bằng relay_open hay không, máy chủ ghi log). Cuộc gọi Live nào cũng chốt bằng việc này. */
 export function finishJob(s: LiveState, may: string[]): Job {
-  return { url: `/api/call/${s.id}/finish`, fields: { hook: s.hook, may: JSON.stringify(may.slice(0, 120)) }, last: true };
+  return { url: `/api/call/${s.id}/finish`, fields: { hook: s.hook, may: JSON.stringify(may.slice(0, 120)), relay: s.relay }, last: true };
 }
 
 // ---------- Ghi từng lượt ----------

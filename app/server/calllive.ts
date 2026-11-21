@@ -470,7 +470,7 @@ export async function saveStory(callId: string, memberId: string, body: Record<s
 }
 
 /** Lúc chốt cuộc gọi Live (POST /call/:id/finish, trước khi chốt): mỗi câu Mây đã nói (may, mảng JSON, tối đa 120 câu, mỗi câu tối đa 300 chữ)
- *  qua suspect() để ghi log câu nghi bịa (lý do và 40 chữ đầu, câu chạm điều riêng thì chỉ lý do), thêm một dòng tổng; câu hẹn tuần sau (hook, tối đa 200 chữ) ghi vào script.next_hook khi qua suspect()
+ *  qua suspect() để ghi log câu nghi bịa (lý do và 40 chữ đầu, câu chạm điều riêng thì chỉ lý do), thêm một dòng tổng (kèm relay_open: yes/no theo relay); câu hẹn tuần sau (hook, tối đa 200 chữ) ghi vào script.next_hook khi qua suspect()
  *  và không chạm điều riêng, không thì bỏ (log không chép câu). Không phải cuộc gọi v3 của người này thì không làm gì. Gửi lại được. */
 export async function finishLive(callId: string, memberId: string, body: Record<string, unknown>, db: Db = pool): Promise<{ lines: number; flagged: number; hook: boolean }> {
   const out = { lines: 0, flagged: 0, hook: false };
@@ -490,7 +490,9 @@ export async function finishLive(callId: string, memberId: string, body: Record<
     console.warn(`[call-live] câu nghi bịa (${why})${shown(line)}`);
   }
   out.lines = lines.length;
-  if (lines.length) console.log(`[call-live] cuộc gọi ${tag}: ${out.lines} câu của Mây, ${out.flagged} câu nghi bịa`);
+  // relay (máy khách, finishJob): Mây có gọi relay_open không; 'line' là máy khách đoán từ câu Mây nói (relayLine của src/liveTurns.ts).
+  const relay = body.relay === 'tool' ? 'yes' : 'no';
+  if (lines.length) console.log(`[call-live] cuộc gọi ${tag}: ${out.lines} câu của Mây, ${out.flagged} câu nghi bịa, relay_open: ${relay}${body.relay === 'line' ? ' (đoán từ câu Mây)' : ''}`);
   const hook = cleanLine(body.hook).slice(0, 200).trim();
   if (!hook) return out;
   const why = suspect(hook, k.hay, k.allow, k.lang);

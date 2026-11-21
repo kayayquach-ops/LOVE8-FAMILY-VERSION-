@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   askStep, awayMs, byeDue, CAPTURE_START, captureNext, clockCue, clockDue, CUE, askKeyAt, finishJob, guarded, holdNext, idleDue, liveStart, onRec, onShareEnd, onShareUndo, onTool, onTurn, photoCue, shareJob,
-  recDue, remindAllow, remindFor, SILENT_MS, silentDue, waitingNo, type AskStep, type Capture, type CaptureAction, type CaptureEvent, type Hold, type Job, type LiveState,
+  recDue, relayLine, remindAllow, remindFor, SILENT_MS, silentDue, waitingNo, type AskStep, type Capture, type CaptureAction, type CaptureEvent, type Hold, type Job, type LiveState,
 } from './liveTurns.ts';
 import { SHARE_START, shareNext, type ShareEvent, type ShareState } from './callShare.ts';
 import { LIVE_FIRST_STORY, LIVE_MAX_STORIES } from './shared.ts';
@@ -405,9 +405,10 @@ test('đồng hồ: còn hai phút thì nhắc; cuộc gọi chỉ 150 giây tr�
 test('chốt cuộc gọi: /finish là việc cuối, kèm câu hẹn và các câu Mây đã nói', () => {
   const s = onTool(S(), { name: 'end_call', args: { next_hook: 'Tuần sau kể tiếp chuyện bà nhé' } }).state;
   assert.deepEqual(finishJob(s, ['Chào mẹ', 'Mẹ kể tiếp đi ạ']), {
-    url: '/api/call/c1/finish', fields: { hook: 'Tuần sau kể tiếp chuyện bà nhé', may: '["Chào mẹ","Mẹ kể tiếp đi ạ"]' }, last: true,
+    url: '/api/call/c1/finish', fields: { hook: 'Tuần sau kể tiếp chuyện bà nhé', may: '["Chào mẹ","Mẹ kể tiếp đi ạ"]', relay: 'none' }, last: true,
   });
-  assert.deepEqual(finishJob(S(), []).fields, { hook: '', may: '[]' }, 'không có câu hẹn vẫn gửi đủ hai trường');
+  assert.deepEqual(finishJob(S(), []).fields, { hook: '', may: '[]', relay: 'none' }, 'không có câu hẹn vẫn gửi đủ ba trường');
+  assert.equal(finishJob(onTool(S(), { name: 'relay_open' }).state, []).fields.relay, 'tool', 'Mây đã gọi relay_open: máy chủ ghi log relay_open: yes');
   assert.equal(JSON.parse(finishJob(S(), Array(130).fill('x')).fields.may).length, 120, 'tối đa 120 câu');
 });
 
@@ -867,4 +868,102 @@ test('báo model sau bước xin ảnh: ô ảnh còn hiện thì luôn báo; đ
   assert.equal(photoCue({ n: 2, on: false, quiet: false }), '(2 photos arrived.)', 'chọn muộn sau khi ô ảnh đã ẩn: ảnh thật vẫn báo');
   assert.equal(photoCue({ n: 0, on: false, quiet: false }), null, 'huỷ sau khi ô đã ẩn: Mây đã đi tiếp, không báo');
   assert.equal(photoCue({ n: 2, on: true, quiet: true }), null, 'đang chào hay đang giữ tiếng: không báo');
+});
+
+/** Cuộc gọi thường (không phải lần đầu) của nhà ba người: lời dặn có bước lời nhắn khó nói (bước 5). */
+const NORMAL = () => liveStart({ id: 'c1', family: 3, themes: ['tuoi-tho', 'mon-an'], relays: [], trial: false });
+const RELAY_FIRST = 'Call relay_open first, then ask if there is something hard to say that they would like you to pass on to someone in the family.';
+
+test('lời nhắn khó nói: Mây hỏi chia sẻ hay chào khi chưa gọi relay_open thì được bảo gọi relay_open trước, một lần mỗi công cụ', () => {
+  const told = onTurn(onTool(NORMAL(), OPEN).state, { question: 'Mẹ kể con nghe về món canh chua nhé', transcript: 'Hồi đó mẹ nấu canh chua', seconds: 8 }).state;
+  const a = onTool(told, { name: 'ask_share' });
+  assert.equal(a.result, RELAY_FIRST, 'ask_share trước relay_open: bảo gọi relay_open trước');
+  assert.deepEqual(a.effects, [], 'chưa hiện nút');
+  assert.equal(a.state.share, 'none', 'bước xin phép chưa bắt đầu');
+  const a2 = onTool(a.state, { name: 'ask_share' });
+  assert.deepEqual(a2.effects, [{ kind: 'share' }], 'lần hai thì nhận, không lặp mãi');
+  // end_call lúc đang hỏi chia sẻ (Mây tự đáp rồi chào): không bảo, để đường waitingNo và cúp máy như cũ (tiếng Mây đang bị giữ).
+  assert.deepEqual(onTool(a2.state, { name: 'end_call', args: {} }).effects, [{ kind: 'end' }], 'đang hỏi chia sẻ: chào ngay');
+  const e = onTool(told, { name: 'end_call', args: { next_hook: 'Tuần sau kể tiếp' } });
+  assert.equal(e.result, RELAY_FIRST, 'end_call trước relay_open: bảo gọi relay_open trước');
+  assert.deepEqual(e.effects, [], 'chưa cúp');
+  assert.equal(e.state.ended, false);
+  assert.equal(e.state.hook, '', 'câu hẹn chưa giữ');
+  assert.deepEqual(onTool(e.state, { name: 'end_call', args: { next_hook: 'Tuần sau kể tiếp' } }).effects, [{ kind: 'end' }], 'end_call lần hai thì chào');
+  // Đã gọi relay_open thì không bị bảo nữa.
+  const opened = onTool(onTool(told, { name: 'relay_open' }).state, { name: 'ask_share' });
+  assert.deepEqual(opened.effects, [{ kind: 'share' }], 'đã gọi relay_open: hỏi chia sẻ ngay');
+  assert.deepEqual(onTool(opened.state, { name: 'end_call', args: {} }).effects, [{ kind: 'end' }], 'đã gọi relay_open: chào ngay');
+  // Như điều kiện của lời dặn: nhà một người, cuộc gọi đầu (bỏ bước 5), hay app đã bảo Mây chào (máy bỏ trên bàn, Google sắp đóng kết nối) thì không bảo.
+  assert.deepEqual(onTool(liveStart({ id: 'c1', family: 1, themes: [], relays: [], trial: false }), { name: 'end_call', args: {} }).effects, [{ kind: 'end' }], 'nhà một người');
+  assert.deepEqual(onTool(liveStart({ id: 'c1', family: 3, themes: [], relays: [], trial: true }), { name: 'end_call', args: {} }).effects, [{ kind: 'end' }], 'cuộc gọi đầu');
+  assert.deepEqual(onTool(NORMAL(), { name: 'end_call', args: {} }, { wrap: true }).effects, [{ kind: 'end' }], 'app đã bảo chào: không bắt đầu gì mới');
+  assert.deepEqual(onTool(S(), { name: 'end_call', args: {} }).effects, [{ kind: 'end' }], 'không biết có phải cuộc gọi đầu không: không bảo');
+});
+
+test('lời nhắn khó nói: Mây hỏi mà quên relay_open thì câu Mây nói (khó nói, hard to say, 말하기 어려운) đưa lượt sau vào ô 1', () => {
+  // Đang ở ô chuyện (ô có thể chia sẻ): câu hỏi lời nhắn không kèm relay_open.
+  const story = onTool(NORMAL(), OPEN).state;
+  const s = relayLine(story, 'Mẹ có điều gì khó nói muốn con nhắn giúp ai trong nhà không ạ?');
+  assert.equal(s.idx, 1, 'lượt sau vào ô 1');
+  assert.equal(s.relay, 'line', 'coi như đã gọi relay_open (log ghi là đoán từ câu Mây)');
+  const t = onTurn(onRec(s, 5), { key: 5, question: 'Mẹ có điều gì khó nói muốn con nhắn giúp ai trong nhà không ạ?', transcript: 'SECRET mẹ thương bố', seconds: 4 });
+  assert.equal(t.job?.fields.idx, '1', 'lời nhắn vào ô 1, không vào ô chuyện');
+  assert.equal(t.job?.fields.theme, undefined, 'không gửi theme của chuyện');
+  // Đã coi như mở bước lời nhắn: ask_share không bị bảo gọi relay_open nữa; công cụ kế tiếp khép ô 1 như thường.
+  const told = { ...t.state, storyTurns: 1 };
+  const a = onTool(told, { name: 'ask_share' });
+  assert.deepEqual(a.effects, [{ kind: 'share' }]);
+  assert.equal(a.state.idx, 0, 'công cụ kế tiếp khép ô 1');
+  // Ô 0 (hỏi thăm, sổ nhớ đọc), tiếng Anh và tiếng Hàn.
+  assert.equal(relayLine(NORMAL(), 'Is there anything hard to say that you would like me to pass on?').idx, 1);
+  assert.equal(relayLine(NORMAL(), '가족에게 하기 어려운 말이 있으세요?').idx, 1);
+  assert.equal(relayLine(NORMAL(), '가족 중 누구에게 말하기 어려운 얘기가 있으세요?').idx, 1);
+  // Không đổi gì: câu thường, đang ở ô 1, nhà một người (như relay_open).
+  const plain = NORMAL();
+  assert.equal(relayLine(plain, 'Hôm nay mẹ thế nào ạ?'), plain, 'câu thường: giữ nguyên');
+  const one = relayLine(onTool(NORMAL(), { name: 'relay_open' }).state, 'Chuyện khó nói thế mà mẹ kể con nghe');
+  assert.equal(one.relay, 'tool', 'đang ở ô 1: log vẫn là Mây đã gọi relay_open');
+  const lone = liveStart({ id: 'c1', family: 1, themes: [], relays: [], trial: false });
+  assert.equal(relayLine(lone, 'Mẹ có điều gì khó nói không ạ?'), lone, 'nhà một người: không có bước lời nhắn');
+});
+
+test('lời nhắn khó nói qua captureNext: Mây hỏi không kèm relay_open, lượt sau vẫn vào ô 1; chạm linh vật cắt câu hỏi rồi nói ngay cũng vậy', () => {
+  let s: LiveState = onTool(NORMAL(), OPEN).state;
+  let c: Capture = CAPTURE_START;
+  const jobs: Job[] = [];
+  const feed = (e: CaptureEvent) => {
+    const r = captureNext(c, e);
+    c = r.capture;
+    for (const a of r.actions) {
+      if (a.kind === 'startRec') s = onRec(s, a.key);
+      if (a.kind === 'mayLine') s = relayLine(s, a.text, c.recording ? c.key : undefined);
+      if (a.kind === 'turn') {
+        const t = onTurn(s, { key: a.key, question: a.question, transcript: a.transcript, seconds: 3 });
+        s = t.state;
+        if (t.job) jobs.push(t.job);
+      }
+    }
+  };
+  feed({ type: 'out', text: 'Mẹ kể con nghe về món canh chua nhé' }); feed({ type: 'audio' }); feed({ type: 'done' }); feed({ type: 'gate' });
+  feed({ type: 'loud' }); feed({ type: 'in', text: 'A1' });
+  feed({ type: 'out', text: 'Mẹ có điều gì khó nói muốn nhắn ai không ạ?' }); feed({ type: 'audio' }); feed({ type: 'done' }); feed({ type: 'gate' });
+  feed({ type: 'loud' }); feed({ type: 'in', text: 'SECRET mẹ thương bố' });
+  feed({ type: 'out', text: 'Dạ con nhớ rồi ạ' }); feed({ type: 'audio' }); feed({ type: 'done' });
+  const ans = jobs.map((j) => `${j.fields.idx}:${j.fields.transcript}`);
+  assert.deepEqual(ans, ['2:A1', '1:SECRET mẹ thương bố'], 'lượt kể ở ô chuyện, lời nhắn ở ô 1');
+
+  // Chạm linh vật cắt câu hỏi (hush): lượt trả lời đã bắt đầu ghi trước khi lượt của Mây xong, vẫn vào ô 1, lượt sau đó không gửi câu hỏi.
+  s = onTool(NORMAL(), OPEN).state;
+  c = CAPTURE_START;
+  jobs.length = 0;
+  feed({ type: 'out', text: 'Mẹ kể con nghe về món canh chua nhé' }); feed({ type: 'audio' }); feed({ type: 'done' }); feed({ type: 'gate' });
+  feed({ type: 'loud' }); feed({ type: 'in', text: 'A1' });
+  feed({ type: 'out', text: 'Mẹ có điều gì khó nói' }); feed({ type: 'audio' });
+  feed({ type: 'gate' }); feed({ type: 'loud' });        // chạm linh vật: mic mở, lượt mới ghi trước khi lượt của Mây xong
+  feed({ type: 'done' });                                 // Gemini nghe người kể nói (interrupted): câu Mây (có chữ khó nói) tới lúc lượt trả lời đang ghi
+  feed({ type: 'in', text: 'SECRET mẹ thương bố' });
+  feed({ type: 'out', text: 'Dạ' }); feed({ type: 'audio' }); feed({ type: 'done' });
+  assert.deepEqual(jobs.map((j) => `${j.fields.idx}:${j.fields.transcript}`), ['2:A1', '1:SECRET mẹ thương bố'], 'lượt đang ghi lúc ấy cũng vào ô 1');
+  assert.equal(s.lastRec, 1, 'lượt kế đó là lượt ngay sau ô lời nhắn (không gửi câu hỏi)');
 });
