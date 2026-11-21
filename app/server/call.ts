@@ -1010,7 +1010,7 @@ const START_AI_MS = 7000;
 const byMember = (req: express.Request) => (req as express.Request & { member: { id: string } }).member.id;
 const limitStart = limitBy({ name: 'call-start', per: new Limit(30, 3600e3), key: byMember });
 const limitAnswer = limitBy({ name: 'call-answer', per: new Limit(30, 10 * 60e3), key: byMember });
-// Mây Live: một cuộc gọi 15 phút không có số câu hỏi thêm cố định, mỗi lượt kể một lần gửi; lượt Live không chép lời, không gọi AI.
+// Mây Live: một cuộc gọi tối đa 9 phút (MAY_CALL_MAX_SEC 540 giây) không có số câu hỏi thêm cố định, mỗi lượt kể một lần gửi; lượt Live không chép lời, không gọi AI.
 const limitAnswerLive = limitBy({ name: 'call-answer-live', per: new Limit(120, 10 * 60e3), key: byMember });
 /** Chọn trần theo ?live=1 trên đường dẫn (đọc được trước multer, thân chưa có): không có thì limitAnswer như cũ. ?live=1 chỉ mở được nhánh Live (/answer). */
 const limitAnswerBy: express.RequestHandler = (req, res, next) => (req.query.live === '1' ? limitAnswerLive : limitAnswer)(req, res, next);

@@ -138,7 +138,8 @@ export function App() {
     // Màn gọi video tải sau cùng, lúc rảnh hẳn: chỉ là mã và khai báo chữ, tệp phông của phần chụp chung chỉ tải khi vẽ đến.
     const w = window as Window & { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number };
     const idle = (f: () => void) => (w.requestIdleCallback ? w.requestIdleCallback(f, { timeout: 4000 }) : f());
-    const warm = () => { void loadCall(); void loadCallLive(); void loadPodcast(); void loadRecap(); void loadLetters(); void loadSettings(); idle(() => void loadFaceTime()); };
+    // Màn Mây Live chỉ tải sẵn cho người đã bật thử (meRef: me lúc này, không phải lúc mở app).
+    const warm = () => { void loadCall(); if (meRef.current?.mayLive) void loadCallLive(); void loadPodcast(); void loadRecap(); void loadLetters(); void loadSettings(); idle(() => void loadFaceTime()); };
     const t = setTimeout(() => idle(warm), 2500);
     return () => clearTimeout(t);
   }, []);
