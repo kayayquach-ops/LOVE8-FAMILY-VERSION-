@@ -58,6 +58,18 @@ const drop = (r: Recording | null) => { if (r) URL.revokeObjectURL(r.url); };
 /** Bản ghi một lượt: hàm dừng (null khi máy không ghi được), lúc bắt đầu, lúc dừng, tệp sau khi dừng. */
 type Rec = { stop: (() => Promise<Recording>) | null; t0: number; t1: number; p: Promise<Recording | null> | null };
 
+/** Bộ đếm chẩn đoán gửi kèm live-end (chỉ số, không có lời nói): xem âm thanh mất ở đâu. ctxState: lúc nối, lúc kết thúc. */
+type Diag = {
+  micFrames: number; gatedTalking: number; gatedDelay: number; pickerDrop: number; sent: number; loud: number;
+  inTx: number; inChars: number; outTx: number; audioParts: number; turnsDone: number; interrupted: number; tools: number;
+  gateOpens: number; recStarts: number; recFails: number; outLatMs: number; sampleRate: number; firstAudioMs: number; firstMicSentMs: number;
+  ctxState: [string, string];
+};
+const freshDiag = (): Diag => ({
+  micFrames: 0, gatedTalking: 0, gatedDelay: 0, pickerDrop: 0, sent: 0, loud: 0, inTx: 0, inChars: 0, outTx: 0, audioParts: 0, turnsDone: 0,
+  interrupted: 0, tools: 0, gateOpens: 0, recStarts: 0, recFails: 0, outLatMs: 0, sampleRate: 0, firstAudioMs: -1, firstMicSentMs: -1, ctxState: ['', ''],
+});
+
 /** Mọi thứ của một cuộc gọi, ngoài React (socket, mic gọi vào bất kỳ lúc nào). */
 type Live = {
   ctx: AudioContext | null; stream: MediaStream | null; node: AudioWorkletNode | null; player: LivePlayer | null; ws: WebSocket | null;
@@ -87,6 +99,7 @@ type Live = {
   bye: AskStep | null; byeAt: number; byeDoneAt: number; talkAt: number; byeT: number;
   /** Google đã báo sắp đóng kết nối (goAway), hẹn giờ cúp cứng (awayMs). */
   away: boolean; awayT: number;
+  diag: Diag;
 };
 const fresh = (): Live => ({
   ctx: null, stream: null, node: null, player: null, ws: null, id: null, maxSec: 0, t0: 0, ended: false, usage: emptyUsage(), lats: [],
@@ -95,7 +108,7 @@ const fresh = (): Live => ({
   sh: null, shT: 0, ask: null, hold: null, askKey: Infinity, undo: false, photoOn: false, photoIdx: 0, photoT: 0, pickAt: 0, photoWork: Promise.resolve(), pickGuard: false,
   mayDone: false, idleAt: 0, nudgedAt: 0, idleByeAt: 0, clocked: false, hush: false,
   said: '', heard: '', newSaid: true, newHeard: true, raf: 0, timer: 0, wait: 0,
-  bye: null, byeAt: 0, byeDoneAt: 0, talkAt: 0, byeT: 0, away: false, awayT: 0,
+  bye: null, byeAt: 0, byeDoneAt: 0, talkAt: 0, byeT: 0, away: false, awayT: 0, diag: freshDiag(),
 });
 
 /** Đang ở bước xin phép chia sẻ (đã hiện hai nút, chưa có câu trả lời). */
@@ -153,7 +166,7 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     void fetch(`/api/call/${encodeURIComponent(id)}/live-end`, {
       method: 'POST', keepalive: true,
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token.get()}` },
-      body: JSON.stringify({ sec, usage: L.usage, lat: L.lats }),
+      body: JSON.stringify({ sec, usage: L.usage, lat: L.lats, diag: L.diag }),
     }).catch(() => {});
   };
   /** iPhone: AudioContext bị treo (khoá màn hình, khung chọn ảnh, cuộc gọi khác) thì đánh thức khi app đang hiện. */
@@ -206,6 +219,7 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     // Trước captureNext: "dạ được" nói dở lúc cúp máy không thành lời đồng ý (như hangUp của Call.tsx).
     shareGo({ type: 'hangup' });
     if (L.st) feed({ type: 'hangup' });
+    L.diag.ctxState[1] = L.ctx?.state ?? '';
     teardown();
     L.photoOn = false;
     L.undo = false;
@@ -302,6 +316,11 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
   function connected() {
     const L = S.current;
     L.t0 = Date.now();
+    if (L.ctx) {
+      L.diag.ctxState[0] = L.ctx.state;
+      L.diag.sampleRate = L.ctx.sampleRate;
+      L.diag.outLatMs = Math.round((L.ctx.outputLatency || L.ctx.baseLatency || 0) * 1000);
+    }
     clearTimeout(L.wait);
     setPhase('talk');
     setMode('listen');
@@ -371,6 +390,8 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
       L.pickGuard = false;
       let stop: Rec['stop'] = null;
       try { if (L.stream) stop = record(L.stream, AUDIO_TYPE()); } catch { /* máy không ghi được: lượt vẫn gửi lời chép */ }
+      L.diag.recStarts++;
+      if (!stop) L.diag.recFails++;
       L.recs.set(a.key, { stop, t0: Date.now(), t1: 0, p: null });
     } else if (a.kind === 'stopRec') {
       const r = L.recs.get(a.key);
@@ -428,12 +449,14 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     if (m.usageMetadata) addUsage(L.usage, m.usageMetadata);
     if (m.goAway && !L.away) goAway(m.goAway.timeLeft);
     const calls = m.toolCall?.functionCalls;
-    if (Array.isArray(calls) && calls.length) onTools(calls);
+    if (Array.isArray(calls) && calls.length) { L.diag.tools += calls.length; onTools(calls); }
     const sc = m.serverContent;
     if (!sc) return;
     const now = Date.now();
     if (sc.inputTranscription?.text) {
       const text = String(sc.inputTranscription.text);
+      L.diag.inTx++;
+      L.diag.inChars += text.length;
       // Người kể lên tiếng: lượt sau của Mây phát lại bình thường, lời nhắc im lặng dùng lại được.
       L.hush = false;
       L.nudgedAt = 0;
@@ -448,6 +471,8 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     // quyết 11), nhưng vẫn báo captureNext để lượt trả lời khép (R8).
     const audio: any[] = L.hush ? [] : (sc.modelTurn?.parts ?? []).filter((p: any) => p?.inlineData?.data);
     if (audio.length) {
+      L.diag.audioParts += audio.length;
+      if (L.diag.firstAudioMs < 0) L.diag.firstAudioMs = now - L.t0;
       L.mayDone = false;
       feed({ type: 'audio' });
       if (L.bye) L.bye = askStep(L.bye, 'audio');
@@ -457,12 +482,14 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
     }
     if (sc.outputTranscription?.text && !L.hush && !L.hold) {
       const text = String(sc.outputTranscription.text);
+      L.diag.outTx++;
       feed({ type: 'out', text });
       if (L.newSaid) { L.said = ''; L.newSaid = false; }
       L.said += text;
       setCaption(L.said);
     }
-    if (sc.interrupted) L.player?.stop();
+    if (sc.interrupted) { L.diag.interrupted++; L.player?.stop(); }
+    if (sc.turnComplete) L.diag.turnsDone++;
     // Lượt của Mây xong (hay bị ngắt): lượt người kể vừa khép được gửi, câu Mây vừa nói thành câu hỏi của lượt sau. mayDone đặt trước: lời nhắc
     // chống bịa gửi trong feed làm Mây nói tiếp nên đặt lại nó.
     if (sc.turnComplete || sc.interrupted) {
@@ -752,24 +779,28 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
   function onMic(buf: ArrayBuffer) {
     const L = S.current, p = L.player, ctx = L.ctx;
     if (!L.t0 || L.ended || !p || !ctx) return;
-    const now = Date.now();
+    const now = Date.now(), D = L.diag;
+    D.micFrames++;
     // Khung chọn ảnh đang mở (tối đa PHOTO_MS): không gửi mic, không mở lượt; khung chọn trả về thì mic mở lại như sau lượt của Mây.
-    if (L.pickAt && now - L.pickAt < PHOTO_MS) { L.gate = false; return; }
+    if (L.pickAt && now - L.pickAt < PHOTO_MS) { D.pickerDrop++; L.gate = false; return; }
     // Loa điện thoại dội tiếng Mây vào mic: mic chờ lúc Mây nói và thêm MIC_GATE_MS cộng độ trễ loa trình duyệt báo.
-    if (p.talking) { L.quietAt = now; L.idleAt = now; L.gate = false; return; }
-    if (now - L.quietAt < MIC_GATE_MS + Math.round((ctx.outputLatency || ctx.baseLatency || 0) * 1000)) return;
+    if (p.talking) { D.gatedTalking++; L.quietAt = now; L.idleAt = now; L.gate = false; return; }
+    if (now - L.quietAt < MIC_GATE_MS + Math.round((ctx.outputLatency || ctx.baseLatency || 0) * 1000)) { D.gatedDelay++; return; }
     // Mic vừa mở lại: bắt đầu ghi lượt người kể nếu lượt của Mây đã xong (openTurn); lượt đầu tiên được ghi bắt đầu sau lời chào.
-    if (!L.gate) { L.gate = true; openTurn(); }
+    if (!L.gate) { L.gate = true; D.gateOpens++; openTurn(); }
     const pcm = new Int16Array(buf);
     let sum = 0;
     for (let i = 0; i < pcm.length; i += 4) sum += pcm[i] * pcm[i];
     if (Math.sqrt(sum / Math.ceil(pcm.length / 4)) > LOUD_RMS) {
+      D.loud++;
       L.loudAt = now;
       L.idleAt = now;
       feed({ type: 'loud' });
       // Lời chào đầu không tính độ trễ: chỉ đo câu Mây đáp sau khi người nghe nói.
       if (L.spoke) L.waiting = true;
     }
+    D.sent++;
+    if (D.firstMicSentMs < 0) D.firstMicSentMs = now - L.t0;
     send({ realtimeInput: { audio: { data: toB64(buf), mimeType: 'audio/pcm;rate=16000' } } });
   }
 

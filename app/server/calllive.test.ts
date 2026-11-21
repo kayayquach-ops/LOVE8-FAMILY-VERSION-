@@ -354,6 +354,28 @@ test('kết thúc Live: giây tính theo đồng hồ máy chủ, ghi tiền, to
   }
 });
 
+test('kết thúc Live: diag chỉ ghi khóa cho phép, kẹp số, bỏ chuỗi lạ; không có diag thì không thêm dòng', async () => {
+  const db = fakeDb({ calls: ['live-5', 'live-6', 'live-7'].map((id) => ({ id, family_id: 'F', member_id: 'lan-end', live_at: new Date(NOW.getTime() - 60e3), live_sec: null })) });
+  const srv = await serve(deps({ db }));
+  try {
+    logs.length = 0;
+    await srv.post('/api/call/live-5/live-end', 'lan-end', { sec: 5 });
+    assert.ok(!logs.some((l) => l.includes('diag')), logs.join('\n'));
+    await srv.post('/api/call/live-6/live-end', 'lan-end', { sec: 5, diag: 'rác' });
+    assert.ok(!logs.some((l) => l.includes('diag')), logs.join('\n'));
+    await srv.post('/api/call/live-7/live-end', 'lan-end', {
+      sec: 5, diag: { micFrames: 120.6, sent: 99999999999, firstAudioMs: -50, loud: 'x', secret: 'bí mật', ctxState: ['running', 'hack'] },
+    });
+    const line = logs.find((l) => l.includes('diag'));
+    assert.ok(line, logs.join('\n'));
+    assert.ok(/cuộc gọi live-7: diag /.test(line!), line);
+    assert.deepEqual(JSON.parse(line!.slice(line!.indexOf('diag ') + 5)), { micFrames: 121, sent: 10000000, firstAudioMs: -1, ctxState: ['running', ''] });
+    assert.ok(!line!.includes('bí mật'));
+  } finally {
+    srv.close();
+  }
+});
+
 test('kết thúc Live: trần một cuộc gọi đổi bằng MAY_CALL_MAX_SEC thì giây tính cũng theo', async () => {
   const db = fakeDb({ calls: [{ id: 'live-4', family_id: 'F', member_id: 'lan-end2', live_at: new Date(NOW.getTime() - 3600e3), live_sec: null }] });
   const srv = await serve(deps({ db, env: { ...ENV, MAY_CALL_MAX_SEC: '300' } }));

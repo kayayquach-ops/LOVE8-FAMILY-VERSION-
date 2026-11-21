@@ -76,6 +76,21 @@ export const LIVE_PRICE = {
 const USAGE_KEYS = Object.keys(emptyUsage()) as Array<keyof LiveUsage>;
 
 /** Token máy khách cộng (src/liveUsage.ts): chỉ số nguyên dương, mỗi số có trần; không có prompt lẫn response thì null. */
+const DIAG_KEYS = ['micFrames', 'gatedTalking', 'gatedDelay', 'pickerDrop', 'sent', 'loud', 'inTx', 'inChars', 'outTx', 'audioParts', 'turnsDone', 'interrupted',
+  'tools', 'gateOpens', 'recStarts', 'recFails', 'outLatMs', 'sampleRate', 'firstAudioMs', 'firstMicSentMs'] as const;
+const CTX_STATES = ['running', 'suspended', 'closed', 'interrupted'];
+/** Bộ đếm chẩn đoán của máy khách (live-end): chỉ khóa trong danh sách, chỉ số kẹp vào [-1, 1e7], ctxState chỉ giá trị biết. Sai dạng: null. */
+export function cleanDiag(d: unknown): Record<string, unknown> | null {
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return null;
+  const src = d as Record<string, unknown>, out: Record<string, unknown> = {};
+  for (const k of DIAG_KEYS) {
+    const n = src[k];
+    if (typeof n === 'number' && Number.isFinite(n)) out[k] = Math.max(-1, Math.min(1e7, Math.round(n)));
+  }
+  if (Array.isArray(src.ctxState)) out.ctxState = [0, 1].map((i) => { const v = src.ctxState as unknown[]; return CTX_STATES.includes(v[i] as string) ? v[i] : ''; });
+  return Object.keys(out).length ? out : null;
+}
+
 export function cleanUsage(u: unknown): LiveUsage | null {
   if (!u || typeof u !== 'object') return null;
   const t = emptyUsage();
@@ -589,6 +604,8 @@ export function makeLiveRouter(upload: multer.Multer, deps: LiveDeps = DEPS): ex
     const said = Math.round(Number(b.sec)) || 0;
     const lat = (Array.isArray(b.lat) ? b.lat : []).map(Number).filter((x: number) => Number.isFinite(x) && x >= 0);
     console.log(`[call-live] cuộc gọi ${id.slice(0, 8)}: ${sec} s (máy báo ${said} s), ${usd.toFixed(4)} USD${lat.length ? `, đáp sau trung vị ${median(lat)} ms` : ''}`);
+    const dg = cleanDiag(b.diag);
+    if (dg) console.log(`[call-live] cuộc gọi ${id.slice(0, 8)}: diag ${JSON.stringify(dg)}`);
     res.json({ ok: true });
   }));
 
