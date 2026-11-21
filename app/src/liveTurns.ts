@@ -128,7 +128,12 @@ export function liveStart(p: { id: string; family: number; themes: StoryTheme[];
  *  không lặp mãi), vì lời nhắn hỏi không kèm relay_open rơi vào ô đang mở (ô 0 sổ nhớ đọc, ô chuyện có thể chia sẻ). Đang hỏi chia sẻ (end_call
  *  giữa lúc ấy đi đường waitingNo, tiếng Mây đang bị giữ) hay o.wrap (app đã bảo Mây chào: máy bỏ trên bàn, Google sắp đóng kết nối; lời dặn: không
  *  bắt đầu gì mới) thì không bảo. */
-export function onTool(s: LiveState, f: { name: string; args?: Record<string, unknown> }, o: { wrap?: boolean } = {}): { state: LiveState; result: string; effects: Effect[] } {
+/** Người kể tự xin đổi chuyện ("kể chuyện khác", "không muốn kể chuyện này"): khi ấy mới được mở chuyện thứ hai dù chuyện đang mở đã có nhiều lượt. */
+// i18n-ok-begin: mẫu nhận lời người kể, không phải chữ hiện cho người dùng.
+export const ASK_SWITCH = /(chuyện khác|cái khác|không muốn kể|thôi chuyện này|đổi chuyện|something else|another story|don't want to talk|다른 얘기|다른 이야기)/i;
+// i18n-ok-end
+
+export function onTool(s: LiveState, f: { name: string; args?: Record<string, unknown> }, o: { wrap?: boolean; heard?: string } = {}): { state: LiveState; result: string; effects: Effect[] } {
   const st = s.idx === 1 ? { ...s, idx: 0 } : s;
   const arg = (k: string) => String(f.args?.[k] ?? '').trim();
   const say = (result: string, state = st, effects: Effect[] = []) => ({ state, result, effects });
@@ -140,7 +145,7 @@ export function onTool(s: LiveState, f: { name: string; args?: Record<string, un
       const theme = f.args?.theme, opener = arg('opener').slice(0, 300);
       const idx = st.next;
       // Một chuyện mỗi cuộc gọi: chuyện gần nhất đã có từ ONE_STORY_TURNS lượt kể thì không mở chuyện khác (dưới đó là người nghe không muốn kể chuyện ấy).
-      if (st.lastStory >= LIVE_FIRST_STORY && (st.turns[st.lastStory] ?? 0) >= ONE_STORY_TURNS) return say(SAY.oneStory);
+      if (st.lastStory >= LIVE_FIRST_STORY && (st.turns[st.lastStory] ?? 0) >= ONE_STORY_TURNS && !ASK_SWITCH.test(o.heard ?? '')) return say(SAY.oneStory);
       if (!isTheme(theme) || !st.themes.includes(theme) || !opener || idx >= LIVE_FIRST_STORY + LIVE_MAX_STORIES) return say(SAY.notOpened);
       return say(SAY.opened, { ...st, idx, next: idx + 1, theme, opener, lastStory: idx },
         [{ kind: 'job', job: { url: `${base}/story`, fields: { idx: String(idx), theme, opener }, last: true } }]);

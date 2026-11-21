@@ -537,7 +537,7 @@ export function CallLive({ me, onClose, onFallback }: { me: Me; onClose: (finish
       const name = String(f.name ?? '');
       if (name === 'story_open' || name === 'ask_share' || name === 'end_call') photoStop();
       // App đã bảo Mây chào (máy bỏ trên bàn, Google sắp đóng kết nối): end_call không bị bảo gọi relay_open trước.
-      const r = onTool(L.st, { name, args: f.args }, { wrap: L.away || L.idleByeAt > 0 });
+      const r = onTool(L.st, { name, args: f.args }, { wrap: L.away || L.idleByeAt > 0, heard: L.cap.pending?.heard || L.cap.heard });
       L.st = r.state;
       for (const e of r.effects) {
         if (e.kind === 'job') void outbox({ group: id, ...e.job });

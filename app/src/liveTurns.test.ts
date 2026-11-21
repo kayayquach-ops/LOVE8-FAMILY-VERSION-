@@ -1017,6 +1017,10 @@ test('một chuyện mỗi cuộc gọi: chuyện đã có từ hai lượt kể
   assert.equal(t.state.lastStory, LIVE_FIRST_STORY + 1, 'ảnh theo chuyện mới');
   for (const a of ['Hồi bé mẹ hay chơi ô ăn quan', 'Chơi với cái Hoa nhà bên']) t = { ...t, state: onTurn(t.state, { question: 'Q', transcript: a, seconds: 5 }).state };
   assert.equal(onTool(t.state, OPEN).result, ONE_STORY, 'chuyện thứ hai đã có hai lượt: không mở thêm');
+  // Người kể tự xin đổi chuyện giữa chừng thì mới mở chuyện khác.
+  assert.equal(onTool(t.state, OPEN, { heard: 'thôi mẹ kể chuyện khác nhé' }).result, 'Story opened.');
+  assert.equal(onTool(t.state, OPEN, { heard: 'mẹ không muốn kể chuyện này nữa' }).result, 'Story opened.');
+  assert.equal(onTool(t.state, OPEN, { heard: 'ngon lắm con ạ' }).result, ONE_STORY);
 });
 
 test('lời nhắn gửi người trong nhà: Mây quên relay_open mà hỏi "có lời gì gửi ... không" lúc không có chuyện đang mở thì lượt sau vào ô 1; câu an ủi giữa chuyện thì không', () => {
