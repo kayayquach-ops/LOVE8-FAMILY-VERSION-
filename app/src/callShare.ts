@@ -78,6 +78,14 @@ const STRICT_ASK: Partial<Record<Lang, RegExp>> = {
   vi: /(^|\s)(là sao|cơ|ai|gì|nào|à|hả)$|(?<!không)\ssao$/,
   en: /(^|\s)with whom?(\s|$)/,
 };
+/** Chữ hỏi lại, phủ định, "chỉ", "chắc" ở bất cứ đâu, chế độ chặt: chưa rõ, xét sau SHARE_SURE ("sao không chia sẻ", "why not", "I don't mind" vẫn là
+ *  đồng ý) và sau SHARE_NO (lời từ chối rõ vẫn là từ chối). Gemini hay bỏ dấu hỏi: "sao lại chia sẻ", "of course not", "share it with dad only" không
+ *  được thành đồng ý. "gì" gồm "làm gì", "cái gì"; ko: 왜 (sao), 누구 (ai), 만 dính đuôi chữ ("아빠만": chỉ bố). */
+const STRICT_NOT: Record<Lang, RegExp> = {
+  vi: /(^|\s)(sao lại|sao phải|tại sao|vì sao|gì|ai|chỉ|chắc)(\s|$)/,
+  en: /\bnot\b|n['’]t\b|\bwhy\b(?! not)|\bonly\b|\bjust\b|\bwhom?\b|\bwhat\b/,
+  ko: /왜|누구|\S만요?(\s|$)/,
+};
 /** Tiếng đệm: cả câu chỉ có những chữ này (kèm ạ, chứ, rồi, nhé, 요). Chế độ chặt coi là chưa rõ và nghe tiếp một lần (shareNext). */
 const BACKCHANNEL: Record<Lang, RegExp> = {
   vi: /^(dạ|vâng|ừ|ừm|ờ|có|rồi|ok|okay|ạ|chứ|nhé)( (dạ|vâng|ừ|ừm|ờ|có|rồi|ok|okay|ạ|chứ|nhé))*$/,
@@ -90,7 +98,8 @@ const norm = (raw: string) => raw.toLowerCase().normalize('NFC').replace(/[.,!?�
 
 /** Câu trả lời ngắn là đồng ý, từ chối, hay chưa rõ (null: chờ bấm nút). Gọn chữ như photoNo; lời rỗng hay dài quá 10 từ thì chưa rõ.
  *  Đồng ý nhầm thì không gỡ được (tập, sổ nhớ sang cả nhà, có báo), còn chưa rõ chỉ hiện hai nút rồi hết giờ là giữ riêng: nghi thì chưa rõ.
- *  o.strict (Mây Live): thêm câu lưỡng lự STRICT_HEDGE và câu hỏi ngược STRICT_ASK, và sau lời từ chối chỉ lời đồng ý rõ ràng STRICT_YES mới là đồng ý. */
+ *  o.strict (Mây Live): thêm câu lưỡng lự STRICT_HEDGE và câu hỏi ngược STRICT_ASK, và sau lời từ chối chỉ lời đồng ý rõ ràng STRICT_YES không kèm
+ *  chữ của STRICT_NOT mới là đồng ý. */
 export function shareAnswer(text: string | null | undefined, lang: Lang = 'vi', o: ShareOpts = {}): 'yes' | 'no' | null {
   const raw = String(text ?? '');
   const s = norm(raw);
@@ -100,7 +109,7 @@ export function shareAnswer(text: string | null | undefined, lang: Lang = 'vi', 
   if (/[?？]/.test(raw) || SHARE_HEDGE[lang]?.test(s) || (o.strict && (STRICT_HEDGE[lang].test(s) || STRICT_ASK[lang]?.test(s)))) return null;
   if (SHARE_SURE[lang]?.test(s)) return 'yes';
   if (SHARE_NO[lang].test(s)) return 'no';
-  if (o.strict) return STRICT_YES[lang].test(s) ? 'yes' : null;
+  if (o.strict) return !STRICT_NOT[lang].test(s) && STRICT_YES[lang].test(s) ? 'yes' : null;
   return SHARE_YES[lang].test(s) || SHARE_YES_WHOLE[lang]?.test(s) ? 'yes' : null;
 }
 

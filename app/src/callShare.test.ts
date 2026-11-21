@@ -123,3 +123,25 @@ test('chế độ chặt: câu hỏi ngược (đuôi "là sao", "cơ", "ai", "g
   // Mặc định không đổi.
   assert.equal(shareAnswer('được à'), 'yes', 'mặc định như cũ');
 });
+
+test('chế độ chặt: câu hỏi ngược, lời từ chối có "not", "chỉ", "chắc" không bao giờ là đồng ý (Gemini hay bỏ dấu hỏi, chia sẻ không gỡ được sau khi cúp)', () => {
+  const S = { strict: true };
+  const refuse: Array<[string, 'vi' | 'en' | 'ko']> = [
+    ['sao lại chia sẻ', 'vi'], ['sao phải chia sẻ', 'vi'], ['tại sao lại chia sẻ', 'vi'], ['cái gì chia sẻ', 'vi'], ['ai được nghe', 'vi'], ['chắc là được', 'vi'],
+    ['vì sao chia sẻ', 'vi'], ['chỉ bố được nghe', 'vi'], ['chia sẻ làm gì', 'vi'],
+    ['of course not', 'en'], ['please do not', 'en'], ['why would you share it', 'en'], ['share it with dad only', 'en'], ['sure, who will hear it', 'en'], ['just share it with mom', 'en'],
+    ["sure, you can't share it", 'en'], ['of course, what for', 'en'],
+    ['왜 공유해요', 'ko'], ['아빠만 들려줘요', 'ko'], ['누구한테 들려줘요', 'ko'],
+  ];
+  for (const [s, l] of refuse) assert.equal(shareAnswer(s, l, S), null, s);
+  // Câu đồng ý có chữ phủ định hay chữ hỏi vẫn là đồng ý: SHARE_SURE xét trước.
+  const yes: Array<[string, 'vi' | 'en' | 'ko']> = [
+    ['sao không chia sẻ', 'vi'], ['dạ được', 'vi'], ['ừ chia sẻ đi', 'vi'], ['why not', 'en'], ["I don't mind", 'en'], ['yeah sure', 'en'], ['네 좋아요', 'ko'],
+  ];
+  for (const [s, l] of yes) assert.equal(shareAnswer(s, l, S), 'yes', s);
+  // Lời từ chối rõ vẫn là từ chối, không thành chưa rõ.
+  for (const s of ['chắc không đâu', 'thôi chỉ mình mẹ biết']) assert.equal(shareAnswer(s, 'vi', S), 'no', s);
+  // Mặc định (màn cũ Call.tsx) không đổi.
+  assert.equal(shareAnswer('chắc là được'), 'yes', 'mặc định như cũ');
+  assert.equal(shareAnswer('sure, who will hear it', 'en'), 'yes', 'mặc định như cũ');
+});
