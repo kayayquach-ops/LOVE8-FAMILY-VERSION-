@@ -115,6 +115,10 @@ test('chế độ chặt: câu hỏi ngược (đuôi "là sao", "cơ", "ai", "g
   assert.equal(shareAnswer('sure, share it with whom', 'en', S), null);
   assert.equal(shareAnswer('좋아하시는 거', 'ko', S), null);
   assert.equal(shareAnswer('좋아해요', 'ko', S), null);
+  for (const k of ['좋아합니다', '좋아한다', '좋아할 거예요', '좋아할까요']) assert.equal(shareAnswer(k, 'ko', S), null, k);
+  assert.equal(shareAnswer('chia sẻ sao', 'vi', S), null);
+  assert.equal(shareAnswer('được, không sao', 'vi', S), 'yes');
+  assert.equal(shareAnswer('sao không chia sẻ', 'vi', S), 'yes');
   assert.equal(shareAnswer('좋아요', 'ko', S), 'yes');
   // Mặc định không đổi.
   assert.equal(shareAnswer('được à'), 'yes', 'mặc định như cũ');

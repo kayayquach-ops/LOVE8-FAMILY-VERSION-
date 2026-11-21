@@ -71,11 +71,11 @@ const STRICT_HEDGE: Record<Lang, RegExp> = {
 const STRICT_YES: Record<Lang, RegExp> = {
   vi: /(^|\s)(được|đồng ý|chia sẻ|có chứ)(\s|$)/,
   en: /(^|\s)(yes|sure|go ahead|of course|please do|share it|that['’]?s fine)(\s|$)/,
-  ko: /(?<!(안|못) ?)(좋아요|좋아(?![하해했])|그래요|돼요|되요|공유해|들려줘|물론)/,
+  ko: /(?<!(안|못) ?)(좋아요|좋아(?![하-햏])|그래요|돼요|되요|공유해|들려줘|물론)/,
 };
 /** Câu hỏi ngược ở chế độ chặt: đuôi câu "là sao", "cơ", "ai", "gì", "nào", "à", "hả" (không dùng "sao" trơn: "sao không" là đồng ý), "with who". */
 const STRICT_ASK: Partial<Record<Lang, RegExp>> = {
-  vi: /(^|\s)(là sao|cơ|ai|gì|nào|à|hả)$/,
+  vi: /(^|\s)(là sao|cơ|ai|gì|nào|à|hả)$|(?<!không)\ssao$/,
   en: /(^|\s)with whom?(\s|$)/,
 };
 /** Tiếng đệm: cả câu chỉ có những chữ này (kèm ạ, chứ, rồi, nhé, 요). Chế độ chặt coi là chưa rõ và nghe tiếp một lần (shareNext). */
