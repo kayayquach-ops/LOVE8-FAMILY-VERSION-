@@ -1,6 +1,12 @@
 # Sweet Home (tên cũ Homeletter): bàn giao cho phiên làm việc tiếp theo
 
-App gia đình cho du học sinh ở xa và bố mẹ. Bản thật: **https://homeletter-production.up.railway.app** (tên miền giữ tên cũ). Cập nhật lần cuối: 2026-11-22, nhánh `ux-simple-poetic`. Bản đang chạy: deploy 22/11/2026 (merge `552ce8e`, xem "Đợt 22/11/2026"), đã đẩy `ux-simple-poetic` và `main` lên origin.
+App gia đình cho du học sinh ở xa và bố mẹ. Bản thật: **https://homeletter-production.up.railway.app** (tên miền giữ tên cũ). Cập nhật lần cuối: 2026-11-23, nhánh `ux-simple-poetic`. Bản đang chạy: deploy 23/11/2026 (`93eca3b`, mục Ưu đãi, xem "Đợt 23/11/2026"), đã đẩy `ux-simple-poetic` và `main` lên origin.
+
+## Đợt 23/11/2026 (đã deploy 23/11, `93eca3b`)
+
+- **Ưu đãi của nhãn hàng** (user gửi ảnh trang của mình app Olive Young, muốn có phần coupon của nhãn hàng chăm sóc bố mẹ: ghế massage, sức khoẻ, giao thuốc, thực phẩm chức năng, khám tại nhà). Ô "Ưu đãi" kèm số ở màn Cài đặt, băng rôn "Ưu đãi cho bố mẹ tháng này", màn danh sách thẻ vé xé có lọc nhóm, "Sao chép mã", nhãn "Gói gia đình" (chưa có thanh toán nên ai cũng dùng được). Bảng `brand_coupons` (có cột `lang`), `GET /api/coupons` sau đăng nhập, thêm/tắt bằng `app/scripts/coupons.mjs`. Chi tiết `app/docs/uu-dai.md`, ảnh `app/docs/uu-dai/`.
+- Bản thật CHƯA có coupon nào (chưa có đối tác): người dùng thấy ô 0 và màn chờ. Chưa hợp tác thật thì KHÔNG ghi tên nhãn hàng thật.
+- Đã kiểm: tsc, i18n, build, 351 test; chạy thử trên máy với Postgres local; live trả 200, log khởi động sạch.
 
 ## Đợt 22/11/2026 (đã deploy 22/11, merge `552ce8e`)
 
