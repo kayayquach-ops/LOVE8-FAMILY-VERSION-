@@ -39,3 +39,14 @@ Không làm:
 ## Giấy gấp sao
 
 Cũng từ 20/11/2026: không bán lẻ giấy nữa, mọi giấy ai cũng dùng được. Sau này gói gia đình trả theo tháng/kỳ lo hết; chỗ kiểm gói để sẵn chú thích ở `PUT /api/jar/seed` (`server/jar.ts`), chưa làm. Bảng `owned_seeds` giữ nguyên, không đọc nữa.
+
+## Lọ sao không có trần (22/11/2026)
+
+Lọ không còn mốc 40 sao, không còn "/ 40", không còn "gấp thêm N sao là mở quà", không còn bốn món quà. Lọ cứ đầy dần như điểm tích luỹ, số trên lọ là tổng số sao từ đầu tới giờ.
+
+- Máy chủ: `GET /api/jar` trả `total` (tổng mọi việc đã làm: bài, trả lời, nhiệm vụ) và `count` của từng người là tổng của người đó. Không còn `level`, `capacity`, `gifts`. `GET /api/home` trả `jar: { total }`, `GET /api/week` trả `jar: { points }`. Quà trước đây chỉ là con số tính ra từ `total / 40`, không có bảng hay trạng thái lưu riêng, nên bỏ hẳn, không để lại đường nào dẫn tới.
+- Dữ liệu cũ: không xoá gì. Nhà đã có sao thì số sao hiện ra là tổng thật (trước đó lọ chỉ hiện phần dư sau mỗi 40 sao, nên số trên lọ sẽ nhảy lên một lần). Giấy từng người, bảng `member_seed`, `owned_seeds` giữ nguyên.
+- Vẽ lọ (`src/JarArt.tsx`): có 6 mức cỡ sao 26, 21, 17, 14, 11.5, 9.5. Tới 48 sao vẫn là lọ cũ (sao to, xếp y như trước). Hơn 48 thì cả lọ xếp lại với sao nhỏ hơn, chứa được nhiều hơn, nên lọ lúc nào cũng đầy vừa phải. Ở mức cuối (khoảng 370 sao) chỉ vẽ các sao mới nhất nằm trên, sao cũ coi như lắng xuống đáy và không vẽ nữa, số đếm vẫn là tổng thật. Chỗ từng sao cố định theo mã nhà và mức, nên lọ vẽ lại y hệt.
+- Rơi: sao mới vẫn rơi từ nắp (tối đa 5 sao một lần). Lúc lọ đổi mức (sao nhỏ lại) thì không rơi, chỉ hiện lọ mới. Máy nhớ tổng số và số sao từng người đã thấy (localStorage `hl-jar:<nhà>`) để biết sao nào mới; bản nhớ cũ vẫn đọc được.
+- Chữ: bỏ khoá `home.jar.of`, `home.jar.left`, `home.jar.stars`, `jar.gift.*`, `jar.gifts`, `jar.opened`, `jar.fullN` ở cả vi, ko, en. Dưới số sao luôn là câu `jar.sub`.
+- Ảnh kiểm: `app/docs/jar-redesign/lo-khong-tran.png` (lọ 0, 40, 48, 49, 75, 120, 250, 500, 1500 sao).

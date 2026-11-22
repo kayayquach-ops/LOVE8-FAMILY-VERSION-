@@ -2,7 +2,6 @@ import express from 'express';
 import { pool } from './db.ts';
 import { upcoming } from './calendar.ts';
 import { unreadLetters } from './letters.ts';
-import { JAR_CAPACITY } from './jar.ts';
 import { syncMissions } from './missions.ts';
 import { listPodcasts } from './podcast.ts';
 import { tReq } from './i18n.ts';
@@ -36,7 +35,7 @@ homeRouter.get('/home', async (req: any, res: any) => {
       upcoming: ev.slice(0, 4),
       letters,
       latest: latest.rows.map((r: any) => ({ id: r.id, media: r.media, kind: r.kind, authorId: r.author_id, createdAt: r.created_at })),
-      jar: { level: total.rows[0].n % JAR_CAPACITY, capacity: JAR_CAPACITY },
+      jar: { total: total.rows[0].n },
       week: counts,
       podcasts: pods.filter((p) => p.status === 'ready').slice(0, 8)
         .map((p) => ({ id: p.id, title: p.title, topic: p.kind === 'topic' ? tReq('podcastGen.familyTells') : p.topic, memberId: p.memberId, duration: p.duration, cover: p.cover, createdAt: p.createdAt })),

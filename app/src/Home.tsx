@@ -22,12 +22,12 @@ type HomeData = {
   letters?: number;
   upcoming: Array<{ id: string; title: string; kind: string; inDays: number; years: number | null }>;
   latest: Array<{ id: string; media: string; kind: string; authorId: string; createdAt: string }>;
-  jar: { level: number; capacity: number };
+  jar: { total: number };
   week: Record<string, number>;
   podcasts: Podcast[];
 };
 // Phần của /api/jar mà Trang chủ cần: màu giấy từng người để vẽ lọ thật. Dùng chung bản lưu 'jar' với màn lọ.
-type JarLite = { level: number; capacity: number; gifts?: number; seeds: Array<{ memberId: string; seed: string; count: number }> };
+type JarLite = { total: number; seeds: Array<{ memberId: string; seed: string; count: number }> };
 
 async function get<T>(path: string): Promise<T> {
   const tk = token.get();
@@ -88,11 +88,11 @@ export function Home({ me, callDue, callTrial, onCall, onChanged, onOpen }: { me
   // Lọ: đọc bản lưu mỗi lần vẽ (màn lọ đổi sao thì về đây thấy ngay), chỉ hỏi lại máy chủ khi số sao khác bản lưu.
   const jar = cached<JarLite>('jar');
   useEffect(() => {
-    if (!data || jar?.level === data.jar.level) return;
+    if (!data || jar?.total === data.jar?.total) return;
     let live = true;
     get<JarLite>('/api/jar').then((j) => { remember('jar', j); if (live) setJarTick((n) => n + 1); }).catch(() => {});
     return () => { live = false; };
-  }, [data?.jar.level]);
+  }, [data?.jar?.total]);
 
   useEffect(() => {
     let live = true;
@@ -109,8 +109,7 @@ export function Home({ me, callDue, callTrial, onCall, onChanged, onOpen }: { me
 
   const go = (s: Screen, arg?: string) => () => { tap(); onOpen(s, arg); };
   const byId = (id: string) => me.members.find((m) => m.id === id);
-  const level = data?.jar.level ?? jar?.level ?? 0;
-  const capacity = data?.jar.capacity ?? jar?.capacity ?? 40;
+  const stars = data?.jar?.total ?? jar?.total ?? 0;
   const shelf = data?.podcasts ?? [];
   const inviteNow = () => { tap(); void shareInvite(me.family.code, me.family.name); };
   const others = me.members.filter((m) => m.id !== me.me.id);
@@ -129,8 +128,6 @@ export function Home({ me, callDue, callTrial, onCall, onChanged, onOpen }: { me
   };
   // Chữ báo vắng để xám như mọi dòng; chỉ người vắng lâu nhất có một dòng nhắc hỏi thăm dưới danh sách.
   const quietest = others.filter((m) => hoursSince(m.lastSeen) > SILENT_HOURS).sort((a, b) => hoursSince(b.lastSeen) - hoursSince(a.lastSeen))[0];
-  // "gấp thêm 26 sao là mở quà": số sao viết tay mực tím, chen giữa câu theo thứ tự từng thứ tiếng.
-  const [leftA, leftB] = t('home.jar.left', { stars: '\u0000' }).split('\u0000');
 
   const letters = (
     <button className={`home-mail${data?.letters ? ' new' : ''}`} onClick={go('letters')}>
@@ -216,12 +213,12 @@ export function Home({ me, callDue, callTrial, onCall, onChanged, onOpen }: { me
         </section>
       )}
 
-      {/* Lọ sao: lọ nhỏ vẽ tay, số sao, còn bao nhiêu sao là mở quà. Luôn giữ chỗ để phần dưới không nhảy khi số sao về. */}
+      {/* Lọ sao: lọ nhỏ vẽ tay, tổng số sao (không có trần). Luôn giữ chỗ để phần dưới không nhảy khi số sao về. */}
       <button className="home-jar" onClick={go('jar')}>
-        <JarArt rows={jar?.seeds ?? []} gifts={jar?.gifts ?? 0} family={me.family.id} width={110} ready={!!jar} />
+        <JarArt rows={jar?.seeds ?? []} family={me.family.id} width={110} ready={!!jar} />
         <span className={`home-jar-text${data || jar ? '' : ' wait'}`}>
-          <b>{level}<small>{t('home.jar.of', { capacity })}</small></b>
-          <span>{level ? <>{leftA}<span className="hand">{t('home.jar.stars', { n: capacity - level })}</span>{leftB}</> : t('jar.sub')}</span>
+          <b>{stars}</b>
+          <span>{t('jar.sub')}</span>
         </span>
       </button>
 

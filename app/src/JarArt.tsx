@@ -5,18 +5,22 @@ import { buzz, sfx, tap } from './sound';
 import { t } from './i18n';
 
 // Lọ sao giấy (bộ giao diện 14/11, bản mẫu app/docs/ui-moi/ban-mau.html): lọ vẽ tay nét mực, trong là sao giấy gấp
-// xếp từ đáy lên thành hàng so le 6 rồi 5 sao, mỗi người một màu giấy. Chỗ và góc của từng sao chỉ phụ thuộc số thứ tự
+// xếp từ đáy lên thành hàng so le, mỗi người một màu giấy. Lọ không có trần: sao càng nhiều thì xếp càng khít, sao nhỏ dần
+// qua từng "mức" (LEVELS) để lọ lúc nào cũng đầy vừa phải; quá mức cuối thì chỉ vẽ phần sao mới nhất nằm trên, sao cũ lắng xuống đáy (không vẽ nữa). Chỗ và góc của từng sao chỉ phụ thuộc số thứ tự
 // và mã nhà, nên lọ lần nào vẽ cũng y hệt. Hai lớp SVG: lớp sao (cắt theo thân lọ) và lớp nét mực có bộ lọc #hl-wob
 // (Mesh định nghĩa) ở trên, để sao rơi hay rung thì lớp nét mực không phải vẽ lại. Chỉ animate transform và opacity.
 
 const P = LUCKY_STAR_PATH;
 const FOLDS = 'M12 12.6 12 5.4M12 12.6 18.6 10M12 12.6 16.4 19.4M12 12.6 7.6 19.4M12 12.6 5.4 10';
-const STAR = 26;
 const BODY = 'M58 66C44 74 32 90 32 112L32 196C32 214 46 224 64 224L136 224C154 224 168 214 168 196L168 112C168 90 156 74 142 66';
 // Vùng cắt của lớp sao: thân lọ, kéo lên thẳng qua cổ lọ để sao mới rơi từ trên nắp vẫn thấy được (đi sau nắp).
 const CLIP = 'M58 0L58 66C44 74 32 90 32 112L32 196C32 214 46 224 64 224L136 224C154 224 168 214 168 196L168 112C168 90 156 74 142 66L142 0Z';
 const LID = 'M56 44C56 36 60 33 68 33L132 33C140 33 144 36 144 44L144 54C144 61 140 64 132 64L68 64C60 64 56 61 56 54Z';
 const MAX_DROPS = 5;
+// Cỡ sao theo mức. Mức 0 (tới 48 sao) giữ y nguyên lọ cũ; các mức sau nhỏ dần, chứa nhiều hơn.
+const SIZES = [26, 21, 17, 14, 11.5, 9.5];
+const FIRST_CAP = 48;
+const KEEP = 600;
 
 // Mỗi loại "hạt" cũ (mã giữ nguyên trong dữ liệu và API) giờ là một loại giấy gấp sao. Giấy đặc biệt vẽ phẳng, không bóng.
 type Paper = { fill: string; kind?: 'gold' | 'crystal' | 'rainbow' };
@@ -80,31 +84,45 @@ function hash(s: string) {
   return h >>> 0;
 }
 
-/** Chỗ từng sao (toạ độ lọ 200x240): hàng từ đáy, so le 6 rồi 5 sao, lệch và xoay ngẫu nhiên cố định theo nhà; sx: chỗ bắt đầu rơi. */
+/** Chỗ từng sao (toạ độ lọ 200x240) ở một mức: hàng từ đáy, so le n rồi n-1 sao, lệch và xoay ngẫu nhiên cố định theo nhà; sx: chỗ bắt đầu rơi. */
 type Spot = { x: number; y: number; r: number; sx: number };
 const spotCache = new Map<string, Spot[]>();
 const r1 = (v: number) => Math.round(v * 10) / 10;
-function spotsFor(fam: string): Spot[] {
-  const hit = spotCache.get(fam);
+function spotsFor(fam: string, level: number): Spot[] {
+  const key = `${fam}:${level}`;
+  const hit = spotCache.get(key);
   if (hit) return hit;
-  const r = prng(hash(fam));
+  const size = SIZES[level], k = size / 26;
+  const sp = 21 * k, n = Math.round(106 / sp) + 1, rowH = 16.5 * k, base = 224 - 18 * (0.69 + 0.31 * k);
+  const rows = Math.floor((base - 72) / rowH) + 1;
+  const r = prng(hash(fam) + level);
   const out: Spot[] = [];
-  for (let i = 0; i < 48; i++) {
-    const pair = Math.floor(i / 11), k = i % 11, row = pair * 2 + (k < 6 ? 0 : 1), col = k < 6 ? k : k - 6;
-    out.push({
-      x: r1((row % 2 ? 58 : 47.5) + col * 21 + (r() - 0.5) * 4),
-      y: r1(206 - row * 16.5 + (r() - 0.5) * 4),
-      r: r1((r() - 0.5) * 70),
-      sx: r1(100 + (r() - 0.5) * 30),
-    });
+  for (let row = 0; row < rows; row++) {
+    const cols = row % 2 ? n - 1 : n, x0 = 100 - (n - 1) * sp / 2 + (row % 2 ? sp / 2 : 0);
+    for (let col = 0; col < cols; col++) {
+      out.push({
+        x: r1(x0 + col * sp + (r() - 0.5) * 4 * k),
+        y: r1(base - row * rowH + (r() - 0.5) * 4 * k),
+        r: r1((r() - 0.5) * 70),
+        sx: r1(100 + (r() - 0.5) * 30),
+      });
+    }
   }
-  spotCache.set(fam, out);
+  const cap = level === 0 ? FIRST_CAP : out.length;
+  out.length = Math.min(out.length, cap);
+  spotCache.set(key, out);
   return out;
 }
+/** Mức vừa đủ chứa total sao; quá mức cuối thì ở mức cuối. */
+const levelFor = (total: number) => {
+  for (let l = 0; l < SIZES.length - 1; l++) if (total <= spotsFor('', l).length) return l;
+  return SIZES.length - 1;
+};
 
 type Row = { memberId: string; seed: string; count: number };
-/** Bản lưu theo nhà ở localStorage['hl-jar:<nhà>']: lần đổ lọ (g), thứ tự người của từng sao (m), loại giấy (t). Bản cũ có thêm p (vị trí), bỏ qua. */
-type Saved = { g: number; m: string[]; t: string[] };
+/** Bản lưu theo nhà ở localStorage['hl-jar:<nhà>']: thứ tự người của các sao mới nhất (m, tối đa KEEP), loại giấy (t), tổng số sao đã thấy (n)
+ * và số sao từng người (c). Bản cũ có g (số lần đổ lọ) thì bỏ qua g. */
+type Saved = { m: string[]; t: string[]; n?: number; c?: Record<string, number> };
 
 const mem = new Map<string, Saved | null>();
 const keyOf = (fam: string) => `hl-jar:${fam}`;
@@ -133,60 +151,64 @@ function interleave(rows: Row[], left: Map<string, number>) {
   return out;
 }
 
-/** Thứ tự sao trong lọ (theo người): giữ thứ tự đã thấy trên máy này, sao mới nối vào cuối (đó là các sao sẽ rơi). */
-function sequence(rows: Row[], prev: Saved | null, gifts: number, fam: string): { m: string[]; fresh: number } {
-  const left = new Map(rows.map((r) => [r.memberId, r.count]));
-  if (prev && prev.g === gifts) {
-    const kept: string[] = [];
-    for (const id of prev.m) {
-      const n = left.get(id) ?? 0;
-      if (n > 0) { kept.push(id); left.set(id, n - 1); }
+/** Thứ tự sao trong lọ (theo người): giữ thứ tự đã thấy trên máy này, sao mới nối vào cuối (đó là các sao sẽ rơi). Chỉ giữ KEEP sao cuối. */
+function sequence(rows: Row[], prev: Saved | null, fam: string): { m: string[]; fresh: number; n: number; c: Record<string, number> } {
+  const c = Object.fromEntries(rows.map((r) => [r.memberId, r.count]));
+  const n = rows.reduce((a, r) => a + r.count, 0);
+  if (prev) {
+    // sao mới của từng người = số hiện có trừ số máy này đã thấy; có người ít đi (dữ liệu lạ) thì coi như lọ chưa thấy bao giờ
+    const seen = new Map<string, number>(Object.entries(prev.c ?? {}));
+    if (!prev.c) for (const id of prev.m) seen.set(id, (seen.get(id) ?? 0) + 1);
+    const left = new Map(rows.map((r) => [r.memberId, r.count - (seen.get(r.memberId) ?? 0)]));
+    if ([...left.values()].every((v) => v >= 0)) {
+      const added = interleave(rows, left);
+      return { m: [...prev.m, ...added].slice(-KEEP), fresh: added.length, n, c };
     }
-    const added = interleave(rows, left);
-    return { m: [...kept, ...added], fresh: added.length };
-  }
-  if (prev && gifts > prev.g) {
-    // lọ vừa đầy, đổ ra mở quà: lọ mới, mọi sao hiện có là sao mới
-    const added = interleave(rows, left);
-    return { m: added, fresh: added.length };
   }
   // máy này chưa thấy lọ bao giờ: trộn cố định theo nhà, không rơi
   const all = rows.flatMap((r) => Array<string>(r.count).fill(r.memberId));
   const r = prng(hash(fam));
   for (let i = all.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [all[i], all[j]] = [all[j], all[i]]; }
-  return { m: all, fresh: 0 };
+  return { m: all.slice(-KEEP), fresh: 0, n, c };
 }
 
 const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const place = (s: Spot, dy = 0, dr = 0) => `translate(${s.x}px,${r1(s.y + dy)}px) rotate(${r1(s.r + dr)}deg)`;
 
-/** Lọ với các sao. rows: số sao và loại giấy từng người (từ /api/jar), gifts: số lần lọ đã đầy (đổi thì là lọ mới).
+/** Lọ với các sao. rows: tổng số sao và loại giấy từng người (từ /api/jar), không có trần.
  * ready=false khi chưa có số liệu lọ: vẽ lọ trống, không ghi nhớ "đã thấy" để lúc số liệu về không rơi nhầm cả lọ.
  * tappable: chạm vào lọ thì sao rung nhẹ (màn lọ). */
-export function JarArt({ rows, gifts = 0, family, width = 250, ready = true, tappable = false }: { rows: Row[]; gifts?: number; family: string; width?: number; ready?: boolean; tappable?: boolean }) {
+export function JarArt({ rows, family, width = 250, ready = true, tappable = false }: { rows: Row[]; family: string; width?: number; ready?: boolean; tappable?: boolean }) {
   const uid = `jr${useId().replace(/[^\w-]/g, '')}`;
   const starsEl = useRef<SVGGElement>(null);
   const timers = useRef<number[]>([]);
   const rowsKey = rows.map((r) => `${r.memberId}:${r.seed}:${r.count}`).join('|');
   const prev = loadSaved(family);
-  const prevKey = prev ? `${prev.g}:${prev.m.join(',')}:${prev.t.join(',')}` : '';
-  const spots = spotsFor(family);
+  const prevKey = prev ? `${prev.n ?? ''}:${prev.m.length}:${prev.m.slice(-6).join(',')}` : '';
 
-  const { m, types, fresh } = useMemo(() => {
-    const seq = sequence(rows, prev, gifts, family);
+  const { m, types, fresh, level, seq } = useMemo(() => {
+    const seq = sequence(rows, prev, family);
+    const level = levelFor(seq.n);
     const typeOf = new Map(rows.map((r) => [r.memberId, r.seed]));
-    return { m: seq.m.slice(0, spots.length), types: seq.m.slice(0, spots.length).map((id) => typeOf.get(id) ?? 'heart_red'), fresh: seq.fresh };
+    // Số sao vẽ = tối đa số chỗ của mức; sao cũ hơn nằm dưới đáy, không vẽ.
+    const slots = spotsFor(family, level).length;
+    const m = seq.m.slice(-Math.min(slots, seq.n));
+    // Mức đổi (sao nhỏ lại, xếp lại cả lọ) thì không rơi, chỉ hiện lọ mới.
+    const same = !prev || levelFor(prev.n ?? prev.m.length) === level;
+    return { m, types: m.map((id) => typeOf.get(id) ?? 'heart_red'), fresh: same ? Math.min(seq.fresh, m.length) : 0, level, seq };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rowsKey, gifts, family, prevKey]);
-  const seqKey = `${gifts}|${m.join(',')}|${types.join(',')}`;
+  }, [rowsKey, family, prevKey]);
+  const spots = spotsFor(family, level);
+  const size = SIZES[level];
+  const seqKey = `${m.join(',')}|${types.join(',')}`;
 
   useLayoutEffect(() => {
     if (!ready) return;
     const now = loadSaved(family);
     // máy này đã thấy lọ đúng như thế này (ví dụ lọ khác trên trang vừa thả) thì không rơi lại
-    const same = now && now.g === gifts && now.m.length === m.length && now.m.every((x, i) => x === m[i]) && now.t.every((x, i) => x === types[i]);
+    const same = now && now.n === seq.n && now.m.length === seq.m.length && now.m.every((x, i) => x === seq.m[i]);
     if (same) return;
-    save(family, { g: gifts, m, t: types });
+    save(family, { m: seq.m, t: types, n: seq.n, c: seq.c });
     if (!fresh || document.hidden) return;
     const els = starsEl.current?.children;
     if (!els) return;
@@ -225,7 +247,9 @@ export function JarArt({ rows, gifts = 0, family, width = 250, ready = true, tap
     const els = starsEl.current?.children;
     if (!els || reduced()) return;
     tap();
-    for (let i = 0; i < els.length; i++) {
+    // lọ đầy sao nhỏ: chỉ rung một phần cho nhẹ máy
+    const step = Math.max(1, Math.floor(els.length / 120));
+    for (let i = 0; i < els.length; i += step) {
       const s = spots[i];
       const k = (i % 2 ? 1 : -1) * (4 + ((i * 37) % 5));
       (els[i] as SVGGElement).animate([
@@ -247,7 +271,7 @@ export function JarArt({ rows, gifts = 0, family, width = 250, ready = true, tap
         <g clipPath={`url(#${uid}b)`} ref={starsEl}>
           {m.map((_, i) => (
             <g key={i} transform={`translate(${spots[i].x} ${spots[i].y}) rotate(${spots[i].r})`}>
-              <g transform={`translate(${-STAR / 2} ${-STAR / 2}) scale(${STAR / 24})`}><StarBody seed={types[i]} clip={`${uid}s`} /></g>
+              <g transform={`translate(${-size / 2} ${-size / 2}) scale(${size / 24})`}><StarBody seed={types[i]} clip={`${uid}s`} /></g>
             </g>
           ))}
         </g>

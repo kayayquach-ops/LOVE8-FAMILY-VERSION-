@@ -3,8 +3,6 @@ import { pool } from './db.ts';
 import { errorBody, tReq, tVi } from './i18n.ts';
 import { syncMissions } from './missions.ts';
 
-export const JAR_CAPACITY = 40;
-
 export type SeedShape = 'heart' | 'round' | 'star' | 'petal' | 'drop' | 'leaf';
 export type SeedDef = { id: string; name: string; colors: [string, string]; shape: SeedShape };
 
@@ -55,17 +53,16 @@ jarRouter.get('/jar', wrap(async (req, res) => {
          union all select member_id, created_at from missions_done where family_id = $1
        ) e order by at`, [fid]),
   ]);
+  // Lọ không có trần: mỗi việc làm là một sao, đếm từ đầu tới giờ (không còn chu kỳ 40 sao, không còn quà mở theo lọ đầy).
   const total = ev.rows.length;
-  const level = total % JAR_CAPACITY;
-  const cycle = level ? ev.rows.slice(-level) : [];
   const picked = new Map<string, string>(sel.rows.map((r: any) => [r.member_id, r.seed]));
   const seeds = ms.rows.map((m: any, i: number) => ({
     memberId: m.id,
     seed: picked.get(m.id) ?? DEFAULTS[i % DEFAULTS.length],
-    count: cycle.filter((e: any) => e.who === m.id).length,
+    count: ev.rows.filter((e: any) => e.who === m.id).length,
   }));
   res.json({
-    capacity: JAR_CAPACITY, level, gifts: Math.floor(total / JAR_CAPACITY), seeds, catalog: CATALOG.map((s) => ({ ...s, name: tReq(`jar.seed.${s.id}`) })),
+    total, seeds, catalog: CATALOG.map((s) => ({ ...s, name: tReq(`jar.seed.${s.id}`) })),
     mine: seeds.find((s: any) => s.memberId === me)?.seed ?? DEFAULTS[0],
   });
 }));

@@ -54,7 +54,7 @@ export type Week = {
   week: string;
   question: string;
   missions: Array<{ key: string; text: string; points: number; done: boolean; doneBy: string[] }>;
-  jar: { points: number; level: number; capacity: number; gifts: number };
+  jar: { points: number };
   recap: { photos: number; videos: number; voices: number; hugs: number; meals: Post[]; top?: Post | null };
 };
 

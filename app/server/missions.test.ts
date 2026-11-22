@@ -277,14 +277,16 @@ test('lọ: mở lọ là tự đánh dấu nhiệm vụ rồi mới đếm sao;
   const j = await r.json();
   assert.deepEqual(db.list(), [`con1:video:${M.weekKey()}`]);
   // Một bài + một nhiệm vụ = hai sao.
-  assert.equal(j.level, 2);
+  assert.equal(j.total, 2);
+  assert.equal('capacity' in j || 'gifts' in j || 'level' in j, false);
+  assert.equal(j.seeds.reduce((a: number, s: any) => a + s.count, 0), 2);
   assert.equal('owned' in j, false);
   assert.equal(j.catalog.length, 10);
   for (const s of j.catalog) assert.equal('price' in s, false);
   // Chưa chọn giấy: người thứ ba trong nhà nhận giấy thứ ba trong bốn giấy mặc định, như trước khi bỏ giá.
   assert.equal(j.mine, 'sun');
   // Đọc lại lọ không thêm sao.
-  assert.equal((await (await fetch(`${base}/jar`)).json()).level, 2);
+  assert.equal((await (await fetch(`${base}/jar`)).json()).total, 2);
 });
 
 test('giấy gấp sao: ai cũng dùng được mọi giấy, mã lạ thì báo', async () => {

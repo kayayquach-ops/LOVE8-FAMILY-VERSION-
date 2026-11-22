@@ -40,7 +40,7 @@
 /* Nét nhỏ vẽ bằng mực đen mờ trong bản sáng thì sang mực trắng mờ */
 [data-theme="dark"] .jr-x { box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .22); }
 [data-theme="dark"] .jr-list { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
-[data-theme="dark"] .jr .jr-task, [data-theme="dark"] .jr-gift { border-bottom-color: rgba(255, 255, 255, .08); }
+[data-theme="dark"] .jr .jr-task { border-bottom-color: rgba(255, 255, 255, .08); }
 [data-theme="dark"] .jr .jr-paper { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
 [data-theme="dark"] .jr .jr-paper.on { box-shadow: inset 0 0 0 1.5px var(--ink); }
 [data-theme="dark"] .ob-bub { box-shadow: 0 8px 20px -10px rgba(0, 0, 0, .6), inset 0 0 0 1px rgba(255, 255, 255, .1); }

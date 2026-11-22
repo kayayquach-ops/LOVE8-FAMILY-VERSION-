@@ -30,7 +30,6 @@
 .jr-stage { display: grid; place-items: center; padding: 10px 0 4px; scroll-margin-top: 8px; }
 .jr-count { text-align: center; }
 .jr-count b { font-family: var(--f-display); font-weight: 800; font-size: 44px; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-.jr-count small { font-size: 18px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
 .jr-count p { margin: 6px 0 0; font-size: 15px; color: var(--soft); }
 
 .jr-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; margin: 16px 6px 0; }
@@ -38,24 +37,18 @@
 
 .jr-h { margin: 28px 4px 10px; font-family: var(--f-display); font-weight: 700; font-size: 19px; letter-spacing: -0.01em; }
 
-/* Danh sách trắng bo tròn: nhiệm vụ tuần (ô vẽ tay chỉ là dấu, tự tích khi làm xong; dòng chưa làm bấm để tới chỗ làm) và quà. */
+/* Danh sách trắng bo tròn: nhiệm vụ tuần (ô vẽ tay chỉ là dấu, tự tích khi làm xong; dòng chưa làm bấm để tới chỗ làm). */
 .jr-list { background: var(--paper); border-radius: 24px; box-shadow: inset 0 0 0 1px rgba(23, 21, 28, .07); padding: 4px 16px; }
-.jr .jr-task, .jr-gift { width: 100%; display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; min-height: 56px; padding: 10px 0; border-bottom: 1px solid rgba(23, 21, 28, .07); text-align: left; font-size: 15.5px; line-height: 1.4; color: var(--ink); }
-.jr .jr-task:last-child, .jr-gift:last-child { border-bottom: 0; }
+.jr .jr-task { width: 100%; display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; min-height: 56px; padding: 10px 0; border-bottom: 1px solid rgba(23, 21, 28, .07); text-align: left; font-size: 15.5px; line-height: 1.4; color: var(--ink); }
+.jr .jr-task:last-child { border-bottom: 0; }
 .jr-task .doodle { color: var(--ink); }
 .jr-task-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .jr-task-text small { font-size: 12.5px; color: var(--muted); }
-.jr-task em, .jr-gift em { font-style: normal; }
+.jr-task em { font-style: normal; }
 .jr-task em { font-size: 18px; }
 .jr-task.done .jr-task-text > span { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--accent); text-decoration-thickness: 2px; }
 .jr-task.done em { opacity: .45; }
 .jr button.jr-task:active .doodle { transform: scale(.9); }
-.jr-gift .doodle { color: var(--muted); }
-.jr-gift em { font-size: 13px; color: var(--muted); white-space: nowrap; }
-.jr-gift > span { color: var(--soft); }
-.jr-gift.open .doodle { color: var(--accent); }
-.jr-gift.open > span { color: var(--ink); }
-.jr-gift.open em { font-size: 17px; color: var(--accent); }
 
 /* Giấy gấp sao: ô giấy có ngôi sao, tên giấy. Giấy nào cũng dùng được, không bán lẻ (sau này gói gia đình lo hết). */
 .jr-papers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }

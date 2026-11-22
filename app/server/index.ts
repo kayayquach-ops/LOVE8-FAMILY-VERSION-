@@ -329,8 +329,6 @@ app.delete('/api/posts/:id', h(async (req, res) => {
 // Tuần (weekKey: từ thứ Hai, giờ Việt Nam) và danh sách nhiệm vụ ở server/missions.ts.
 const QUESTIONS = Array.from({ length: 10 }, (_, i) => `week.q.${i + 1}`);
 
-const JAR = 40;
-
 app.get('/api/week', h(async (req, res) => {
   const fid = req.member!.family_id;
   const week = weekKey();
@@ -361,7 +359,7 @@ app.get('/api/week', h(async (req, res) => {
       const by = done.rows.filter((d) => d.mission === m.key).map((d) => d.member_id);
       return { key: m.key, text: tReq(`week.mission.${m.key}`), points: m.points, done: by.includes(req.member!.id), doneBy: by };
     }),
-    jar: { points, level: points % JAR, capacity: JAR, gifts: Math.floor(points / JAR) },
+    jar: { points },
     recap: { photos: n('photo'), videos: n('video'), voices: n('voice'), hugs: n('hug'), meals: meals.rows.map(lite), top: top.rows[0] ? lite(top.rows[0]) : null },
   };
   res.json(body);

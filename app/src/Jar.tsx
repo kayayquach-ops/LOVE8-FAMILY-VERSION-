@@ -10,7 +10,7 @@ import { JarArt, PaperStar } from './JarArt';
 
 type SeedDef = { id: string };
 type JarData = {
-  capacity: number; level: number; gifts: number; seeds: Array<{ memberId: string; seed: string; count: number }>;
+  total: number; seeds: Array<{ memberId: string; seed: string; count: number }>;
   catalog: SeedDef[]; mine: string;
 };
 
@@ -43,8 +43,6 @@ function Shell({ onClose, children }: { onClose: () => void; children: React.Rea
   );
 }
 
-const GIFTS = [1, 2, 3, 4] as const;
-
 // Nhiệm vụ tự đánh dấu khi app thấy mình làm thật (server/missions.ts), không tích tay được.
 // Bấm nhiệm vụ chưa làm thì mở chỗ làm được: camera (video, ảnh bữa cơm), trò chuyện (nói thương, hỏi kỷ niệm), cả nhà (gọi điện).
 export type JarGo = 'camera' | 'chat' | 'family';
@@ -76,10 +74,10 @@ export function Jar({ me, onClose, onGo }: { me: Me; onClose: () => void; onGo: 
   return (
     <Shell onClose={onClose}>
       <div className="jr-stage">
-        <JarArt rows={j.seeds} gifts={j.gifts} family={me.family.id} width={250} tappable />
+        <JarArt rows={j.seeds} family={me.family.id} width={250} tappable />
       </div>
       <div className="jr-count">
-        <b>{j.level}<small> / {j.capacity}</small></b>
+        <b>{j.total ?? 0}</b>
         <p>{t('jar.sub')}</p>
       </div>
 
@@ -123,17 +121,6 @@ export function Jar({ me, onClose, onGo }: { me: Me; onClose: () => void; onGo: 
             </button>
           );
         })}
-      </div>
-
-      <h2 className="jr-h">{t('jar.gifts')}</h2>
-      <div className="jr-list">
-        {GIFTS.map((g, i) => (
-          <div key={g} className={`jr-gift${i < j.gifts ? ' open' : ''}`}>
-            <Doodle name="star" size={22} />
-            <span>{t(`jar.gift.${g}`)}</span>
-            <em className={i < j.gifts ? 'hand' : undefined}>{i < j.gifts ? t('jar.opened') : t('jar.fullN', { n: i + 1 })}</em>
-          </div>
-        ))}
       </div>
     </Shell>
   );
