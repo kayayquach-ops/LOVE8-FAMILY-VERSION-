@@ -249,6 +249,29 @@ function shareDb() {
           for (const e of hit) e.shared = true;
           return out(hit.map(({ id, key, topic }) => ({ id, key, topic })));
         }
+        case S.keepCall: {
+          const c = db.calls[v[0]];
+          if (!c || c.member_id !== v[1]) return out([]);
+          c.shared = false;
+          return out([{ family_id: c.family_id }]);
+        }
+        case S.keepEps: {
+          const prefix = String(v[1]).replace(/%$/, '');
+          const hit = db.podcasts.filter((e) => e.family_id === v[0] && e.key.startsWith(prefix) && e.shared);
+          for (const e of hit) e.shared = false;
+          return out(hit.map(({ id, key, topic }) => ({ id, key, topic })));
+        }
+        case S.teller: return out(db.members.filter((m) => m.id === v[0]).map(({ lang }) => ({ lang })));
+        case MEM_SQL.unshare: {
+          const hit = db.facts.filter((f) => f.call_id === v[0] && f.visibility === 'family');
+          for (const f of hit) f.visibility = 'self';
+          return out([], hit.length);
+        }
+        case MAY_SQL.dropStory: {
+          const n = db.signals.length;
+          db.signals = db.signals.filter((s) => !(s.call_id === v[0] && s.kind === 'story'));
+          return out([], n - db.signals.length);
+        }
         case S.family: return out(db.members.filter((m) => m.family_id === v[0]));
         case S.storyText:
           return out(db.answers.filter((a) => a.call_id === v[0] && a.idx === v[1] && !v[2].includes(a.topic)).sort((a, b) => a.turn - b.turn).map(({ transcript }) => ({ transcript })));
@@ -278,6 +301,34 @@ test.beforeEach(() => {
   deps = { db, rebuildTopic: async (fid, topic) => { rebuilt.push([fid, topic]); }, now: () => NOW };
 });
 
+test('giữ riêng sau khi tập dựng xong: chỉ người kể bấm được; tập, sự thật về riêng, tin chưa gửi bị bỏ, tập chủ đề dựng lại; chia sẻ lại thì báo lại', async () => {
+  db.calls.c1.shared = true;
+  db.podcasts.find((e) => e.key === 'story:c1:1')!.shared = true;
+  db.facts.forEach((f) => { f.visibility = f.kind === 'food' ? 'family' : 'self'; });
+  db.signals.push({ id: 's1', call_id: 'c1', kind: 'story', to_id: 'an', from_id: 'a1' });
+  assert.equal(await P.keepCallPrivate('c1', 'a3', deps), false);
+  assert.equal(db.calls.c1.shared, true);
+  assert.equal(await P.keepCallPrivate('c1', 'a1', deps), true);
+  assert.equal(db.calls.c1.shared, false);
+  assert.equal(db.podcasts.find((e) => e.key === 'story:c1:1')!.shared, false);
+  assert.deepEqual((await P.listPodcasts('F', 'an', 60, db)).map((e) => e.id).sort(), ['ep-a1-shared', 'ep-old']);   // người khác không còn thấy
+  assert.ok(db.facts.every((f) => f.visibility === 'self'));
+  assert.equal(db.signals.length, 0);
+  assert.deepEqual(rebuilt, [['F', 'mon-an']]);
+  assert.equal(await P.keepCallPrivate('c1', 'a1', deps), true);   // bấm lại không đổi gì, không dựng lại
+  assert.deepEqual(rebuilt, [['F', 'mon-an']]);
+  assert.equal(await P.shareCall('c1', 'a1', deps), true);         // đổi ý: chia sẻ lại, báo lại
+  assert.equal(db.podcasts.find((e) => e.key === 'story:c1:1')!.shared, true);
+  assert.deepEqual(db.signals.map((s) => s.to_id), ['an']);
+});
+test('tin chuyện mới của tập vừa dựng chờ KEEP_GRACE_MIN phút trước khi tới hạn gửi', async () => {
+  const may = await import('./may.ts');
+  const rows: Row[] = [];
+  const fake = { async query(_q: string, v: any[]) { rows.push(v); return { rows: [], rowCount: 1 }; } };
+  await may.queueStory(fake as any, { familyId: 'F', callId: 'c1', podcastId: 'ep', fromId: 'a1', to: ['an'], now: NOW, delayMin: P.KEEP_GRACE_MIN });
+  assert.equal(+rows[0][8], +NOW + P.KEEP_GRACE_MIN * 60_000);
+  assert.ok(P.KEEP_GRACE_MIN >= 10);
+});
 test('danh sách tập: tập riêng chỉ người kể thấy, tập cũ và tập đã chia sẻ ai cũng thấy', async () => {
   // rows: ep-a1-shared (member a1, shared), ep-a1-private (a1, not shared), ep-a3-private (a3), ep-old (a3, shared default)
   assert.deepEqual((await P.listPodcasts('F', 'a3', 60, db)).map((e) => e.id).sort(), ['ep-a1-shared', 'ep-a3-private', 'ep-old']);

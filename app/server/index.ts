@@ -31,7 +31,7 @@ import { migrateShot, shotPartsFor, shotRouter } from './shot.ts';
 import { membersRouter } from './members.ts';
 import { joinPublicRouter, joinRouter, joinView, memberAuth, memberFields, migrateJoin } from './join.ts';
 import { locationRouter, memberLoc, migrateLocation } from './location.ts';
-import { makeMemoryRouter, migrateMemory, startMemoryBackfill } from './memory.ts';
+import { migrateMemory, startMemoryBackfill } from './memory.ts';
 import { makeMayRouter, markCallContact, migrateMay, startMayScheduler } from './may.ts';
 import { makeLiveRouter, migrateLive } from './calllive.ts';
 import { liveConfig } from './liveconfig.ts';
@@ -182,7 +182,6 @@ app.use('/api', joinRouter(joinDeps));
 app.use('/api', makeMayRouter());
 // Mây Live (thử): token dùng một lần và ghi tiền, chỉ người bật "Thử Mây mới" (server/calllive.ts).
 app.use('/api', makeLiveRouter(upload));
-app.use('/api', makeMemoryRouter());
 
 app.get('/api/me', h(async (req, res) => {
   const m = req.member!;

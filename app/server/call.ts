@@ -72,14 +72,14 @@ export async function migrateCall(p: pg.Pool) {
   setTimeout(() => void warmFixedVoices(), 15_000);
 }
 
-/** Các câu cố định cần có giọng sẵn: mỗi (vai, ngôn ngữ) 14 câu. Câu "ack" không nạp (chỉ dùng nếu tình cờ đã có trong kho); câu "relayIntro" chỉ dùng khi có lời nhắn nên đọc lúc cần rồi nằm trong kho.
- *  Câu "skip" (đổi chuyện) không còn nói ở đâu nên không nạp. Nạp sẵn hụt thì /call/tts đọc lúc xin, chỉ với share, shareYes, shareNo, bye (ttsFor). */
+/** Các câu cố định cần có giọng sẵn: mỗi (vai, ngôn ngữ) 11 câu. Câu "ack" không nạp (chỉ dùng nếu tình cờ đã có trong kho); câu "relayIntro" chỉ dùng khi có lời nhắn nên đọc lúc cần rồi nằm trong kho.
+ *  Câu "skip" (đổi chuyện) không còn nói ở đâu nên không nạp. Nạp sẵn hụt thì /call/tts đọc lúc xin, chỉ với bye (ttsFor). */
 export function fixedLines(langs: readonly Lang[] = LANGS) {
   const out = new Set<string>();
   for (const lang of langs) {
     for (const role of CALL_ROLES) {
       const L = callLines(role, (k, v) => tServer(lang, k, v));
-      for (const text of [L.slow, L.busy, L.photo, ...L.short, ...L.long, L.relay, L.relayOk, L.share, L.shareYes, L.shareNo, L.bye]) out.add(text);
+      for (const text of [L.slow, L.busy, L.photo, ...L.short, ...L.long, L.relay, L.relayOk, L.bye]) out.add(text);
     }
   }
   return [...out];
@@ -956,7 +956,7 @@ export async function saveDates(callId: string, db: Db = pool) {
   if (ai?.events) found = ai.events;
   else found = regexDates(said.map((a) => ({ transcript: a.transcript, event: script.questions[a.idx]?.event ?? 'none' })), speak, home);
 
-  // Chuyện chưa đồng ý chia sẻ (calls.shared đã chốt lúc này: /finish đi sau /share, /keep trong cùng hàng chờ): lịch chung chỉ nhận
+  // Chuyện đã giữ riêng (calls.shared = false, cuộc gọi cũ hay tập đã bấm Giữ riêng trước bước này): lịch chung chỉ nhận
   // ngày, tên theo loại và ghi chú soạn sẵn, không có chữ AI viết từ chuyện; ngày đáng nhớ và ngày khác thì bỏ hẳn.
   const priv = !call.shared;
   for (const e of found) {
@@ -1076,15 +1076,15 @@ async function sniff(file: string) {
   try { const { buffer, bytesRead } = await fh.read(Buffer.alloc(16), 0, 16, 0); return imageKind(buffer.subarray(0, bytesRead)); } finally { await fh.close(); }
 }
 
-// Câu xin phép chia sẻ, hai câu đáp và câu tạm biệt (mọi vai, mọi thứ tiếng), gọn khoảng trắng như chữ máy khách gửi; tính một lần khi cần.
+// Câu tạm biệt (mọi vai, mọi thứ tiếng), gọn khoảng trắng như chữ máy khách gửi; tính một lần khi cần.
 let mustSet: Set<string> | null = null;
 const mustVoice = (text: string) => (mustSet ??= new Set(LANGS.flatMap((lang) => CALL_ROLES.flatMap((role) => {
   const L = callLines(role, (k, v) => tServer(lang, k, v));
-  return [L.share, L.shareYes, L.shareNo, L.bye];
+  return [L.bye];
 })).map((s) => s.replace(/\s+/g, ' ').trim()))).has(text);
 
 /** Giọng cho một câu (POST /call/tts). provider: nhà cung cấp đã chốt lúc nhấc máy, dùng đúng nhà đó và không tự đổi giữa chừng.
- *  kind 'fixed': lấy từ kho; riêng câu xin phép chia sẻ, hai câu đáp và câu tạm biệt chưa có thì đọc ngay một lần như câu bắt buộc
+ *  kind 'fixed': lấy từ kho; riêng câu tạm biệt chưa có thì đọc ngay một lần như câu bắt buộc
  *  rồi nằm trong kho mãi; câu cố định khác (máy khách xin trước, có khi không nói) chỉ lấy từ kho. kind 'reply': câu đáp theo nội dung,
  *  chỉ đọc khi còn dư ngân sách. */
 export async function ttsFor(body: { text?: unknown; kind?: unknown; provider?: unknown }, who: string): Promise<{ url: string | null; reason?: string; off?: boolean }> {
@@ -1152,8 +1152,8 @@ export function callRouter(upload: multer.Multer) {
       ? (aiScripts.take(mid) ? await aiScript(c, week, aiMs, { trial: true }) : null) ?? firstScript(c)
       : (aiScripts.take(mid) ? await aiScript(c, week, aiMs) : null) ?? templateScript(c, week);
     const id = randomUUID();
-    // Cuộc gọi mới chưa đồng ý chia sẻ: bước xin phép cuối chuyện chính (POST /call/:id/share) mới bật shared.
-    await pool.query('insert into calls (id, family_id, member_id, week, script, shared, trial) values ($1,$2,$3,$4,$5,false,$6)', [id, fid, mid, week, JSON.stringify(script), first]);
+    // Từ 22/11 cuộc gọi mới mặc định đã chia sẻ; người kể bấm "Giữ riêng" ở tập sau khi dựng xong (POST /podcasts/:id/keep).
+    await pool.query('insert into calls (id, family_id, member_id, week, script, shared, trial) values ($1,$2,$3,$4,$5,true,$6)', [id, fid, mid, week, JSON.stringify(script), first]);
     // Sự thật AI đã dùng khi soạn: lần sau ưu tiên điều chưa nhắc (pickFacts). Lỗi thì thôi, không chặn cuộc gọi.
     if (script.used?.length) {
       await pool.query('update memory_facts set used_at = now(), used_count = used_count + 1 where id = any($1) and family_id = $2', [script.used, fid])
@@ -1307,7 +1307,7 @@ export function callRouter(upload: multer.Multer) {
     }
   }));
 
-  // Người kể đồng ý chia sẻ chuyện của cuộc gọi cho cả nhà (bước xin phép cuối chuyện chính). Không có thân, gửi lại được.
+  // Đường cũ cho máy khách đã cài từ trước 22/11 (còn gửi /share, /keep khi hết cuộc gọi). Máy khách mới không gọi nữa. Không có thân, gửi lại được.
   // Qua shareCall: lời đồng ý tới sau khi tập đã dựng thì tập, sự thật vẫn sang cả nhà và người được nhắc vẫn được báo.
   r.post('/call/:id/share', h(async (req, res) => {
     if (!(await shareCall(String(req.params.id), req.member.id))) return res.status(404).json(errorBody('call_not_found'));

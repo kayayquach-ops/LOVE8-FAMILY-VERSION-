@@ -429,3 +429,28 @@ Mã: `server/liveconfig.ts` (cấu hình), `server/calllive.ts` (token, trần, 
 **Chấp nhận** (phán quyết R13): khi Live đã có token rồi vẫn không nối được thì hàng v3 `ready` mới nhất che hàng v2 dùng lại được của tuần; màn cũ gọi `/call/start` sẽ soạn bộ câu mới, tốn một lượt AI soạn câu (4 lượt mỗi giờ mỗi người). Chỉ người bật thử gặp.
 
 **Thử trên điện thoại**: sang tab Mây, bấm "Gọi cho Mây", Nghe máy, rồi đi theo Danh sách thử trên điện thoại (task 6, 7) ở trên. Cúp máy rồi xem log Railway dòng `[call-live] cuộc gọi ...`. Muốn tắt cho mọi người thì đặt `MAY_LIVE=off`.
+
+## 22/11/2026: chia sẻ mặc định, bỏ sổ nhớ trong app, hỏi nhớ người ở xa
+
+Ba việc theo ý chủ app. Phần xin phép chia sẻ trong cuộc gọi (task 4, mục "Bước xin phép chia sẻ") không còn nữa; các mô tả cũ ở trên về hai nút "Chia sẻ", "Giữ riêng" trong cuộc gọi là lịch sử.
+
+**1. Chuyện kể mặc định chia sẻ cho cả nhà**
+- Mây không còn hỏi "chia sẻ cho cả nhà nghe được không" trong cuộc gọi. Đã bỏ công cụ `ask_share` và bước xin phép khỏi lời dặn Mây Live (`server/calllive.ts`), bỏ bước xin phép, hai nút và ba câu cố định (`share`, `shareYes`, `shareNo`) khỏi màn gọi cũ `Call.tsx`, `CallLive.tsx`, `liveTurns.ts`. `src/callShare.ts` đã xoá.
+- Cuộc gọi mới được tạo với `calls.shared = true` (`/call/start`, `/call/live`). Tập câu chuyện làm ra thì cả nhà thấy.
+- Sau khi tập làm xong, người kể mở tab podcast thấy nút **Giữ riêng** ngay dưới tập của mình (một chạm). Giữ riêng thì: `calls.shared` và tập câu chuyện thành riêng (chỉ người kể thấy), sự thật của cuộc gọi về riêng (`unshareFacts`), tin "chuyện mới" chưa gửi cho người được nhắc bị xoá, tập chủ đề dựng lại không còn chuyện đó (hết chuyện chia sẻ thì ẩn tập chủ đề). Tập đã giữ riêng có nút chia sẻ lại như trước (báo lại người được nhắc). API mới: `POST /api/podcasts/:id/keep` (`keepCallPrivate` ở `server/podcast.ts`).
+- Để người kể kịp bấm, tin báo người được nhắc trong chuyện chờ `KEEP_GRACE_MIN` = 30 phút sau khi tập dựng xong (`due_at` của tín hiệu). Giữ riêng trong 30 phút đó thì không ai bị báo. Đã báo rồi thì không thu lại được.
+- Khi dựng thật (`render`), tập câu chuyện lấy `calls.shared` lúc đó, nên bấm Giữ riêng giữa lúc tập chờ tới lượt dựng cũng đúng.
+- Sự thật trong sổ nhớ theo trạng thái của tập như trước (`visibilityOf`): sức khoẻ, lo lắng, điều AI đánh dấu nhạy cảm và điều rút từ câu hỏi thăm luôn riêng, kể cả khi chia sẻ hay chia sẻ lại. Có một khoảng ngắn từ lúc cuộc gọi xong tới lúc người kể bấm Giữ riêng mà sự thật thường vẫn hiện cho cả nhà (chỉ ảnh hưởng nếu có người khác gọi Mây đúng lúc đó).
+- Lịch chung: ngày quan trọng (ngày cưới của bố mẹ, sinh nhật, kỷ niệm...) vẫn được rút sau cuộc gọi và thêm vào lịch (`saveDates`, không đổi). Vì cuộc gọi giờ mặc định chia sẻ nên tên và ghi chú sự kiện là chữ AI soạn; giữ riêng sau đó không xoá sự kiện đã vào lịch. Nhắc "A nhớ B" và nhắc người bị nhắc tới hay lâu chưa liên lạc (`may.ts`) không đổi.
+- Dữ liệu cũ giữ nguyên: cuộc gọi, tập và sự thật đã có giữ trạng thái `shared` đang có. Tập cũ đã giữ riêng vẫn riêng; tập cũ đã chia sẻ giờ cũng có nút Giữ riêng cho người kể. Hai đường `/call/:id/share`, `/call/:id/keep` còn lại chỉ để máy khách đã cài từ trước còn gửi được, máy khách mới không gọi.
+
+**2. Bỏ "Mây nhớ gì về mình"**
+- Bỏ màn danh sách và nút xoá từng dòng trong Cài đặt (còn công tắc "Mây nhắc mình liên lạc"), các khoá chữ `may.memory.*` (vi, ko, en), `api.memory` và `api.forget`.
+- Bỏ luôn hai đường `GET /api/may/memory` và `DELETE /api/may/memory/:id` (`makeMemoryRouter`) vì không còn máy khách nào gọi; để lại thì chỉ là cửa sau xoá sổ nhớ. Kho `memory_facts` và việc rút sổ nhớ giữ nguyên, sổ nhớ cứ lớn dần theo điều cả nhà kể. Xoá thành viên hay xoá nhà vẫn xoá hết `memory_facts` (kế hoạch trong `server/members.ts`, không đổi).
+
+**3. Hỏi "dạo này có nhớ ai không" chỉ với người ở xa**
+- Mỗi người khác trong nhà có cờ `apart` (`server/callfacts.ts`): khoảng cách giữa nơi ở của họ và của người nghe, từ vị trí thật nếu họ đang chia sẻ, không thì thành phố đã chọn (cùng nguồn với `distance_km`). Dưới `NEAR_KM` = 30 km là ở cùng nhà hay cùng thành phố (`false`), từ 30 km trở lên là ở xa (`true`), chưa biết nơi của một trong hai thì `null`.
+- Trong DATA của Mây Live, `family_members` có thêm `lives_far` (true, false, "unknown"). Lời dặn: hỏi nhớ chỉ nêu người có `lives_far` true hoặc unknown, không bao giờ nêu người có false. Hai ba người đủ điều kiện thì gộp một câu ("Dạo này mẹ có nhớ Bình hay An không ạ?"), một người thì nêu tên người đó. Không ai đủ điều kiện thì bỏ câu hỏi nhớ và tin cả nhà, chỉ còn chuyển lời nhắn. Chưa biết nơi ở thì giữ cách cũ (unknown vẫn được hỏi).
+- Màn gọi cũ (kịch bản soạn sẵn) không có câu hỏi "có nhớ ai không" nên không có gì để đổi.
+
+Test mới nằm ở `server/podcast.test.ts`, `server/memory.test.ts`, `server/calllive.test.ts`, `server/callfacts.test.ts`, `src/liveTurns.test.ts`. Đã chạy tsc, i18n:check, build.

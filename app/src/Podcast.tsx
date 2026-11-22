@@ -87,19 +87,20 @@ function AddPhotos({ ep, onDone }: { ep: Ep; onDone: () => void }) {
   );
 }
 
-/** Tập riêng của chính mình (chưa đồng ý chia sẻ trong cuộc gọi): một dòng nhỏ và nút chia sẻ cho cả nhà. Người khác không bao giờ nhận tập riêng. */
+/** Tập câu chuyện của chính mình: mặc định cả nhà nghe được, có nút "Giữ riêng" (một chạm); tập đã giữ riêng thì có dòng nhỏ và nút chia sẻ lại.
+ *  Người khác không bao giờ nhận tập riêng. */
 function ShareEp({ ep, onDone }: { ep: Ep; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
 
-  async function share() {
+  async function flip() {
     tap();
     setBusy(true);
     try {
       const tk = token.get();
-      const res = await fetch(`/api/podcasts/${ep.id}/share`, { method: 'POST', headers: tk ? { authorization: `Bearer ${tk}` } : {} });
+      const res = await fetch(`/api/podcasts/${ep.id}/${ep.shared ? 'keep' : 'share'}`, { method: 'POST', headers: tk ? { authorization: `Bearer ${tk}` } : {} });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(errorText(data));
-      toast(t('podcast.sharedDone'));
+      toast(t(ep.shared ? 'podcast.keptDone' : 'podcast.sharedDone'));
       onDone();
     } catch (e) {
       toast((e as Error).message);
@@ -110,9 +111,9 @@ function ShareEp({ ep, onDone }: { ep: Ep; onDone: () => void }) {
 
   return (
     <>
-      <p className="pd-note">{t('podcast.private')}</p>
+      <p className="pd-note">{t(ep.shared ? 'podcast.sharedNote' : 'podcast.private')}</p>
       <div className="pd-mode-wrap">
-        <button className="btn line" onClick={() => void share()} disabled={busy}>{t('podcast.shareAll')}</button>
+        <button className="btn line" onClick={() => void flip()} disabled={busy}>{t(ep.shared ? 'podcast.keepPrivate' : 'podcast.shareAll')}</button>
       </div>
     </>
   );
@@ -136,7 +137,7 @@ function Player({ ep, me, onChange }: { ep: Ep; me: Me; onChange: () => void }) 
         </div>
       ) : ep.videoStatus === 'rendering' && <p className="pd-note">{t('podcast.videoSoon')}</p>}
       {ep.video && ep.videoStatus === 'rendering' && <p className="pd-note">{t('podcast.videoRedo')}</p>}
-      {!ep.shared && ep.memberId === me.me.id && <ShareEp ep={ep} onDone={onChange} />}
+      {ep.story && ep.memberId === me.me.id && <ShareEp ep={ep} onDone={onChange} />}
       {ep.story && <AddPhotos ep={ep} onDone={onChange} />}
     </>
   );

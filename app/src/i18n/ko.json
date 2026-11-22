@@ -212,12 +212,6 @@
   "call.line.relayOk.child": "네, 제가 꼭 전해 줄게요.",
   "call.line.relayIntro.parent": "아, 전해 드릴 말이 있어요.",
   "call.line.relayIntro.child": "아, 전해 줄 말이 있어요.",
-  "call.line.share.parent": "이 이야기를 가족 모두에게 들려 드려도 될까요?",
-  "call.line.share.child": "이 이야기를 가족 모두에게 들려줘도 될까요?",
-  "call.line.shareYes.parent": "네, 가족 모두 함께 들을 수 있게 보내 드릴게요.",
-  "call.line.shareYes.child": "좋아요, 가족 모두 함께 들을 수 있게 보낼게요.",
-  "call.line.shareNo.parent": "네, 혼자 들으실 수 있게 따로 간직할게요.",
-  "call.line.shareNo.child": "네, 혼자 들을 수 있게 따로 간직할게요.",
   "call.line.bye.parent": "들려주셔서 감사해요. 다음 주에 또 전화드릴게요.",
   "call.line.bye.child": "들려줘서 고마워요. 다음 주에 또 전화할게요.",
   "call.ring.who": "Sweet Home에서 전화가 왔어요",
@@ -228,8 +222,6 @@
   "call.photoFailed": "사진을 아직 보내지 못했어요",
   "call.photosSaved": "사진 {n}장을 보관했어요",
   "call.pickPhoto": "사진 고르기",
-  "call.share.yes": "공유하기",
-  "call.share.no": "따로 간직하기",
   "call.podcastSoon": "들려준 이야기는 잠시 뒤 “우리 집 이야기”에 담겨요.",
   "call.sendLater": "연결이 약해요. 다시 연결되면 이야기가 알아서 보내져요.",
   "call.end": "끝내기",
@@ -475,6 +467,9 @@
   "podcast.private": "나만 들을 수 있어요",
   "podcast.shareAll": "가족 모두와 나누기",
   "podcast.sharedDone": "이제 가족 모두 들을 수 있어요",
+  "podcast.sharedNote": "온 가족이 들을 수 있어요",
+  "podcast.keepPrivate": "나만 듣기",
+  "podcast.keptDone": "나만 듣도록 했어요",
 
   "family.title": "가족",
   "family.language": "언어 / Language",
@@ -911,10 +906,5 @@
   "chat.translated": "번역",
   "chat.translating": "번역 중...",
   "settings.autoTranslate": "메시지 자동 번역",
-  "may.settings.nudge": "{mascot}가 연락하라고 알려줘요",
-  "may.memory.title": "{mascot}가 나에 대해 기억하는 것",
-  "may.memory.empty": "{mascot}가 아직 기억하는 게 없어요",
-  "may.memory.by": "{name}님이 들려줌",
-  "may.memory.forget": "삭제",
-  "may.memory.forgot": "삭제했어요"
+  "may.settings.nudge": "{mascot}가 연락하라고 알려줘요"
 }

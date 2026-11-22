@@ -241,7 +241,6 @@
   "error.translate_limit": "Your family has translated a lot today, try again tomorrow",
   "error.translate_failed": "Couldn't translate, please try again later",
   "error.may_settings_invalid": "Couldn't save the setting",
-  "error.memory_not_found": "This line isn't here anymore",
   "error.live_off": "The new way of calling is off right now",
   "error.live_not_enabled": "You haven't turned on the new way of calling yet",
   "error.live_cap": "No more new-style call minutes today",

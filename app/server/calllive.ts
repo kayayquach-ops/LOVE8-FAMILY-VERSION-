@@ -1,5 +1,5 @@
 // Mây Live (thử, 21/11/2026): cuộc gọi tuần nói thẳng với Gemini Live như "gọi Nếp", thay cho kịch bản soạn trước và giọng đọc từng câu.
-// Máy chủ chỉ làm ba việc: phát token dùng một lần (POST /call/live, lời dặn, bảy công cụ và giọng khoá sẵn trong token, hết hạn theo trần cuộc gọi),
+// Máy chủ chỉ làm ba việc: phát token dùng một lần (POST /call/live, lời dặn, sáu công cụ và giọng khoá sẵn trong token, hết hạn theo trần cuộc gọi),
 // giữ trần tiền (công tắc MAY_LIVE, trần phút cả máy chủ mỗi ngày, trần mỗi cuộc gọi),
 // và ghi giây, token, tiền khi máy khách báo xong (POST /call/:id/live-end). Máy khách nối thẳng tới Google (src/CallLive.tsx).
 // Người chưa bật thử không bao giờ tới đây: đường cũ (/call/start, Call.tsx) giữ nguyên. Chi tiết: docs/may-moi.md mục "Mây Live (thử)".
@@ -43,7 +43,7 @@ export async function migrateLive(db: Db = pool): Promise<void> {
 export const LIVE_SQL = {
   // Giây Live đã dùng hôm nay (cả máy chủ): cuộc gọi chưa báo về tính đủ trần một cuộc ($2).
   usedToday: 'select coalesce(sum(coalesce(live_sec, $2)), 0)::int as sec from calls where live_at >= $1',
-  insert: 'insert into calls (id, family_id, member_id, week, script, shared, trial, live_at) values ($1,$2,$3,$4,$5,false,$6,$7)',
+  insert: 'insert into calls (id, family_id, member_id, week, script, shared, trial, live_at) values ($1,$2,$3,$4,$5,true,$6,$7)',
   endRow: 'select live_at from calls where id = $1 and member_id = $2 and live_at is not null and live_sec is null',
   end: 'update calls set live_sec = $3, live_usd = $4, live_usage = $5 where id = $1 and member_id = $2 and live_sec is null',
   // Kịch bản v3 (ô chuyện, câu hẹn) ghi kiểu so rồi ghi: chỉ ghi khi kịch bản chưa bị ai đổi từ lúc đọc.
@@ -174,9 +174,9 @@ export function liveData(c: Ctx, relays: CallRelay[], now: Date = new Date()): R
       ...(x?.warm ? { warm_tone: true } : {}),
     },
     family_members: x
-      ? x.family.map((m) => ({ name: m.name, role: m.role, lives_in: m.place ?? 'none yet: place not known',
+      ? x.family.map((m) => ({ name: m.name, role: m.role, lives_in: m.place ?? 'none yet: place not known', lives_far: m.apart ?? 'unknown',
         ...(m.km != null ? { hours_apart: m.hoursApart, distance_km: m.km } : {}) }))
-      : c.family.filter((_, i) => i !== self).map((m) => ({ name: m.name, role: m.role })),
+      : c.family.filter((_, i) => i !== self).map((m) => ({ name: m.name, role: m.role, lives_far: 'unknown' })),
     depth: x?.depth ?? 0,
     seeds: x?.seeds ?? seedsFor({ depth: 0, role: c.member.role, intro: {}, place: null, far: false, family: [], memory: [], occasions: [], told: [],
       themes, hook: null, hasPair: false }),
@@ -200,19 +200,19 @@ export function liveData(c: Ctx, relays: CallRelay[], now: Date = new Date()): R
  *  opener, follow: câu mở cụ thể và câu dẫn vào một lúc của chuyện; news: kể tin của người ấy; message: câu mời gửi lời (relay_open ngay trước,
  *  khớp bộ đoán relayLine của src/liveTurns.ts). */
 const LIVE_EX: Record<Lang, { swap: string; filler: string; what: string; anything: string; ideas: string; slow: string; opener: string; follow: string;
-  weather: string; heard: string; news: string; message: string }> = {
+  weather: string; heard: string; news: string; message: string; miss: string }> = {
   vi: { swap: 'Mẹ/mẹ, con and ạ', filler: 'Dạ, con nghe đây ạ', what: 'kể gì bây giờ?', anything: 'Mẹ kể ngày nào cũng được ạ', ideas: 'gợi ý đi', slow: 'Mẹ cứ từ từ ạ',
     opener: 'Mẹ ơi, mẹ có nhớ món Cún thích ăn nhất không ạ?', follow: 'Có bữa nào Cún ăn món đó mà mẹ nhớ mãi không ạ?',
     weather: 'Ơ mẹ ơi, hôm nay chỗ mẹ lạnh lắm đấy, mẹ mặc đủ ấm không ạ?', heard: 'An kể là ...',
-    news: 'Mẹ ơi, dạo này Cún cũng sống tốt lắm, Cún nhớ mẹ lắm đấy ạ', message: 'mẹ có lời gì gửi Cún không ạ?' },
+    news: 'Mẹ ơi, dạo này Cún cũng sống tốt lắm, Cún nhớ mẹ lắm đấy ạ', message: 'mẹ có lời gì gửi Cún không ạ?', miss: 'Dạo này mẹ có nhớ Cún hay Bông không ạ?' },
   en: { swap: 'Mom', filler: "Yes, I'm listening", what: 'what should I tell you?', anything: 'You can tell me about any day at all, Mom', ideas: 'give me an idea',
     slow: 'Take your time, Mom', opener: "Mom, do you remember Cún's favorite food?", follow: 'Was there a time Cún ate it that you still remember, Mom?',
     weather: "Oh Mom, it's really cold where you are today, are you dressed warm enough?", heard: 'An told me that ...',
-    news: 'Mom, Cún is doing really well these days, and misses you a lot', message: 'do you have a message for Cún?' },
+    news: 'Mom, Cún is doing really well these days, and misses you a lot', message: 'do you have a message for Cún?', miss: 'Have you been missing Cún or Bông lately, Mom?' },
   ko: { swap: '어머님 and the honorific verb forms', filler: '네, 듣고 있어요', what: '무슨 얘기를 하지?', anything: '어떤 날 이야기든 다 좋아요', ideas: '추천 좀 해 줘',
     slow: '천천히 하셔도 돼요', opener: '어머님, Cún님이 제일 좋아하는 음식 기억나세요?', follow: 'Cún님이 그 음식 먹던 날 중에 오래 기억나는 날 있으세요?',
     weather: '아이고 어머님, 오늘 계신 곳 많이 춥죠? 따뜻하게 입으셨어요?', heard: 'An님이 그러는데 ...',
-    news: '어머님, 요즘 Cún님도 잘 지내요. 어머님 많이 보고 싶어 해요', message: 'Cún님한테 전할 말 있으세요?' },
+    news: '어머님, 요즘 Cún님도 잘 지내요. 어머님 많이 보고 싶어 해요', message: 'Cún님한테 전할 말 있으세요?', miss: '요즘 Cún님이나 Bông님 보고 싶으세요?' },
 };
 
 /** Lời dặn Mây Live, khoá trong token. Cả lời dặn lẫn DATA qua named(): nhà đặt tên linh vật khác thì không còn chữ Mây ở đâu cả (mồi chuyện có "told Mây").
@@ -247,21 +247,19 @@ ORDER OF THE CALL.
 1. Greet them by name and ask how they are right now. Follow their answer naturally for a turn or two.
 2. Today's one story, as above. If their check-in answer is already a story, or they bring one themselves, treat it as today's story (story_open right before your line inviting them to tell it fully) instead of forcing the hook seed.
 3. If the story has real people or places, you may invite them to share an old photo of it, near its end (before story_close or right after it): call ask_photo right before you ask. Never say a photo was already sent.
-4. Side questions, after the story, only if DATA.family_members is not empty. Choose one person: the family member in today's story, or else someone from DATA.family_members.
- a. Ask whether they miss that person. Keep this question about missing them; the message comes last.
- b. If DATA.family_news has news from that person, share it warmly, always saying it comes from them, like "${ex.news}". Use only what the news says (say they miss them only if it says so), never anyone's health, money or worries.
+4. Side questions, after the story, only if DATA.family_members is not empty. Each member has lives_far: true (lives far from this person), false (lives with or near this person) or "unknown" (the app does not know where one of them lives).
+ a. Ask whether they have been missing someone lately, naming only the members whose lives_far is true or "unknown", never one whose lives_far is false (they live with or near this person, so missing them makes no sense). If two or three qualify, name them all in one question, like "${ex.miss}"; if one qualifies, name just that one. Keep this question about missing them; the message comes last. If nobody qualifies, skip a and b, and for c and d use the family member in today's story or else anyone from DATA.family_members.
+ b. If DATA.family_news has news from a person you asked about, share it warmly, always saying it comes from them, like "${ex.news}". Use only what the news says (say they miss them only if it says so), never anyone's health, money or worries.
  c. If DATA.pending_messages is not empty: for each one, call relay_heard with its id right before you pass it on warmly in your own words.
- d. Call relay_open right before you invite a message to that person, like "${ex.message}". Whatever they answer, even something hard to say, is a message to send to that family member.
-5. If the story was told and DATA.family_members is not empty: call ask_share and ask in one short sentence whether the family may hear today's story. Then say nothing until the app tells you the answer. Never decide the answer yourself.
-6. Say goodbye with one concrete promise for next week that grows out of today's story: call end_call with that promise as next_hook right before you say it. The promise is a story topic only: never their message to the family, and nothing private or sensitive (health, money, conflict, worries).
+ d. Call relay_open right before you invite a message to one person, the one they said they miss, or else the first one you named, like "${ex.message}". Whatever they answer, even something hard to say, is a message to send to that family member.
+5. Say goodbye with one concrete promise for next week that grows out of today's story: call end_call with that promise as next_hook right before you say it. The promise is a story topic only: never their message to the family, and nothing private or sensitive (health, money, conflict, worries).
 
 TOOLS. Call tools only as function calls. Call each tool right before the words it goes with, never after them, so nothing gets said twice. Never say a tool's name, never read arguments aloud, never say that you are calling a tool.
 
 APP MESSAGES. Text in round brackets comes from the app, not from the person.
 - (The call just connected...): begin with step 1.
 - (The teller has been quiet.): ask again shorter or offer an easy way in, once, then wait.
-- (Two minutes left...): finish the current story gently and go to steps 4 to 6.
-- (Share answer: yes...) or (Share answer: no...): reply in one short warm sentence that fits the answer, and never ask again.
+- (Two minutes left...): finish the current story gently and go to steps 4 and 5.
 - (... photos arrived.) or (No photos for now.): thank them briefly or simply go on.
 - (Reminder: ...): correct course without apologising aloud.
 - (Still nothing heard...) or (The line will drop...): call end_call with next week's promise, then say a short warm goodbye; start nothing new.
@@ -274,7 +272,7 @@ ${JSON.stringify(data, null, 1)}
 Reply in ${LANG_NAME[c.lang]}.`, c.mascot ?? DEFAULT_MASCOT_NAME);
 }
 
-/** Bảy công cụ khoá trong token (dạng khai báo của gọi Nếp). Máy khách làm hiệu ứng và trả kết quả (onTool của src/liveTurns.ts, nối ở
+/** Sáu công cụ khoá trong token (dạng khai báo của gọi Nếp). Máy khách làm hiệu ứng và trả kết quả (onTool của src/liveTurns.ts, nối ở
  *  src/CallLive.tsx). Mỗi công cụ gọi ngay trước câu nói đi kèm. Không qua named() nên không viết tên linh vật ở đây. */
 export const LIVE_TOOLS: Array<{ name: string; description: string; parameters?: Record<string, unknown> }> = [
   { name: 'story_open', description: 'Call this right before you say the opener of a new story, with its theme and that exact opener.',
@@ -284,7 +282,6 @@ export const LIVE_TOOLS: Array<{ name: string; description: string; parameters?:
     } } },
   { name: 'story_close', description: 'Call this when the current story is told fully or they want to stop it, right before your one warm line about it.' },
   { name: 'ask_photo', description: 'Call this right before you invite them to share an old photo, near the end of a story with real people or places (before story_close or right after it).' },
-  { name: 'ask_share', description: "Call this once, after at least one story and only when someone else is in the family, right before you ask whether the family may hear today's stories." },
   { name: 'relay_heard', description: "Call this right before you pass on a pending message in your own words, with that message's id.",
     parameters: { type: 'OBJECT', required: ['id'], properties: { id: { type: 'STRING', description: 'The id of that message in DATA.pending_messages.' } } } },
   { name: 'relay_open', description: 'Call this right before you invite them to send a message to a family member, including something hard to say.' },
@@ -569,7 +566,7 @@ export function makeLiveRouter(upload: multer.Multer, deps: LiveDeps = DEPS): ex
   const r = express.Router();
 
   // Nhấc máy: công tắc máy chủ, rồi tính lượt, trần phút, xin token
-  // (lời dặn thật và bảy công cụ khoá trong token). Trả thêm lời nhắn chờ chuyển, chủ đề được hỏi, cờ chống bịa, số người trong nhà.
+  // (lời dặn thật và sáu công cụ khoá trong token). Trả thêm lời nhắn chờ chuyển, chủ đề được hỏi, cờ chống bịa, số người trong nhà.
   r.post('/call/live', h(async (req, res, next) => {
     if (!liveConfig(deps.env).on) return res.status(503).json(errorBody('live_off'));
     next();

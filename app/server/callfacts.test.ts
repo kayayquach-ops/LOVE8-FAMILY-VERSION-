@@ -310,3 +310,11 @@ test('nạp dữ liệu Mây Live: tin cả nhà là tối đa 3 điều mới n
   assert.deepEqual(none.news, []);
 });
 // i18n-ok-end
+
+test('ở xa hay cùng nhà: dưới NEAR_KM là gần (false), từ NEAR_KM là xa (true), chưa biết nơi thì null', () => {
+  assert.equal(F.apartOf(0), false);
+  assert.equal(F.apartOf(F.NEAR_KM - 1), false);
+  assert.equal(F.apartOf(F.NEAR_KM), true);
+  assert.equal(F.apartOf(2600), true);
+  assert.equal(F.apartOf(null), null);
+});

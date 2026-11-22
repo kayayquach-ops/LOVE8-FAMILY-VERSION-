@@ -212,12 +212,6 @@
   "call.line.relayOk.child": "Ừ, mình sẽ chuyển lời giúp nhé.",
   "call.line.relayIntro.parent": "À, con có lời nhắn gửi {self} đây ạ.",
   "call.line.relayIntro.child": "À, mình có lời nhắn gửi bạn đây.",
-  "call.line.share.parent": "Con chia sẻ câu chuyện này cho cả nhà nghe được không ạ?",
-  "call.line.share.child": "Mình chia sẻ câu chuyện này cho cả nhà nghe được không?",
-  "call.line.shareYes.parent": "Dạ, con gửi cả nhà cùng nghe nhé.",
-  "call.line.shareYes.child": "Ừ, mình gửi cả nhà cùng nghe nhé.",
-  "call.line.shareNo.parent": "Dạ, con giữ riêng cho {self} nhé.",
-  "call.line.shareNo.child": "Ừ, mình giữ riêng cho bạn nhé.",
   "call.line.bye.parent": "Con cảm ơn {self} đã kể cho con nghe. Tuần sau con gọi tiếp nhé.",
   "call.line.bye.child": "Cảm ơn bạn đã kể nhé. Tuần sau mình gọi tiếp.",
   "call.ring.who": "Sweet Home đang gọi",
@@ -228,8 +222,6 @@
   "call.photoFailed": "Chưa gửi được ảnh",
   "call.photosSaved": "Đã gửi {n} ảnh vào kho",
   "call.pickPhoto": "Chọn ảnh",
-  "call.share.yes": "Chia sẻ",
-  "call.share.no": "Giữ riêng",
   "call.podcastSoon": "Chuyện vừa kể sẽ có trong \"nhà mình kể\" sau ít phút nhé.",
   "call.sendLater": "Mạng đang chập chờn. Có mạng lại là lời kể tự gửi tiếp, không mất đâu.",
   "call.end": "Kết thúc",
@@ -475,6 +467,9 @@
   "podcast.private": "chỉ mình bạn nghe",
   "podcast.shareAll": "chia sẻ cho cả nhà",
   "podcast.sharedDone": "Cả nhà nghe được rồi",
+  "podcast.sharedNote": "cả nhà đang nghe được",
+  "podcast.keepPrivate": "Giữ riêng",
+  "podcast.keptDone": "Đã giữ riêng, chỉ mình bạn nghe",
 
   "family.title": "Gia đình",
   "family.language": "Ngôn ngữ / Language",
@@ -911,10 +906,5 @@
   "chat.translated": "bản dịch",
   "chat.translating": "đang dịch...",
   "settings.autoTranslate": "Tự dịch tin nhắn",
-  "may.settings.nudge": "{mascot} nhắc mình liên lạc",
-  "may.memory.title": "{mascot} nhớ gì về mình",
-  "may.memory.empty": "{mascot} chưa nhớ gì về bạn",
-  "may.memory.by": "{name} kể",
-  "may.memory.forget": "Xoá",
-  "may.memory.forgot": "Đã xoá"
+  "may.settings.nudge": "{mascot} nhắc mình liên lạc"
 }

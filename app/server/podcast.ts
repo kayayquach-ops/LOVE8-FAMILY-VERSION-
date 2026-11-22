@@ -24,8 +24,8 @@ import { askJSON } from './ai.ts';
 import { suspect } from './guard.ts';
 import { errorBody, langOf, LANGS, runWithLang, tReq, tServer, type Lang } from './i18n.ts';
 import { mascotName, pool } from './db.ts';
-import { queueStory, storyRecipients, type Kin } from './may.ts';
-import { shareFacts } from './memory.ts';
+import { dropStoryTells, queueStory, storyRecipients, type Kin } from './may.ts';
+import { shareFacts, unshareFacts } from './memory.ts';
 import { fontsReady, renderCallVideo, renderStoryVideo, type StoryInput, type StoryText, type VideoText, type VSeg } from './callvideo.ts';
 import { Limit, limitBy } from './limit.ts';
 import { cleanClip, migrateVoiceEdit, mixEpisode, voicedSeconds, type Clip, type Placed } from './voiceedit.ts';
@@ -201,14 +201,20 @@ const wantsVideo = (job: Job) => (storyLike(job) ? !!job.story && !!job.photos?.
 
 async function render(job: Job) {
   const video = wantsVideo(job), keep = !!job.keepDate;
+  // Tập câu chuyện theo calls.shared lúc dựng thật sự (người kể có thể bấm Giữ riêng trong lúc tập chờ tới lượt), không theo lúc xếp hàng.
+  const callOf = job.mode === 'story' ? storyOf(job.key)?.callId : undefined;
+  if (callOf) {
+    const { rows: [c] } = await pool.query('select shared from calls where id = $1', [callOf]);
+    if (c) { job.shared = !!c.shared; if (!c.shared) job.tell = false; }
+  }
   const { rows: [row] } = await pool.query(
-    // Chia sẻ chỉ một chiều: tập đã chia sẻ thì việc dựng lại xếp từ trước lúc chia sẻ (shared false) không làm nó riêng lại.
+    // Tập câu chuyện: shared theo cuộc gọi (chia sẻ và giữ riêng đều đổi được). Tập khác chỉ một chiều (dựng lại không làm tập đã chia sẻ thành riêng).
     `insert into podcasts (id, family_id, key, kind, member_id, topic, title, cover, status, video_status, shared) values ($1,$2,$3,$4,$5,$6,$7,$8,'rendering',$9,$12)
      on conflict (family_id, key) do update set title = excluded.title, cover = coalesce(excluded.cover, podcasts.cover),
        status = case when $11 and podcasts.media is not null then 'ready' else 'rendering' end,
        video_status = case when $10 then 'rendering' else podcasts.video_status end,
-       shared = excluded.shared or podcasts.shared
-     returning id`, [randomUUID(), job.fid, job.key, job.kind, job.memberId, job.topic, job.title, job.cover, video ? 'rendering' : 'none', video, keep, job.shared]);
+       shared = case when $13 then excluded.shared else excluded.shared or podcasts.shared end
+     returning id`, [randomUUID(), job.fid, job.key, job.kind, job.memberId, job.topic, job.title, job.cover, video ? 'rendering' : 'none', video, keep, job.shared, !!callOf]);
   const work = mkdtempSync(path.join(os.tmpdir(), 'podcast-'));
   let handed = false;
   try {
@@ -618,7 +624,11 @@ async function buildTopic(fid: string, topic: string, lang: Lang, keepDate = fal
      select a.*, m.name who, s.at from call_answers a join s on s.call_id = a.call_id and s.idx = a.idx join members m on m.id = a.member_id
      where a.media is not null and a.topic <> all($3::text[]) order by s.at, a.turn, a.created_at`, [fid, topic, NO_EPISODE]);
   const clips = rows.filter((a) => existsSync(mediaFile(a.media)));
-  if (!clips.length) return;
+  if (!clips.length) {
+    // Không còn chuyện nào chia sẻ trong chủ đề (người kể vừa giữ riêng): ẩn tập chủ đề cũ. Có chuyện chia sẻ lại thì dựng lại và hiện lại.
+    await safeQuery(POD_SQL.hideTopic, [fid, `topic:${topic}`]);
+    return;
+  }
   // Mỗi câu chuyện (cuộc gọi, idx) một nhóm, theo thứ tự trong tập.
   const groups = [...new Map(clips.map((a) => [`${a.call_id}:${a.idx}`, { call: a.call_id as string, idx: a.idx as number }])).entries()];
   const gid = new Map(groups.map(([k], i) => [k, i]));
@@ -737,10 +747,14 @@ function row(r: any): PodcastRow {
 export const POD_SQL = {
   // Tập riêng (shared = false) chỉ người kể thấy; tập cũ mặc định đã chia sẻ.
   list: `select * from podcasts where family_id = $1 and status <> 'failed' and key <> $3 and (shared or member_id = $4) order by created_at desc limit $2`,
+  hideTopic: 'update podcasts set shared = false where family_id = $1 and key = $2',
+  keepCall: 'update calls set shared = false where id = $1 and member_id = $2 returning family_id',
+  keepEps: 'update podcasts set shared = false where family_id = $1 and key like $2 and shared returning id, key, topic',
   shareCall: 'update calls set shared = true where id = $1 and member_id = $2 returning family_id',
   // Chỉ tập còn riêng: bấm lại không báo lại, không dựng lại tập chủ đề.
   shareEps: 'update podcasts set shared = true where family_id = $1 and key like $2 and not shared returning id, key, topic',
   family: 'select id, name, role, lang from members where family_id = $1 order by created_at',
+  teller: 'select lang from members where id = $1',
   // Lời kể của một câu chuyện, chỉ để tìm người được nhắc (không bao giờ vào thông báo).
   storyText: 'select transcript from call_answers where call_id = $1 and idx = $2 and topic <> all($3::text[]) order by turn',
 };
@@ -757,9 +771,12 @@ const storyOf = (key: string) => {
 };
 
 /** Xếp tin chuyện mới cho người được nhắc trong chuyện (không ai thì cả nhà trừ người kể). Lượt gửi của Mây chờ tập dựng xong. */
-async function queueTell(db: Db, p: { fid: string; callId: string; podcastId: string; teller: Kin; family: Kin[]; text: string; now: Date }) {
-  return queueStory(db, { familyId: p.fid, callId: p.callId, podcastId: p.podcastId, fromId: p.teller.id, to: storyRecipients(p.teller, p.family, p.text), now: p.now });
+async function queueTell(db: Db, p: { fid: string; callId: string; podcastId: string; teller: Kin; family: Kin[]; text: string; now: Date; delayMin?: number }) {
+  return queueStory(db, { familyId: p.fid, callId: p.callId, podcastId: p.podcastId, fromId: p.teller.id, to: storyRecipients(p.teller, p.family, p.text), now: p.now, delayMin: p.delayMin });
 }
+
+/** Chờ bao lâu (phút) trước khi báo người được nhắc về tập mới: cho người kể thời gian bấm Giữ riêng. */
+export const KEEP_GRACE_MIN = 30;
 
 /** Dựng mới xong tiếng một tập câu chuyện đã chia sẻ: báo theo lời kể của chuyện chính (không tính phần đuôi). */
 async function tellStory(db: Db, job: Job, podcastId: string) {
@@ -768,7 +785,7 @@ async function tellStory(db: Db, job: Job, podcastId: string) {
   const teller = family.find((m) => m.id === job.memberId);
   if (!s || !teller) return;
   const text = job.pieces.filter((x) => !x.tail).map((x) => x.transcript ?? '').join(' ');
-  await queueTell(db, { fid: job.fid, callId: s.callId, podcastId, teller, family, text, now: new Date() });
+  await queueTell(db, { fid: job.fid, callId: s.callId, podcastId, teller, family, text, now: new Date(), delayMin: KEEP_GRACE_MIN });
 }
 
 export type ShareDeps = { db: Db; rebuildTopic: (fid: string, topic: string, lang: Lang) => Promise<void>; now: () => Date };
@@ -802,11 +819,41 @@ export async function shareCall(callId: string, memberId: string, deps: ShareDep
   return true;
 }
 
+/** Người kể giữ riêng chuyện của cuộc gọi (nút "Giữ riêng" trên tập vừa dựng). Chỉ người kể: không phải thì false.
+ *  calls.shared tắt, tập câu chuyện thành riêng (chỉ người kể thấy), sự thật của cuộc gọi về riêng (unshareFacts), tin chuyện mới chưa gửi bị bỏ,
+ *  tập chủ đề có chuyện này dựng lại không còn nó (hết chuyện chia sẻ thì ẩn). Bấm lại không đổi gì. Thông báo đã gửi thì không thu lại được. */
+export async function keepCallPrivate(callId: string, memberId: string, deps: ShareDeps = SHARE_DEPS): Promise<boolean> {
+  const { db } = deps;
+  const { rows: [call] } = await db.query(POD_SQL.keepCall, [callId, memberId]);
+  if (!call) return false;
+  const fid: string = call.family_id;
+  const { rows: eps } = await db.query(POD_SQL.keepEps, [fid, `story:${callId}:%`]);
+  await unshareFacts(db, callId);
+  await dropStoryTells(db, callId);
+  if (!eps.length) return true;
+  const { rows: [teller] } = await db.query(POD_SQL.teller, [memberId]);
+  for (const topic of new Set<string>(eps.map((e) => e.topic))) await deps.rebuildTopic(fid, topic, langOf(teller?.lang));
+  return true;
+}
+
 export const podcastRouter = express.Router();
 
 podcastRouter.get('/podcasts', async (req: any, res) => {
   try { res.json(await listPodcasts(req.member.family_id, req.member.id)); }
   catch (e) { console.error(e); res.status(500).json(errorBody('server')); }
+});
+
+// Nút "Giữ riêng" trên tập đã chia sẻ của chính mình (mặc định mọi tập đều chia sẻ).
+podcastRouter.post('/podcasts/:id/keep', async (req: any, res) => {
+  try {
+    const { rows: [ep] } = await pool.query('select key from podcasts where id = $1 and family_id = $2 and member_id = $3', [req.params.id, req.member.family_id, req.member.id]);
+    const s = ep ? storyOf(ep.key) : null;
+    if (!s || !(await keepCallPrivate(s.callId, req.member.id))) return res.status(404).json(errorBody('podcast_not_found'));
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json(errorBody('server'));
+  }
 });
 
 // Nút "chia sẻ cho cả nhà" trên tập riêng: chỉ tập câu chuyện của chính người bấm, trong nhà của người đó.

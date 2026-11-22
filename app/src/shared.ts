@@ -117,10 +117,6 @@ export function callLines(role: string, tr: Tr) {
     relay: L('relay'),
     relayOk: L('relayOk'),
     relayIntro: L('relayIntro'),
-    /** Cuối chuyện chính: xin phép chia sẻ cho cả nhà, câu đáp khi đồng ý, khi giữ riêng. */
-    share: L('share'),
-    shareYes: L('shareYes'),
-    shareNo: L('shareNo'),
     /** Câu tạm biệt cố định của mọi bộ câu v2 (giọng nằm sẵn trong kho). */
     bye: L('bye'),
   };
