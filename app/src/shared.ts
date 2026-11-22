@@ -229,3 +229,13 @@ export type Shot = {
 };
 /** Ghi tối đa cho ô tự viết dịp. */
 export const SHOT_CUSTOM_MAX = 80;
+
+// Ưu đãi của nhãn hàng (22/11/2026): coupon, mã giảm giá liên quan tới chăm sóc gia đình và bố mẹ.
+// Hợp đồng giữa máy chủ (server/coupons.ts) và app (src/Coupons.tsx, lối vào ở Settings.tsx). Ghi chú: app/docs/uu-dai.md.
+export const COUPON_CATEGORIES = ['massage', 'health', 'pharmacy', 'supplement', 'homecare', 'other'] as const;
+export type CouponCategory = (typeof COUPON_CATEGORIES)[number];
+/** family: chỉ dành cho gói gia đình (app chưa có thanh toán nên hiện chỉ gắn nhãn). expiresAt null: không hết hạn. */
+export type Coupon = {
+  id: string; brand: string; category: CouponCategory; title: string; discount: string;
+  code: string | null; url: string | null; expiresAt: string | null; family: boolean;
+};

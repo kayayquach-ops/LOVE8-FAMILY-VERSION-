@@ -1,0 +1,60 @@
+/* Ưu đãi (Coupons.tsx): lối vào ở Cài đặt, băng rôn, thẻ vé xé.
+   Lỗ tròn hai bên vé: hình tròn màu nền (var(--bg), nền của .sheet) đè lên mép thẻ, thẻ overflow hidden cắt nửa ngoài,
+   viền mực của lỗ nối vào viền thẻ. Chỉ màu và chữ đổi theo giao diện tối (dark.css), không cần chỗ riêng. */
+
+/* Lối vào: ô đếm như "쿠폰 0" của Olive Young. */
+.cp-entry { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; margin-top: 10px; padding: 14px 16px 14px 18px; }
+.cp-entry-name { flex: 1; font-size: 16px; font-weight: 500; }
+.cp-entry-n { font-family: var(--f-display); font-size: 26px; font-weight: 800; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.cp-entry-n.wait { opacity: 0; }
+.cp-go { display: grid; color: var(--muted); transform: rotate(180deg); }
+
+/* Băng rôn: một vé nhỏ, chữ viết tay mực tím. */
+.cp-banner { position: relative; overflow: hidden; display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 10px; padding: 12px 24px; border-radius: 16px; background: var(--paper); box-shadow: inset 0 0 0 1.5px var(--ink); text-align: left; color: var(--ink); }
+.cp-banner::before, .cp-banner::after { content: ''; position: absolute; top: 50%; width: 16px; height: 16px; margin-top: -8px; border-radius: 50%; background: var(--bg); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.cp-banner::before { left: -8px; }
+.cp-banner::after { right: -8px; }
+.cp-banner-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cp-banner-text .hand { font-size: 21px; line-height: 1.15; }
+.cp-banner-text small { font-size: 13px; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Lọc theo nhóm: một hàng cuộn ngang. */
+.cp-filter { display: flex; gap: 8px; overflow-x: auto; margin: 0 -20px 14px; padding: 2px 20px 4px; scrollbar-width: none; }
+.cp-filter::-webkit-scrollbar { display: none; }
+.cp-filter .chip { flex: none; white-space: nowrap; min-height: 40px; padding: 8px 14px; font-size: 14px; }
+
+/* Thẻ vé. */
+.cp-list { display: flex; flex-direction: column; gap: 14px; }
+.cp { position: relative; overflow: hidden; border-radius: 18px; background: var(--paper); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.cp-body { padding: 16px 18px 10px; }
+.cp-tags { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+.cp-cat { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--soft); }
+.cp-fam { margin-left: auto; padding: 3px 10px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--ink); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.cp-main { display: flex; align-items: flex-end; gap: 12px; margin-top: 8px; }
+.cp-text { flex: 1; min-width: 0; }
+.cp-text b { display: block; font-family: var(--f-display); font-size: 19px; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; }
+.cp-text p { margin: 4px 0 0; font-size: 14.5px; line-height: 1.4; color: var(--soft); }
+.cp-off { flex: none; max-width: 42%; display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
+.cp-off span { font-family: var(--f-display); font-size: 31px; font-weight: 800; letter-spacing: -.04em; line-height: 1; }
+.cp-off.long span { font-size: 21px; line-height: 1.05; letter-spacing: -.03em; }
+.cp-off svg { width: 100%; min-width: 48px; height: 9px; margin-top: 3px; overflow: visible; }
+.cp-off path { fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.cp-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 32px; margin-top: 4px; font-size: 13px; color: var(--muted); }
+.cp-meta .soon { color: var(--warn); font-weight: 500; }
+.cp-link { display: inline-flex; align-items: center; gap: 3px; min-height: 32px; color: var(--ink); font-size: 14px; font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+.cp-link svg { transform: rotate(180deg); }
+/* Đường xé: hai lỗ tròn và nét đứt giữa. */
+.cp-cut { position: relative; height: 20px; }
+.cp-cut::before { content: ''; position: absolute; left: 18px; right: 18px; top: 9px; border-top: 1.5px dashed var(--ink); opacity: .35; }
+.cp-cut i { position: absolute; top: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--bg); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.cp-cut i:first-child { left: -10px; }
+.cp-cut i:last-child { right: -10px; }
+.cp-foot { display: flex; align-items: center; gap: 12px; padding: 2px 16px 14px 18px; }
+.cp-code { flex: 1; min-width: 0; font-family: var(--f-display); font-size: 17px; font-weight: 700; letter-spacing: .1em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: text; -webkit-user-select: text; }
+.cp-copy { flex: none; height: 42px; padding: 0 18px; border-radius: 999px; background: var(--ink); color: var(--on-ink); font-size: 14.5px; font-weight: 600; }
+
+/* Chưa có ưu đãi. */
+.cp-empty { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 16vh 16px 0; text-align: center; }
+.cp-empty .doodle { stroke-width: 1.25; }
+.cp-empty p { margin: 0; max-width: 300px; font-size: 17px; line-height: 1.55; text-wrap: balance; }
+.cp-empty .hand { font-size: 23px; }

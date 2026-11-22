@@ -9,14 +9,18 @@ import { GoogleMark } from './Onboarding';
 import { mascotNameOf, type Me } from './shared';
 import { setUiSounds, tap, uiSoundsOn } from './sound';
 import { Avatar, Icon, toast } from './ui';
+import { Coupons, CouponsEntry, useCoupons } from './Coupons';
 
-/** Cài đặt: hồ sơ, ngôn ngữ, thông báo, âm thanh, tài khoản Google, tải lại app, rời nhà. */
+/** Cài đặt: hồ sơ, ưu đãi, ngôn ngữ, thông báo, âm thanh, tài khoản Google, tải lại app, rời nhà. */
 export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose: () => void; onProfile: () => void; onMascot: () => void }) {
   const lang = useLang();
   const theme = useThemeMode();
   const [sound, setSound] = useState(uiSoundsOn());
   const [autoTr, setAutoTr] = useState(autoTranslateOn());
   const google = useGoogleLink();
+  // Ưu đãi của nhãn hàng: ô đếm ngay dưới hồ sơ, bấm vào mở danh sách đè lên Cài đặt (đóng là về lại đây).
+  const coupons = useCoupons();
+  const [showCoupons, setShowCoupons] = useState(false);
 
   // Rời nhà: hỏi lại bằng thẻ dưới đáy như "xoá khỏi nhà" (Sheets.tsx), vì máy chủ xoá hẳn mình cùng ảnh, tin nhắn, cuộc gọi.
   const [leaving, setLeaving] = useState(false);
@@ -54,6 +58,7 @@ export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose
           <span className="set-name"><b>{me.me.name}</b><small>{me.family.name}</small></span>
           <span className="chip">{t('settings.profileEdit')}</span>
         </button>
+        <CouponsEntry list={coupons} onOpen={() => { tap(); setShowCoupons(true); }} />
 
         <div className="h2">{t('settings.mascot')}</div>
         <button className="panel set-profile" onClick={() => { tap(); onMascot(); }}>
@@ -122,6 +127,8 @@ export function Settings({ me, onClose, onProfile, onMascot }: { me: Me; onClose
 
         <button className="link" style={{ marginTop: 24 }} onClick={() => { tap(); setLeaving(true); }}>{t('family.leave')}</button>
       </div>
+
+      {showCoupons && <Coupons list={coupons} onClose={() => setShowCoupons(false)} />}
 
       {leaving && (
         <div className="nask" onClick={() => { if (!busyLeave) setLeaving(false); }}>

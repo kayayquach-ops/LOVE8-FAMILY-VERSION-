@@ -1,5 +1,5 @@
 import { getLang, hasKey, onLangChange, t, type Lang } from './i18n';
-import type { Me, Post, Shot, ShotOccasion, Week } from './shared';
+import type { Coupon, Me, Post, Shot, ShotOccasion, Week } from './shared';
 
 // Mã riêng của máy này, có được khi tạo nhà hoặc vào nhà. Không có mật khẩu.
 const KEY = 'homeletter-token';
@@ -162,6 +162,8 @@ export const api = {
   shotPost: (id: string) => call<{ ok: boolean; postId: string }>(`/api/shots/${encodeURIComponent(id)}/post`, { method: 'POST' }),
   /** Bấm lời nhắc của Mây: máy chủ ghi đã mở, trả người cần gọi. */
   mayOpen: (id: string) => call<{ peerId: string }>(`/api/may/nudges/${encodeURIComponent(id)}/open`, { method: 'POST' }),
+  /** Ưu đãi của nhãn hàng đang dùng được, đúng thứ tiếng đang chọn (server/coupons.ts). */
+  coupons: () => call<{ coupons: Coupon[] }>('/api/coupons'),
 };
 
 // Mọi yêu cầu tới /api/ mang theo ngôn ngữ đang chọn (header x-lang), để lời báo lỗi và chữ máy chủ soạn đúng thứ tiếng

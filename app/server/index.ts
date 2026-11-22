@@ -35,6 +35,7 @@ import { migrateMemory, startMemoryBackfill } from './memory.ts';
 import { makeMayRouter, markCallContact, migrateMay, startMayScheduler } from './may.ts';
 import { makeLiveRouter, migrateLive } from './calllive.ts';
 import { liveConfig } from './liveconfig.ts';
+import { couponsRouter, migrateCoupons } from './coupons.ts';
 
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || './media');
 mkdirSync(MEDIA_DIR, { recursive: true });
@@ -182,6 +183,8 @@ app.use('/api', joinRouter(joinDeps));
 app.use('/api', makeMayRouter());
 // Mây Live (thử): token dùng một lần và ghi tiền, chỉ người bật "Thử Mây mới" (server/calllive.ts).
 app.use('/api', makeLiveRouter(upload));
+// Ưu đãi của nhãn hàng, chỉ đọc (server/coupons.ts, docs/uu-dai.md).
+app.use('/api', couponsRouter());
 
 app.get('/api/me', h(async (req, res) => {
   const m = req.member!;
@@ -408,6 +411,7 @@ void refreshFirstVoicePodcasts().catch((e) => console.error('[podcast]', e));
 await migratePush(pool);
 await migrateShot(pool);
 await migrateLocation(pool);
+await migrateCoupons(pool);
 startRecapScheduler(pool);
 startPushScheduler();
 startMemoryBackfill();
