@@ -225,15 +225,10 @@ export const MEM_SQL = {
   // và điều rút từ câu hỏi thăm (lời đồng ý chỉ là cho câu chuyện chính).
   share: `update memory_facts set visibility = 'family' where call_id = $1 and visibility = 'self'
      and kind not in ('health', 'worry') and coalesce(details->>'sensitive', '') <> 'true' and coalesce(details->>'checkin', '') <> 'true'`,
+  // Người kể bấm "Giữ riêng" sau khi tập đã dựng: sự thật của cuộc gọi về lại riêng (như extractCall với shared = false).
+  unshare: `update memory_facts set visibility = 'self' where call_id = $1 and visibility = 'family'`,
   done: 'update calls set memory_at = now() where id = $1',
   failed: 'update calls set memory_tries = memory_tries + 1 where id = $1',
-  // Điều Mây nhớ về chính mình: do mình kể (mọi chế độ) hoặc người khác kể cho cả nhà; điều riêng người khác kể thì không.
-  list: `select f.id, f.kind, f.text, f.text_en, f.details->>'lang' lang, f.source_id, s.name by_name, f.created_at
-     from memory_facts f join members s on s.id = f.source_id
-     where f.family_id = $1 and f.about_id = $2 and f.replacement_id is null and (f.source_id = $2 or f.visibility = 'family')
-     order by f.created_at desc limit 100`,
-  forget: `delete from memory_facts where id = $1 and family_id = $2 and about_id = $3 and replacement_id is null
-     and (source_id = $3 or visibility = 'family') returning id`,
   next: `select id from calls where status = 'done' and memory_at is null and memory_tries < 3 order by done_at limit 1`,
 };
 
@@ -327,25 +322,7 @@ export function startMemoryBackfill(deps: MemoryDeps = DEPS, gapMs = 20_000): vo
   setTimeout(tick, 60_000);
 }
 
-const h = (fn: (req: any, res: express.Response) => Promise<unknown>) => (req: any, res: express.Response) =>
-  fn(req, res).catch((e) => { console.error('[memory]', e); res.status(500).json(errorBody('server')); });
-
-/** Gắn sau auth. GET /may/memory: những điều Mây nhớ về người xem, chữ theo thứ tiếng của người xem. DELETE /may/memory/:id: xoá một dòng. */
-export function makeMemoryRouter(deps: { db: Db } = { db: pool }) {
-  const r = express.Router();
-  r.get('/may/memory', h(async (req, res) => {
-    const me = req.member as { id: string; family_id: string };
-    const lang = reqLang();
-    const { rows } = await deps.db.query(MEM_SQL.list, [me.family_id, me.id]);
-    res.json(rows.map((f) => ({ id: f.id, text: f.lang === lang ? f.text : f.text_en, kind: f.kind, by: f.source_id === me.id ? '' : String(f.by_name ?? ''), createdAt: new Date(f.created_at).toISOString() })));
-  }));
-  // Xoá cứng: đây là dòng nhớ của chính người đó. Các dòng cũ từng bị dòng này thay thế (replacement_id) không có khoá ngoại,
-  // nên vẫn xoá được; chúng giữ nguyên trạng đã thay, không tự sống lại.
-  r.delete('/may/memory/:id', h(async (req, res) => {
-    const me = req.member as { id: string; family_id: string };
-    const { rows } = await deps.db.query(MEM_SQL.forget, [String(req.params.id), me.family_id, me.id]);
-    if (!rows[0]) return res.status(404).json(errorBody('memory_not_found'));
-    res.json({ ok: true });
-  }));
-  return r;
+/** Người kể giữ riêng cuộc gọi: sự thật của nó về lại riêng. Chia sẻ lại thì shareFacts đưa sang cả nhà, vẫn trừ điều nhạy cảm. Trả số sự thật đổi. */
+export async function unshareFacts(db: Db, callId: string): Promise<number> {
+  return (await db.query(MEM_SQL.unshare, [callId])).rowCount ?? 0;
 }

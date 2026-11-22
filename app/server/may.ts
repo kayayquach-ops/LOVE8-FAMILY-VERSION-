@@ -67,6 +67,8 @@ export const MAY_SQL = {
      left join podcasts p on p.id = s.ref and p.family_id = s.family_id
      where s.sent_at is null and s.dropped is null`,
   history: 'select to_id, sent_at from may_nudges where to_id = any($1) and sent_at > $2',
+  // Người kể giữ riêng tập sau khi dựng: tin chuyện mới chưa gửi của cuộc gọi bỏ hẳn (xoá để chia sẻ lại thì xếp lại được).
+  dropStory: `delete from may_signals where call_id = $1 and kind = 'story' and sent_at is null`,
   drop: 'update may_signals set dropped = $2 where id = $1 and sent_at is null and dropped is null',
   // Giành tín hiệu và ghi lời nhắc trong MỘT câu ($1 tín hiệu, $2 lúc gửi, $3 mã lời nhắc): chỉ lượt nhận lại được hàng mới gửi,
   // nên hai lượt chạy cùng lúc vẫn chỉ gửi một lần; không bao giờ có tín hiệu đã gửi mà thiếu lời nhắc (lượt khác đếm trần luôn thấy nó).
@@ -203,10 +205,16 @@ export async function queueSignals(db: Db, rows: SignalRow[]): Promise<number> {
 export const STORY_TTL_H = 72;
 
 /** Xếp tin chuyện mới cho từng người nhận: ref là mã tập, không có câu gốc. Cùng (cuộc gọi, người nhận) đã có thì bỏ qua. Trả số hàng mới. */
-export async function queueStory(db: Db, p: { familyId: string; callId: string; podcastId: string; fromId: string; to: string[]; now: Date }): Promise<number> {
+export async function queueStory(db: Db, p: { familyId: string; callId: string; podcastId: string; fromId: string; to: string[]; now: Date; delayMin?: number }): Promise<number> {
   const expires = new Date(p.now.getTime() + STORY_TTL_H * HOUR_MS);
+  const due = new Date(p.now.getTime() + (p.delayMin ?? 0) * 60_000);
   return queueSignals(db, p.to.map((to) => ({ id: randomUUID(), family_id: p.familyId, from_id: p.fromId, to_id: to, kind: 'story' as const, evidence: '',
-    call_id: p.callId, ref: p.podcastId, due_at: p.now, expires_at: expires })));
+    call_id: p.callId, ref: p.podcastId, due_at: due, expires_at: expires })));
+}
+
+/** Bỏ tin chuyện mới chưa gửi của một cuộc gọi (người kể vừa giữ riêng). Trả số tin bỏ. */
+export async function dropStoryTells(db: Db, callId: string): Promise<number> {
+  return (await db.query(MAY_SQL.dropStory, [callId])).rowCount ?? 0;
 }
 
 // ---------- Gửi lời nhắc ----------

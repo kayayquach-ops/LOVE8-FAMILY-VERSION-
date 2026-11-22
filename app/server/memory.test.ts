@@ -14,7 +14,6 @@ const { MAY_SQL } = await import('./may.ts');
 const { askJSON } = await import('./ai.ts');
 
 type Handler = (url: string, init: RequestInit) => Promise<Response>;
-const realFetch = globalThis.fetch;   // cho test router: fetch ở dưới là Gemini giả
 let handler: Handler = async () => new Response('{}', { status: 500 });
 let sent: any[] = [];
 globalThis.fetch = (async (u: string | URL | Request, init?: RequestInit) => {
@@ -146,23 +145,16 @@ class FakeDb {
         for (const f of hit) f.visibility = 'family';
         return res([], hit.length);
       }
+      case S.unshare: {
+        const hit = this.facts.filter((f) => f.call_id === v[0] && f.visibility === 'family');
+        for (const f of hit) f.visibility = 'self';
+        return res([], hit.length);
+      }
       case S.done: this.calls[v[0]].memory_at = this.tick(); return res([], 1);
       case S.failed: this.calls[v[0]].memory_tries++; return res([], 1);
       case S.next:
         return res(Object.values(this.calls).filter((c) => c.status === 'done' && c.memory_at == null && c.memory_tries < 3)
           .sort((a, b) => +a.done_at - +b.done_at).slice(0, 1).map(({ id }) => ({ id })));
-      case S.list: {
-        const [fid, me] = v;
-        return res(this.facts.filter((f) => f.family_id === fid && f.about_id === me && f.replacement_id == null && (f.source_id === me || f.visibility === 'family'))
-          .sort((a, b) => +b.created_at - +a.created_at).slice(0, 100)
-          .map((f) => ({ id: f.id, kind: f.kind, text: f.text, text_en: f.text_en, lang: f.details?.lang ?? null, source_id: f.source_id, by_name: this.members.find((m) => m.id === f.source_id)?.name ?? '', created_at: f.created_at })));
-      }
-      case S.forget: {
-        const [id, fid, me] = v;
-        const hit = this.facts.filter((f) => f.id === id && f.family_id === fid && f.about_id === me && f.replacement_id == null && (f.source_id === me || f.visibility === 'family'));
-        this.facts = this.facts.filter((f) => !hit.includes(f));
-        return res(hit.map(({ id }) => ({ id })));
-      }
       case MAY_SQL.insert: {
         const [id, family_id, from_id, to_id, kind, evidence, call_id, ref, due_at, expires_at] = v;
         if (this.signals.some((s) => s.call_id === call_id && s.to_id === to_id && s.kind === kind)) return res([], 0);
@@ -245,6 +237,15 @@ test('chia sẻ sau: sự thật riêng của cuộc gọi sang cả nhà, trừ
   assert.deepEqual(db.facts.map((x) => [x.id, x.visibility]), [['food', 'family'], ['health', 'self'], ['worry', 'self'], ['secret', 'self'], ['place', 'family'], ['other', 'self']]);
   assert.equal(await M.shareFacts(db, 'c1'), 0);   // bấm lại không đổi gì
 });
+test('giữ riêng sau khi tập đã dựng: sự thật của cuộc gọi về riêng, cuộc gọi khác giữ nguyên; chia sẻ lại thì không lộ điều nhạy cảm', async () => {
+  const f = (id: string, call_id: string, kind: string, visibility: string, sensitive = false): Row => ({ id, family_id: 'F', about_id: null, source_id: 'lan', kind,
+    text: id, text_en: id, details: { evidence: 'e', sensitive, occasion: null, lang: 'vi' }, call_id, answer_id: null, visibility, replacement_id: null, created_at: NOW });
+  db.facts = [f('food', 'c1', 'food', 'family'), f('secret', 'c1', 'like', 'self', true), f('other', 'c2', 'food', 'family')];
+  assert.equal(await M.unshareFacts(db, 'c1'), 1);
+  assert.deepEqual(db.facts.map((x) => [x.id, x.visibility]), [['food', 'self'], ['secret', 'self'], ['other', 'family']]);
+  assert.equal(await M.shareFacts(db, 'c1'), 1);
+  assert.deepEqual(db.facts.map((x) => [x.id, x.visibility]), [['food', 'family'], ['secret', 'self'], ['other', 'family']]);
+});
 test('sự thật rút từ câu hỏi thăm luôn là riêng, kể cả cuộc gọi đã chia sẻ; chia sẻ sau cũng không đổi', async () => {
   const checkinFact = fact({ kind: 'place', text: 'Trời Hà Nội đã mát', text_en: 'The weather in Hà Nội is cool now', evidence: 'trời Hà Nội mát rồi' });
   const byText = (t: string) => mine().find((f) => f.text === t)!;
@@ -291,51 +292,4 @@ test('AI hỏng giữa lúc rút bù: dừng ngay sau cuộc gọi lỗi đầu 
   assert.equal(db.calls.c0.memory_tries, 1);
   assert.equal(db.calls.c1.memory_tries, 0);
   assert.equal(db.calls.c1.memory_at, null);
-});
-
-// ---------- Mây nhớ gì về mình ----------
-
-async function withMemoryApp<T>(run: (call: (method: string, path: string, who: string, lang?: string) => Promise<{ status: number; body: any }>) => Promise<T>): Promise<T> {
-  const { once } = await import('node:events');
-  const express = (await import('express')).default;
-  const { langMiddleware } = await import('./i18n.ts');
-  const app = express();
-  app.use(langMiddleware);
-  app.use((req: any, _res, next) => { req.member = { id: String(req.headers['x-member']), family_id: 'F' }; next(); });
-  app.use('/api', M.makeMemoryRouter({ db }));
-  const server = app.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const base = `http://127.0.0.1:${(server.address() as any).port}`;
-  try {
-    return await run(async (method, path, who, lang = 'vi') => {
-      const r = await realFetch(`${base}${path}`, { method, headers: { 'x-member': who, 'x-lang': lang } });
-      return { status: r.status, body: await r.json() };
-    });
-  } finally { server.close(); }
-}
-const memFact = (id: string, about: string, source: string, visibility: string, o: Row = {}): Row => ({ id, family_id: 'F', about_id: about, source_id: source, kind: 'food',
-  text: `${id} vi`, text_en: `${id} en`, details: { lang: 'vi' }, call_id: 'c1', answer_id: null, visibility, replacement_id: null, created_at: NOW, ...o });
-test('Mây nhớ gì về mình: thấy điều về mình do mình kể hay người khác kể cho cả nhà, không thấy điều riêng người khác kể; xoá được từng dòng của mình', async () => {
-  db.facts = [memFact('f-own', 'an', 'an', 'self'), memFact('f-fam', 'an', 'lan', 'family'), memFact('f-lan-self', 'an', 'lan', 'self'),
-    memFact('f-old', 'an', 'an', 'self', { replacement_id: 'f-own' }), memFact('f-binh', 'binh', 'binh', 'family')];
-  await withMemoryApp(async (call) => {
-    const list = await call('GET', '/api/may/memory', 'an');
-    assert.deepEqual(list.body.map((f: any) => f.id).sort(), ['f-fam', 'f-own']);
-    assert.deepEqual(list.body.find((f: any) => f.id === 'f-fam').by, 'Lan');
-    assert.equal(list.body.find((f: any) => f.id === 'f-own').by, '');
-    assert.equal((await call('DELETE', '/api/may/memory/f-lan-self', 'an')).status, 404);
-    assert.equal((await call('DELETE', '/api/may/memory/f-own', 'binh')).status, 404);
-    const gone = await call('DELETE', '/api/may/memory/f-lan-self', 'an');
-    assert.equal(gone.body.code, 'memory_not_found');
-    assert.deepEqual((await call('DELETE', '/api/may/memory/f-own', 'an')).body, { ok: true });
-  });
-  assert.ok(!db.facts.some((f) => f.id === 'f-own'));
-  assert.ok(db.facts.some((f) => f.id === 'f-lan-self'));
-});
-test('chữ theo ngôn ngữ người xem: cùng thứ tiếng thì câu gốc, khác thì bản tiếng Anh', async () => {
-  db.facts = [memFact('f-own', 'an', 'an', 'self', { text: 'An mê canh chua', text_en: 'An loves sour soup' })];
-  await withMemoryApp(async (call) => {
-    assert.equal((await call('GET', '/api/may/memory', 'an', 'vi')).body.find((f: any) => f.id === 'f-own').text, 'An mê canh chua');
-    assert.equal((await call('GET', '/api/may/memory', 'an', 'ko')).body.find((f: any) => f.id === 'f-own').text, 'An loves sour soup');
-  });
 });

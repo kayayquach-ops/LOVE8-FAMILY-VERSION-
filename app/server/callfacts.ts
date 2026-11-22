@@ -128,6 +128,11 @@ export function depthOf(p: { done: number; facts: number }): Depth {
 }
 
 /** Loại sự thật thuộc chủ đề chuyện nào (sợi chuyện bỏ ngỏ ở mức 2); loại không có ở đây không thành sợi chuyện. */
+/** Dưới ngần này (km) giữa hai nơi thì coi là sống cùng nhà hay cùng thành phố, Mây không hỏi "có nhớ không". Nơi lấy từ vị trí thật
+ *  (nếu người ấy đang chia sẻ) hoặc thành phố tự chọn; chưa biết nơi của một trong hai người thì không đoán (null). */
+export const NEAR_KM = 30;
+export const apartOf = (km: number | null): boolean | null => (km == null ? null : km >= NEAR_KM);
+
 export const KIND_THEME: Partial<Record<FactKind, StoryTheme>> = { person: 'bo-me-minh', place: 'que-nha', food: 'mon-an', milestone: 'cong-viec', relationship: 'bo-me-minh', wish: 'uoc-mo', occasion: 'tet-cac-dip' };
 
 export type SeedKind = 'hook' | 'food' | 'seen' | 'place' | 'away' | 'heard' | 'person' | 'together' | 'occasion' | 'thread' | 'relation' | 'everyday' | 'childhood';
@@ -213,7 +218,8 @@ export type ScriptExtras = {
   age: number | null;
   /** feel: Mây Live, thời tiết thành cảm giác không số (weatherFeel); bộ câu cũ chỉ đọc weather. */
   place: { name: string | null; country: string | null; tz: string; localTime: string; weather: string | null; feel: string | null };
-  family: Array<{ name: string; role: string; place: string | null; hoursApart: number; km: number | null }>;
+  /** apart: người này ở xa người nghe (từ NEAR_KM trở lên), false là ở cùng nhà hay gần nhau, null là chưa biết nơi ở của một trong hai. */
+  family: Array<{ name: string; role: string; place: string | null; hoursApart: number; km: number | null; apart: boolean | null }>;
   /** private: điều 'self' của chính người nghe (chỉ được nhắc nhẹ ở câu hỏi thăm, không bao giờ vào câu mở chuyện chính, vì câu mở thành thẻ trong tập cả nhà xem). */
   memory: Array<{ id: string; about: string; toldBy: string; toldByYou: boolean; private: boolean; kind: string; fact: string }>;
   occasions: Occasion[]; told: ThemeTold[]; themes: StoryTheme[]; gaps: Array<'food' | 'seen'>;
@@ -319,7 +325,7 @@ export async function loadScriptExtras(member: { id: string; family_id: string }
     const p = placeOfMember(m, lang);
     return { name: m.name, role: m.role, place: [p?.name, p?.country].filter(Boolean).join(', ') || null,
       hoursApart: hoursApart(tzOfMember(m), tz, now), km: p && here ? distanceKm(p, here) : null };
-  });
+  }).map((m) => ({ ...m, apart: apartOf(m.km) }));
   const seen = answer('seen');
   // Ở xa chỉ tính thế hệ kia (con đi xa bố mẹ, hay bố mẹ ở xa con): anh chị em đi du học không làm người ở nhà thành "xa nhà".
   const far = others.some((m) => isParent(m.role) !== isParent(me.role) && m.km != null && m.km >= 300) || seen === 'months' || seen === 'year';

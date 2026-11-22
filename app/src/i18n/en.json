@@ -214,12 +214,6 @@
   "call.line.relayOk.child": "Got it. I'll pass it on.",
   "call.line.relayIntro.parent": "Oh, I have a message for you, {Self}.",
   "call.line.relayIntro.child": "Oh, I have a message for you.",
-  "call.line.share.parent": "May I share this story with the whole family, {Self}?",
-  "call.line.share.child": "May I share this story with the whole family?",
-  "call.line.shareYes.parent": "Lovely, I'll send it so the whole family can listen.",
-  "call.line.shareYes.child": "Great, I'll send it so the whole family can listen.",
-  "call.line.shareNo.parent": "Okay, I'll keep it just for you, {Self}.",
-  "call.line.shareNo.child": "Okay, I'll keep it just for you.",
   "call.line.bye.parent": "Thank you for telling me, {Self}. I'll call again next week.",
   "call.line.bye.child": "Thanks for telling me. I'll call again next week.",
   "call.ring.who": "Sweet Home is calling",
@@ -231,8 +225,6 @@
   "call.photosSaved": "{n} photos saved",
   "call.photosSaved.one": "1 photo saved",
   "call.pickPhoto": "Choose a photo",
-  "call.share.yes": "Share",
-  "call.share.no": "Keep private",
   "call.podcastSoon": "Your story will be in “Our family stories” in a few minutes.",
   "call.sendLater": "The connection is weak. Your answers will send on their own once you're back online.",
   "call.end": "End call",
@@ -475,6 +467,9 @@
   "podcast.private": "only you can hear this",
   "podcast.shareAll": "share with the family",
   "podcast.sharedDone": "The whole family can listen now",
+  "podcast.sharedNote": "the whole family can listen",
+  "podcast.keepPrivate": "Keep private",
+  "podcast.keptDone": "Kept private, only you can listen",
 
   "family.title": "Family",
   "family.language": "Language",
@@ -916,10 +911,5 @@
   "chat.translated": "translation",
   "chat.translating": "translating...",
   "settings.autoTranslate": "Translate messages automatically",
-  "may.settings.nudge": "{mascot} reminds me to get in touch",
-  "may.memory.title": "What {mascot} remembers about me",
-  "may.memory.empty": "{mascot} doesn't remember anything about you yet",
-  "may.memory.by": "Told by {name}",
-  "may.memory.forget": "Delete",
-  "may.memory.forgot": "Deleted"
+  "may.settings.nudge": "{mascot} reminds me to get in touch"
 }

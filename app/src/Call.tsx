@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { errorText, token } from './api';
 import { PHOTO_HEAR_MS, PHOTO_START, PHOTO_WAIT, photoMic, photoNext, type PhotoEnd, type PhotoEvent } from './callPhoto';
-import { SHARE_HEAR_MS, SHARE_START, SHARE_WAIT, shareMic, shareNext, type ShareEnd, type ShareEvent } from './callShare';
 import { type Drive, type MascotMode } from './Mascot';
 import { MascotAny as Mascot } from './Mascot3D';
 import { AUDIO_TYPE, fileName, record, shrinkImage, type Recording } from './media';
@@ -57,9 +56,9 @@ type Story = { prior: Array<{ q: string; a: string }>; dated: boolean; photo: bo
 const NO_AI: TurnAI = { reply: null, follow: null, date: null, confirm: null, story: false, say: null };
 /** Ảnh tối đa mỗi lần chọn. */
 const MAX_PHOTOS = 12;
-type Phase = 'ring' | 'talk' | 'photo' | 'share' | 'bye';
+type Phase = 'ring' | 'talk' | 'photo' | 'bye';
 
-// Sweet Home gọi: đổ chuông, nhấc máy, linh vật hỏi thăm, mời kể một chuyện chính rồi hỏi thêm, xin ảnh, xin phép chia sẻ, lời nhắn.
+// Sweet Home gọi: đổ chuông, nhấc máy, linh vật hỏi thăm, mời kể một chuyện chính rồi hỏi thêm, xin ảnh, lời nhắn.
 export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => void }) {
   const [phase, setPhase] = useState<Phase>('ring');
   const [mode, setMode] = useState<MascotMode>('idle');
@@ -87,8 +86,6 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
   // Bước xin ảnh đang chạy: nút, khung chọn ảnh và nút cúp máy báo vào đây (xem callPhoto.ts). photoIdx là câu chuyện của bước ảnh gần nhất.
   const photoEvent = useRef<((e: PhotoEvent) => void) | null>(null);
   const photoIdx = useRef(0);
-  // Bước xin phép chia sẻ đang chạy: hai nút và nút cúp máy báo vào đây (xem callShare.ts).
-  const shareEvent = useRef<((e: ShareEvent) => void) | null>(null);
   // Ảnh đang thu nhỏ ở nền: lệnh kết thúc chờ ảnh vào hàng chờ trước để podcast có ảnh.
   const photoWork = useRef<Promise<unknown>>(Promise.resolve());
   // Câu Mây đang nói (mỗi câu một số): hush() hay câu mới đến thì câu cũ thôi, không chen tiếng hay đụng vào linh vật nữa.
@@ -447,7 +444,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     const story = qs[si];
     aim(si);
     if (!machine.current) {
-      [lines.share, lines.shareYes, lines.shareNo, lines.bye].forEach((x) => warmVoice(x, 'fixed'));
+      warmVoice(lines.bye, 'fixed');
       if (s.relays?.length) { warmVoice(lines.relayIntro); s.relays.forEach((r) => warmVoice(r.said)); }
     }
     // Câu đáp hỏi thăm đã gồm câu mở: một câu bắt buộc (không phải câu đáp phụ, không thay bằng câu mẫu). Không thì câu đáp rồi câu mở.
@@ -492,30 +489,17 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
       const more = await hear();
       if (!live.current) return;
       // Không nói gì sau câu hỏi thêm thì thôi, không hỏi lại. Chỉ một câu nhận lời ngắn có sẵn trong kho: bước sau vẫn là chuyện này
-      // (ảnh, chia sẻ) hay lời nhắn, tạm biệt, nên không nói "mình nói chuyện khác nhé".
+      // (ảnh) hay lời nhắn, tạm biệt, nên không nói "mình nói chuyện khác nhé".
       if (!more || !more.recording || more.recording.seconds < 1) { await say(fallback.short, undefined, 'fixed'); break; }
       h = more;
     }
 
-    // Chuyện chính đã có ít nhất một lượt kể: xin ảnh nếu là chuyện thật, rồi xin phép chia sẻ (nhà có từ hai người).
+    // Chuyện chính đã có ít nhất một lượt kể: xin ảnh nếu là chuyện thật.
     if (st.photo && live.current) {
       const end = await askPhoto(s, si);
       if (!live.current) return;
       // Nói "để sau" hay im lặng tới hết giờ: Mây nhận lời ngắn (câu có sẵn trong kho) rồi sang bước sau. Bấm nút thì đi tiếp luôn.
       if (end === 'no' || end === 'timeout') await say(fallback.short, undefined, 'fixed');
-    }
-    if (me.members.length >= 2 && live.current) {
-      const end = await askShare(s);
-      if (!live.current || end === 'hangup') return;
-      if (end === 'yes') {
-        // Lệnh chia sẻ vào hàng chờ trước lệnh kết thúc (cùng nhóm, lệnh kết thúc đi sau cùng): máy chủ bật chia sẻ trước khi dựng tập, rút sổ nhớ.
-        void outbox({ group: s.id, url: `/api/call/${s.id}/share` });
-        await say(lines.shareYes, undefined, 'fixed');
-      } else {
-        // Giữ riêng: gỡ lời đồng ý của lần thử trước nếu có (tải lại giữa cuộc gọi), cũng trong hàng chờ trước lệnh kết thúc.
-        void outbox({ group: s.id, url: `/api/call/${s.id}/keep` });
-        await say(lines.shareNo, undefined, 'fixed');
-      }
     }
 
     // Lời nhắn khó nói: chuyển lời người khác nhắn trước, rồi mới hỏi. Không có câu lời nhắn thì vẫn chuyển lời nhắn trước khi chào.
@@ -570,48 +554,7 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     });
   }
 
-  /** Bước xin phép chia sẻ (chặng và lối ra ở callShare.ts), cùng khuôn với bước xin ảnh: hiện hai nút, Mây hỏi, rồi nghe câu trả lời.
-   * Nói "được" hay bấm Chia sẻ là đồng ý; nói "thôi", bấm Giữ riêng, không rõ tới hết giờ là giữ riêng. Nút có tác dụng ngay, kể cả khi Mây chưa nói xong. */
-  function askShare(s: Session): Promise<ShareEnd> {
-    return new Promise<ShareEnd>((resolve) => {
-      const lang = s.script.lang ?? shownLang();
-      let st = SHARE_START;
-      let timer = 0;
-      const go = (e: ShareEvent) => {
-        const prev = st, next = shareNext(st, e, lang);
-        if (next === prev) return;
-        st = next;
-        clearTimeout(timer);
-        if (prev.stage === 'ask' && next.stage !== 'listen') hush();
-        if (prev.stage === 'listen' && next.stage !== 'listen') { endHear.current?.(); setMode('idle'); }
-        micOn(shareMic(next));
-        const ms = SHARE_WAIT[next.stage];
-        if (ms) timer = window.setTimeout(() => go({ type: 'timeout' }), ms);
-        if (next.end) {
-          if (shareEvent.current === go) shareEvent.current = null;
-          setPhase('talk');
-          resolve(next.end);
-        }
-      };
-      shareEvent.current = go;
-      setPhase('share');
-      void (async () => {
-        await say(lines.share, undefined, 'fixed');
-        go({ type: 'asked' });
-        if (st.stage === 'listen') await wait(250);
-        if (st.stage !== 'listen') return;
-        const h = await hear(SHARE_HEAR_MS);
-        if (st.stage !== 'listen') return;
-        if (h?.transcript) return go({ type: 'heard', text: h.transcript });
-        if (!h?.recording || h.recording.seconds < 1) return go({ type: 'heard', text: '' });
-        // Có nói mà máy không tự chép được: nhờ máy chủ chép, nút vẫn bấm được trong lúc chờ.
-        go({ type: 'heard', text: null });
-        go({ type: 'heard', text: await hearText(s, h.recording) });
-      })().catch(() => { go({ type: 'asked' }); go({ type: 'heard', text: '' }); });
-    });
-  }
-
-  /** Chép câu trả lời ngắn ở bước ảnh, bước chia sẻ qua máy chủ (không lưu gì). Quá 6 giây hay lỗi thì coi như không nghe rõ. */
+  /** Chép câu trả lời ngắn ở bước ảnh qua máy chủ (không lưu gì). Quá 6 giây hay lỗi thì coi như không nghe rõ. */
   async function hearText(s: Session, r: Recording): Promise<string> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 6000);
@@ -679,10 +622,9 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
     if (phase === 'ring') { snooze(); return onClose(false); }
     live.current = false;
     stopSpeaking();
-    // Đang ở bước ảnh hay bước chia sẻ thì lời vừa nghe chỉ là câu trả lời có hay không, không phải câu kể: không gửi (gửi sẽ đè lên lượt kể cuối của câu chuyện).
-    const inStep = !!photoEvent.current || !!shareEvent.current;
+    // Đang ở bước ảnh thì lời vừa nghe chỉ là câu trả lời có hay không, không phải câu kể: không gửi (gửi sẽ đè lên lượt kể cuối của câu chuyện).
+    const inStep = !!photoEvent.current;
     photoEvent.current?.({ type: 'hangup' });
-    shareEvent.current?.({ type: 'hangup' });
     const pending = hearing.current;
     endHear.current?.();
     const h = pending ? await pending : null;
@@ -728,10 +670,6 @@ export function Call({ me, onClose }: { me: Me; onClose: (finished: boolean) => 
                   onClick={() => { tap(); photoEvent.current?.({ type: 'pick' }); }} onChange={(e) => pickPhotos(e.currentTarget)} />
               </label>
               <button className="link" onClick={() => { tap(); photoEvent.current?.({ type: 'later' }); }}>{t('common.later')}</button>
-            </div>
-            <div className={phase === 'share' ? 'call-photo fade' : 'call-photo off'}>
-              <button className="btn" onClick={() => { tap(); shareEvent.current?.({ type: 'yes' }); }}>{t('call.share.yes')}</button>
-              <button className="link" onClick={() => { tap(); shareEvent.current?.({ type: 'no' }); }}>{t('call.share.no')}</button>
             </div>
             {phase === 'bye' && (sent === 'ok' || sent === 'later') && <p key={sent} className="call-note fade">{t(sent === 'ok' ? 'call.podcastSoon' : 'call.sendLater')}</p>}
           </div>

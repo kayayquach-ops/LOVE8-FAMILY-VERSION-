@@ -1,5 +1,5 @@
 // Kiểm thử Mây Live bản thử (server/calllive.ts, server/liveconfig.ts): cấu hình, token dùng một lần, tiền mỗi cuộc gọi,
-// kịch bản v3, nhấc máy (công tắc, trần phút, xin token) và kết thúc (ghi giây, tiền); dữ liệu Live (riêng tư), lời dặn, bảy công cụ (task 3);
+// kịch bản v3, nhấc máy (công tắc, trần phút, xin token) và kết thúc (ghi giây, tiền); dữ liệu Live (riêng tư), lời dặn, sáu công cụ (task 3);
 // ô chuyện, lượt kể Live, thẻ câu hỏi qua lớp lọc và kiểm điều riêng, câu hẹn và log chống bịa lúc chốt, /answer?live=1 và /finish (task 4).
 // Không cần DB, không gọi mạng: DB giả theo đúng từng câu trong LIVE_SQL, Google thay bằng deps.fetch giả; các test qua callRouter ở cuối
 // thay pool.query bằng DB giả (như server/missions.test.ts).
@@ -116,7 +116,7 @@ function fakeDb(t: Tables = {}, o: { lenient?: boolean } = {}) {
           return out([{ sec: db.calls.filter((c) => c.live_at != null && +c.live_at >= +v[0]).reduce((s, c) => s + (c.live_sec ?? v[1]), 0) }]);
         case S.insert: {
           const [id, family_id, member_id, week, script, trial, live_at] = v;
-          db.calls.push({ id, family_id, member_id, week, script, shared: false, trial, live_at, live_sec: null, live_usd: null, live_usage: null });
+          db.calls.push({ id, family_id, member_id, week, script, shared: true, trial, live_at, live_sec: null, live_usd: null, live_usage: null });
           return out([], 1);
         }
         case S.endRow:
@@ -283,7 +283,7 @@ test('nhấc máy Live: trần phút trong ngày, cuộc gọi chưa báo về t
   }
 });
 
-test('nhấc máy Live: xin token đúng chỗ, tạo hàng calls chưa chia sẻ có live_at và kịch bản v3; Google lỗi thì 502 và không tạo hàng', async () => {
+test('nhấc máy Live: xin token đúng chỗ, tạo hàng calls đã chia sẻ (mặc định từ 22/11) có live_at và kịch bản v3; Google lỗi thì 502 và không tạo hàng', async () => {
   const f = fakeFetch();
   const db = fakeDb({ members: [{ id: 'lan-tok', may_live: true }] });
   const srv = await serve(deps({ db, fetch: f }));
@@ -303,7 +303,7 @@ test('nhấc máy Live: xin token đúng chỗ, tạo hàng calls chưa chia s�
     assert.equal(sent.uses, 1);
     assert.match(sent.bidiGenerateContentSetup.systemInstruction.parts[0].text, /Lan/);
     const row = db.calls.find((c) => c.id === r.body.id)!;
-    assert.equal(row.shared, false);
+    assert.equal(row.shared, true);
     assert.equal(row.trial, true);
     assert.equal(+row.live_at, +NOW);
     assert.deepEqual([row.member_id, row.family_id, row.week], ['lan-tok', 'F', '2026-11-16']);
@@ -392,7 +392,7 @@ test('kết thúc Live: trần một cuộc gọi đổi bằng MAY_CALL_MAX_SEC
 const extras = (o: Partial<ScriptExtras> = {}): ScriptExtras => ({
   age: 52,
   place: { name: 'Hải Phòng', country: 'Việt Nam', tz: 'Asia/Ho_Chi_Minh', localTime: '10:00', weather: '12°C, rain', feel: 'cold and rainy' },
-  family: [{ name: 'An', role: 'con', place: 'Busan, Hàn Quốc', hoursApart: 2, km: 2600 }],
+  family: [{ name: 'An', role: 'con', place: 'Busan, Hàn Quốc', hoursApart: 2, km: 2600, apart: true }],
   memory: [{ id: 'f1', about: 'An', toldBy: 'An', toldByYou: false, private: false, kind: 'food', fact: 'An loves sour soup' }],
   occasions: [{ key: 'birthday', name: 'Sinh nhật An', date: '2026-12-01', inDays: 10, who: 'An' }],
   told: [{ theme: 'mon-an', times: 1, turns: 2, last: '2026-11-14' }],
@@ -473,7 +473,7 @@ test('dữ liệu Live: đủ các mục theo thứ tự, lời nhắn có mã, 
   assert.equal((L.liveData(c, [], new Date('2027-01-31T17:30:00Z')) as any).today, '2027-02-01');
   assert.equal((L.liveData(c, [], new Date('2027-01-31T16:30:00Z')) as any).today, '2027-01-31');
   assert.deepEqual(d.person, { name: 'Lan', role: 'me', age: 52, lives_in: 'Hải Phòng, Việt Nam', weather: 'cold and rainy' });
-  assert.deepEqual(d.family_members, [{ name: 'An', role: 'con', lives_in: 'Busan, Hàn Quốc', hours_apart: 2, distance_km: 2600 }]);
+  assert.deepEqual(d.family_members, [{ name: 'An', role: 'con', lives_in: 'Busan, Hàn Quốc', hours_apart: 2, distance_km: 2600, lives_far: true }]);
   assert.equal(d.depth, 1);
   assert.deepEqual(d.seeds, c.extras!.seeds);
   assert.deepEqual(d.upcoming_occasions, [{ name: 'Sinh nhật An', date: '2026-12-01', in_days: 10, who: 'An' }]);
@@ -499,7 +499,7 @@ test('dữ liệu Live: không có dữ liệu lớn dần thì mức 0, mồi c
   assert.equal(d.depth, 0);
   assert.deepEqual(d.seeds, seedsForEmpty('me'));
   assert.ok(d.seeds.length > 0);
-  assert.deepEqual(d.family_members, [{ name: 'An', role: 'con' }]);
+  assert.deepEqual(d.family_members, [{ name: 'An', role: 'con', lives_far: 'unknown' }]);
   assert.deepEqual(d.person, { name: 'Lan', role: 'me' });
   assert.equal('local_time' in d, false);
   assert.deepEqual([d.memory, d.upcoming_occasions, d.told_themes, d.recent_contact], [[], [], [], []]);
@@ -585,8 +585,8 @@ test('lời dặn Live: cuộc gọi đầu có phần FIRST CALL; nhà đổi t
   assert.doesNotMatch(L.liveBrief(lanCtx('lan', { mascot: 'Bông' }), []), /Mây/);
 });
 
-test('công cụ Live: đúng bảy công cụ, story_open bắt buộc theme trong danh sách chủ đề và opener', () => {
-  assert.deepEqual(L.LIVE_TOOLS.map((t) => t.name), ['story_open', 'story_close', 'ask_photo', 'ask_share', 'relay_heard', 'relay_open', 'end_call']);
+test('công cụ Live: đúng sáu công cụ, story_open bắt buộc theme trong danh sách chủ đề và opener', () => {
+  assert.deepEqual(L.LIVE_TOOLS.map((t) => t.name), ['story_open', 'story_close', 'ask_photo', 'relay_heard', 'relay_open', 'end_call']);
   const so: any = L.LIVE_TOOLS[0].parameters;
   assert.equal(so.type, 'OBJECT');
   assert.deepEqual(so.required, ['theme', 'opener']);
@@ -597,7 +597,7 @@ test('công cụ Live: đúng bảy công cụ, story_open bắt buộc theme tr
   assert.deepEqual([rh.type, rh.required, rh.properties.id.type], ['OBJECT', ['id'], 'STRING']);
   const ec: any = by.end_call.parameters;
   assert.deepEqual([ec.type, ec.required, ec.properties.next_hook.type], ['OBJECT', ['next_hook'], 'STRING']);
-  for (const n of ['story_close', 'ask_photo', 'ask_share', 'relay_open']) assert.equal(by[n].parameters, undefined, n);
+  for (const n of ['story_close', 'ask_photo', 'relay_open']) assert.equal(by[n].parameters, undefined, n);
   // Mỗi mô tả một câu tiếng Anh nói khi nào gọi; không tên linh vật (công cụ không qua named), không gạch dài.
   for (const t of L.LIVE_TOOLS) {
     assert.match(t.description, /^Call this [^.!?]+\.$/, t.name);
@@ -616,7 +616,7 @@ test('công cụ Live: đúng bảy công cụ, story_open bắt buộc theme tr
   for (const w of ['short, warm promise about a story topic for next week', 'never the hard-to-say message', 'nothing private or sensitive (health, money, conflict, worries)']) assert.ok(hook.includes(w), w);
 });
 
-test('nhấc máy Live: token mang lời dặn thật và bảy công cụ; trả lời có lời nhắn, chủ đề được hỏi, cờ chống bịa, số người', async () => {
+test('nhấc máy Live: token mang lời dặn thật và sáu công cụ; trả lời có lời nhắn, chủ đề được hỏi, cờ chống bịa, số người', async () => {
   const f = fakeFetch();
   const db = fakeDb({ members: [{ id: 'lan-brief', may_live: true }, { id: 'lan-brief2', may_live: true }] });
   const relays = [{ id: 'r1', said: 'An nhắn là nhớ mẹ lắm' }];
@@ -633,7 +633,7 @@ test('nhấc máy Live: token mang lời dặn thật và bảy công cụ; tr�
     assert.equal(r.status, 200);
     assert.deepEqual(asked, ['lan-brief']);
     const s = JSON.parse(String(f.calls[0].init.body)).bidiGenerateContentSetup;
-    assert.equal(s.tools[0].functionDeclarations.length, 7);
+    assert.equal(s.tools[0].functionDeclarations.length, 6);
     assert.deepEqual(s.tools[0].functionDeclarations, L.LIVE_TOOLS);
     const text = s.systemInstruction.parts[0].text;
     assert.ok(text.includes('ORDER OF THE CALL.'));
@@ -1207,7 +1207,7 @@ test('lời dặn Live: mọi câu nhắn của app (CUE) có trong APP MESSAGES
   const app = b.slice(b.indexOf('APP MESSAGES.'), b.indexOf('DATA:'));
   const pairs: Array<[string, string]> = [
     [CUE.open, '(The call just connected'], [CUE.silent, '(The teller has been quiet.)'], [CUE.clock, '(Two minutes left'],
-    [CUE.shareYes, '(Share answer: yes'], [CUE.shareNo, '(Share answer: no'], [CUE.photos(0), '(No photos for now.)'],
+    [CUE.photos(0), '(No photos for now.)'],
     [CUE.remind, '(Reminder:'], [CUE.idle, '(Still nothing heard'], [CUE.away, '(The line will drop'],
   ];
   for (const [cue, head] of pairs) {
@@ -1221,7 +1221,7 @@ test('lời dặn Live: mọi câu nhắn của app (CUE) có trong APP MESSAGES
 /** Lan (mẹ) có con là Cún; Cún đã kể với Mây hai điều cả nhà được biết (tin cả nhà của loadScriptExtras). */
 const CUN_NEWS = ['Cún started a part-time job at a bakery in Busan', 'Cún cooked thịt ba chỉ rang cháy cạnh for friends'];
 const cunCtx = (o: Partial<Ctx> = {}) => lanCtx('lan', { doneCalls: ['2026-11-14'], family: [{ name: 'Lan', role: 'me' }, { name: 'Cún', role: 'con' }],
-  extras: extras({ family: [{ name: 'Cún', role: 'con', place: 'Busan, Hàn Quốc', hoursApart: 2, km: 2600 }], memory: [], seeds: [
+  extras: extras({ family: [{ name: 'Cún', role: 'con', place: 'Busan, Hàn Quốc', hoursApart: 2, km: 2600, apart: true }], memory: [], seeds: [
     { kind: 'food', hint: 'The dish their child loves: thịt ba chỉ rang cháy cạnh. Who cooks it, a meal with it they remember.', theme: 'mon-an' },
     { kind: 'person', hint: 'A story about Cún (their child): a moment with them they remember well.', theme: null },
     { kind: 'everyday', hint: 'Something small from their week that made them smile.', theme: null },
@@ -1243,7 +1243,22 @@ test('dữ liệu Live: tin cả nhà (family_news) theo từng người, chỉ 
   assert.equal((L.liveData(lanCtx('lan'), []) as any).family_news, 'none yet');
 });
 
-test('lời dặn Live: một chuyện mỗi cuộc gọi, câu mở cụ thể, theo dòng kể, kể xong thì hỏi bên lề (nhớ, tin cả nhà, lời nhắn) rồi chia sẻ, chào', () => {
+test('câu hỏi bên lề chỉ nhắc người ở xa: lời dặn nói rõ lives_far, ví dụ hai người một câu, ko ask_share', () => {
+  const b = L.liveBrief(cunCtx(), []);
+  for (const w of ['lives_far: true (lives far from this person), false (lives with or near this person)', 'never one whose lives_far is false',
+    'If nobody qualifies, skip a and b', 'Dạo này mẹ có nhớ Cún hay Bông không ạ?']) assert.ok(b.includes(w), w);
+  assert.ok(!b.includes('ask_share') && !b.includes('Share answer'));
+  assert.ok(L.liveBrief({ ...cunCtx(), lang: 'en' }, []).includes('Have you been missing Cún or Bông lately, Mom?'));
+  assert.ok(L.liveBrief({ ...cunCtx(), lang: 'ko' }, []).includes('요즘 Cún님이나 Bông님 보고 싶으세요?'));
+  // Bình ở cùng bố mẹ (cùng thành phố): lives_far false; An ở xa: true; chưa biết nơi: unknown.
+  const c = cunCtx({ extras: extras({ family: [
+    { name: 'Bình', role: 'con', place: 'Hà Nội, Việt Nam', hoursApart: 0, km: 0, apart: false },
+    { name: 'An', role: 'con', place: 'Busan, Hàn Quốc', hoursApart: 2, km: 2600, apart: true },
+    { name: 'Cún', role: 'con', place: null, hoursApart: 0, km: null, apart: null }] }) });
+  const d = L.liveData(c, []) as any;
+  assert.deepEqual(d.family_members.map((m: any) => [m.name, m.lives_far]), [['Bình', false], ['An', true], ['Cún', 'unknown']]);
+});
+test('lời dặn Live: một chuyện mỗi cuộc gọi, câu mở cụ thể, theo dòng kể, kể xong thì hỏi bên lề (nhớ, tin cả nhà, lời nhắn), không còn xin chia sẻ, chào', () => {
   const c = cunCtx();
   const b = L.liveBrief(c, [{ id: 'r1', said: 'Cún nhắn là nhớ mẹ lắm' }]);
   // Câu ví dụ của người dùng, nguyên văn.
@@ -1255,15 +1270,15 @@ test('lời dặn Live: một chuyện mỗi cuộc gọi, câu mở cụ thể,
     'Never move to another story and never ask whether they have another story to tell: one story is enough.',
     'Open a different story only if they say they do not want to tell this one or ask to talk about something else.',
     'call story_close, then say one warm line about something specific they told and go on to the side questions']) assert.ok(stories.includes(w), w);
-  // Thứ tự: xin ảnh gần cuối chuyện, rồi hỏi bên lề (nhớ, tin, lời nhắn chờ, relay_open ngay trước câu mời gửi lời), chia sẻ, chào.
+  // Thứ tự: xin ảnh gần cuối chuyện, rồi hỏi bên lề (nhớ, tin, lời nhắn chờ, relay_open ngay trước câu mời gửi lời), chào.
   const order = b.slice(b.indexOf('ORDER OF THE CALL.'), b.indexOf('TOOLS.'));
-  const steps = ['call ask_photo right before you ask', 'Ask whether they miss that person.', 'If DATA.family_news has news from that person',
-    'call relay_heard with its id', 'Call relay_open right before you invite a message to that person', 'call ask_share', 'call end_call'];
+  const steps = ['call ask_photo right before you ask', 'Ask whether they have been missing someone lately', 'If DATA.family_news has news from a person you asked about',
+    'call relay_heard with its id', 'Call relay_open right before you invite a message to one person', 'call end_call'];
   for (const w of steps) assert.ok(order.includes(w), w);
   for (let i = 1; i < steps.length; i++) assert.ok(order.indexOf(steps[i - 1]) < order.indexOf(steps[i]), `${steps[i - 1]} trước ${steps[i]}`);
   for (const w of ['always saying it comes from them', 'Use only what the news says', 'never anyone\'s health, money or worries',
     'Whatever they answer, even something hard to say, is a message to send to that family member.', 'the message comes last']) assert.ok(order.includes(w), w);
-  assert.ok(b.includes('(Two minutes left...): finish the current story gently and go to steps 4 to 6.'));
+  assert.ok(b.includes('(Two minutes left...): finish the current story gently and go to steps 4 and 5.'));
   assert.ok(b.includes('"family_news": ['));
   assert.ok(b.includes(CUN_NEWS[0]));
   // Tiếng Anh, tiếng Hàn: cùng bốn câu, dịch cho khớp; câu mời gửi lời khớp bộ đoán của máy khách (message for, 전할 말).

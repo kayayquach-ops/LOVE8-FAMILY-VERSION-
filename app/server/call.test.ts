@@ -312,9 +312,9 @@ test('kịch bản soạn trước bản mới (không có v: 2) thì soạn l�
   assert.equal(call.scriptReusable(null, c, false), false);
 });
 
-test('câu cố định nạp sẵn giọng: có câu hỏi chia sẻ, câu nhận lời, câu tạm biệt', () => {
+test('câu cố định nạp sẵn giọng: có câu tạm biệt', () => {
   const L = callLines('me', (k, v) => tServer('vi', k, v));
-  for (const s of [L.share, L.shareYes, L.shareNo, L.bye]) assert.ok(call.fixedLines(['vi']).includes(s), s);
+  assert.ok(call.fixedLines(['vi']).includes(L.bye));
 });
 
 test('kiểm ảnh theo byte đầu tệp', () => {

@@ -138,8 +138,8 @@ test('API trả 429 thì đặt cờ, trả null, các câu sau không gọi n�
 test('nạp sẵn rải rác: bỏ câu đã có, dừng khi ngân sách còn dưới 30%', async () => {
   const call = await import('./call.ts');
   const lines = call.fixedLines();
-  // 3 thứ tiếng x 3 vai x tối đa 12 câu khác nhau (từ 20/11 thêm câu xin chia sẻ, hai câu đáp, câu tạm biệt).
-  assert.ok(lines.length <= 3 * 3 * 12, `quá nhiều câu cố định: ${lines.length}`);
+  // 3 thứ tiếng x 3 vai x tối đa 11 câu khác nhau.
+  assert.ok(lines.length <= 3 * 3 * 11, `quá nhiều câu cố định: ${lines.length}`);
   voice.gate.used = 0;
   voice.gate.until = 0;
   const m = fakeFetch();
@@ -157,22 +157,22 @@ test('nạp sẵn rải rác: bỏ câu đã có, dừng khi ngân sách còn d�
   assert.ok(Date.now() - t0 < 10_000);
 });
 
-test('câu xin phép chia sẻ, hai câu đáp, câu tạm biệt chưa có trong kho (nạp sẵn hụt): xin là đọc ngay một lần như câu bắt buộc, lần sau lấy từ kho; câu cố định khác vẫn chỉ lấy từ kho', async () => {
+test('câu tạm biệt chưa có trong kho (nạp sẵn hụt): xin là đọc ngay một lần như câu bắt buộc, lần sau lấy từ kho; câu cố định khác vẫn chỉ lấy từ kho', async () => {
   const call = await import('./call.ts');
   const { callLines, CALL_ROLES } = await import('../src/shared.ts');
   const { tServer } = await import('./i18n.ts');
   voice.gate.used = 0; voice.gate.until = 0; voice.gate.why = null;
   const m = fakeFetch();
   voice._setFetch(m.f);
-  type Line = 'share' | 'slow' | 'ack';
+  type Line = 'bye' | 'slow' | 'ack';
   const missing = (k: Line) => (['vi', 'en', 'ko'] as const).flatMap((l) => CALL_ROLES.map((r) => callLines(r, (key, v) => tServer(l, key, v))[k]))
     .find((t) => !voice.cachedSpeech(t, 'gemini'));
-  const share = missing('share');
-  assert.ok(share, 'mọi câu xin phép chia sẻ đã có trong kho');
-  const first = await call.ttsFor({ text: share, kind: 'fixed', provider: 'gemini' }, 'u-fixed');
+  const bye = missing('bye');
+  assert.ok(bye, 'mọi câu tạm biệt đã có trong kho');
+  const first = await call.ttsFor({ text: bye, kind: 'fixed', provider: 'gemini' }, 'u-fixed');
   assert.ok(first.url, JSON.stringify(first));
   assert.equal(m.count(), 1);
-  const again = await call.ttsFor({ text: share, kind: 'fixed', provider: 'gemini' }, 'u-fixed');
+  const again = await call.ttsFor({ text: bye, kind: 'fixed', provider: 'gemini' }, 'u-fixed');
   assert.equal(again.url, first.url);
   assert.equal(m.count(), 1);
   // Câu "slow" (máy khách xin trước lúc nhấc máy, có khi không bao giờ nói) và "ack": thiếu thì thôi, không tốn ngân sách.
