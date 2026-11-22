@@ -1,6 +1,15 @@
 # Sweet Home (tên cũ Homeletter): bàn giao cho phiên làm việc tiếp theo
 
-App gia đình cho du học sinh ở xa và bố mẹ. Bản thật: **https://homeletter-production.up.railway.app** (tên miền giữ tên cũ). Cập nhật lần cuối: 2026-11-13, nhánh `ux-simple-poetic`. Đã deploy ngày 13/11/2026 bản `1b00abb` (gồm cả đợt dưới đây và lọ yêu thương mới), đã đẩy `ux-simple-poetic` và `main` lên origin.
+App gia đình cho du học sinh ở xa và bố mẹ. Bản thật: **https://homeletter-production.up.railway.app** (tên miền giữ tên cũ). Cập nhật lần cuối: 2026-11-22, nhánh `ux-simple-poetic`. Bản đang chạy: deploy 22/11/2026 (merge `552ce8e`, xem "Đợt 22/11/2026"), đã đẩy `ux-simple-poetic` và `main` lên origin.
+
+## Đợt 22/11/2026 (đã deploy 22/11, merge `552ce8e`)
+
+Người dùng duyệt "Gộp và deploy". Hai nhánh agent gộp vào `ux-simple-poetic`:
+- `bf3bce6` lọ sao không còn trần 40: số sao cứ tăng, sao vẽ nhỏ dần (6 bậc, vẽ tối đa khoảng 370 sao) để lọ không tràn. Sửa `server/jar.ts`, `home.ts`, `index.ts`, `src/Jar.tsx`, `JarArt.tsx`, i18n.
+- `e071703` Mây: (1) chuyện kể mặc định chia sẻ (`calls.shared = true` khi tạo), Mây không hỏi chia sẻ trong cuộc gọi nữa (bỏ `ask_share`, `src/callShare.ts`); người kể có nút "Giữ riêng" trên tập của mình (`POST /api/podcasts/:id/keep`, `keepCallPrivate`), tập riêng có nút chia sẻ lại; tin báo người được nhắc chờ 30 phút (`KEEP_GRACE_MIN`) để kịp giữ riêng. (2) Bỏ danh sách "Mây nhớ gì về mình" và nút xoá trong app, bỏ route `GET/DELETE /api/may/memory`; bảng `memory_facts` và việc rút sự thật giữ nguyên. (3) Câu hỏi "có nhớ ai không" chỉ nhắc người sống cách từ 30 km (`NEAR_KM`, `lives_far` trong DATA Live). Chi tiết: `app/docs/may-moi.md` mục 22/11/2026.
+- Đoạn "Luồng" và "Mây Live" ở mục cơ chế bên dưới còn tả bước xin phép chia sẻ cũ: từ 22/11 bước đó không còn.
+- Đã kiểm: tsc, i18n, build, 342 test đạt; chạy thử trên máy với Postgres local (ảnh `app/docs/kiem-tra-22-11/`); live trả 200, log khởi động sạch.
+- Còn hở: lịch đã lưu từ cuộc gọi vẫn ở lại sau "Giữ riêng"; từ lúc cúp máy tới lúc bấm giữ riêng, sự thật của cuộc gọi đó vẫn vào sổ nhớ chung.
 
 ## Đợt 13/11/2026 (đã deploy 13/11, commit `1b00abb`)
 
