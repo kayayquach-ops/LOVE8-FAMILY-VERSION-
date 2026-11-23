@@ -9,7 +9,7 @@ import { tap } from './sound';
 import { Doodle, Icon, toast } from './ui';
 
 // Ưu đãi của nhãn hàng (22/11/2026, docs/uu-dai.md), theo trang cá nhân của Olive Young: ô đếm "Ưu đãi N" ở Cài đặt,
-// băng rôn "ưu đãi cho bố mẹ tháng này" khi có ưu đãi, bấm vào là danh sách thẻ vé xé.
+// băng rôn "ưu đãi cho gia đình tháng này" khi có ưu đãi, bấm vào là danh sách thẻ vé xé.
 
 const ICON: Record<CouponCategory, string> = { massage: 'chair', health: 'pulse', pharmacy: 'pill', supplement: 'bottle', homecare: 'homecare', other: 'ticket' };
 

@@ -4,7 +4,7 @@ Mục "Ưu đãi": coupon, mã giảm giá của nhãn hàng liên quan tới ch
 
 ## Ở đâu trong app
 
-- **Lối vào:** màn Cài đặt (nút thanh trượt ở góc Trang chủ), ngay dưới hồ sơ: ô "Ưu đãi" kèm số ưu đãi đang dùng được. Có ưu đãi thì thêm băng rôn vé nhỏ "Ưu đãi cho bố mẹ tháng này", nêu ưu đãi hết hạn sớm nhất. Chưa có thì ô hiện 0, không có băng rôn.
+- **Lối vào:** màn Cài đặt (nút thanh trượt ở góc Trang chủ), ngay dưới hồ sơ: ô "Ưu đãi" kèm số ưu đãi đang dùng được. Có ưu đãi thì thêm băng rôn vé nhỏ "Ưu đãi cho gia đình tháng này" (đổi từ "cho bố mẹ" ngày 24/11), nêu ưu đãi hết hạn sớm nhất. Chưa có thì ô hiện 0, không có băng rôn.
 - **Danh sách:** mở đè lên Cài đặt, đóng là về lại Cài đặt. Mỗi ưu đãi là một thẻ vé xé (lỗ tròn hai bên, nét đứt): nhóm (hình vẽ tay), nhãn hàng, tiêu đề, mức giảm to có nét gạch tím, hạn dùng (còn 3 ngày trở xuống thì đổi màu), "Mở trang" nếu có link, mã và nút "Sao chép mã" (báo "Đã chép mã"). Có từ hai nhóm thì có hàng lọc theo nhóm. Ưu đãi chỉ cho gói gia đình có nhãn "Gói gia đình"; app chưa có thanh toán nên ai cũng xem và dùng được.
 - **Chưa có ưu đãi:** một câu chờ "Ưu đãi từ nhãn hàng chăm sóc bố mẹ sẽ có ở đây." và chữ tay "sắp có".
 - Code: `src/Coupons.tsx` (+ `coupons.css`), lối vào trong `src/Settings.tsx`, hình vẽ nhóm trong `src/ui.tsx` (`ticket`, `chair`, `pulse`, `pill`, `bottle`, `homecare`), kiểu dữ liệu `Coupon` trong `src/shared.ts`, chữ `coupons.*` trong `src/i18n/*.json`.
