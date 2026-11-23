@@ -234,8 +234,23 @@ export const SHOT_CUSTOM_MAX = 80;
 // Hợp đồng giữa máy chủ (server/coupons.ts) và app (src/Coupons.tsx, lối vào ở Settings.tsx). Ghi chú: app/docs/uu-dai.md.
 export const COUPON_CATEGORIES = ['massage', 'health', 'pharmacy', 'supplement', 'homecare', 'other'] as const;
 export type CouponCategory = (typeof COUPON_CATEGORIES)[number];
-/** family: chỉ dành cho gói gia đình (app chưa có thanh toán nên hiện chỉ gắn nhãn). expiresAt null: không hết hạn. */
+/** family: chỉ dành cho gói gia đình (app chưa có thanh toán nên hiện chỉ gắn nhãn). expiresAt null: không hết hạn.
+ *  milestone: quà mốc của lọ sao (cột min_stars), null là ưu đãi thường. */
 export type Coupon = {
   id: string; brand: string; category: CouponCategory; title: string; discount: string;
-  code: string | null; url: string | null; expiresAt: string | null; family: boolean;
+  code: string | null; url: string | null; expiresAt: string | null; family: boolean; milestone: number | null;
 };
+
+// Mốc của lọ sao nhà mình (tổng sao cả nhà, như số lọ đang hiện). Không phải trần: qua mốc cuối sao vẫn tăng.
+// Ưu đãi có min_stars bằng một mốc là quà của mốc đó (server/coupons.ts). Ghi chú: app/docs/lo-moc.md.
+// scripts/coupons.mjs giữ một bản sao danh sách này (test so hai bản).
+export const JAR_MILESTONES = [40, 100, 200, 400, 700, 1000] as const;
+/** Mốc kế tiếp: mốc nhỏ nhất lớn hơn total (đúng bằng mốc là đã chạm). Qua mốc cuối thì null. */
+export const nextMilestone = (total: number): number | null => JAR_MILESTONES.find((m) => m > total) ?? null;
+/** Thẻ "nhà mình chạm mốc": mốc cao nhất đã chạm mà người này chưa được báo (seen: mốc cao nhất đã báo).
+ *  gift: một trong các mốc vừa chạm có quà trong kho (gifts do máy chủ báo). Không có mốc mới thì null. */
+export function milestoneNews(total: number, seen: number, gifts: readonly number[]): { at: number; gift: boolean } | null {
+  const fresh = JAR_MILESTONES.filter((m) => m <= total && m > seen);
+  if (!fresh.length) return null;
+  return { at: fresh[fresh.length - 1], gift: fresh.some((m) => gifts.includes(m)) };
+}

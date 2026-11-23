@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import './jar.css';
 import { api, errorText, token } from './api';
 import { t, type Key } from './i18n';
-import type { Me, Week } from './shared';
+import { milestoneNews, nextMilestone, JAR_MILESTONES, type Me, type Week } from './shared';
 import { cached, remember } from './cache';
 import { tap } from './sound';
 import { Doodle, Icon, toast } from './ui';
@@ -12,7 +12,38 @@ type SeedDef = { id: string };
 type JarData = {
   total: number; seeds: Array<{ memberId: string; seed: string; count: number }>;
   catalog: SeedDef[]; mine: string;
+  /** Mốc đang có quà trong kho ưu đãi (server/jar.ts). Bản lưu cũ không có. */
+  giftMilestones?: number[];
 };
+
+// Danh sách ưu đãi chỉ tải khi bấm "Xem ưu đãi" ở thẻ chạm mốc.
+const CouponsSheet = lazy(() => import('./Coupons').then((m) => ({ default: m.CouponsSheet })));
+
+// Mốc cao nhất đã báo cho người này, lưu trên máy (app/docs/lo-moc.md). Không ghi được thì nhớ trong phiên, để thẻ không hiện lại mỗi lần mở.
+const seenMem = new Map<string, number>();
+const seenKey = (id: string) => `hl-jar-moc:${id}`;
+function seenOf(id: string): number {
+  try { const v = Number(localStorage.getItem(seenKey(id))); if (v) return v; } catch {}
+  return seenMem.get(id) ?? 0;
+}
+function markSeen(id: string, at: number) {
+  seenMem.set(id, at);
+  try { localStorage.setItem(seenKey(id), String(at)); } catch {}
+}
+
+/** Dòng nhỏ dưới số sao: còn bao nhiêu sao tới mốc kế tiếp; có hộp quà và "có quà nhỏ" chỉ khi kho có ưu đãi cho mốc đó. */
+function MilestoneLine({ total, gifts }: { total: number; gifts: number[] }) {
+  const next = nextMilestone(total);
+  if (!next) return <p className="jr-moc">{t('jar.moc.done', { m: JAR_MILESTONES[JAR_MILESTONES.length - 1] })}</p>;
+  const gift = gifts.includes(next);
+  return (
+    <p className="jr-moc">
+      {gift && <Doodle name="gift" size={18} />}
+      <span>{t('jar.moc.next', { n: next - total, m: next })}</span>
+      {gift && <><span aria-hidden>·</span><span className="hand">{t('jar.moc.gift')}</span></>}
+    </p>
+  );
+}
 
 // Mỗi mã là một loại giấy gấp sao (hình vẽ ở JarArt.tsx); máy chủ giữ cùng danh sách (server/jar.ts). Giấy nào cũng dùng được, không bán lẻ.
 const CATALOG: SeedDef[] = [
@@ -52,9 +83,16 @@ export function Jar({ me, onClose, onGo }: { me: Me; onClose: () => void; onGo: 
   // Mở là hiện ngay bản lần trước, không còn màn "đang tải".
   const [w, setW] = useState<Week | null>(() => cached<Week>('week'));
   const [j, setJ] = useState<JarData | null>(() => cached<JarData>('jar'));
+  // Thẻ "nhà mình chạm mốc": chỉ xét theo số máy chủ vừa trả (không theo bản lưu), mỗi mốc báo một lần cho mỗi người.
+  const [news, setNews] = useState<{ at: number; gift: boolean } | null>(null);
+  const [showCoupons, setShowCoupons] = useState(false);
   const load = () => {
     api.week().then((v) => { remember('week', v); setW(v); }).catch((e) => toast(e.message));
-    jfetch<JarData>('/api/jar').then((v) => { remember('jar', v); setJ(v); }).catch((e) => toast(e.message));
+    jfetch<JarData>('/api/jar').then((v) => {
+      remember('jar', v); setJ(v);
+      const n = milestoneNews(v.total ?? 0, seenOf(me.me.id), v.giftMilestones ?? []);
+      if (n) { markSeen(me.me.id, n.at); setNews(n); }
+    }).catch((e) => toast(e.message));
   };
   useEffect(load, []);
 
@@ -79,7 +117,20 @@ export function Jar({ me, onClose, onGo }: { me: Me; onClose: () => void; onGo: 
       <div className="jr-count">
         <b>{j.total ?? 0}</b>
         <p>{t('jar.sub')}</p>
+        <MilestoneLine total={j.total ?? 0} gifts={j.giftMilestones ?? []} />
       </div>
+
+      {news && (
+        <div className="jr-moc-card fade-only" role="status">
+          <Doodle name={news.gift ? 'gift' : 'star'} size={30} />
+          <div className="jr-moc-text">
+            <b>{t('jar.moc.reached', { m: news.at })}</b>
+            {news.gift && <p>{t('jar.moc.reachedGift')}</p>}
+            {news.gift && <button className="chip" onClick={() => { tap(); setShowCoupons(true); }}>{t('jar.moc.open')}</button>}
+          </div>
+          <button className="jr-moc-x" onClick={() => setNews(null)} aria-label={t('common.close')}><Icon name="close" size={16} /></button>
+        </div>
+      )}
 
       <div className="jr-legend">
         {j.seeds.map((s) => {
@@ -122,6 +173,9 @@ export function Jar({ me, onClose, onGo }: { me: Me; onClose: () => void; onGo: 
           );
         })}
       </div>
+
+      {/* Màn ưu đãi là lớp cố định phủ cả màn lọ, đóng là về lại lọ (như ở Cài đặt). */}
+      {showCoupons && <Suspense fallback={null}><CouponsSheet onClose={() => setShowCoupons(false)} /></Suspense>}
     </Shell>
   );
 }

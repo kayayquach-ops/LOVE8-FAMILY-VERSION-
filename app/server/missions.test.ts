@@ -65,6 +65,7 @@ class FakeDb {
     if (q.includes('from posts')) return { rows: since(this.posts) };
     if (q.includes('from messages')) return { rows: since(this.messages).filter((r) => r.text != null || r.sticker != null) };
     if (q.includes('from letters')) return { rows: since(this.letters) };
+    if (q.includes('from brand_coupons')) return { rows: [] };
     throw new Error(`câu SQL lạ: ${q}`);
   };
   /** Nhiệm vụ đã xong theo dạng "người:nhiệm vụ:tuần", xếp sẵn. */
@@ -279,6 +280,8 @@ test('lọ: mở lọ là tự đánh dấu nhiệm vụ rồi mới đếm sao;
   // Một bài + một nhiệm vụ = hai sao.
   assert.equal(j.total, 2);
   assert.equal('capacity' in j || 'gifts' in j || 'level' in j, false);
+  // Mốc có quà (app/docs/lo-moc.md): kho ưu đãi trống thì không mốc nào có quà.
+  assert.deepEqual(j.giftMilestones, []);
   assert.equal(j.seeds.reduce((a: number, s: any) => a + s.count, 0), 2);
   assert.equal('owned' in j, false);
   assert.equal(j.catalog.length, 10);

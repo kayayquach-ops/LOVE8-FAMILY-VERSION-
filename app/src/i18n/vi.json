@@ -407,6 +407,12 @@
   "jar.missions": "nhiệm vụ tuần này",
   "jar.plusOne": "+1",
   "jar.doneBy": "{names} đã làm",
+  "jar.moc.next": "còn {n} sao tới mốc {m}",
+  "jar.moc.gift": "có quà nhỏ",
+  "jar.moc.done": "nhà mình đã qua mốc {m} sao",
+  "jar.moc.reached": "Nhà mình chạm mốc {m} sao",
+  "jar.moc.reachedGift": "Có một ưu đãi nhỏ đang chờ trong mục Ưu đãi.",
+  "jar.moc.open": "Xem ưu đãi",
 
   "recap.title": "phim tuần",
   "recap.private": "chỉ nhà mình xem",
@@ -915,5 +921,6 @@
   "coupons.cat.pharmacy": "Giao thuốc",
   "coupons.cat.supplement": "Thực phẩm chức năng",
   "coupons.cat.homecare": "Khám tại nhà",
-  "coupons.cat.other": "Khác"
+  "coupons.cat.other": "Khác",
+  "coupons.milestone": "Quà mốc {m} sao"
 }

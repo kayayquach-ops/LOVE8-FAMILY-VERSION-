@@ -1,6 +1,6 @@
 // Kiểm thử ưu đãi của nhãn hàng (server/coupons.ts): chỉ trả ưu đãi đang bật, còn hạn, đúng thứ tiếng; thứ tự theo hạn;
-// nhóm lạ về 'other'; link chỉ http, https; đường API chỉ đọc và nằm sau auth.
-// Không cần Postgres: DB giả trả mọi dòng của bảng cho đúng câu COUPONS_SQL (cách làm theo server/location.test.ts).
+// nhóm lạ về 'other'; link chỉ http, https; đường API chỉ đọc và nằm sau auth; quà mốc lọ sao (min_stars) chỉ hiện khi nhà đủ sao.
+// Không cần Postgres: DB giả trả mọi dòng của bảng cho đúng câu COUPONS_SQL, tổng sao cho STARS_SQL (cách làm theo server/location.test.ts).
 // Tên nhãn hàng ở đây là tên tự đặt, không phải nhãn hàng thật.
 // Chạy: node --import tsx --test server/coupons.test.ts
 import test from 'node:test';
@@ -10,6 +10,8 @@ import { readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 
 const C = await import('./coupons.ts');
+const { STARS_SQL } = await import('./missions.ts');
+const { JAR_MILESTONES } = await import('../src/shared.ts');
 const { langMiddleware } = await import('./i18n.ts');
 const express = (await import('express')).default;
 
@@ -19,25 +21,31 @@ const NOW = Date.parse('2026-11-22T03:00:00Z');
 const DAY = 86400e3;
 const row = (id: string, x: Partial<Row> = {}): Row => ({
   id, brand: `Hiệu ${id}`, category: 'health', title: `Ưu đãi ${id}`, discount: '-10%', code: `MA-${id}`, url: null,
-  expires_at: null, audience: 'all', lang: null, active: true, created_at: new Date(NOW - 10 * DAY), ...x,
+  expires_at: null, audience: 'all', lang: null, active: true, created_at: new Date(NOW - 10 * DAY), min_stars: 0, ...x,
 });
 
 class FakeDb {
   rows: Row[] = [];
+  stars = 0;
   log: string[] = [];
-  query = async (sql: string) => {
+  args: any[][] = [];
+  query = async (sql: string, args: any[] = []) => {
     this.log.push(sql);
+    this.args.push(args);
     if (sql === C.COUPONS_SQL) return { rows: this.rows.map((r) => ({ ...r })), rowCount: this.rows.length };
+    if (sql === STARS_SQL) return { rows: [{ n: this.stars }], rowCount: 1 };
     if (/^\s*create table if not exists brand_coupons/.test(sql)) return { rows: [], rowCount: 0 };
     throw new Error(`câu SQL lạ: ${sql}`);
   };
 }
 
-/** Máy chủ thử: không có auth (đã kiểm riêng là index.ts gắn router sau auth), x-lang chọn thứ tiếng như máy khách gửi. */
+/** Máy chủ thử: không có auth (đã kiểm riêng là index.ts gắn router sau auth), chỉ gắn sẵn người xem thuộc nhà 'nha-1'
+ *  như auth làm; x-lang chọn thứ tiếng như máy khách gửi. */
 async function serve(db: FakeDb) {
   const app = express();
   app.use(express.json());
   app.use(langMiddleware);
+  app.use((req: any, _res, next) => { req.member = { id: 'nguoi-1', family_id: 'nha-1' }; next(); });
   app.use('/api', C.couponsRouter(db));
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -82,7 +90,7 @@ test('dạng trả về: nhóm lạ về other, gói gia đình, mã trống là
   const [a] = C.pickCoupons([row('a', { category: 'xe-may', audience: 'family', code: '  ', expires_at: '2026-12-31T16:59:59Z', url: 'https://vi-du.test/uu-dai' })], 'vi', NOW);
   assert.deepEqual(a, {
     id: 'a', brand: 'Hiệu a', category: 'other', title: 'Ưu đãi a', discount: '-10%', code: null,
-    url: 'https://vi-du.test/uu-dai', expiresAt: '2026-12-31T16:59:59.000Z', family: true,
+    url: 'https://vi-du.test/uu-dai', expiresAt: '2026-12-31T16:59:59.000Z', family: true, milestone: null,
   });
   for (const cat of ['massage', 'health', 'pharmacy', 'supplement', 'homecare', 'other']) {
     assert.equal(C.pickCoupons([row('x', { category: cat })], 'vi', NOW)[0].category, cat);
@@ -121,7 +129,8 @@ test('GET /api/coupons: trả danh sách đã lọc theo x-lang, bảng trống 
     assert.deepEqual(r.body.coupons.map((c: any) => c.id), ['viet', 'chung']);
     r = await s.call('GET', '/api/coupons', 'ko');
     assert.deepEqual(r.body.coupons.map((c: any) => c.id), ['han', 'chung']);
-    assert.ok(db.log.every((q) => q === C.COUPONS_SQL), 'chỉ đọc');
+    assert.ok(db.log.every((q) => q === C.COUPONS_SQL || q === STARS_SQL), 'chỉ đọc');
+    assert.ok(db.args.filter((_a, i) => db.log[i] === STARS_SQL).every((a) => a[0] === 'nha-1'), 'đếm sao đúng nhà người xem');
   } finally { await s.close(); }
 });
 
@@ -162,4 +171,61 @@ test('index.ts: tạo bảng lúc khởi động và gắn đường ưu đãi s
   const db = new FakeDb();
   await C.migrateCoupons(db);
   assert.match(db.log[0], /create table if not exists brand_coupons/);
+  // Bảng đã có trên bản thật: cột mốc thêm an toàn, chạy lại bao nhiêu lần cũng được, dòng cũ là ưu đãi thường.
+  assert.match(db.log[0], /alter table brand_coupons add column if not exists min_stars int not null default 0/);
+});
+
+test('quà mốc: min_stars chỉ hiện khi nhà đủ sao; không truyền sao thì như nhà 0 sao; milestone là mốc hay null', () => {
+  const rows = [row('thuong'), row('moc40', { min_stars: 40 }), row('moc100', { min_stars: 100 })];
+  const ids = (stars?: number) => C.pickCoupons(rows, 'vi', NOW, stars).map((c) => c.id).sort();
+  assert.deepEqual(ids(), ['thuong']);
+  assert.deepEqual(ids(0), ['thuong']);
+  assert.deepEqual(ids(28), ['thuong']);
+  assert.deepEqual(ids(39), ['thuong']);
+  assert.deepEqual(ids(40), ['moc40', 'thuong']);
+  assert.deepEqual(ids(99), ['moc40', 'thuong']);
+  assert.deepEqual(ids(5000), ['moc100', 'moc40', 'thuong']);
+  const out = C.pickCoupons(rows, 'vi', NOW, 100);
+  assert.equal(out.find((c) => c.id === 'thuong')!.milestone, null);
+  assert.equal(out.find((c) => c.id === 'moc40')!.milestone, 40);
+  assert.equal(out.find((c) => c.id === 'moc100')!.milestone, 100);
+  // Đủ sao vẫn phải đang bật, còn hạn, đúng thứ tiếng.
+  assert.deepEqual(C.pickCoupons([
+    row('tat', { min_stars: 40, active: false }), row('het', { min_stars: 40, expires_at: new Date(NOW - 1) }), row('han', { min_stars: 40, lang: 'ko' }),
+  ], 'vi', NOW, 1000), []);
+});
+
+test('mốc có quà (cho lọ sao): chỉ ưu đãi dùng được, kể cả mốc nhà chưa tới, tăng dần, không trùng, bỏ ưu đãi thường', () => {
+  assert.deepEqual(C.giftMilestones([], 'vi', NOW), []);
+  assert.deepEqual(C.giftMilestones([row('thuong')], 'vi', NOW), []);
+  assert.deepEqual(C.giftMilestones([
+    row('a', { min_stars: 100 }), row('b', { min_stars: 40 }), row('c', { min_stars: 40 }), row('thuong'),
+    row('tat', { min_stars: 200, active: false }), row('het', { min_stars: 400, expires_at: new Date(NOW - 1) }),
+    row('han', { min_stars: 700, lang: 'ko' }), row('viet', { min_stars: 1000, lang: 'vi' }),
+  ], 'vi', NOW), [40, 100, 1000]);
+  assert.deepEqual(C.giftMilestones([row('han', { min_stars: 700, lang: 'ko' })], 'ko', NOW), [700]);
+});
+
+test('GET /api/coupons: lọc quà mốc theo tổng sao của nhà người xem', async () => {
+  const db = new FakeDb();
+  db.rows = [row('thuong'), row('moc40', { min_stars: 40 }), row('moc100', { min_stars: 100 })];
+  const s = await serve(db);
+  try {
+    db.stars = 28;
+    let r = await s.call('GET', '/api/coupons');
+    assert.deepEqual(r.body.coupons.map((c: any) => [c.id, c.milestone]), [['thuong', null]]);
+    db.stars = 40;
+    r = await s.call('GET', '/api/coupons');
+    assert.deepEqual(r.body.coupons.map((c: any) => c.id).sort(), ['moc40', 'thuong']);
+    assert.equal(r.body.coupons.find((c: any) => c.id === 'moc40').milestone, 40);
+  } finally { await s.close(); }
+});
+
+test('scripts/coupons.mjs: danh sách mốc trùng JAR_MILESTONES, có --stars và ghi min_stars', () => {
+  const src = readFileSync(new URL('../scripts/coupons.mjs', import.meta.url), 'utf8');
+  const m = src.match(/const MILESTONES = \[([^\]]*)\]/);
+  assert.ok(m, 'thấy MILESTONES trong script');
+  assert.deepEqual(m![1].split(',').map((x) => Number(x.trim())), [...JAR_MILESTONES]);
+  assert.match(src, /--stars/);
+  assert.match(src, /insert into brand_coupons \([^)]*min_stars\)/);
 });

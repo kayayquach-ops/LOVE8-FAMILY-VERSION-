@@ -407,6 +407,12 @@
   "jar.missions": "이번 주 미션",
   "jar.plusOne": "+1",
   "jar.doneBy": "{names} 완료",
+  "jar.moc.next": "별 {m}개까지 {n}개 남았어요",
+  "jar.moc.gift": "작은 선물",
+  "jar.moc.done": "별 {m}개를 넘었어요",
+  "jar.moc.reached": "우리 집 별이 {m}개가 됐어요",
+  "jar.moc.reachedGift": "쿠폰에 작은 혜택이 기다리고 있어요.",
+  "jar.moc.open": "쿠폰 보기",
 
   "recap.title": "주간 영상",
   "recap.private": "우리 가족만 봐요",
@@ -915,5 +921,6 @@
   "coupons.cat.pharmacy": "약 배송",
   "coupons.cat.supplement": "건강기능식품",
   "coupons.cat.homecare": "방문 진료",
-  "coupons.cat.other": "기타"
+  "coupons.cat.other": "기타",
+  "coupons.milestone": "별 {m}개 선물"
 }

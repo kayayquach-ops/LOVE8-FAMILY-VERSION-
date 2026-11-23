@@ -1,7 +1,8 @@
 import express from 'express';
 import { pool } from './db.ts';
-import { errorBody, tReq, tVi } from './i18n.ts';
+import { errorBody, reqLang, tReq, tVi } from './i18n.ts';
 import { syncMissions } from './missions.ts';
+import { COUPONS_SQL, giftMilestones } from './coupons.ts';
 
 export type SeedShape = 'heart' | 'round' | 'star' | 'petal' | 'drop' | 'leaf';
 export type SeedDef = { id: string; name: string; colors: [string, string]; shape: SeedShape };
@@ -43,7 +44,7 @@ jarRouter.get('/jar', wrap(async (req, res) => {
   const { id: me, family_id: fid } = req.member;
   // Nhiệm vụ tự đánh dấu trước khi đếm sao (server/missions.ts). Lỗi thì vẫn trả lọ như cũ.
   await syncMissions(fid).catch((e) => console.error(e));
-  const [ms, sel, ev] = await Promise.all([
+  const [ms, sel, ev, cp] = await Promise.all([
     pool.query('select id from members where family_id = $1 order by created_at', [fid]),
     pool.query('select member_id, seed from member_seed where member_id in (select id from members where family_id = $1)', [fid]),
     pool.query(
@@ -52,8 +53,11 @@ jarRouter.get('/jar', wrap(async (req, res) => {
          union all select r.author_id, r.created_at from replies r join posts p on p.id = r.post_id where p.family_id = $1
          union all select member_id, created_at from missions_done where family_id = $1
        ) e order by at`, [fid]),
+    // Ưu đãi chỉ để biết mốc nào có quà (app/docs/lo-moc.md); lỗi thì lọ vẫn hiện, chỉ không nói tới quà.
+    pool.query(COUPONS_SQL).catch((e) => { console.error(e); return { rows: [] }; }),
   ]);
   // Lọ không có trần: mỗi việc làm là một sao, đếm từ đầu tới giờ (không còn chu kỳ 40 sao, không còn quà mở theo lọ đầy).
+  // Có mốc 40, 100, 200... (JAR_MILESTONES, app/docs/lo-moc.md) nhưng mốc chỉ để báo, không chặn sao.
   const total = ev.rows.length;
   const picked = new Map<string, string>(sel.rows.map((r: any) => [r.member_id, r.seed]));
   const seeds = ms.rows.map((m: any, i: number) => ({
@@ -64,6 +68,8 @@ jarRouter.get('/jar', wrap(async (req, res) => {
   res.json({
     total, seeds, catalog: CATALOG.map((s) => ({ ...s, name: tReq(`jar.seed.${s.id}`) })),
     mine: seeds.find((s: any) => s.memberId === me)?.seed ?? DEFAULTS[0],
+    // Mốc (JAR_MILESTONES) đang có quà trong kho cho thứ tiếng người xem. Máy khách tự tính mốc kế tiếp từ total.
+    giftMilestones: giftMilestones(cp.rows, reqLang()),
   });
 }));
 

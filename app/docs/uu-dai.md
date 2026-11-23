@@ -5,7 +5,7 @@ Mục "Ưu đãi": coupon, mã giảm giá của nhãn hàng liên quan tới ch
 ## Ở đâu trong app
 
 - **Lối vào:** màn Cài đặt (nút thanh trượt ở góc Trang chủ), ngay dưới hồ sơ: ô "Ưu đãi" kèm số ưu đãi đang dùng được. Có ưu đãi thì thêm băng rôn vé nhỏ "Ưu đãi cho gia đình tháng này" (đổi từ "cho bố mẹ" ngày 24/11), nêu ưu đãi hết hạn sớm nhất. Chưa có thì ô hiện 0, không có băng rôn.
-- **Danh sách:** mở đè lên Cài đặt, đóng là về lại Cài đặt. Mỗi ưu đãi là một thẻ vé xé (lỗ tròn hai bên, nét đứt): nhóm (hình vẽ tay), nhãn hàng, tiêu đề, mức giảm to có nét gạch tím, hạn dùng (còn 3 ngày trở xuống thì đổi màu), "Mở trang" nếu có link, mã và nút "Sao chép mã" (báo "Đã chép mã"). Có từ hai nhóm thì có hàng lọc theo nhóm. Ưu đãi chỉ cho gói gia đình có nhãn "Gói gia đình"; app chưa có thanh toán nên ai cũng xem và dùng được.
+- **Danh sách:** mở đè lên Cài đặt, đóng là về lại Cài đặt. Mỗi ưu đãi là một thẻ vé xé (lỗ tròn hai bên, nét đứt): nhóm (hình vẽ tay), nhãn hàng, tiêu đề, mức giảm to có nét gạch tím, hạn dùng (còn 3 ngày trở xuống thì đổi màu), "Mở trang" nếu có link, mã và nút "Sao chép mã" (báo "Đã chép mã"). Có từ hai nhóm thì có hàng lọc theo nhóm. Ưu đãi chỉ cho gói gia đình có nhãn "Gói gia đình"; app chưa có thanh toán nên ai cũng xem và dùng được. Quà mốc lọ sao có nhãn "Quà mốc 40 sao" (`lo-moc.md`).
 - **Chưa có ưu đãi:** một câu chờ "Ưu đãi từ nhãn hàng chăm sóc bố mẹ sẽ có ở đây." và chữ tay "sắp có".
 - Code: `src/Coupons.tsx` (+ `coupons.css`), lối vào trong `src/Settings.tsx`, hình vẽ nhóm trong `src/ui.tsx` (`ticket`, `chair`, `pulse`, `pill`, `bottle`, `homecare`), kiểu dữ liệu `Coupon` trong `src/shared.ts`, chữ `coupons.*` trong `src/i18n/*.json`.
 
@@ -25,12 +25,13 @@ Máy chủ tạo lúc khởi động (`server/coupons.ts`, `migrateCoupons`). Kh
 | `expires_at` | hạn dùng, trống là không hết hạn |
 | `audience` | `all` hoặc `family` (gói gia đình, hiện chỉ gắn nhãn) |
 | `lang` | `vi`, `en`, `ko`: chỉ người dùng app bằng thứ tiếng đó thấy; trống là mọi thứ tiếng |
+| `min_stars` | 0 là ưu đãi thường; một mốc lọ sao (40, 100, 200, 400, 700, 1000) là quà mốc: chỉ nhà có từng ấy sao mới thấy (thêm 23/11/2026, `lo-moc.md`) |
 | `active` | bật tắt |
 | `created_at` | lúc thêm |
 
 ## API
 
-`GET /api/coupons` (sau đăng nhập, chỉ đọc) trả `{ coupons: Coupon[] }`: chỉ ưu đãi đang bật, còn hạn, đúng thứ tiếng người xem (`x-lang`), hết hạn sớm nhất trước, không hạn sau cùng. Không có đường thêm, sửa, xoá. Lọc nằm ở hàm thuần `pickCoupons`, test ở `server/coupons.test.ts`.
+`GET /api/coupons` (sau đăng nhập, chỉ đọc) trả `{ coupons: Coupon[] }`: chỉ ưu đãi đang bật, còn hạn, đúng thứ tiếng người xem (`x-lang`), `min_stars` không quá tổng sao của nhà người xem, hết hạn sớm nhất trước, không hạn sau cùng. Mỗi ưu đãi có `milestone` (mốc của quà mốc, hoặc null). Lọ sao hỏi các mốc có quà qua `giftMilestones` của `GET /api/jar`. Không có đường thêm, sửa, xoá. Lọc nằm ở hàm thuần `pickCoupons`, test ở `server/coupons.test.ts`.
 
 ## Thêm, tắt ưu đãi
 
@@ -41,6 +42,7 @@ cd app
 node scripts/coupons.mjs list
 node scripts/coupons.mjs add --brand "Tên nhãn hàng" --category massage --title "Giảm cho bố mẹ khi mua ghế đầu tiên" \
   --discount "-20%" --code MA20 --url https://... --until 2026-12-31 --family --lang vi
+node scripts/coupons.mjs add ... --stars 40   # quà mốc 40 sao của lọ (lo-moc.md)
 node scripts/coupons.mjs off ID     # tắt (on ID để bật lại, delete ID để xoá hẳn)
 ```
 

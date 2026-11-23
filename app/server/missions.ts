@@ -152,6 +152,18 @@ export async function syncMissions(familyId: string, db: Db = pool, now = new Da
   return res.filter((r: any) => r?.rowCount === 1).length;
 }
 
+/** Tổng sao của cả nhà từ đầu tới giờ, đúng số lọ đang hiện (server/jar.ts đếm cùng ba nguồn): mỗi bài, mỗi trả lời bài, mỗi nhiệm vụ xong là một sao.
+ *  Trang chủ (home.ts) và ưu đãi theo mốc (coupons.ts) dùng câu này. Tham số $1: mã nhà. */
+export const STARS_SQL = `select (
+    (select count(*) from posts where family_id = $1)
+    + (select count(*) from replies r join posts p on p.id = r.post_id where p.family_id = $1)
+    + (select count(*) from missions_done where family_id = $1)
+  )::int n`;
+export async function familyStars(familyId: string, db: Db = pool): Promise<number> {
+  const { rows } = await db.query(STARS_SQL, [familyId]);
+  return Number(rows[0]?.n) || 0;
+}
+
 /** Đánh dấu một nhiệm vụ cho một người, tuần chứa lúc `at` (mặc định bây giờ). Người phải thuộc nhà đó.
  *  Gọi bao nhiêu lần cũng chỉ một dòng, một sao. Trả true nếu vừa ghi dòng mới. */
 export async function markMission(familyId: string, memberId: string, key: string, db: Db = pool, at = new Date()): Promise<boolean> {

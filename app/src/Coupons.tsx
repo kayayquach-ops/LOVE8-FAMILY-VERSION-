@@ -78,6 +78,7 @@ function Ticket({ c }: { c: Coupon }) {
         <div className="cp-tags">
           <span className="cp-cat"><Doodle name={ICON[c.category]} size={20} />{t(`coupons.cat.${c.category}`)}</span>
           {c.family && <span className="cp-fam">{t('coupons.family')}</span>}
+          {c.milestone && <span className="cp-fam cp-moc">{t('coupons.milestone', { m: c.milestone })}</span>}
         </div>
         <div className="cp-main">
           <div className="cp-text">
@@ -107,6 +108,11 @@ function Ticket({ c }: { c: Coupon }) {
       )}
     </article>
   );
+}
+
+/** Danh sách ưu đãi tự lấy dữ liệu: mở từ thẻ "nhà mình chạm mốc" ở lọ sao (Jar.tsx), đóng là về lại lọ. */
+export function CouponsSheet({ onClose }: { onClose: () => void }) {
+  return <Coupons list={useCoupons()} onClose={onClose} />;
 }
 
 /** Màn danh sách ưu đãi: lọc theo nhóm khi có từ hai nhóm; chưa có ưu đãi thì một câu chờ. */

@@ -415,6 +415,13 @@
   "jar.missions": "this week's missions",
   "jar.plusOne": "+1",
   "jar.doneBy": "done by {names}",
+  "jar.moc.next": "{n} more stars to {m}",
+  "jar.moc.next.one": "{n} more star to {m}",
+  "jar.moc.gift": "a small gift",
+  "jar.moc.done": "past the {m}-star mark",
+  "jar.moc.reached": "Our family reached {m} stars",
+  "jar.moc.reachedGift": "A small deal is waiting in Deals.",
+  "jar.moc.open": "See deals",
 
   "recap.title": "weekly film",
   "recap.private": "just for our family",
@@ -931,5 +938,6 @@
   "coupons.cat.pharmacy": "Medicine delivery",
   "coupons.cat.supplement": "Supplements",
   "coupons.cat.homecare": "Home visits",
-  "coupons.cat.other": "Other"
+  "coupons.cat.other": "Other",
+  "coupons.milestone": "{m}-star gift"
 }
