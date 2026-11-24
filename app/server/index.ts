@@ -374,6 +374,12 @@ app.use('/api', missionsRouter);
 app.get('/media/w/:size/:file', thumbRoute(MEDIA_DIR));
 app.use('/media', express.static(MEDIA_DIR, { maxAge: '30d', immutable: true }));
 
+// Slide thuyết trình OASIS-6 chạy ở service riêng "pitch" (pitch.getsweethome.app); /pitching chuyển sang đó, giữ ?lang=ko. Phần #s7 trình duyệt tự giữ.
+app.get(/^\/pitching\/?$/, (req, res) => {
+  const q = req.originalUrl.indexOf('?');
+  res.redirect(302, 'https://pitch.getsweethome.app/' + (q >= 0 ? req.originalUrl.slice(q) : ''));
+});
+
 // Bản build của giao diện; mọi đường dẫn khác trả về index.html để app tự mở đúng màn.
 const dist = path.resolve('dist');
 if (existsSync(dist)) {

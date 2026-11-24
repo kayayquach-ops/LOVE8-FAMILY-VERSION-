@@ -238,3 +238,13 @@ Cuộc gọi tuần mới cho mọi thành viên, theo kế hoạch `docs/superp
 - Chẩn đoán: mỗi cuộc gọi Live ghi dòng `[call-live] ... diag {...}` (mic gửi, Gemini nghe ra mấy câu `inTx`, số lượt...). Xem bằng `railway logs --service homeletter --lines 300` và `--http` để thấy `/story`, `/answer?live=1`, `/live-end`, `/finish`. Cuộc gọi thử 15f5c981 (iPhone, 201 s) mic chạy tốt: inTx 12, 12 lượt, ctx running; lần "nói alo không nhận" trước đó chưa rõ nguyên nhân (có thể nói lúc mic đang chặn khi Mây nói, hay nói liền không ngừng 1,6 s).
 - Người dùng phàn nàn tốn token: phiên mới dùng Sonnet cho việc vừa, gom một lượt soát cuối, không review từng phần bằng Opus.
 - Chưa làm: nối lại phiên Live để gọi quá ~10 phút; `privateHit` tiếng Hàn còn yếu; việc nhỏ để sau ở `app/docs/may-moi-viec-de-sau.md`.
+
+## 25/11: tên miền getsweethome.app (ĐÃ MUA, ĐÃ TRỎ VÀO APP)
+
+- Người dùng chốt và đồng ý mua `getsweethome.app` trên Cloudflare Registrar (tài khoản Cloudflare của Khánh An, cùng tài khoản có `neptopik.com`). Trả 8,20 USD năm đầu, tự gia hạn 14,20 USD/năm, hết hạn 25/11/2027. Không hoàn tiền.
+- `https://getsweethome.app` chạy app (service `homeletter` trên Railway, custom domain, chứng chỉ Railway đã VALID). DNS ở Cloudflare, để DNS only (mây xám): CNAME `@` → `08u47s3i.up.railway.app`, TXT `_railway-verify`.
+- Đăng nhập Google: đã thêm `https://getsweethome.app` vào Authorized JavaScript origins và `https://getsweethome.app/api/google/callback` vào redirect URIs của client "Sweet Home web" (project `sweet-home-515107`). Google báo có thể mất 5 phút tới vài giờ mới có hiệu lực. Máy chủ tự lấy redirect theo Origin (`server/google.ts`), trừ khi biến `GOOGLE_REDIRECT_URI` được đặt (không đọc biến Railway nên chưa kiểm). Chưa thử đăng nhập Google thật trên tên miền mới.
+- `homeletter-production.up.railway.app` vẫn chạy song song.
+- Slide thuyết trình OASIS-6 đăng tạm ở `https://pitch.getsweethome.app`: service riêng `pitch` (Caddy, file tĩnh, có header noindex) trong cùng project Railway. CNAME `pitch` → `0cbk0ae5.up.railway.app`, TXT `_railway-verify.pitch`. Đăng lại: `bash oasis6/pitch/thuyet-trinh/tools/web-pitch/dang.sh`.
+- Lưu ý: chạy `railway add` trong `app/` sẽ đổi service đang link; đã link lại `homeletter`. Lệnh deploy vẫn ghi rõ `--service`.
+- `getsweethome.com` đã có người khác giữ từ 2020 (đang khoá, để không), không mua được theo cách thường.
