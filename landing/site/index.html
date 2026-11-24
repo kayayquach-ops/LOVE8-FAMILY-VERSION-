@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="vi" data-lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sweet Home · Ở xa mà gần</title>
+<meta name="description" content="App cho cả nhà đang sống xa nhau. Ảnh mỗi ngày, thư tay, gọi video, lịch âm và Mây gọi hỏi chuyện từng người mỗi tuần. Đang beta, miễn phí.">
+<meta name="theme-color" content="#ffffff">
+<meta name="color-scheme" content="light">
+<link rel="canonical" href="https://getsweethome.app/">
+<link rel="alternate" hreflang="vi" href="https://getsweethome.app/">
+<link rel="alternate" hreflang="ko" href="https://getsweethome.app/?lang=ko">
+<link rel="alternate" hreflang="en" href="https://getsweethome.app/?lang=en">
+<link rel="alternate" hreflang="x-default" href="https://getsweethome.app/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Sweet Home">
+<meta property="og:url" content="https://getsweethome.app/">
+<meta property="og:title" content="Sweet Home · Ở xa mà gần">
+<meta property="og:description" content="Một app cho cả nhà đang sống xa nhau. Đang beta, miễn phí.">
+<meta property="og:image" content="https://getsweethome.app/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Sweet Home, ở xa mà gần">
+<meta property="og:locale" content="vi_VN">
+<meta property="og:locale:alternate" content="ko_KR">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preload" href="fonts/montserrat-700.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/montserrat-500.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+<script>
+  /* Chọn tiếng trước khi vẽ trang: ?lang=ko|en|vi, rồi tới tiếng đã chọn lần trước. */
+  (function () {
+    var d = document.documentElement, l = null;
+    try { l = new URLSearchParams(location.search).get('lang'); } catch (e) {}
+    if (l !== 'vi' && l !== 'ko' && l !== 'en') { try { l = localStorage.getItem('sh-lang'); } catch (e) { l = null; } }
+    if (l === 'ko' || l === 'en') { d.setAttribute('data-lang', l); d.lang = l; }
+    d.className += ' js';
+    setTimeout(function () { if (!window.SH_READY) d.classList.remove('js'); }, 3000);
+  })();
+</script>
+<script src="main.js" defer></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="qr" viewBox="0 0 29 29"><path fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges" d="M0 0.5h7m3 0h1m2 0h3m1 0h4m1 0h7M0 1.5h1m5 0h1m3 0h1m2 0h4m3 0h1m1 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m1 0h1m1 0h4m1 0h1m3 0h2m1 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m1 0h1m5 0h2m1 0h1m1 0h1m2 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m1 0h1m2 0h2m2 0h2m1 0h3m1 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m1 0h2m1 0h1m10 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M8 7.5h3m3 0h1m1 0h1M0 8.5h1m1 0h5m9 0h4m2 0h5M0 9.5h1m1 0h2m4 0h1m1 0h1m1 0h4m1 0h8m3 0h1M0 10.5h1m4 0h2m1 0h3m2 0h5M0 11.5h4m5 0h1m1 0h3m1 0h1m2 0h1m1 0h1m1 0h2m1 0h1m1 0h1M1 12.5h1m3 0h7m2 0h2m1 0h1m2 0h1m4 0h2M0 13.5h2m2 0h1m2 0h1m1 0h1m1 0h2m2 0h2m1 0h5m1 0h1m3 0h1M1 14.5h3m1 0h3m2 0h1m1 0h1m5 0h1m1 0h1m3 0h3M0 15.5h1m1 0h1m2 0h1m2 0h1m2 0h2m1 0h1m1 0h1m3 0h1m3 0h1m2 0h1M3 16.5h6m3 0h1m3 0h2m5 0h1m1 0h2M0 17.5h6m1 0h1m1 0h2m1 0h4m3 0h2m1 0h3m1 0h1m1 0h1M0 18.5h1m2 0h2m1 0h1m2 0h1m2 0h5m1 0h1m1 0h1m3 0h1m1 0h1M0 19.5h1m1 0h2m5 0h1m1 0h1m1 0h1m1 0h1m2 0h1m1 0h2m2 0h1m2 0h1M0 20.5h1m1 0h1m1 0h1m1 0h1m1 0h4m2 0h2m1 0h1m2 0h5m1 0h3M8 21.5h4m3 0h2m3 0h1m3 0h5M0 22.5h7m2 0h1m1 0h2m5 0h3m1 0h1m1 0h3M0 23.5h1m5 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h3m3 0h1m2 0h1M0 24.5h1m1 0h3m1 0h1m1 0h2m1 0h2m3 0h1m1 0h1m1 0h5m1 0h1m1 0h1M0 25.5h1m1 0h3m1 0h1m1 0h2m1 0h1m2 0h2m1 0h4m2 0h1m1 0h2M0 26.5h1m1 0h3m1 0h1m1 0h1m1 0h1m1 0h2m1 0h3m1 0h1m2 0h6M0 27.5h1m5 0h1m2 0h1m2 0h1m1 0h2m1 0h5m1 0h3m1 0h1M0 28.5h7m1 0h1m1 0h1m3 0h2m3 0h1m2 0h1m1 0h1m1 0h1"/></symbol>
+  <symbol id="arrow" viewBox="0 0 20 20"><path d="M4 10h11M10.5 5l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="circle" viewBox="0 0 96 96"><path d="M70 14 C 40 2, 8 22, 10 52 C 12 84, 54 94, 78 76 C 96 60, 90 26, 64 12"/></symbol>
+  <symbol id="tick" viewBox="0 0 32 32"><path d="M5 17 C 8 19, 10 22, 12.5 25 C 16 17, 21 10, 28 5"/></symbol>
+</svg>
+
+<a class="skip" href="#noi-dung"><span class="vi">Tới nội dung chính</span><span class="ko">본문으로 건너뛰기</span><span class="en">Skip to content</span></a>
+
+<header class="top" id="top">
+  <div class="wrap top-in">
+    <a class="brand" href="#top" aria-label="Sweet Home"><img src="img/logo-mark.png" width="240" height="204" alt=""><span>Sweet Home</span></a>
+    <nav class="top-nav" aria-label="Menu">
+      <a href="#tinh-nang"><span class="vi">Tính năng</span><span class="ko">기능</span><span class="en">Features</span></a>
+      <a href="#nhan-hang"><span class="vi">Cho nhãn hàng</span><span class="ko">브랜드 제휴</span><span class="en">For brands</span></a>
+      <a href="#hoi-dap"><span class="vi">Hỏi đáp</span><span class="ko">자주 묻는 질문</span><span class="en">FAQ</span></a>
+    </nav>
+    <div class="langs" role="group" aria-label="Ngôn ngữ / 언어 / Language">
+      <button type="button" data-set-lang="vi" lang="vi" aria-pressed="true">VI</button>
+      <button type="button" data-set-lang="ko" lang="ko" aria-pressed="false">한국어</button>
+      <button type="button" data-set-lang="en" lang="en" aria-pressed="false">EN</button>
+    </div>
+    <label class="lang-select"><span class="sr">Ngôn ngữ / 언어 / Language</span>
+      <select data-lang-select>
+        <option value="vi" lang="vi">VI</option>
+        <option value="ko" lang="ko">한국어</option>
+        <option value="en" lang="en">EN</option>
+      </select>
+    </label>
+    <a class="btn btn-primary btn-sm" href="https://app.getsweethome.app"><span class="vi"><span class="long">Dùng thử beta</span><span class="short">Dùng thử</span></span><span class="ko"><span class="long">베타 체험하기</span><span class="short">체험하기</span></span><span class="en"><span class="long">Try the beta</span><span class="short">Try it</span></span></a>
+  </div>
+</header>
+
+<main id="noi-dung">
+
+<!-- 1. Mở đầu -->
+<section class="hero">
+  <div class="wrap hero-in">
+    <div class="hero-copy">
+      <p class="badge rise"><span class="vi">Bản beta, đang miễn phí</span><span class="ko">베타 서비스 · 지금은 무료</span><span class="en">In beta, free for now</span></p>
+      <h1 class="hero-title rise" style="--d:.08s">
+        <span class="vi">Ở xa mà <span class="u">gần.<svg class="pen" viewBox="0 0 400 22" preserveAspectRatio="none" aria-hidden="true"><path d="M5 14 C 120 7, 280 6, 395 12"/></svg></span></span>
+        <span class="ko">멀리 있어도 <span class="u">가까운 가족<svg class="pen" viewBox="0 0 400 22" preserveAspectRatio="none" aria-hidden="true"><path d="M5 14 C 120 7, 280 6, 395 12"/></svg></span></span>
+        <span class="en">Far apart, <span class="u">still close.<svg class="pen" viewBox="0 0 400 22" preserveAspectRatio="none" aria-hidden="true"><path d="M5 14 C 120 7, 280 6, 395 12"/></svg></span></span>
+      </h1>
+      <p class="lead rise" style="--d:.16s">
+        <span class="vi">Một app cho cả nhà sống xa nhau. Con đi học, đi làm xa, bố mẹ ở nhà, mà vẫn biết hôm nay mỗi người ăn gì, làm gì.</span>
+        <span class="ko">떨어져 사는 가족이 함께 쓰는 앱이에요. 자녀가 멀리서 공부하거나 일해도 오늘 서로 뭘 먹고 뭘 했는지 알 수 있어요.</span>
+        <span class="en">An app for families who live apart. Kids are away for school or work, but you still hear about each other's day.</span>
+      </p>
+      <div class="cta-row rise" style="--d:.24s">
+        <a class="btn btn-primary" href="https://app.getsweethome.app"><span class="vi">Dùng thử beta</span><span class="ko">베타 체험하기</span><span class="en">Try the beta</span><svg aria-hidden="true"><use href="#arrow"/></svg></a>
+        <a class="btn btn-ghost" href="#mot-tuan"><span class="vi">Xem cách dùng</span><span class="ko">어떻게 쓰는지 보기</span><span class="en">See how it works</span></a>
+      </div>
+      <p class="fine rise" style="--d:.3s">
+        <span class="vi">Mở ngay trên trình duyệt điện thoại. Chưa có trên App Store.</span>
+        <span class="ko">휴대폰 브라우저에서 바로 열려요. 앱스토어 출시 전이에요.</span>
+        <span class="en">Opens in your phone's browser. Not on the App Store yet.</span>
+      </p>
+      <div class="rise" style="--d:.36s">
+        <div class="qr-card">
+          <svg class="qr" role="img" aria-label="QR: app.getsweethome.app"><use href="#qr"/></svg>
+          <p><b><span class="vi">Quét bằng điện thoại để mở</span><span class="ko">휴대폰 카메라로 스캔하세요</span><span class="en">Scan with your phone to open</span></b><span class="qr-url">app.getsweethome.app</span></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-art rise" style="--d:.12s">
+      <div class="phone phone-back"><div class="screen"><img src="img/scr/tin-nha.webp" width="640" height="1387" alt="Ảnh bữa tối Bình gửi từ Sài Gòn, mẹ Lan nhắn lại" data-alt-ko="빈이 사이공에서 올린 저녁 사진과 엄마의 답장" data-alt-en="Bình's dinner photo from Saigon, with Mom's reply"></div></div>
+      <div class="phone phone-front"><div class="screen"><img src="img/scr/app-goi-thu.webp" width="640" height="1387" fetchpriority="high" alt="Màn hình chính: Mây mời nghe máy, cả nhà lúc này, lọ sao" data-alt-ko="홈 화면: Mây의 통화 요청, 지금 우리 가족, 별 유리병" data-alt-en="Home screen: Mây's call invite, family right now, the star jar"></div></div>
+      <!-- Nét bút: lá thư, ngôi sao, cuộc gọi, trái tim -->
+      <svg class="doodle d-letter float pen" style="--fd:-1s;--dd:.7s" viewBox="0 0 64 64" aria-hidden="true">
+        <path class="fill" d="M8.5 19.5 C 8 17.5, 9.5 16, 11.5 16.2 L 52.5 15.6 C 54.6 15.6, 56 17, 55.8 19 L 56.2 45.5 C 56.2 47.6, 54.8 48.8, 52.8 48.8 L 11.6 49.3 C 9.6 49.3, 8.3 48, 8.4 46 Z"/>
+        <path d="M9.6 18.4 C 17 24, 24.5 29.6, 32 34.6 C 39.5 29.4, 47 23.8, 54.6 17.8"/>
+        <path d="M32 41.5 C 27.2 38.2, 26.6 33.6, 29.6 33.1 C 31 32.9, 31.8 34, 32 35.2 C 32.3 34, 33.1 32.9, 34.5 33.1 C 37.5 33.6, 36.8 38.2, 32 41.5 Z"/>
+      </svg>
+      <svg class="doodle d-star float pen" style="--fd:-3s;--dd:1s" viewBox="0 0 64 64" aria-hidden="true">
+        <path d="M32 7.5 C 34.5 14, 36.4 19, 38.6 23.2 C 44 23.8, 49.6 24.2, 55 25 C 50.8 28.8, 46.6 32.4, 42.4 35.6 C 43.6 41, 44.8 46.2, 45.6 51.6 C 41 48.6, 36.6 45.6, 32 42.6 C 27.4 45.8, 22.8 48.8, 18.2 51.8 C 19.2 46.4, 20.4 41, 21.8 35.6 C 17.4 32.2, 13.2 28.8, 9 25.2 C 14.6 24.4, 20 23.8, 25.4 23.2 C 27.6 18, 29.6 12.8, 32 7.5 Z"/>
+      </svg>
+      <svg class="doodle d-call float pen" style="--fd:-5s;--dd:1.25s" viewBox="0 0 64 64" aria-hidden="true">
+        <path class="fill" d="M12 13.6 C 25 13, 39 13.2, 52.4 13.8 C 55.6 14, 57.4 16, 57.2 19.2 C 57.6 25.4, 57.4 31.6, 57 37.6 C 56.8 40.6, 54.8 42.4, 51.8 42.4 C 44.6 42.6, 37.6 42.6, 30.6 42.8 C 27.4 46, 24 49.2, 19.8 52.4 C 20.2 49.2, 20.4 46, 20.4 42.8 C 17.6 42.8, 15 42.6, 12.2 42.4 C 9 42.2, 7 40.4, 7 37.2 C 6.8 31, 6.8 25.2, 7.2 19 C 7.4 15.8, 9.2 13.8, 12 13.6 Z"/>
+        <path d="M26.5 22.5 C 29.5 25.4, 29.6 30.4, 26.6 33.6"/>
+        <path d="M33 19 C 38.6 24, 38.8 31.2, 33.2 37"/>
+        <path d="M20.6 26.6 C 21.8 27.8, 21.8 29.4, 20.6 30.6"/>
+      </svg>
+      <svg class="doodle d-heart float pen" style="--fd:-2s;--dd:1.5s" viewBox="0 0 64 64" aria-hidden="true">
+        <path d="M32 54 C 16 43, 6.5 33, 9 22 C 11 13.5, 23 11, 30 20 C 31 21.4, 31.6 22.6, 32 24 C 32.6 22.4, 33.4 21, 34.6 19.6 C 41.6 11.4, 53.6 13.8, 55.4 22.4 C 57.6 33.2, 48 43.4, 32 54 Z"/>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- 2. Một tuần của nhà mình -->
+<section class="sec week" id="mot-tuan">
+  <div class="wrap">
+    <header class="sec-head rv">
+      <p class="eyebrow"><span class="vi">Một tuần của nhà mình</span><span class="ko">우리 집의 한 주</span><span class="en">A week at home</span></p>
+      <h2><span class="vi">Ngày nào cũng có chuyện để nói.</span><span class="ko">매일 나눌 이야기가 생겨요</span><span class="en">Something to talk about, every day.</span></h2>
+      <p class="sec-lead">
+        <span class="vi">Gọi về, ai cũng chỉ nói “vẫn ổn”. Sweet Home cho cả nhà thêm vài chuyện nhỏ để hỏi nhau.</span>
+        <span class="ko">전화하면 다들 “잘 지내”라고만 하죠. Sweet Home은 서로 물어볼 작은 이야깃거리를 만들어 줘요.</span>
+        <span class="en">On the phone, everyone says “I'm fine.” Sweet Home gives the family small things to ask about.</span>
+      </p>
+    </header>
+
+    <div class="week-grid">
+      <ol class="steps">
+        <li class="step active">
+          <div class="step-txt rv">
+            <span class="dot" aria-hidden="true">1</span>
+            <p class="when"><span class="vi">Thứ Hai</span><span class="ko">월요일</span><span class="en">Monday</span></p>
+            <h3><span class="vi">Một tấm ảnh bữa cơm.</span><span class="ko">저녁 밥상 사진 한 장</span><span class="en">A photo of dinner.</span></h3>
+            <p>
+              <span class="vi">Bình chụp bữa tối ở Sài Gòn, máy cả nhà báo ngay. Mẹ nhắn lại: “Ăn nhiều vào con”.</span>
+              <span class="ko">빈이 사이공에서 저녁 사진을 올리면 온 가족 폰에 바로 알림이 가요. 엄마는 “많이 먹어”라고 답하죠.</span>
+              <span class="en">Bình shares dinner in Saigon and everyone's phone lights up. Mom replies: “Eat well, sweetie.”</span>
+            </p>
+            <div class="phone step-phone"><div class="screen"><img src="img/scr/tin-nha.webp" width="640" height="1387" loading="lazy" alt="Ảnh bữa tối Bình gửi từ Sài Gòn, mẹ Lan nhắn lại" data-alt-ko="빈이 사이공에서 올린 저녁 사진과 엄마의 답장" data-alt-en="Bình's dinner photo from Saigon, with Mom's reply"></div></div>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-txt rv">
+            <span class="dot" aria-hidden="true">2</span>
+            <p class="when"><span class="vi">Thứ Tư</span><span class="ko">수요일</span><span class="en">Wednesday</span></p>
+            <h3><span class="vi">Mẹ viết cho An một lá thư.</span><span class="ko">엄마가 안에게 편지를 써요</span><span class="en">Mom writes An a letter.</span></h3>
+            <p>
+              <span class="vi">Viết ngay trên điện thoại, chọn giấy, chọn nét chữ. An chạm vào dấu sáp là mở.</span>
+              <span class="ko">폰으로 쓰고 편지지와 글씨체를 골라 보내요. 안은 봉투의 실링을 눌러 열어요.</span>
+              <span class="en">Right on her phone, with the paper and handwriting she likes. An taps the wax seal to open it.</span>
+            </p>
+            <div class="phone step-phone"><div class="screen"><img src="img/scr/v5-thu-1.webp" width="640" height="1387" loading="lazy" alt="Thư tay mẹ Lan gửi An" data-alt-ko="엄마가 안에게 보낸 손편지" data-alt-en="A handwritten letter from Mom to An"></div></div>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-txt rv">
+            <span class="dot" aria-hidden="true">3</span>
+            <p class="when"><span class="vi">Cuối tuần</span><span class="ko">주말</span><span class="en">Weekend</span></p>
+            <h3><span class="vi">Mây gọi mẹ, hỏi đúng một chuyện.</span><span class="ko">Mây가 엄마에게 전화해 한 가지를 물어요</span><span class="en">Mây calls Mom with one question.</span></h3>
+            <p>
+              <span class="vi">Mây là bạn nhỏ AI của nhà. Mỗi tuần Mây gọi từng người một lần, hỏi một chuyện, rồi hỏi thêm như người nhà.</span>
+              <span class="ko">Mây는 우리 가족의 AI 친구예요. 매주 식구마다 한 번씩 전화해서 한 가지를 묻고, 가족처럼 이어서 물어봐요.</span>
+              <span class="en">Mây is the family's little AI friend. Once a week it calls each of you, asks about one story, and follows up like family.</span>
+            </p>
+            <div class="phone step-phone"><div class="screen"><img src="img/scr/08e.webp" width="640" height="1387" loading="lazy" alt="Mây hỏi: Mẹ còn nhớ ngày cưới với bố không?" data-alt-ko="Mây의 질문: 아빠와 결혼하던 날 기억나세요?" data-alt-en="Mây asks: Do you remember your wedding day with Dad?"></div></div>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-txt rv">
+            <span class="dot" aria-hidden="true">4</span>
+            <p class="when"><span class="vi">Ít phút sau</span><span class="ko">몇 분 뒤</span><span class="en">A few minutes later</span></p>
+            <h3><span class="vi">Chuyện của mẹ thành một tập <span class="nw">“Nhà mình kể”.</span></span><span class="ko">엄마의 이야기가 <span class="nw">‘우리 집 이야기’</span> 한 편이 돼요</span><span class="en">Mom's story becomes an episode of “Our Family Stories”.</span></h3>
+            <p>
+              <span class="vi">Cả nhà nghe chuyện bằng giọng thật của mẹ, nhẹ nhàng như nghe đài. Người kể muốn giữ riêng thì chạm một cái.</span>
+              <span class="ko">엄마의 실제 목소리로 들려주는 차분한 오디오를 온 가족이 함께 들어요. 이야기한 사람이 혼자 간직하고 싶으면 한 번만 누르면 돼요.</span>
+              <span class="en">The whole family hears it in her own voice, like a quiet radio show. If she'd rather keep it private, one tap does it.</span>
+            </p>
+            <div class="phone step-phone"><div class="screen"><img src="img/scr/08f.webp" width="640" height="1387" loading="lazy" alt="Tập Nhà mình kể: Ngày bố mẹ cưới nhau, mẹ Lan kể" data-alt-ko="‘우리 집 이야기’: 엄마가 들려주는 결혼식 날" data-alt-en="Our Family Stories: Mom tells about the wedding day"></div></div>
+          </div>
+        </li>
+      </ol>
+
+      <div class="week-stage" aria-hidden="true">
+        <div class="stage-sticky">
+          <div class="phone stage-phone"><div class="screen">
+            <img class="on" src="img/scr/tin-nha.webp" width="640" height="1387" loading="lazy" alt="">
+            <img src="img/scr/v5-thu-1.webp" width="640" height="1387" loading="lazy" alt="">
+            <img src="img/scr/08e.webp" width="640" height="1387" loading="lazy" alt="">
+            <img src="img/scr/08f.webp" width="640" height="1387" loading="lazy" alt="">
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3. Tính năng -->
+<section class="sec features" id="tinh-nang">
+  <div class="wrap">
+    <header class="sec-head rv">
+      <p class="eyebrow"><span class="vi">Tính năng</span><span class="ko">기능</span><span class="en">Features</span></p>
+      <h2><span class="vi">Mấy thứ nhỏ cho cả nhà.</span><span class="ko">온 가족을 위한 작은 기능들</span><span class="en">Small things for the whole family.</span></h2>
+    </header>
+
+    <div class="bento">
+      <article class="tile t-wide tint rv">
+        <div class="tile-txt">
+          <h3><span class="vi">Ảnh mỗi ngày</span><span class="ko">매일의 사진</span><span class="en">Daily photo</span></h3>
+          <p><span class="vi">Chụp một tấm, cả nhà thấy ngay.</span><span class="ko">한 장 찍으면 온 가족이 바로 봐요.</span><span class="en">Snap one, and the whole family sees it.</span></p>
+        </div>
+        <div class="tile-shot"><div class="phone"><div class="screen"><img src="img/scr/camera.webp" width="640" height="1387" loading="lazy" alt="Màn chụp ảnh mỗi ngày" data-alt-ko="매일의 사진 촬영 화면" data-alt-en="Daily photo camera"></div></div></div>
+      </article>
+
+      <article class="tile rv" style="--d:.06s">
+        <div class="tile-txt">
+          <h3><span class="vi">Thư tay</span><span class="ko">손편지</span><span class="en">Letters</span></h3>
+          <p><span class="vi">Hộp thư riêng của nhà, chạm dấu sáp để mở.</span><span class="ko">우리 집 편지함, 실링을 눌러 열어요.</span><span class="en">A family mailbox. Tap the wax seal to open.</span></p>
+        </div>
+        <div class="tile-shot"><div class="phone"><div class="screen"><img src="img/scr/v5-thu-0.webp" width="640" height="1387" loading="lazy" alt="Hộp thư của nhà" data-alt-ko="우리 집 편지함" data-alt-en="The family mailbox"></div></div></div>
+      </article>
+
+      <article class="tile t-tall rv" style="--d:.12s">
+        <div class="tile-txt">
+          <h3><span class="vi">Chụp chung bằng AI</span><span class="ko">AI 가족사진</span><span class="en">AI group photo</span></h3>
+          <p><span class="vi">Mỗi người một nơi, AI ghép thành ảnh cả nhà. Luôn ghi “ảnh ghép AI”.</span><span class="ko">각자 찍은 사진을 AI가 가족사진으로 합쳐요. 항상 ‘AI 합성 사진’ 표시가 붙어요.</span><span class="en">Wherever everyone is, AI makes one family photo. Always labeled “AI composite”.</span></p>
+        </div>
+        <div class="tile-shot"><div class="phone"><div class="screen"><img src="img/scr/chup-chung-that.webp" width="640" height="1387" loading="lazy" alt="Ảnh chụp chung bằng AI, có nhãn ảnh ghép AI" data-alt-ko="‘AI 합성 사진’ 표시가 붙은 AI 가족사진" data-alt-en="AI group photo with the AI composite label"></div></div></div>
+      </article>
+
+      <article class="tile rv">
+        <div class="tile-txt">
+          <h3><span class="vi">Photo booth</span><span class="ko">포토부스</span><span class="en">Photo booth</span></h3>
+          <p><span class="vi">Đang gọi video, cùng chụp một dải ảnh.</span><span class="ko">영상통화 중에 함께 네컷 사진을 찍어요.</span><span class="en">Take a photo strip together on a video call.</span></p>
+        </div>
+        <div class="tile-shot"><div class="phone"><div class="screen"><img src="img/scr/v5-booth-3.webp" width="640" height="1387" loading="lazy" alt="Dải ảnh photo booth" data-alt-ko="포토부스 네컷 사진" data-alt-en="Photo booth strip"></div></div></div>
+      </article>
+
+      <article class="tile rv" style="--d:.06s">
+        <div class="tile-txt">
+          <h3><span class="vi">Nhắn tin, gọi điện</span><span class="ko">채팅과 통화</span><span class="en">Chat and calls</span></h3>
+          <p><span class="vi">Chat, gọi video. Tin nhắn tự dịch Việt, Hàn, Anh.</span><span class="ko">채팅과 영상통화. 베트남어·한국어·영어 자동 번역.</span><span class="en">Chat and video calls, auto-translated between Vietnamese, Korean and English.</span></p>
+        </div>
+        <div class="tile-shot"><div class="phone"><div class="screen"><img src="img/scr/chat-dich.webp" width="640" height="1387" loading="lazy" alt="Chat cả nhà có bản dịch Việt Hàn" data-alt-ko="베트남어·한국어 번역이 달린 가족 채팅" data-alt-en="Family chat with Vietnamese and Korean translation"></div></div></div>
+      </article>
+
+      <article class="tile rv" style="--d:.12s">
+        <div class="tile-txt">
+          <h3><span class="vi">Lịch nhà mình</span><span class="ko">우리 집 달력</span><span class="en">Family calendar</span></h3>
+          <p><span class="vi">Ngày giỗ, sinh nhật theo lịch âm, tự đổi ra dương.</span><span class="ko">음력 제사와 생일을 양력 날짜로 바꿔 줘요.</span><span class="en">Lunar birthdays and memorial days, converted for you.</span></p>
+        </div>
+        <div class="tile-shot"><div class="phone"><div class="screen"><img src="img/scr/app-lich-am.webp" width="640" height="1387" loading="lazy" alt="Lịch nhà mình có ngày âm" data-alt-ko="음력이 함께 표시된 우리 집 달력" data-alt-en="Family calendar with lunar dates"></div></div></div>
+      </article>
+
+      <article class="tile t-wide tint rv">
+        <div class="tile-txt">
+          <h3><span class="vi">Lọ sao nhà mình</span><span class="ko">우리 집 별 유리병</span><span class="en">Star jar</span></h3>
+          <p><span class="vi">Mỗi lần thương nhau là một ngôi sao. Đủ mốc thì cả nhà có quà.</span><span class="ko">서로 챙길 때마다 별이 쌓여요. 목표에 닿으면 온 가족이 선물을 받아요.</span><span class="en">Each small kindness adds a star. Milestones bring a gift for everyone.</span></p>
+        </div>
+        <div class="tile-shot"><div class="phone"><div class="screen"><img src="img/scr/lo-moc-40.webp" width="640" height="1387" loading="lazy" alt="Lọ sao chạm mốc 40 sao" data-alt-ko="별 40개에 도달한 별 유리병" data-alt-en="Star jar reaching 40 stars"></div></div></div>
+      </article>
+
+      <article class="tile rv" style="--d:.06s">
+        <div class="tile-txt">
+          <h3><span class="vi">Cả nhà lúc này</span><span class="ko">지금 우리 가족</span><span class="en">Family right now</span></h3>
+          <p><span class="vi">Bên đó mấy giờ, trời ra sao.</span><span class="ko">그곳은 몇 시인지, 날씨는 어떤지.</span><span class="en">What time it is there, and the weather.</span></p>
+        </div>
+        <div class="tile-shot"><div class="phone"><div class="screen"><img src="img/scr/08a-sg.webp" width="640" height="1387" loading="lazy" alt="Cả nhà lúc này: giờ và thời tiết nơi từng người" data-alt-ko="지금 우리 가족: 각자 있는 곳의 시간과 날씨" data-alt-en="Family right now: time and weather where each person is"></div></div></div>
+      </article>
+
+      <article class="tile rv" style="--d:.12s">
+        <div class="tile-txt">
+          <h3><span class="vi">Vài câu hỏi lúc đầu</span><span class="ko">처음 몇 가지 질문</span><span class="en">A few first questions</span></h3>
+          <p><span class="vi">Trả lời xong là Mây biết nhà bạn hơn.</span><span class="ko">이 답으로 Mây가 우리 집을 알아 가요.</span><span class="en">Your answers help Mây get to know your family.</span></p>
+        </div>
+        <div class="tile-shot"><div class="phone"><div class="screen"><img src="img/scr/ob-mon.webp" width="640" height="1387" loading="lazy" alt="Câu hỏi lúc đầu: món gì ở nhà bạn nhớ nhất?" data-alt-ko="처음 질문: 집에서 먹던 음식 중 제일 그리운 건?" data-alt-en="First question: which home dish do you miss most?"></div></div></div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- 4. Cho bố mẹ -->
+<section class="sec parents" id="bo-me">
+  <div class="wrap parents-in">
+    <div class="parents-copy">
+      <header class="sec-head rv">
+        <p class="eyebrow"><span class="vi">Cho bố mẹ</span><span class="ko">부모님을 위해</span><span class="en">For parents</span></p>
+        <h2><span class="vi">Bố mẹ không cần rành điện thoại.</span><span class="ko">스마트폰이 서툴러도 괜찮아요</span><span class="en">Parents don't need to be good with phones.</span></h2>
+      </header>
+      <ul class="big-list">
+        <li class="rv"><svg class="tick pen" aria-hidden="true"><use href="#tick"/></svg>
+          <span class="vi"><b>Mây gọi tới.</b> Bố mẹ chỉ cần nghe máy và kể.</span>
+          <span class="ko"><b>Mây가 먼저 전화해요.</b> 받아서 이야기만 하시면 돼요.</span>
+          <span class="en"><b>Mây calls.</b> Just pick up and talk.</span></li>
+        <li class="rv" style="--d:.06s"><svg class="tick pen" aria-hidden="true"><use href="#tick"/></svg>
+          <span class="vi"><b>Không phải gõ.</b> Giữ nút để nói, gửi bằng giọng.</span>
+          <span class="ko"><b>타자를 치지 않아도 돼요.</b> 버튼을 누른 채 말하면 음성으로 보내져요.</span>
+          <span class="en"><b>No typing.</b> Hold the button, say it, send it.</span></li>
+        <li class="rv" style="--d:.12s"><svg class="tick pen" aria-hidden="true"><use href="#tick"/></svg>
+          <span class="vi"><b>Lịch âm có sẵn.</b> App nhắc trước ngày giỗ, sinh nhật âm lịch.</span>
+          <span class="ko"><b>음력 달력이 들어 있어요.</b> 제사와 음력 생일을 미리 알려 드려요.</span>
+          <span class="en"><b>Lunar calendar built in.</b> Memorial days and lunar birthdays come with reminders.</span></li>
+        <li class="rv" style="--d:.18s"><svg class="tick pen" aria-hidden="true"><use href="#tick"/></svg>
+          <span class="vi"><b>Có ưu đãi cho bố mẹ.</b> Khám tại nhà, giao thuốc, ghế massage.</span>
+          <span class="ko"><b>부모님께 필요한 쿠폰도 있어요.</b> 방문 진료, 약 배달, 안마의자 같은 것들이요.</span>
+          <span class="en"><b>Coupons for parents, too.</b> Home doctor visits, medicine delivery, massage chairs.</span></li>
+      </ul>
+    </div>
+    <div class="parents-art rv" style="--d:.1s">
+      <div class="phone phone-b"><div class="screen"><img src="img/scr/app-lich-am-v4.webp" width="640" height="1387" loading="lazy" alt="Ngày sắp tới: sinh nhật, ngày cưới, ngày giỗ theo lịch âm" data-alt-ko="다가오는 날: 생일, 결혼기념일, 음력 제사" data-alt-en="Upcoming days: birthdays, an anniversary, lunar memorial days"></div></div>
+      <div class="phone phone-a"><div class="screen"><img src="img/scr/app-may-hoi-them.webp" width="640" height="1387" loading="lazy" alt="Mây hỏi mẹ: Mưa thế, bố có bị ướt không mẹ?" data-alt-ko="Mây가 엄마에게: 비가 그렇게 왔는데 아빠는 안 젖으셨어요?" data-alt-en="Mây asks Mom: With that rain, did Dad get wet?"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 5. Lời hứa -->
+<section class="sec promises" id="loi-hua">
+  <div class="wrap">
+    <header class="sec-head rv">
+      <p class="eyebrow"><span class="vi">Lời hứa</span><span class="ko">약속</span><span class="en">Our promises</span></p>
+      <h2><span class="vi">Chuyện nhà mình, chỉ nhà mình biết.</span><span class="ko">우리 집 이야기는 우리 가족만 알아요</span><span class="en">What happens at home stays at home.</span></h2>
+    </header>
+    <ol class="promise-list">
+      <li class="rv">
+        <span class="pnum" aria-hidden="true"><svg class="pen"><use href="#circle"/></svg>1</span>
+        <h3><span class="vi">Chỉ người nhà mới vào được.</span><span class="ko">가족만 들어올 수 있어요</span><span class="en">Only family gets in.</span></h3>
+        <p>
+          <span class="vi">Muốn vào nhà phải có mã nhà, và người lập nhà đồng ý. Ảnh, thư, tin nhắn chỉ người trong nhà thấy.</span>
+          <span class="ko">집 코드가 있어야 하고, 집을 만든 사람이 허락해야 들어올 수 있어요. 사진, 편지, 메시지는 같은 집 가족만 봐요.</span>
+          <span class="en">Joining takes your home code and a yes from whoever set up the home. Only people in the home can see photos, letters and messages.</span>
+        </p>
+      </li>
+      <li class="rv" style="--d:.08s">
+        <span class="pnum" aria-hidden="true"><svg class="pen"><use href="#circle"/></svg>2</span>
+        <h3><span class="vi">AI làm gì, ghi rõ cái đó.</span><span class="ko">AI가 만든 건 AI라고 밝혀요</span><span class="en">AI work is labeled.</span></h3>
+        <p>
+          <span class="vi">Ảnh chụp chung bằng AI luôn có nhãn “ảnh ghép AI”, để không ai nhầm với ảnh thật.</span>
+          <span class="ko">실제 사진과 헷갈리지 않게 AI 가족사진에는 항상 ‘AI 합성 사진’ 표시를 붙여요.</span>
+          <span class="en">AI group photos always carry an “AI composite” label, so no one mistakes them for the real thing.</span>
+        </p>
+      </li>
+      <li class="rv" style="--d:.16s">
+        <span class="pnum" aria-hidden="true"><svg class="pen"><use href="#circle"/></svg>3</span>
+        <h3><span class="vi">Muốn rời lúc nào cũng được.</span><span class="ko">언제든 떠날 수 있어요</span><span class="en">Leave whenever you want.</span></h3>
+        <p>
+          <span class="vi">Bấm Rời nhà trong Cài đặt là ảnh, tin nhắn, cuộc gọi của bạn bị xoá hẳn. Người cuối cùng rời đi thì nhà cũng xoá luôn.</span>
+          <span class="ko">설정에서 ‘집 나가기’를 누르면 내 사진, 메시지, 통화가 완전히 지워져요. 마지막 사람이 나가면 집도 함께 지워져요.</span>
+          <span class="en">Tap Leave home in Settings and your photos, messages and calls are deleted for good. When the last person leaves, the home is deleted too.</span>
+        </p>
+      </li>
+    </ol>
+    <a class="text-link rv" href="https://app.getsweethome.app/privacy.html"><span class="vi">Đọc chính sách quyền riêng tư</span><span class="ko">개인정보 처리방침 보기</span><span class="en">Read the privacy policy</span></a>
+  </div>
+</section>
+
+<!-- 6. Cho nhãn hàng -->
+<section class="sec brands" id="nhan-hang">
+  <div class="wrap brands-in">
+    <div class="brands-copy">
+      <header class="sec-head rv">
+        <p class="eyebrow"><span class="vi">Cho nhãn hàng</span><span class="ko">브랜드 제휴</span><span class="en">For brands</span></p>
+        <h2><span class="vi">Gửi ưu đãi tới những gia đình đang lo cho bố mẹ.</span><span class="ko">부모님을 챙기는 가족에게 혜택을 전하세요</span><span class="en">Reach families who look after their parents.</span></h2>
+        <p class="sec-lead">
+          <span class="vi">Nhãn hàng về sức khoẻ, nhà thuốc, thực phẩm, vé về quê có thể gửi ưu đãi vào Sweet Home. Cả nhà cùng gom sao trong lọ để mở quà.</span>
+          <span class="ko">건강, 약국, 식품, 귀성길 교통처럼 어르신을 위한 브랜드라면 Sweet Home에 쿠폰을 보내 주세요. 가족이 함께 별을 모아 선물을 열어요.</span>
+          <span class="en">Brands in health, pharmacy, food or trips home can offer coupons in Sweet Home. Families unlock them together by filling their star jar.</span>
+        </p>
+      </header>
+      <ol class="brand-steps">
+        <li class="rv"><span class="n" aria-hidden="true">1</span><span><span class="vi">Nhãn hàng gửi ưu đãi.</span><span class="ko">브랜드가 쿠폰을 준비해요.</span><span class="en">You offer a coupon.</span></span></li>
+        <li class="rv" style="--d:.06s"><span class="n" aria-hidden="true">2</span><span><span class="vi">Cả nhà làm những việc nhỏ cho nhau, sao rơi vào lọ.</span><span class="ko">가족이 서로를 챙길 때마다 별이 병에 쌓여요.</span><span class="en">Families do small things for each other, and stars fill the jar.</span></span></li>
+        <li class="rv" style="--d:.12s"><span class="n" aria-hidden="true">3</span><span><span class="vi">Chạm mốc 40, 100, 200 sao thì mở quà, quà nằm sẵn trong mục Ưu đãi.</span><span class="ko">별 40개, 100개, 200개가 되면 선물이 열리고 쿠폰함에 바로 들어와요.</span><span class="en">At 40, 100 and 200 stars the gift opens, ready in Deals.</span></span></li>
+      </ol>
+      <div class="cta-row rv">
+        <a class="btn btn-light" data-mailto href="#"><span class="vi">Liên hệ hợp tác</span><span class="ko">제휴 문의하기</span><span class="en">Partner with us</span><svg aria-hidden="true"><use href="#arrow"/></svg></a>
+      </div>
+      <p class="mail-line rv"><span class="vi">Hoặc gửi mail: </span><span class="ko">메일 주소: </span><span class="en">Or write to: </span><a data-email href="#"></a></p>
+    </div>
+    <figure class="brands-art rv" style="--d:.1s">
+      <div class="brands-pair">
+        <div class="phone phone-a"><div class="screen"><img src="img/scr/lo-moc-40.webp" width="640" height="1387" loading="lazy" alt="Lọ sao chạm mốc 40 sao, báo có ưu đãi" data-alt-ko="별 40개에 도달해 쿠폰이 열린 별 유리병" data-alt-en="Star jar at 40 stars, with a gift waiting"></div></div>
+        <div class="phone phone-b"><div class="screen"><img src="img/scr/uu-dai-moc.webp" width="640" height="1387" loading="lazy" alt="Mục Ưu đãi với quà mốc 40 sao" data-alt-ko="별 40개 선물이 들어온 쿠폰함" data-alt-en="Deals, with the 40-star gift"></div></div>
+      </div>
+      <figcaption class="caption"><span class="vi">Ảnh minh hoạ. Tên nhãn hàng trong ảnh là tên mẫu.</span><span class="ko">예시 화면이에요. 화면 속 브랜드명도 예시예요.</span><span class="en">Sample screens. Brand names shown are examples.</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- 7. Đội ngũ -->
+<section class="sec team" id="doi-ngu">
+  <div class="wrap">
+    <header class="sec-head rv">
+      <p class="eyebrow"><span class="vi">Đội ngũ</span><span class="ko">팀</span><span class="en">Team</span></p>
+      <h2><span class="vi">Nhóm mình cũng là du học sinh xa nhà.</span><span class="ko">저희도 부모님과 떨어져 사는 유학생이에요</span><span class="en">We're students who live far from our parents, too.</span></h2>
+    </header>
+    <ul class="team-list">
+      <li class="rv">
+        <img src="img/team/dat.webp" width="400" height="400" loading="lazy" alt="Đặng Tiến Đạt">
+        <div><h3>Đặng Tiến Đạt</h3>
+          <p><span class="vi">Trưởng nhóm, phát triển app, thiết kế</span><span class="ko">팀장, 앱 개발, 디자인</span><span class="en">Team lead, app development, design</span></p></div>
+      </li>
+      <li class="rv" style="--d:.08s">
+        <img src="img/team/van.webp" width="400" height="400" loading="lazy" alt="Trương Huỳnh Trúc Vân">
+        <div><h3>Trương Huỳnh Trúc Vân</h3>
+          <p><span class="vi">Phát triển app, thiết kế app, kiểm thử</span><span class="ko">앱 개발, 앱 디자인, 테스트</span><span class="en">App development, app design, testing</span></p></div>
+      </li>
+      <li class="rv" style="--d:.16s">
+        <img src="img/team/an.webp" width="400" height="400" loading="lazy" alt="Quách Khánh An">
+        <div><h3>Quách Khánh An</h3>
+          <p><span class="vi">Phát triển app, marketing</span><span class="ko">앱 개발, 마케팅</span><span class="en">App development, marketing</span></p></div>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<!-- 8. Hỏi đáp -->
+<section class="sec faq" id="hoi-dap">
+  <div class="wrap faq-in">
+    <header class="sec-head rv">
+      <p class="eyebrow"><span class="vi">Hỏi đáp</span><span class="ko">자주 묻는 질문</span><span class="en">FAQ</span></p>
+      <h2><span class="vi">Mấy câu hay được hỏi.</span><span class="ko">많이 받는 질문들</span><span class="en">Questions people ask.</span></h2>
+    </header>
+    <div class="faq-list rv">
+      <details>
+        <summary><span><span class="vi">Bản beta là gì?</span><span class="ko">베타 서비스는 무엇인가요?</span><span class="en">What does beta mean?</span></span><span class="plus" aria-hidden="true"></span></summary>
+        <div class="ans">
+          <p class="vi">Là bản đã dùng được thật, cả nhà vào ở ngay được. Nhóm vẫn đang sửa và thêm dần, nên đôi chỗ có thể còn đổi.</p>
+          <p class="ko">지금 바로 가족이 함께 쓸 수 있는 실제 앱이에요. 팀이 계속 고치고 다듬는 중이라 일부 화면은 바뀔 수 있어요.</p>
+          <p class="en">It's the real app, and your family can move in today. We're still fixing and adding things, so some parts may change.</p>
+        </div>
+      </details>
+      <details>
+        <summary><span><span class="vi">Có mất tiền không?</span><span class="ko">요금이 있나요?</span><span class="en">Does it cost anything?</span></span><span class="plus" aria-hidden="true"></span></summary>
+        <div class="ans">
+          <p class="vi">Không. Trong thời gian beta, Sweet Home miễn phí. App chưa có chỗ nào thu tiền.</p>
+          <p class="ko">없어요. 베타 기간에는 무료이고, 앱 안에 결제 기능도 아직 없어요.</p>
+          <p class="en">No. Sweet Home is free during the beta. There's no payment anywhere in the app yet.</p>
+        </div>
+      </details>
+      <details>
+        <summary><span><span class="vi">Dùng trên máy nào?</span><span class="ko">어떤 휴대폰에서 쓸 수 있나요?</span><span class="en">Which phones does it work on?</span></span><span class="plus" aria-hidden="true"></span></summary>
+        <div class="ans">
+          <p class="vi">iPhone hoặc Android, mở bằng trình duyệt như Safari, Chrome. Thêm vào Màn hình chính để mở như một app. Trên iPhone, phải thêm vào Màn hình chính thì mới nhận được thông báo.</p>
+          <p class="ko">아이폰과 안드로이드폰 모두 사파리, 크롬 같은 브라우저에서 열면 돼요. 홈 화면에 추가하면 앱처럼 쓸 수 있어요. 아이폰은 홈 화면에 추가해야 알림을 받을 수 있어요.</p>
+          <p class="en">iPhone or Android, in a browser like Safari or Chrome. Add it to your Home Screen to open it like an app. On iPhone, you need to add it to the Home Screen to get notifications.</p>
+        </div>
+      </details>
+      <details>
+        <summary><span><span class="vi">Cả nhà vào bằng cách nào?</span><span class="ko">가족은 어떻게 들어오나요?</span><span class="en">How does the family join?</span></span><span class="plus" aria-hidden="true"></span></summary>
+        <div class="ans">
+          <p class="vi">Một người dựng nhà rồi gửi mã nhà qua Zalo hay tin nhắn. Người nhận nhập mã, người lập nhà đồng ý là vào.</p>
+          <p class="ko">한 사람이 집을 만들고 집 코드를 메신저나 문자로 보내요. 받은 사람이 코드를 입력하고, 집을 만든 사람이 허락하면 들어와요.</p>
+          <p class="en">One person sets up the home and sends the home code by Zalo or text. The others enter the code, and the person who set it up lets them in.</p>
+        </div>
+      </details>
+      <details>
+        <summary><span><span class="vi">Mây gọi có cần mình đồng ý không?</span><span class="ko">Mây의 전화는 꼭 받아야 하나요?</span><span class="en">Does Mây need my OK to call?</span></span><span class="plus" aria-hidden="true"></span></summary>
+        <div class="ans">
+          <p class="vi">Mây chỉ nói chuyện khi bạn bấm “nghe máy”. Chưa tiện thì bấm “để sau”. Mỗi người tự bật hay tắt thông báo cuộc gọi hằng tuần trong Cài đặt, mục Thông báo. Lần đầu gọi, máy sẽ hỏi bạn có cho dùng micro không.</p>
+          <p class="ko">‘받기’를 눌러야만 Mây와 대화가 시작돼요. 바쁠 때는 ‘나중에’를 누르면 돼요. 주간 통화 알림은 각자 설정의 ‘알림’에서 켜고 끌 수 있어요. 처음 통화할 때는 마이크를 써도 되는지 먼저 물어봐요.</p>
+          <p class="en">Mây only talks after you tap “answer”. Busy? Tap “later”. Each person can turn weekly call notifications on or off in Settings, under Notifications. On the first call, your phone asks before using the microphone.</p>
+        </div>
+      </details>
+      <details>
+        <summary><span><span class="vi">Có những ngôn ngữ nào?</span><span class="ko">어떤 언어를 지원하나요?</span><span class="en">Which languages?</span></span><span class="plus" aria-hidden="true"></span></summary>
+        <div class="ans">
+          <p class="vi">Tiếng Việt, 한국어 và English. Mỗi người chọn tiếng của mình, tin nhắn tự dịch cho nhau.</p>
+          <p class="ko">베트남어, 한국어, 영어를 지원해요. 각자 편한 언어를 고르면 메시지는 자동으로 번역돼요.</p>
+          <p class="en">Vietnamese, Korean and English. Everyone picks their own, and messages are translated between you.</p>
+        </div>
+      </details>
+      <details>
+        <summary><span><span class="vi">Muốn xoá dữ liệu thì sao?</span><span class="ko">데이터는 어떻게 지우나요?</span><span class="en">How do I delete my data?</span></span><span class="plus" aria-hidden="true"></span></summary>
+        <div class="ans">
+          <p class="vi">Vào Cài đặt, bấm Rời nhà: ảnh, tin nhắn và cuộc gọi của bạn bị xoá hẳn, không lấy lại được. Người trong nhà cũng xoá được một người khỏi nhà. Chi tiết ở <a href="https://app.getsweethome.app/privacy.html">trang quyền riêng tư</a>.</p>
+          <p class="ko">설정에서 ‘집 나가기’를 누르면 내 사진, 메시지, 통화가 완전히 지워지고 되살릴 수 없어요. 가족 구성원을 집에서 내보낼 수도 있어요. 자세한 내용은 <a href="https://app.getsweethome.app/privacy.html">개인정보 처리방침</a>에 있어요.</p>
+          <p class="en">In Settings, tap Leave home: your photos, messages and calls are deleted for good. People in a home can also remove a member. Details are in the <a href="https://app.getsweethome.app/privacy.html">privacy policy</a>.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- 9. Kết -->
+<section class="closing">
+  <div class="wrap">
+    <div class="closing-card rv">
+      <svg class="house pen" viewBox="0 0 200 150" aria-hidden="true">
+        <path d="M14 140 C 70 137, 130 142, 190 139"/>
+        <path d="M30 139 V 74 L 72 38 L 114 74 V 139"/>
+        <path d="M60 139 V 104 C 60 98, 84 98, 84 104 V 139"/>
+        <path d="M134 139 V 92 L 160 70 L 186 92 V 139"/>
+        <path d="M114 100 C 120 100, 126 100, 134 100" stroke-dasharray="2 8"/>
+      </svg>
+      <div>
+        <h2 class="h2"><span class="vi">Rủ cả nhà về chung một nhà.</span><span class="ko">온 가족을 한집으로 초대하세요</span><span class="en">Bring everyone under one roof.</span></h2>
+        <p>
+          <span class="vi">Một người dựng nhà, cả nhà vào sau. Miễn phí trong thời gian beta.</span>
+          <span class="ko">한 사람이 집을 만들면 나머지 가족이 들어와요. 베타 기간에는 무료예요.</span>
+          <span class="en">One person sets up the home, the rest follow. Free during the beta.</span>
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-light" href="https://app.getsweethome.app"><span class="vi">Dùng thử beta</span><span class="ko">베타 체험하기</span><span class="en">Try the beta</span><svg aria-hidden="true"><use href="#arrow"/></svg></a>
+        </div>
+      </div>
+      <div class="qr-card">
+        <svg class="qr" role="img" aria-label="QR: app.getsweethome.app"><use href="#qr"/></svg>
+        <p><b><span class="vi">Quét bằng điện thoại để mở</span><span class="ko">휴대폰 카메라로 스캔하세요</span><span class="en">Scan with your phone to open</span></b><span class="qr-url">app.getsweethome.app</span></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-in">
+    <p class="foot-brand"><img src="img/logo-mark.png" width="240" height="204" alt="">Sweet Home<small><span class="vi">Ở xa mà gần.</span><span class="ko">멀리 있어도 가까운 가족</span><span class="en">Far apart, still close.</span></small></p>
+    <nav class="foot-links" aria-label="Footer">
+      <a href="https://app.getsweethome.app/privacy.html"><span class="vi">Quyền riêng tư</span><span class="ko">개인정보 처리방침</span><span class="en">Privacy</span></a>
+      <a data-email href="#"></a>
+      <span class="copy">© 2026 Sweet Home</span>
+    </nav>
+    <div class="langs" role="group" aria-label="Ngôn ngữ / 언어 / Language">
+      <button type="button" data-set-lang="vi" lang="vi" aria-pressed="true">VI</button>
+      <button type="button" data-set-lang="ko" lang="ko" aria-pressed="false">한국어</button>
+      <button type="button" data-set-lang="en" lang="en" aria-pressed="false">EN</button>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

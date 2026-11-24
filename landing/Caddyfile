@@ -1,0 +1,17 @@
+:{$PORT:8080} {
+	root * /srv
+	encode zstd gzip
+
+	# Link slide cũ: /pitching (kể cả /pitching/...) chuyển sang trang slide, giữ ?lang=ko, bỏ đường dẫn /pitching.
+	@pitch path /pitching /pitching/*
+	redir @pitch https://pitch.getsweethome.app/{?query} 302
+
+	header X-Content-Type-Options "nosniff"
+	header Referrer-Policy "strict-origin-when-cross-origin"
+	@html path / *.html
+	header @html Cache-Control "no-cache"
+	@static path *.css *.js *.webp *.jpg *.png *.svg *.woff2
+	header @static Cache-Control "public, max-age=86400"
+
+	file_server
+}
