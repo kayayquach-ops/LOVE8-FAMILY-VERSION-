@@ -9,17 +9,17 @@
   var TEXT = {
     vi: {
       title: 'Sweet Home · Ở xa mà gần',
-      desc: 'App cho cả nhà đang sống xa nhau. Ảnh mỗi ngày, thư tay, gọi video, lịch âm và Mây gọi hỏi chuyện từng người mỗi tuần. Đang beta, miễn phí.',
+      desc: 'App cho cả nhà sống xa nhau: ảnh mỗi ngày, thư tay, gọi video, lịch âm. Mỗi tuần Mây, AI của app, gọi hỏi chuyện từng người. Đang beta, miễn phí.',
       subject: 'Hợp tác ưu đãi với Sweet Home'
     },
     ko: {
       title: 'Sweet Home · 멀리 있어도 가까운 가족',
-      desc: '떨어져 사는 가족을 위한 앱. 매일의 사진, 손편지, 영상통화, 음력 달력, 그리고 매주 식구마다 전화해 이야기를 듣는 AI 친구 Mây. 지금은 베타라 무료예요.',
+      desc: '떨어져 사는 가족을 위한 앱이에요. 매일 사진, 손편지, 영상통화, 음력 달력이 있고, 앱의 AI인 Mây가 매주 식구마다 전화해 이야기를 들어요. 지금은 베타라 무료예요.',
       subject: 'Sweet Home 제휴 문의'
     },
     en: {
       title: 'Sweet Home · Far apart, still close',
-      desc: 'An app for families who live apart. Daily photos, letters, video calls, a lunar calendar, and Mây, an AI friend who calls each of you once a week. In beta and free for now.',
+      desc: "An app for families who live apart: daily photos, letters, video calls and a lunar calendar. Mây, the app's AI, calls each of you once a week to hear one story. In beta and free for now.",
       subject: 'Partnership with Sweet Home'
     }
   };

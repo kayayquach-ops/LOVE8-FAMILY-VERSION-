@@ -58,3 +58,82 @@ Các tiêu đề mục khác giữ nguyên, kể cả "Ở xa mà gần." và "�
 
 - Chữ đậm đầu mỗi dòng ở mục Cho bố mẹ: là thẻ `<b>` của thiết kế nên giữ, chỉ bỏ kiểu nhãn có dấu hai chấm.
 - "Mỗi lần thương nhau là một ngôi sao." giữ vì nghe như người thật nói.
+
+---
+
+# Lần 2 (25/11/2026): sửa theo góp ý chủ app
+
+Chưa đăng, chưa commit. Bản trước lần sửa này để ở scratchpad (`orig-v2/`). Font Hàn làm lại (292 chữ), ba file Montserrat giữ nguyên bản cũ.
+
+## 1. Mục Cho bố mẹ
+
+Bỏ hẳn ý "Giữ nút để nói". Mỗi ý giờ có 1 đến 2 câu đời thường.
+
+| Ý | VI mới |
+|---|---|
+| Mây gọi | **Mây gọi tới như một cuộc điện thoại.** Bố mẹ nghe máy rồi cứ thế kể. Mây xưng con, hỏi han như con cháu trong nhà. |
+| Giọng nói | **Trả lời bằng giọng nói.** Không cần gõ chữ. Con gửi ảnh lên, bố mẹ nói một câu là con nghe được. |
+| Lịch âm | **Lịch âm có sẵn.** Ngày giỗ, sinh nhật âm lịch tự đổi ra ngày dương. Gần tới ngày, app báo cho cả nhà. |
+| Ưu đãi | **Ưu đãi cho cả nhà.** Khám sức khoẻ, dịch vụ y tế, thuốc hằng tháng, thực phẩm bổ sung, ghế massage... Ai trong nhà cũng dùng được. |
+
+KO và EN viết theo cùng ý. Tiếng Hàn dùng 해요체, có -시- khi chủ ngữ là bố mẹ (하시면 돼요, 드시는 약). "Mây xưng con" lấy từ lời thoại của Mây trong app (`call.line.*.parent`). Ảnh điện thoại trước của mục này đổi sang `app-may-hoi-chia-se` (Mây hỏi mẹ có cho cả nhà nghe không, mẹ đáp "Ừ, cho cả nhà nghe với").
+
+## 2. Ưu đãi cho cả gia đình
+
+- Mục Cho bố mẹ: như bảng trên.
+- Mục Cho nhãn hàng, tiêu đề: "Gửi ưu đãi tới những gia đình đang lo cho bố mẹ." thành "Gửi ưu đãi tới cả gia đình, ngay trong app." (KO 온 가족에게 혜택을 앱 안에서 전하세요, EN Put your offer in front of the whole family.)
+- Mục Cho nhãn hàng, câu dẫn: "sức khoẻ, nhà thuốc, thực phẩm, vé về quê" thành "khám sức khoẻ, dịch vụ y tế, thuốc hằng tháng, thực phẩm bổ sung hay ghế massage", thêm "Ai trong nhà cũng dùng được."
+- Bước 3: "Chạm mốc 40, 100, 200 sao" thành "Đủ 40, 100, 200 sao".
+
+## 3. Hỏi đáp
+
+Bỏ câu "Bản beta là gì?". Còn 6 câu, viết gọn lại:
+
+| Câu | VI mới |
+|---|---|
+| Có mất tiền không? | Không. Đang beta nên miễn phí, app chưa thu tiền gì cả. |
+| Dùng trên máy nào? | iPhone hay Android đều được. Mở bằng Safari hoặc Chrome rồi thêm vào Màn hình chính. Riêng iPhone phải thêm vào Màn hình chính mới nhận được thông báo. |
+| Cả nhà vào bằng cách nào? | (giữ ý) Một người dựng nhà rồi gửi mã nhà qua Zalo hay tin nhắn. Người nhận nhập mã, người lập nhà đồng ý là vào. |
+| Mây gọi có cần mình đồng ý không? | Có. Bạn nghe máy thì Mây mới nói chuyện, chưa tiện thì để sau. Lần đầu, điện thoại sẽ hỏi bạn có cho dùng micro không. Thông báo cuộc gọi tuần thì mỗi người tự bật, tắt trong Cài đặt. |
+| Có những ngôn ngữ nào? | Tiếng Việt, tiếng Hàn và tiếng Anh. Mỗi người chọn tiếng của mình, tin nhắn tự dịch cho người kia. |
+| Muốn xoá dữ liệu thì sao? | Vào Cài đặt, chọn Rời nhà. Ảnh, tin nhắn, cuộc gọi của bạn bị xoá hẳn, không lấy lại được. Chi tiết ở trang quyền riêng tư. (bỏ câu "người trong nhà cũng xoá được một người") |
+
+Câu hỏi Mây bằng tiếng Anh đổi thành "Do I have to take Mây's calls?" để khớp với câu tiếng Hàn (꼭 받아야 하나요?), nên tiếng Anh và tiếng Hàn trả lời "No", tiếng Việt trả lời "Có" (cùng một ý: phải nghe máy thì Mây mới nói).
+
+## 4. Hero có màn Mây gọi
+
+- Điện thoại bên trái đổi từ `tin-nha` (ảnh bữa cơm) sang `app-may-hoi-them`: màn cuộc gọi của Mây, có linh vật Mây, câu "Mưa thế, bố có bị ướt không mẹ?" và lời mẹ đáp. Điện thoại bên phải giữ màn chính (có thẻ "Mây muốn chào bạn, nghe máy").
+- Câu dẫn hero giới thiệu Mây (xem ý 7).
+- Nhãn "Bản beta, đang miễn phí" thành "Đang beta, miễn phí".
+
+## 5. Lưới tính năng thấy trọn điện thoại
+
+Khung điện thoại thu nhỏ (112 px trên điện thoại, 140 đến 150 px trên máy tính) và nằm trọn trong ô, không còn bị cắt. "Chụp chung bằng AI" chuyển từ ô cao sang ô ngang để lưới đều 3 hàng. Thứ tự ô: Ảnh mỗi ngày, Thư tay, Photo booth, Chụp chung bằng AI, Nhắn tin, Lịch, Lọ sao, Cả nhà lúc này, Câu hỏi lúc đầu.
+
+## 6. Nhà mình kể
+
+Bước 4, câu mới: "“Nhà mình kể” là những tập podcast ngắn, dựng từ chuyện bố mẹ kể với Mây, bằng chính giọng thật của bố mẹ. Con ở xa mở ra là nghe. Người kể muốn giữ riêng cũng được." Tiêu đề: "Chuyện của mẹ thành..." thành "Chuyện mẹ kể thành một tập “Nhà mình kể”."
+
+## 7. Giới thiệu Mây ngay lần nhắc đầu
+
+- Hero (lần đầu Mây xuất hiện trên trang): "Một app cho cả nhà sống xa nhau. Trong app có Mây, AI của Sweet Home. Mỗi tuần Mây gọi cho từng người trong nhà, hỏi một chuyện để tâm sự."
+- Bước 3: "Mây, AI của app, gọi cho mẹ và hỏi một chuyện để mẹ kể, như hai mẹ con ngồi tâm sự. Mẹ kể tới đâu, Mây hỏi thêm tới đó."
+- Mô tả Google (`main.js` và thẻ meta), mô tả khi chia sẻ link (`og:description`): thêm "Mây, AI của app".
+
+## 8. Rà lại toàn bộ chữ (humanizer, file mode)
+
+Đã đọc hết `index.html` (mọi câu ba thứ tiếng, alt, aria, meta) và `TEXT` trong `main.js`. Ngoài các câu ở ý 1 đến 7, sửa thêm:
+
+| Chỗ | Trước | Sau |
+|---|---|---|
+| Bước 2 (VI) | Viết ngay trên điện thoại, chọn giấy, chọn nét chữ. An chạm vào dấu sáp là mở. | Mẹ viết ngay trên điện thoại, chọn giấy và kiểu chữ mình thích. An mở ra đọc như thư tay. (bỏ thuyết minh cách bấm) |
+| Thẻ Thư tay (VI) | Hộp thư riêng của nhà, chạm dấu sáp để mở. | Hộp thư riêng của nhà. Viết trên điện thoại mà đọc như thư tay. |
+| Thẻ Nhắn tin (VI) | Chat, gọi video. Tin nhắn tự dịch Việt, Hàn, Anh. | Chat và gọi video với cả nhà. Tin nhắn tự dịch qua lại Việt, Hàn, Anh. |
+| Thẻ Chụp chung AI (VI) | Mỗi người một nơi, AI ghép thành ảnh cả nhà. Luôn ghi “ảnh ghép AI”. | Mỗi người tự chụp ở nơi mình sống, AI ghép thành một ảnh cả nhà. Ảnh luôn ghi “ảnh ghép AI”. |
+| Hero (KO) | ...오늘 서로 뭘 먹고 뭘 했는지 알 수 있어요. | Sweet Home의 AI인 Mây가 매주 식구마다 전화를 걸어 이야기 하나를 물어보고 들어 줘요. |
+| Bước 3 (KO) | (câu cụt "편하게요." đứng riêng) | gộp thành một câu: ...마주 앉아 이야기하듯 이야기 하나를 여쭤봐요. |
+| Thẻ Thư tay, Nhắn tin, Cả nhà lúc này (KO) | câu cụt không có đuôi | thành câu trọn: 편지함이에요, 영상통화도 해요, 날씨가 어떤지 보여요 |
+| Thẻ Thư tay, Lịch, Cả nhà lúc này (EN) | Written on a phone, read like a real letter. / ...converted to regular dates. / What time it is where they are... | You write on your phone, and it reads like a real letter. / ...show up as regular dates too. / See what time it is where they are... |
+| Alt ảnh màn chính (KO, EN) | Mây의 통화 요청 / Mây's call invite | Mây의 전화 / a call from Mây |
+
+Đã kiểm: không có gạch ngang dài, không câu "không phải X mà là Y", không câu chốt một dòng, không thêm tính năng, con số hay lời hứa mới.
